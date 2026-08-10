@@ -1,0 +1,1 @@
+{"content":"Standard workout tracker schema: Workout -> WorkoutItems (exercise + rank/order) -> Sets (weight, reps, PR flag). Supersets/dropsets handled via grouping reference on the item/set level.","source":"web","provider":"websearch","confidence":"LOW","fetched_at":"2026-08-10T18:56:01.858Z","ttl":86400000,"kind":"web"}
