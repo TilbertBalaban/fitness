@@ -189,12 +189,116 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _(populated by roadmap)_ | | |
+| PLAT-01 | Phase 1 — Cross-Platform Foundation | Pending |
+| PLAT-05 | Phase 1 — Cross-Platform Foundation | Pending |
+| PLAT-06 | Phase 1 — Cross-Platform Foundation | Pending |
+| PLAT-09 | Phase 1 — Cross-Platform Foundation | Pending |
+| PLAT-02 | Phase 2 — Data Model & Sync Engine | Pending |
+| PLAT-03 | Phase 2 — Data Model & Sync Engine | Pending |
+| PLAT-04 | Phase 2 — Data Model & Sync Engine | Pending |
+| PLAT-07 | Phase 2 — Data Model & Sync Engine | Pending |
+| PLAT-08 | Phase 2 — Data Model & Sync Engine | Pending |
+| PLAT-10 | Phase 2 — Data Model & Sync Engine | Pending |
+| LOG-22 | Phase 2 — Data Model & Sync Engine | Pending |
+| EXER-01 | Phase 3 — Exercise Catalog | Pending |
+| EXER-02 | Phase 3 — Exercise Catalog | Pending |
+| EXER-03 | Phase 3 — Exercise Catalog | Pending |
+| EXER-04 | Phase 3 — Exercise Catalog | Pending |
+| EXER-05 | Phase 3 — Exercise Catalog | Pending |
+| EXER-06 | Phase 3 — Exercise Catalog | Pending |
+| EXER-07 | Phase 3 — Exercise Catalog | Pending |
+| EXER-08 | Phase 3 — Exercise Catalog | Pending |
+| EXER-09 | Phase 3 — Exercise Catalog | Pending |
+| EXER-10 | Phase 3 — Exercise Catalog | Pending |
+| PROG-01 | Phase 4 — Program Builder | Pending |
+| PROG-02 | Phase 4 — Program Builder | Pending |
+| PROG-03 | Phase 4 — Program Builder | Pending |
+| PROG-04 | Phase 4 — Program Builder | Pending |
+| PROG-05 | Phase 4 — Program Builder | Pending |
+| PROG-06 | Phase 4 — Program Builder | Pending |
+| PROG-07 | Phase 4 — Program Builder | Pending |
+| PROG-08 | Phase 4 — Program Builder | Pending |
+| PROG-09 | Phase 4 — Program Builder | Pending |
+| PROG-10 | Phase 4 — Program Builder | Pending |
+| PROG-11 | Phase 4 — Program Builder | Pending |
+| LOG-01 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-02 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-03 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-04 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-05 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-06 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-07 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-08 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-09 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-10 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-11 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-12 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-13 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-14 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-15 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-16 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-17 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-18 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-19 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-20 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-21 | Phase 5 — In-Gym Session Logging | Pending |
+| GYM-01 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| GYM-02 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| GYM-03 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| GYM-04 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| GYM-05 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| GYM-06 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| GYM-07 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| SETS-01 | Phase 7 — Advanced Set Types | Pending |
+| SETS-02 | Phase 7 — Advanced Set Types | Pending |
+| SETS-03 | Phase 7 — Advanced Set Types | Pending |
+| SETS-04 | Phase 7 — Advanced Set Types | Pending |
+| SETS-05 | Phase 7 — Advanced Set Types | Pending |
+| SETS-06 | Phase 7 — Advanced Set Types | Pending |
+| SETS-07 | Phase 7 — Advanced Set Types | Pending |
+| SETS-08 | Phase 7 — Advanced Set Types | Pending |
+| SETS-09 | Phase 7 — Advanced Set Types | Pending |
+| PRGR-01 | Phase 8 — Progression Engine | Pending |
+| PRGR-02 | Phase 8 — Progression Engine | Pending |
+| PRGR-03 | Phase 8 — Progression Engine | Pending |
+| PRGR-04 | Phase 8 — Progression Engine | Pending |
+| PRGR-05 | Phase 8 — Progression Engine | Pending |
+| PRGR-06 | Phase 8 — Progression Engine | Pending |
+| PRGR-07 | Phase 8 — Progression Engine | Pending |
+| PRGR-08 | Phase 8 — Progression Engine | Pending |
+| PRGR-09 | Phase 8 — Progression Engine | Pending |
+| PRGR-10 | Phase 8 — Progression Engine | Pending |
+| PRGR-11 | Phase 8 — Progression Engine | Pending |
+| ANLY-01 | Phase 9 — Records & Client Analytics | Pending |
+| ANLY-02 | Phase 9 — Records & Client Analytics | Pending |
+| ANLY-03 | Phase 9 — Records & Client Analytics | Pending |
+| ANLY-06 | Phase 9 — Records & Client Analytics | Pending |
+| ANLY-07 | Phase 9 — Records & Client Analytics | Pending |
+| ANLY-08 | Phase 9 — Records & Client Analytics | Pending |
+| ANLY-10 | Phase 9 — Records & Client Analytics | Pending |
+| ANLY-04 | Phase 10 — Server Analytics & Reconciliation | Pending |
+| ANLY-05 | Phase 10 — Server Analytics & Reconciliation | Pending |
+| ANLY-09 | Phase 10 — Server Analytics & Reconciliation | Pending |
+| GEN-01 | Phase 11 — Program Generation | Pending |
+| GEN-02 | Phase 11 — Program Generation | Pending |
+| GEN-03 | Phase 11 — Program Generation | Pending |
+| GEN-04 | Phase 11 — Program Generation | Pending |
+| GEN-05 | Phase 11 — Program Generation | Pending |
+| GEN-06 | Phase 11 — Program Generation | Pending |
+| GEN-07 | Phase 11 — Program Generation | Pending |
+| BODY-01 | Phase 12 — Body Metrics & Dashboard | Pending |
+| BODY-02 | Phase 12 — Body Metrics & Dashboard | Pending |
+| BODY-03 | Phase 12 — Body Metrics & Dashboard | Pending |
+| BODY-04 | Phase 12 — Body Metrics & Dashboard | Pending |
+| BODY-05 | Phase 12 — Body Metrics & Dashboard | Pending |
+| DASH-01 | Phase 12 — Body Metrics & Dashboard | Pending |
+| DASH-02 | Phase 12 — Body Metrics & Dashboard | Pending |
+| DASH-03 | Phase 12 — Body Metrics & Dashboard | Pending |
 
 **Coverage:**
 - v1 requirements: 105 total
-- Mapped to phases: 0
-- Unmapped: 105 ⚠️
+- Mapped to phases: 105
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-10*
