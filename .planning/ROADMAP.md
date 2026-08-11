@@ -51,10 +51,17 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. User stays signed in across app restarts, and the session survives a multi-week gap between opens
   3. A component needing platform-specific behavior can be written as `.web.tsx` and the shared code picks it up automatically
   4. The API carries an explicit version from its first request, so a months-old mobile build can never be broken by a server deploy
-**Plans**: TBD
+**Plans**: 8 plans
 
 Plans:
-- [ ] 01-01: TBD during `/gsd-plan-phase 1`
+- [ ] 01-01-PLAN.md — Walking Skeleton tracer: monorepo, versioned NestJS API, Postgres, Better Auth, Expo client; create an account end-to-end
+- [ ] 01-02-PLAN.md — Appearance foundation: NativeWind token contract and a persisted system/light/dark control
+- [ ] 01-03-PLAN.md — API version contract: URI versioning plus a minimum-supported-client-version floor returning 426
+- [ ] 01-04-PLAN.md — Password reset: mailer port with an SMTP adapter, local mail catcher, and the web-only reset page
+- [ ] 01-05-PLAN.md — Offline-tolerant session lifecycle: transport-failure vs. revocation split, non-blocking cold start, sign-out seam
+- [ ] 01-06-PLAN.md — Auth screens: sign-in, sign-up, and forgot-password with every UI-SPEC state
+- [ ] 01-07-PLAN.md — Navigation shell: native tabs, deep-linkable web tabs, and the `.web.tsx` escape-hatch convention
+- [ ] 01-08-PLAN.md — CI on push against a real Postgres, and the completed phase validation contract
 
 ### Phase 2: Data Model & Sync Engine
 **Goal**: Anything the user writes succeeds offline and converges correctly across their devices, on a schema that can express real training data.
@@ -237,7 +244,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Cross-Platform Foundation | 0/TBD | Not started | - |
+| 1. Cross-Platform Foundation | 0/8 | Planned | - |
 | 2. Data Model & Sync Engine | 0/TBD | Not started | - |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
