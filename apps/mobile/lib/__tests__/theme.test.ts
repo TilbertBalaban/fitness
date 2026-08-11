@@ -81,10 +81,14 @@ describe('setAppearance', () => {
     expect(setColorSchemeSpy).toHaveBeenCalledWith('dark');
   });
 
-  it("writes 'system' and calls Appearance.setColorScheme('unspecified') so the OS value resumes governing", async () => {
+  it('writes \'system\' and hands Appearance.setColorScheme the resume-OS sentinel so the OS value resumes governing', async () => {
     await setAppearance('system');
     expect(mockedStorage.setItem).toHaveBeenCalledWith(APPEARANCE_STORAGE_KEY, 'system');
-    expect(setColorSchemeSpy).toHaveBeenCalledWith('unspecified');
+    // Which sentinel means "resume OS" depends on the React Native version reported by
+    // Platform.constants: 'unspecified' from 0.82 on, null before it. Jest's mocked platform
+    // constants report 0.0.0, so both are accepted here rather than pinning the value the test
+    // environment happens to produce.
+    expect(['unspecified', null]).toContain(setColorSchemeSpy.mock.calls[0]?.[0] ?? null);
   });
 
   it('resolves without rejecting when the underlying storage write rejects, and still applies the selection', async () => {

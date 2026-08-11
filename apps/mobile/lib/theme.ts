@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { colorScheme } from 'nativewind';
 import { useCallback, useEffect, useState } from 'react';
-import { Appearance as RNAppearance, useColorScheme } from 'react-native';
+import { useColorScheme } from 'react-native';
 
 export type Appearance = 'system' | 'light' | 'dark';
 
@@ -19,8 +20,13 @@ export async function readStoredAppearance(): Promise<Appearance> {
   }
 }
 
+// react-native-web's Appearance module implements only getColorScheme and addChangeListener, so
+// calling RN's Appearance.setColorScheme directly throws on web and takes the whole app down at
+// root-layout mount. NativeWind's colorScheme.set is the cross-target equivalent: on native it
+// calls the very same Appearance.setColorScheme('unspecified' | 'light' | 'dark'), and on web it
+// toggles the `dark` class the tailwind `darkMode: 'class'` config keys off.
 export function applyAppearance(value: Appearance): void {
-  RNAppearance.setColorScheme(value === 'system' ? 'unspecified' : value);
+  colorScheme.set(value);
 }
 
 export async function setAppearance(value: Appearance): Promise<void> {

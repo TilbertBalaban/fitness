@@ -75,7 +75,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 01-06-PLAN.md — Auth screens: sign-in, sign-up, and forgot-password with every UI-SPEC state
-- [ ] 01-07-PLAN.md — Navigation shell: native tabs, deep-linkable web tabs, and the `.web.tsx` escape-hatch convention
+- [x] 01-07-PLAN.md — Navigation shell: native tabs, deep-linkable web tabs, and the `.web.tsx` escape-hatch convention
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
