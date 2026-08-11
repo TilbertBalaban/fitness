@@ -55,7 +55,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A component needing platform-specific behavior can be written as `.web.tsx` and the shared code picks it up automatically
   4. The API carries an explicit version from its first request, so a months-old mobile build can never be broken by a server deploy
 
-**Plans**: 3/8 plans executed
+**Plans**: 6/8 plans executed
 
 Plans:
 **Wave 1**
@@ -69,12 +69,12 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-04-PLAN.md — Password reset: mailer port with an SMTP adapter, local mail catcher, and the web-only reset page
-- [ ] 01-05-PLAN.md — Offline-tolerant session lifecycle: transport-failure vs. revocation split, non-blocking cold start, sign-out seam
+- [x] 01-04-PLAN.md — Password reset: mailer port with an SMTP adapter, local mail catcher, and the web-only reset page
+- [x] 01-05-PLAN.md — Offline-tolerant session lifecycle: transport-failure vs. revocation split, non-blocking cold start, sign-out seam
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 01-06-PLAN.md — Auth screens: sign-in, sign-up, and forgot-password with every UI-SPEC state
+- [x] 01-06-PLAN.md — Auth screens: sign-in, sign-up, and forgot-password with every UI-SPEC state
 - [ ] 01-07-PLAN.md — Navigation shell: native tabs, deep-linkable web tabs, and the `.web.tsx` escape-hatch convention
 
 **Wave 5** *(blocked on Wave 4 completion)*
@@ -306,7 +306,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Cross-Platform Foundation | 3/8 | In Progress|  |
+| 1. Cross-Platform Foundation | 6/8 | In Progress|  |
 | 2. Data Model & Sync Engine | 0/TBD | Not started | - |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
