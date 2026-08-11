@@ -80,8 +80,35 @@ Better Auth tables, so that gap cannot pass silently.
 | `API_BASE_URL` | api | Public origin Better Auth issues links against |
 | `BETTER_AUTH_SECRET` | api | Signing secret — must be a long random string |
 | `EXPO_PUBLIC_API_URL` | mobile | Origin the client calls |
+| `MAIL_TRANSPORT` | api | Outbound-mail adapter selector — only `smtp` exists today |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | api | SMTP connection — leave user/password empty for the local catcher |
+| `MAIL_FROM` | api | From address on outbound mail |
+| `WEB_APP_ORIGIN` | api | The deployed web build's own origin — where `reset-password.web.tsx` is served, and the origin Better Auth's `originCheck` trusts for a reset-password `redirectTo` |
 
 Only `.env.example` is committed. Never commit a real `.env`.
+
+## Email in development
+
+Password reset is the only feature that sends mail. In development it never leaves the machine:
+Mailpit catches everything sent to `127.0.0.1:1025` and shows it in a web inbox at
+`localhost:8025` — no external email account, real provider, or owned domain is needed to exercise
+the flow end to end.
+
+Either supported Postgres path also starts Mailpit:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d mailpit   # Docker path
+brew install mailpit && mailpit                            # Homebrew path, no Docker
+```
+
+Request a password reset from the app, then open `localhost:8025` to read the mail and click the
+reset link — it always opens a browser at `reset-password.web.tsx` on the web build's own origin,
+never a native app scheme (D-07).
+
+Switching to a real provider in a deployed environment is an environment-variable change only —
+`MAIL_TRANSPORT`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `MAIL_FROM` — against
+the one mailer port in `apps/api/src/mailer/`. Neither the Better Auth wiring in `auth.ts` nor the
+reset route changes.
 
 ## API versioning
 
