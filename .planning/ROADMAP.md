@@ -55,7 +55,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A component needing platform-specific behavior can be written as `.web.tsx` and the shared code picks it up automatically
   4. The API carries an explicit version from its first request, so a months-old mobile build can never be broken by a server deploy
 
-**Plans**: 1/8 plans executed
+**Plans**: 3/8 plans executed
 
 Plans:
 **Wave 1**
@@ -64,8 +64,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Appearance foundation: NativeWind token contract and a persisted system/light/dark control
-- [ ] 01-03-PLAN.md — API version contract: URI versioning plus a minimum-supported-client-version floor returning 426
+- [x] 01-02-PLAN.md — Appearance foundation: NativeWind token contract and a persisted system/light/dark control
+- [x] 01-03-PLAN.md — API version contract: URI versioning plus a minimum-supported-client-version floor returning 426
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -306,7 +306,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Cross-Platform Foundation | 1/8 | In Progress|  |
+| 1. Cross-Platform Foundation | 3/8 | In Progress|  |
 | 2. Data Model & Sync Engine | 0/TBD | Not started | - |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
