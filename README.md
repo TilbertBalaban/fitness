@@ -88,6 +88,14 @@ Only `.env.example` is committed. Never commit a real `.env`.
 Every route is served under an explicit version segment (`/v1/...`); `main.ts` enables
 `VersioningType.URI` with `defaultVersion: '1'`, so nothing can be served unversioned.
 
+Separately, `MIN_CLIENT_VERSION` (`.env`) sets a minimum-supported-client-version floor, enforced by
+a global guard reading the `X-Client-Version` request header. A request below the floor gets
+`426 Upgrade Required` with `{ reason: "client_version_below_minimum", minimum }`; a request with no
+version header, or a malformed one, is always let through — it is never treated as hostile. The
+default `0.0.0` blocks nothing; raising it once a real breaking change ships is a single environment
+variable change. `GET /health` stays reachable regardless of the floor, so a blocked client can still
+reach a route that tells it why.
+
 ## Tests
 
 ```bash
