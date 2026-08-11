@@ -81,10 +81,10 @@ describe('setAppearance', () => {
     expect(setColorSchemeSpy).toHaveBeenCalledWith('dark');
   });
 
-  it("writes 'system' and calls Appearance.setColorScheme(null) so the OS value resumes governing", async () => {
+  it("writes 'system' and calls Appearance.setColorScheme('unspecified') so the OS value resumes governing", async () => {
     await setAppearance('system');
     expect(mockedStorage.setItem).toHaveBeenCalledWith(APPEARANCE_STORAGE_KEY, 'system');
-    expect(setColorSchemeSpy).toHaveBeenCalledWith(null);
+    expect(setColorSchemeSpy).toHaveBeenCalledWith('unspecified');
   });
 
   it('resolves without rejecting when the underlying storage write rejects, and still applies the selection', async () => {
