@@ -2,16 +2,20 @@ import { Module } from '@nestjs/common';
 import type { MailerPort } from './mailer.port';
 import { MAILER_PORT } from './mailer.port';
 import { SmtpMailerAdapter } from './smtp-mailer.adapter';
+import { CaptureMailerAdapter } from './capture-mailer.adapter';
 
-// MAIL_TRANSPORT is the single switch a deployment flips to change outbound-mail provider. Only
-// 'smtp' exists today — it already covers both the local catcher and a real SMTP-speaking provider
-// via the same env vars — but resolving the adapter here, not at each call site, is what keeps a
-// future non-SMTP adapter a one-line addition to this factory.
+// MAIL_TRANSPORT is the single switch a deployment flips to change outbound-mail provider. 'smtp'
+// covers both the local catcher and a real SMTP-speaking provider via the same env vars; 'capture'
+// exists only for password-reset.e2e-spec.ts (see capture-mailer.adapter.ts) and is never a
+// production value. Resolving the adapter here, not at each call site, is what keeps a future
+// non-SMTP adapter a one-line addition to this factory.
 function resolveMailerPort(): MailerPort {
   const transport = process.env.MAIL_TRANSPORT ?? 'smtp';
   switch (transport) {
     case 'smtp':
       return new SmtpMailerAdapter();
+    case 'capture':
+      return new CaptureMailerAdapter();
     default:
       throw new Error(`Unknown MAIL_TRANSPORT: ${transport}`);
   }
