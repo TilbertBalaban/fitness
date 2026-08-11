@@ -55,12 +55,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A component needing platform-specific behavior can be written as `.web.tsx` and the shared code picks it up automatically
   4. The API carries an explicit version from its first request, so a months-old mobile build can never be broken by a server deploy
 
-**Plans**: 8 plans
+**Plans**: 1/8 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Walking Skeleton tracer: monorepo, versioned NestJS API, Postgres, Better Auth, Expo client; create an account end-to-end
+- [x] 01-01-PLAN.md — Walking Skeleton tracer: monorepo, versioned NestJS API, Postgres, Better Auth, Expo client; create an account end-to-end
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -306,7 +306,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Cross-Platform Foundation | 0/8 | Planned | - |
+| 1. Cross-Platform Foundation | 1/8 | In Progress|  |
 | 2. Data Model & Sync Engine | 0/TBD | Not started | - |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
