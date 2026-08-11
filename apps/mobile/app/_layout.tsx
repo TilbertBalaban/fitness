@@ -1,3 +1,5 @@
+import '@/global.css';
+
 import { Stack } from 'expo-router';
 import { authClient } from '@/lib/auth-client';
 
