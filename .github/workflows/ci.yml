@@ -1,0 +1,87 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck, lint, unit tests, web bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm turbo run typecheck lint test build
+
+  e2e:
+    name: API end-to-end against Postgres
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fitness
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fitness"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      mailpit:
+        image: axllent/mailpit:latest
+        ports:
+          - 1025:1025
+          - 8025:8025
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fitness
+      API_BASE_URL: http://127.0.0.1:3000
+      WEB_ORIGINS: http://localhost:8081
+      WEB_APP_ORIGIN: http://localhost:8081
+      MIN_CLIENT_VERSION: 0.0.0
+      MAIL_TRANSPORT: smtp
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: 1025
+      MAIL_FROM: noreply@fitness.example.com
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - run: pnpm install --frozen-lockfile
+
+      # Generated per run rather than read from a repository secret: nothing this suite asserts
+      # needs a production credential, and referencing one would put it in a log-bearing runner.
+      - name: Generate a throwaway signing secret
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Apply the Drizzle schema to the service database
+        run: pnpm --filter api db:push
+
+      - run: pnpm --filter api test:e2e

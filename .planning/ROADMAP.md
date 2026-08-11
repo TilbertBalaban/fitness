@@ -55,7 +55,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A component needing platform-specific behavior can be written as `.web.tsx` and the shared code picks it up automatically
   4. The API carries an explicit version from its first request, so a months-old mobile build can never be broken by a server deploy
 
-**Plans**: 6/8 plans executed
+**Plans**: 8/8 plans executed
 
 Plans:
 **Wave 1**
@@ -79,7 +79,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 01-08-PLAN.md — CI on push against a real Postgres, and the completed phase validation contract
+- [x] 01-08-PLAN.md — CI on push against a real Postgres, and the completed phase validation contract
 
 ### Phase 2: Data Model & Sync Engine
 
@@ -306,7 +306,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Cross-Platform Foundation | 6/8 | In Progress|  |
+| 1. Cross-Platform Foundation | 8/8 | In Progress|  |
 | 2. Data Model & Sync Engine | 0/TBD | Not started | - |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
