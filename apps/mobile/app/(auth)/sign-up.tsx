@@ -1,71 +1,169 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import { Text, View } from 'react-native';
 import { Link } from 'expo-router';
+import { AuthScreenLayout } from '@/components/AuthScreenLayout';
+import { ErrorBanner } from '@/components/ErrorBanner';
+import { PrimaryButton } from '@/components/PrimaryButton';
+import { TextField } from '@/components/TextField';
 import { authClient } from '@/lib/auth-client';
+import { classifyAuthOutcome, type AuthOutcome } from '@/lib/session-guard';
+import { isValidEmail, isValidPassword } from '@/lib/validation';
+
+const INVALID_EMAIL = 'Enter a valid email address.';
+const PASSWORD_TOO_SHORT = 'Password must be at least 8 characters.';
+const PASSWORDS_DO_NOT_MATCH = "Passwords don't match.";
+const SERVER_UNREACHABLE = "Can't reach the server. Check your connection and try again.";
+const UNEXPECTED_FAILURE = 'Something went wrong. Try again.';
+
+// Disclosure is the ordinary sign-up pattern and is deliberately unlike the sign-in path's generic
+// copy. The sentence below is the contract; the link split is derived from it so a later edit to
+// the copy cannot leave the rendered halves saying something else.
+const DUPLICATE_EMAIL = 'An account with this email already exists. Sign in instead.';
+const DUPLICATE_EMAIL_LINK_LABEL = 'Sign in instead';
+const [DUPLICATE_EMAIL_LEAD, DUPLICATE_EMAIL_TAIL] = DUPLICATE_EMAIL.split(
+  DUPLICATE_EMAIL_LINK_LABEL,
+);
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [duplicateEmail, setDuplicateEmail] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  function validateEmail(): boolean {
+    const valid = isValidEmail(email);
+    setEmailError(valid ? null : INVALID_EMAIL);
+    return valid;
+  }
+
+  function validatePassword(): boolean {
+    const valid = isValidPassword(password);
+    setPasswordError(valid ? null : PASSWORD_TOO_SHORT);
+    return valid;
+  }
+
+  function validateConfirmPassword(): boolean {
+    const valid = confirmPassword === password;
+    setConfirmError(valid ? null : PASSWORDS_DO_NOT_MATCH);
+    return valid;
+  }
+
   async function onSubmit() {
+    setSubmitError(null);
+    setDuplicateEmail(false);
+
+    // Every field is evaluated, so a form with three problems reports all three at once instead of
+    // surfacing them one submit at a time.
+    const emailOk = validateEmail();
+    const passwordOk = validatePassword();
+    const confirmOk = validateConfirmPassword();
+    if (!emailOk || !passwordOk || !confirmOk) return;
+
     setSubmitting(true);
-    setError(null);
 
-    const { error: signUpError } = await authClient.signUp.email({
-      email,
-      password,
-      name: email,
-    });
+    let outcome: AuthOutcome = 'offline';
+    const { error } = await authClient.signUp.email(
+      { email, password, name: email },
+      {
+        onResponse: async ({ response }) => {
+          outcome = await classifyAuthOutcome(response);
+        },
+      },
+    );
 
-    if (signUpError) {
-      // A transport failure has no HTTP status — that is the distinction D-03 makes structural.
-      setError(
-        signUpError.status === undefined
-          ? "Can't reach the server. Check your connection and try again."
-          : signUpError.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL'
-            ? 'An account with this email already exists. Sign in instead.'
-            : 'Something went wrong. Try again.',
-      );
+    if (error) {
+      if (outcome === 'offline') {
+        setSubmitError(SERVER_UNREACHABLE);
+      } else if (error.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') {
+        setDuplicateEmail(true);
+      } else {
+        setSubmitError(UNEXPECTED_FAILURE);
+      }
     }
 
     setSubmitting(false);
   }
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', padding: 24, gap: 16 }}>
-      <Text style={{ fontSize: 28, fontWeight: '600' }}>Create your account</Text>
+    <AuthScreenLayout>
+      <View className="gap-md">
+        <Text className="text-display font-semibold text-foreground">Create your account</Text>
 
-      <TextInput
-        value={email}
-        onChangeText={setEmail}
-        placeholder="Email"
-        autoCapitalize="none"
-        autoComplete="email"
-        keyboardType="email-address"
-        style={{ borderWidth: 1, borderRadius: 8, padding: 12, minHeight: 48, fontSize: 16 }}
-      />
-      <TextInput
-        value={password}
-        onChangeText={setPassword}
-        placeholder="Password"
-        autoCapitalize="none"
-        secureTextEntry
-        style={{ borderWidth: 1, borderRadius: 8, padding: 12, minHeight: 48, fontSize: 16 }}
-      />
+        <TextField
+          label="Email"
+          value={email}
+          onChangeText={(value) => {
+            setEmail(value);
+            setEmailError(null);
+          }}
+          onBlur={() => {
+            if (email) validateEmail();
+          }}
+          error={emailError}
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="emailAddress"
+        />
 
-      {error ? <Text>{error}</Text> : null}
+        <TextField
+          label="Password"
+          secure
+          value={password}
+          onChangeText={(value) => {
+            setPassword(value);
+            setPasswordError(null);
+          }}
+          onBlur={() => {
+            if (password) validatePassword();
+          }}
+          error={passwordError}
+          autoComplete="new-password"
+          textContentType="newPassword"
+        />
 
-      <Pressable
-        onPress={onSubmit}
-        disabled={submitting}
-        style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 8 }}
-      >
-        <Text style={{ fontSize: 16, fontWeight: '600' }}>Create Account</Text>
-      </Pressable>
+        <TextField
+          label="Confirm password"
+          secure
+          value={confirmPassword}
+          onChangeText={(value) => {
+            setConfirmPassword(value);
+            setConfirmError(null);
+          }}
+          onBlur={() => {
+            if (confirmPassword) validateConfirmPassword();
+          }}
+          error={confirmError}
+          autoComplete="new-password"
+          textContentType="newPassword"
+        />
 
-      <Link href="/(auth)/sign-in">Already have an account? Sign in</Link>
-    </View>
+        {duplicateEmail ? (
+          <ErrorBanner>
+            <Text className="text-body font-normal text-destructive">
+              {DUPLICATE_EMAIL_LEAD}
+              <Link href="/(auth)/sign-in" className="font-normal text-accent">
+                {DUPLICATE_EMAIL_LINK_LABEL}
+              </Link>
+              {DUPLICATE_EMAIL_TAIL}
+            </Text>
+          </ErrorBanner>
+        ) : (
+          <ErrorBanner message={submitError} />
+        )}
+
+        <PrimaryButton label="Create Account" onPress={onSubmit} submitting={submitting} />
+
+        <Link href="/(auth)/sign-in" className="text-body font-normal text-accent">
+          Already have an account? Sign in
+        </Link>
+      </View>
+    </AuthScreenLayout>
   );
 }

@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: cross-platform-foundation
 status: executing
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-08-11T09:35:27.508Z"
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-08-11T10:32:17.751Z"
 last_activity: 2026-08-11
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 8
-  completed_plans: 3
+  completed_plans: 6
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 01 (cross-platform-foundation) — EXECUTING
-Plan: 1 of 8
-Status: Executing Phase 01
+Plan: 2 of 8
+Status: Ready to execute
 Last activity: 2026-08-11 — Phase 01 execution started
 
-Progress: [████░░░░░░] 38%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -54,6 +54,11 @@ Progress: [████░░░░░░] 38%
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01 P06 | 76min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -67,6 +72,9 @@ Recent decisions affecting current work:
 - Init: Sync is row/field-level LWW ordered by server sequence — never whole-document, never wall-clock
 - Init: Below-target performance holds the prescription; reduction only suggested after 2–3 consecutive misses
 - Init: Parallel training blocks deferred to v2; single active program in v1
+- [Phase ?]: 01-06: Auth show/hide control uses a text Show/Hide label, not an Ionicons glyph — @expo/vector-icons sets its own color prop and cannot resolve a NativeWind token class, so an icon would hardcode a colour the theme cannot swap
+- [Phase ?]: 01-06: Auth submit outcomes are classified from the raw Response inside better-fetch's onResponse hook and seeded to 'offline' — a BetterFetchError is not ResponseLike, so passing it to classifyAuthOutcome would report every failure as offline
+- [Phase ?]: 01-06: EXPO_PUBLIC_WEB_APP_ORIGIN keeps its http://localhost:8081 dev default rather than an https literal, and D-07 is enforced structurally instead — the reset redirectTo is validated at import as an http/https browser origin and throws on a custom app scheme
 
 ### Pending Todos
 
@@ -79,6 +87,7 @@ None yet.
 - Phase 11 research flag: Smart Generation's volume-landmark math is not publicly documented.
 - Phase 5 research flag: `expo-notifications` background delivery reliability needs real-device verification, not doc reading.
 - Better Auth's Expo client plugin package name should be re-verified against current docs before first install.
+- 01-06: three <human-check> blocks and three long-text backstops unrun — no simulator/device, no Playwright browsers, Mailpit port 1025 unreachable. Filed in .planning/WINDOWS.md as unrun-verify.
 
 ## Deferred Items
 
@@ -90,6 +99,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T07:37:07.758Z
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: /Users/tilbertbalaban/work/fitness/.planning/phases/01-cross-platform-foundation/01-UI-SPEC.md
+Last session: 2026-08-11T10:32:17.741Z
+Stopped at: Completed 01-06-PLAN.md
+Resume file: None

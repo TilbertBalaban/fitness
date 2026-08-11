@@ -84,6 +84,7 @@ Better Auth tables, so that gap cannot pass silently.
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | api | SMTP connection — leave user/password empty for the local catcher |
 | `MAIL_FROM` | api | From address on outbound mail |
 | `WEB_APP_ORIGIN` | api | The deployed web build's own origin — where `reset-password.web.tsx` is served, and the origin Better Auth's `originCheck` trusts for a reset-password `redirectTo` |
+| `EXPO_PUBLIC_WEB_APP_ORIGIN` | mobile | Client half of `WEB_APP_ORIGIN` — the origin the forgot-password screen points its `redirectTo` at. Must be an `http`/`https` browser origin; a custom app scheme is rejected at startup (D-07). Defaults to `http://localhost:8081`, so set it to the same value as `WEB_APP_ORIGIN` outside local development. |
 
 Only `.env.example` is committed. Never commit a real `.env`.
 
