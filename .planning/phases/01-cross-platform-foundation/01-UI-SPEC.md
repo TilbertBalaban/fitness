@@ -1,7 +1,7 @@
 ---
 phase: 1
 slug: cross-platform-foundation
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-11
@@ -86,6 +86,8 @@ Exactly 4 sizes, exactly 2 weights (400/600), per contract. Do not introduce a t
 
 **Accessibility floor:** body text must hold WCAG AA contrast (4.5:1) against its background in both themes; do not cap `allowFontScaling` — every text element must respect the OS-level font-scaling setting, since a legible-at-default-size app that breaks under iOS/Android accessibility font scaling fails the same in-gym-legibility intent the touch-target floor above serves.
 
+**Overflow rule — wrap and grow, never truncate (binding, inherited by all later phases):** text containers grow to fit and layouts reflow. Do not set `numberOfLines` or `ellipsizeMode` on any text a user needs to read. Tab labels wrap to a second line and the tab bar grows rather than ellipsizing; its declared 56px is a minimum height, not a fixed one. The cost is vertical space and more layout care; the benefit is that a long exercise or program name in Phase 4+ is never rendered ambiguous for exactly the users who enlarged their font to read it.
+
 ---
 
 ## Color
@@ -136,6 +138,8 @@ One Expo Router route tree renders two platform-specific tab chrome implementati
 
 Every screen this phase ships real, shipped UI for or a labelled placeholder for. States use the copy defined in **Copywriting Contract** below by reference — do not restate copy here.
 
+**Focal point:** the Display heading (28px/600) is the primary visual anchor on each auth screen, positioned at the top so the screen's purpose reads before the user engages with the form. On the tab placeholder screens the Heading (20px/600) is the anchor, with the muted body copy explicitly subordinate. Nothing else on either surface competes for first fixation — in particular, the primary CTA earns attention through Accent fill and position, not size.
+
 ### Auth screens (real UI, PLAT-05)
 
 | Screen | Route | Key elements | States |
@@ -170,7 +174,7 @@ D-02 requires cold start to render authenticated UI immediately with no network 
 | Platform | Mechanism | Visual treatment |
 |----------|-----------|-------------------|
 | Native (iOS/Android) | Session read synchronously from `expo-secure-store` on launch (Better Auth Expo plugin's cache) | **No loading state ever appears on the native launch path.** The root layout renders the tab scaffold (if a cached session exists) or the sign-in screen (if not) on the very first frame. The background token-refresh call is invisible — its failure is a silent no-op (D-01/D-03), never a spinner, toast, or banner on the happy path. |
-| Web (desktop browser) | No local session cache to read — the browser's cookie jar is sent automatically, but confirming validity still costs one `get-session` round trip | A **non-blocking, non-full-screen skeleton** is permitted, and only here: render the tab scaffold's chrome (tab bar, screen frame) immediately, with a neutral Secondary-colored placeholder block (no shimmer animation needed for this phase's UI complexity) in place of anything session-dependent, for the duration of that one request. This must never be a full-screen spinner or blank white screen — the research-flagged Clerk-style 10-15s black screen is exactly the failure mode this project structurally rejects (D-02), and a web skeleton that overstays a fast same-origin request would recreate that failure mode in miniature. If `get-session` resolves unauthenticated, redirect to sign-in; the skeleton-to-redirect transition should not itself flash a second loading state. |
+| Web (desktop browser) | No local session cache to read — the browser's cookie jar is sent automatically, but confirming validity still costs one `get-session` round trip | A **non-blocking, non-full-screen skeleton** is permitted, and only here: render the tab scaffold's chrome (tab bar, screen frame) immediately, with a neutral Secondary-colored placeholder block (no shimmer animation needed for this phase's UI complexity) in place of anything session-dependent, for the duration of that one request. This must never be a full-screen spinner or blank white screen — the research-flagged Clerk-style 10-15s black screen is exactly the failure mode this project structurally rejects (D-02), and a web skeleton that overstays a fast same-origin request would recreate that failure mode in miniature. If `get-session` resolves unauthenticated, redirect to sign-in; the skeleton-to-redirect transition should not itself flash a second loading state. **Bounded at ~3 seconds:** if the request has not resolved by then, stop waiting and render sign-in while letting the request continue — if it later returns authenticated, swap the authenticated shell in. This is a provisional render, not a sign-out: nothing is cleared, so D-03 is not violated. A hung `get-session` can therefore never leave a permanently half-rendered page. |
 
 **Explicit user-triggered auth actions** (submitting sign-in, sign-up, forgot-password, or reset-password) are different from cold start — these legitimately require the network and show a normal submitting state (CTA spinner + disabled, per Screen Inventory above) and a normal error state if the device is offline: "Can't reach the server. Check your connection and try again." (see Copywriting Contract). This is not a violation of D-02/D-03 — those decisions govern passive session validation on the launch path and background refresh, not an explicit form submission the user is actively waiting on.
 
@@ -227,13 +231,64 @@ There is no account-deletion or other destructive action in Phase 1's scope (D-0
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: {N covered, M backstop, K unresolved — or "none applicable"}
+Applicable state considerations resolved: **45 applicable — 36 covered, 9 backstop, 0 unresolved.**
+
+**Surfaces probed:** E1 sign-in form · E2 sign-up form · E3 forgot-password form · E4 reset-password web page · E5 tab bar shell · E6 tab placeholder screens · E7 Appearance theme control · E8 web cold-start session treatment · E9 sign-out confirmation dialog.
+
+**Classifier override:** E6 was auto-classified `list-collection` + `nav` + `media` + `static-content`; narrowed to `static-content` alone at kind-confirmation. These screens hold a heading and one line of copy — no items, no media, no data model — so `populated`, `zero-one-many`, `partial`, and `empty` have no referent and were not raised.
+
+**Three phase-wide rules were settled during resolution and govern many rows below:**
+- **R1 — Wrap and grow, never truncate.** Text containers grow to fit and layouts reflow; nothing the user needs to read is ever ellipsized or clipped, at any OS font scale. No `numberOfLines` or `ellipsizeMode` on user-meaningful text. Inherited by all later phases (exercise names, program titles).
+- **R2 — Web cold start is bounded at ~3s.** If `get-session` has not resolved within ~3 seconds the app stops waiting and renders sign-in, while the request continues; if it later returns authenticated, the authenticated shell swaps in. A hung request can never leave a permanently half-rendered page.
+- **R3 — Explicit submissions may block; passive session checks may not.** A user-initiated submit legitimately shows a submitting state and a network error. Passive session validation on the launch path never does (D-02/D-03).
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| {empty} | {list-collection} | ✅ covered | {concrete truth string — e.g. "Empty results render the documented 'No results' copy"} |
-| {long-text} | {static-content} | 🧪 backstop | {held-out/visual UI-state test — lifts as `{ statement, verification: backstop }`} |
-| {overflow} | {list-collection} | ⚠ unresolved | {planner treats as assumption} |
+| empty | E1 sign-in form | ✅ covered | Renders the default unfilled state: both fields empty, CTA enabled, no error text present. |
+| loading | E1 sign-in form | ✅ covered | While a submit is in flight the CTA is disabled and shows a spinner glyph with its "Sign In" label unchanged — the label is never replaced by the spinner (R3). |
+| error | E1 sign-in form | ✅ covered | Failed credentials render "Incorrect email or password. Try again." in a banner above the CTA; an unreachable server renders "Can't reach the server. Check your connection and try again." See Copywriting Contract. |
+| partial | E1 sign-in form | ✅ covered | Validation errors render inline beneath the offending field only; a partially filled form never blocks entry in the other field, and no error appears for an untouched field. |
+| overflow | E1 sign-in form | ✅ covered | The form sits in a keyboard-avoiding scroll container, so content scrolls rather than clipping when the OS keyboard is up; the focused field is never obscured. |
+| long-text | E1 sign-in form | 🧪 backstop | A long email address wraps within its field and the field grows; no ellipsis, no horizontal clip, at any OS font scale (R1). |
+| empty | E2 sign-up form | ✅ covered | Renders the default unfilled state across all three fields with the CTA enabled and no error text. |
+| loading | E2 sign-up form | ✅ covered | Submitting disables the CTA and shows a spinner glyph with the "Create Account" label unchanged (R3). |
+| error | E2 sign-up form | ✅ covered | Inline errors for short password and confirm-password mismatch; "An account with this email already exists. Sign in instead." renders with a tappable link to sign-in. See Copywriting Contract. |
+| partial | E2 sign-up form | ✅ covered | Each field validates independently and errors render only beneath the field at fault; filling one field never clears another's error state spuriously. |
+| overflow | E2 sign-up form | ✅ covered | Three fields plus CTA and link stay reachable in a keyboard-avoiding scroll container on the shortest supported viewport. |
+| long-text | E2 sign-up form | 🧪 backstop | Long email and password values wrap within their fields; error copy wraps to as many lines as needed rather than truncating (R1). |
+| empty | E3 forgot-password form | ✅ covered | Renders heading, one empty email field, CTA, and the "Back to sign in" link. |
+| loading | E3 forgot-password form | ✅ covered | Submitting disables the CTA and shows a spinner glyph with the "Send Reset Link" label unchanged (R3). |
+| error | E3 forgot-password form | ✅ covered | Inline "Enter a valid email address." for malformed input; offline renders the unreachable-server copy. A non-existent account is never an error — it takes the success path. |
+| partial | E3 forgot-password form | ✅ covered | On success the form is replaced entirely by the confirmation message — no half-form-half-confirmation state exists. |
+| overflow | E3 forgot-password form | ✅ covered | The success message replaces the form in the same container, which grows to fit rather than scrolling the form out of view. |
+| long-text | E3 forgot-password form | 🧪 backstop | The success copy "If an account exists for that email, we've sent a reset link." wraps fully at large font scales without clipping (R1). |
+| empty | E4 reset-password web page | ✅ covered | Entered cold from an email link with no prior app state; renders heading and two empty password fields when the token is valid. |
+| loading | E4 reset-password web page | ✅ covered | Submitting disables the CTA and shows a spinner glyph with the "Reset Password" label unchanged (R3). |
+| error | E4 reset-password web page | ✅ covered | An expired or already-used token replaces the form entirely with "This reset link has expired or already been used. Request a new one." plus a link back to Forgot Password — a form is never rendered bound to a dead token. |
+| partial | E4 reset-password web page | ✅ covered | Confirm-password mismatch renders inline beneath the confirm field; the token-invalid state and the field-error state are mutually exclusive, never both at once. |
+| overflow | E4 reset-password web page | ✅ covered | Single-column layout capped at 400px and centered on wide desktop viewports; content grows vertically rather than clipping. |
+| long-text | E4 reset-password web page | 🧪 backstop | The expired-token message and success confirmation wrap fully within the 400px column at any browser zoom or font size (R1). |
+| empty | E5 tab bar shell | ✅ covered | The tab set is fixed at exactly five items — Home, Programs, Workout, History, Profile — and is never empty; no zero-tab state exists or can be reached. |
+| loading | E5 tab bar shell | ✅ covered | On native the tab scaffold renders on the first frame with no loading state whatsoever (D-02). On web the tab chrome renders immediately while only session-dependent content is deferred (R2). |
+| error | E5 tab bar shell | ✅ covered | The tab bar is statically defined from the route tree and has no fetch and therefore no failure mode; it renders identically regardless of any network state. |
+| populated | E5 tab bar shell | ✅ covered | Five tabs render in fixed order with exactly one active: active icon and label tinted Accent, and on web a 2px Accent bottom border; all others in Foreground-muted. |
+| partial | E5 tab bar shell | ✅ covered | The tab set is fixed and complete at build time; no tab can be conditionally absent, so no partial state exists. |
+| overflow | E5 tab bar shell | 🧪 backstop | At large OS font scales tab labels wrap to a second line and the bar grows in height rather than clipping or ellipsizing; the web bar's 56px is a minimum, not a fixed height (R1). |
+| zero-one-many | E5 tab bar shell | ✅ covered | The count is invariantly five, so singular/plural copy and count-dependent spacing do not arise. |
+| long-text | E5 tab bar shell | 🧪 backstop | The longest label ("Programs") remains fully legible, never ellipsized, at the maximum OS accessibility font size on all three platforms (R1). |
+| overflow | E6 tab placeholder screens | ✅ covered | Heading and body copy are centered in a container that grows vertically; the screen scrolls if content exceeds the viewport rather than clipping. |
+| long-text | E6 tab placeholder screens | 🧪 backstop | Placeholder body copy wraps to as many lines as needed at maximum font scale without clipping or ellipsis (R1). |
+| loading | E7 Appearance theme control | ✅ covered | The persisted choice is read and applied before first paint, so no loading state renders and no flash of the wrong theme occurs on cold start. |
+| error | E7 Appearance theme control | 🧪 backstop | If the AsyncStorage read or write fails, the control falls back to "System" and continues to function; the failure is never surfaced to the user as an error state. |
+| long-text | E7 Appearance theme control | ✅ covered | Segment labels are the fixed strings "System", "Light", "Dark"; at large font scales the segments grow to fit rather than truncating (R1). |
+| loading | E8 web cold-start treatment | ✅ covered | Tab chrome renders immediately with a neutral Secondary-colored placeholder block for session-dependent content only — never a full-screen spinner and never a blank page. Bounded at ~3s, after which sign-in renders while the request continues (R2). |
+| error | E8 web cold-start treatment | ✅ covered | A transport failure on `get-session` renders sign-in provisionally; it is not a sign-out and clears nothing, so a later successful response swaps the authenticated shell in (D-03, R2). |
+| overflow | E8 web cold-start treatment | ✅ covered | The placeholder block occupies the session-dependent region only and never grows beyond the frame the real content will occupy. |
+| long-text | E8 web cold-start treatment | ✅ covered | The placeholder carries no text at all, so no text-length behavior arises. |
+| loading | E9 sign-out confirmation dialog | ✅ covered | Sign-out is an explicit user action and may block: the confirm button shows a disabled submitting state while the local wipe and best-effort server revocation run (R3). |
+| error | E9 sign-out confirmation dialog | ✅ covered | A failed server revocation does not block sign-out — the local session and storage are cleared regardless, since an explicit sign-out is the one action that always ends a session (D-01, D-03). |
+| overflow | E9 sign-out confirmation dialog | 🧪 backstop | The dialog grows to fit its body copy at large font scales and scrolls internally if it would exceed the viewport, rather than clipping the confirm and cancel buttons out of reach (R1). |
+| long-text | E9 sign-out confirmation dialog | ✅ covered | The interpolated count in "You have {N} unsynced changes." wraps with its sentence at any magnitude of N; the count is always 0 in this phase, so the dialog does not render. |
 
 <!-- Status vocabulary (locked by probe-core projectTruths):
      ✅ covered   → a plain truth string lifted into must_haves.truths
@@ -255,11 +310,11 @@ Applicable state considerations resolved: {N covered, M backstop, K unresolved �
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS — FLAG raised (no explicit focal point declared) and resolved; see the **Focal point** paragraph under Screen Inventory
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-08-11
