@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: cross-platform-foundation
 status: executing
-stopped_at: Completed 01-06-PLAN.md and 01-07-PLAN.md (wave 4)
-last_updated: "2026-08-11T10:52:10.508Z"
+stopped_at: Completed 01-08-PLAN.md — final plan of phase 01
+last_updated: "2026-08-11T11:32:33.175Z"
 last_activity: 2026-08-11
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 8
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 01 (cross-platform-foundation) — EXECUTING
-Plan: 2 of 8
-Status: Ready to execute
-Last activity: 2026-08-11 — Phase 01 execution started
+Plan: 8 of 8
+Status: All 8 plans executed — awaiting phase verification
+Last activity: 2026-08-11 — Phase 01 plan 08 (CI pipeline and validation contract) complete
 
-Progress: [████████░░] 75%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [████████░░] 75%
 |------|----------|-------|-------|
 | Phase 01 P06 | 76min | 3 tasks | 13 files |
 | Phase 01 P07 | 2h | 3 tasks | 14 files |
+| Phase 01 P08 | ~1h | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 01-07: Native tabs import from expo-router/unstable-native-tabs — SDK 57 publishes no expo-router/native-tabs entry point
 - [Phase ?]: 01-07: Appearance is applied through NativeWind's colorScheme, the one API driving Appearance on native and the dark class on web — RN's Appearance.setColorScheme does not exist in react-native-web and crashed every web page
 - [Phase ?]: 01-07: Platform divergence is a .web.tsx sibling resolved at build time, never a Platform.OS branch at a call site; conventions and the native-capability web audit live in docs/platform-modules.md
+- [Phase ?]: apps/api has no test script: every API test is end-to-end, and a lane reporting 'No tests found' as a pass is a green that asserts nothing
+- [Phase ?]: Suite integrity is enforced by a Jest reporter (scripts/jest-suite-integrity.cjs), so a zero-test, skipped-test or empty-suite run fails identically locally and in CI
+- [Phase ?]: CI references no repository secret: every variable the API needs to boot is a workflow literal and BETTER_AUTH_SECRET is generated per run
 
 ### Pending Todos
 
@@ -93,6 +97,7 @@ None yet.
 - Better Auth's Expo client plugin package name should be re-verified against current docs before first install.
 - 01-06: three <human-check> blocks and three long-text backstops unrun — no simulator/device, no Playwright browsers, Mailpit port 1025 unreachable. Filed in .planning/WINDOWS.md as unrun-verify.
 - iOS and Android were never run for plan 01-07: no simulator or device is reachable from the execution worktree, so every native-specific claim in 01-07 rests on typecheck plus correct API usage. Three unrun-verify entries are recorded in .planning/WINDOWS.md.
+- Phase 01 CI workflow (.github/workflows/ci.yml) has never been executed by GitHub Actions — first push must confirm both jobs go green and that a broken assertion turns the run red (WINDOWS.md 12)
 
 ## Deferred Items
 
@@ -104,6 +109,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T10:52:03.242Z
-Stopped at: Completed 01-06-PLAN.md and 01-07-PLAN.md (wave 4)
+Last session: 2026-08-11T11:32:33.144Z
+Stopped at: Completed 01-08-PLAN.md — final plan of phase 01
 Resume file: None
