@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { AppearanceControl } from '@/components/AppearanceControl';
 import { SignOutDialog } from '@/components/SignOutDialog';
+import { authClient } from '@/lib/auth-client';
 import { signOut } from '@/lib/sign-out';
 
 interface PendingConfirmation {
@@ -11,6 +12,7 @@ interface PendingConfirmation {
 }
 
 export default function ProfileScreen() {
+  const { refetch: refetchSession } = authClient.useSession();
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -36,10 +38,14 @@ export default function ProfileScreen() {
     setSubmitting(true);
     try {
       await signOut({ confirmDiscard });
+      // signOut deliberately carries no dependency on the auth client, so nothing has told the
+      // session atom the session ended and the root layout's guard would keep rendering this
+      // shell over a revoked session until the next reload.
+      await refetchSession();
     } finally {
       setSubmitting(false);
     }
-  }, [confirmDiscard]);
+  }, [confirmDiscard, refetchSession]);
 
   return (
     <ScrollView
