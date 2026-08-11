@@ -10,7 +10,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 ### Platform & Sync
 
-- [ ] **PLAT-01**: User can use the app on iOS, Android, and in a desktop browser, signed into the same account with the same data
+- [x] **PLAT-01**: User can use the app on iOS, Android, and in a desktop browser, signed into the same account with the same data
 - [ ] **PLAT-02**: User can log a complete workout start to finish with zero network connectivity
 - [ ] **PLAT-03**: User's offline changes sync automatically once connectivity returns, without any manual sync action
 - [ ] **PLAT-04**: User's phone and browser converge correctly after both made changes offline, with no logged set silently lost
@@ -18,7 +18,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [ ] **PLAT-06**: User stays signed in across app restarts, and can keep using the app offline even when the session cannot be refreshed
 - [ ] **PLAT-07**: User's in-progress workout survives app force-quit, crash, or phone restart with every logged set intact
 - [ ] **PLAT-08**: User can choose kg or lb and see every weight in that unit, with no drift in stored values over repeated conversions
-- [ ] **PLAT-09**: User can switch between light and dark appearance
+- [x] **PLAT-09**: User can switch between light and dark appearance
 - [ ] **PLAT-10**: User can export their training data
 
 ### Exercise Library
@@ -189,10 +189,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PLAT-01 | Phase 1 — Cross-Platform Foundation | Pending |
+| PLAT-01 | Phase 1 — Cross-Platform Foundation | Complete |
 | PLAT-05 | Phase 1 — Cross-Platform Foundation | Pending |
 | PLAT-06 | Phase 1 — Cross-Platform Foundation | Pending |
-| PLAT-09 | Phase 1 — Cross-Platform Foundation | Pending |
+| PLAT-09 | Phase 1 — Cross-Platform Foundation | Complete |
 | PLAT-02 | Phase 2 — Data Model & Sync Engine | Pending |
 | PLAT-03 | Phase 2 — Data Model & Sync Engine | Pending |
 | PLAT-04 | Phase 2 — Data Model & Sync Engine | Pending |
@@ -296,6 +296,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DASH-03 | Phase 12 — Body Metrics & Dashboard | Pending |
 
 **Coverage:**
+
 - v1 requirements: 105 total
 - Mapped to phases: 105
 - Unmapped: 0 ✓
