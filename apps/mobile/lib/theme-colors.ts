@@ -1,4 +1,8 @@
-import { useColorScheme } from 'react-native';
+// NativeWind's hook, not React Native's. On web RN's useColorScheme reports only the OS
+// prefers-color-scheme media query, so it does not see the in-app appearance override that
+// applyAppearance applies through NativeWind — native tab tints would stay on the light palette
+// while every className-styled surface around them repainted dark.
+import { useColorScheme } from 'nativewind';
 
 // These duplicate the `--color-*` values in global.css and must be edited together. NativeTabs
 // renders real native tab-bar controllers whose tint props take a resolved ColorValue, so they can
@@ -24,5 +28,6 @@ const PALETTE: Record<'light' | 'dark', ThemeColors> = {
 };
 
 export function useThemeColors(): ThemeColors {
-  return useColorScheme() === 'dark' ? PALETTE.dark : PALETTE.light;
+  const { colorScheme } = useColorScheme();
+  return colorScheme === 'dark' ? PALETTE.dark : PALETTE.light;
 }
