@@ -129,7 +129,43 @@ reach a route that tells it why.
 ```bash
 pnpm typecheck
 pnpm lint
-pnpm --filter api test:e2e
+pnpm --filter mobile test        # client unit tests
+pnpm --filter api test:e2e       # API end-to-end suite
 ```
 
-The API end-to-end suite requires a running Postgres and an applied schema.
+The API end-to-end suite requires a running Postgres and an applied schema. It builds the API and
+drives `dist/main.js` over real HTTP on an ephemeral port, because the API and Better Auth are
+ESM-only and Jest's CommonJS runtime cannot load them in process.
+
+All of the API's tests are end-to-end, so `apps/api` has no `test` script — `turbo run test` covers
+the client and `pnpm --filter api test:e2e` covers the server. A `test` lane that reported
+`No tests found` as a success is the exact false green this project's CI exists to prevent.
+
+Both Jest configurations load `scripts/jest-suite-integrity.cjs`, which fails a run that contained
+no tests, that skipped or `todo`'d a test, or in which a suite file ran nothing. A green run that
+asserted nothing is worse than a red one, because it is trusted.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and every pull request, in two jobs.
+
+| Job | What it runs | Reproduce locally |
+|---|---|---|
+| `check` | `pnpm install --frozen-lockfile`, then `pnpm turbo run typecheck lint test build` | `pnpm install --frozen-lockfile && pnpm ci` |
+| `e2e` | `db:push` against a `postgres:17` service container, then the API end-to-end suite | `docker compose -f docker-compose.dev.yml up -d && pnpm --filter api db:push && pnpm --filter api test:e2e` |
+
+`--frozen-lockfile` is the cheapest place to catch a dependency added without committing the
+lockfile: the install fails rather than silently resolving something no one reviewed.
+
+The `e2e` job supplies every variable the API needs to boot as a literal in the workflow, and
+generates `BETTER_AUTH_SECRET` per run with `openssl rand`. It references no repository secret —
+nothing the suite asserts needs a production credential.
+
+The `build` step in `check` runs `expo export --platform web`. It proves the web target still
+bundles; it does **not** prove the app renders. Expo's static export emits a shell whose route
+content is an empty Suspense boundary, so a blank-page regression on web is invisible to it and to
+every other automated check in this repository. That gap is covered only by the three-platform
+manual pass in `.planning/phases/01-cross-platform-foundation/01-VALIDATION.md`.
+
+No EAS Build job exists yet. The whole phase runs inside Expo Go; the first thing that structurally
+needs a dev client is the native SQLite module in Phase 2.

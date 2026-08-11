@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "db:push": "drizzle-kit push",
-    "test": "jest --passWithNoTests",
     "test:e2e": "nest build && jest --config ./test/jest-e2e.json --runInBand",
     "db:verify": "pnpm run db:push && jest --config ./test/jest-e2e.json --runInBand schema-parity"
   },
