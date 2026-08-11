@@ -56,6 +56,22 @@ pnpm dev
 `pnpm dev` runs the API and the Expo dev server together. Press `w` in the Expo output for the web
 build, or `i` / `a` for the iOS simulator / Android emulator.
 
+## Database
+
+`drizzle-kit push` is this project's schema application command. The Drizzle schema in
+`apps/api/src/db/schema.ts` is the source of truth; the live database is brought to match it with:
+
+```bash
+pnpm --filter api db:push
+```
+
+**Run it after any edit to `schema.ts`, and before any verification run.** Typecheck and build pass
+whether or not the database was ever migrated — the TypeScript types come from `schema.ts`, not from
+the live server — so an unmigrated database will otherwise show up as a false-positive green.
+
+`pnpm --filter api db:verify` pushes and then asserts the live database actually contains the four
+Better Auth tables, so that gap cannot pass silently.
+
 ## Environment
 
 | Variable | Used by | Purpose |
