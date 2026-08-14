@@ -25,8 +25,20 @@ export function setSessionCredentialProvider(provider: SessionCredentialProvider
   sessionCredentialProvider = provider;
 }
 
+export function isProjectOrigin(url: string, apiUrl: string): boolean {
+  try {
+    const requestOrigin = new URL(url).origin;
+    const projectOrigin = new URL(apiUrl).origin;
+    if (requestOrigin === '' || requestOrigin === 'null') return false;
+    if (projectOrigin === '' || projectOrigin === 'null') return false;
+    return requestOrigin === projectOrigin;
+  } catch {
+    return false;
+  }
+}
+
 async function resolveSessionCredential(url: string): Promise<string | null> {
-  if (!url.startsWith(API_URL)) return null;
+  if (!isProjectOrigin(url, API_URL)) return null;
   try {
     const credential = await sessionCredentialProvider();
     return credential || null;
