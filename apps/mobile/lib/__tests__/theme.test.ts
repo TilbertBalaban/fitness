@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Appearance as RNAppearance } from 'react-native';
+import { Appearance as RNAppearance, Platform } from 'react-native';
 
 import {
   APPEARANCE_STORAGE_KEY,
@@ -75,6 +75,23 @@ describe('readStoredAppearance', () => {
 });
 
 describe('setAppearance', () => {
+  let platformConstantsSpy: jest.SpiedFunction<() => typeof Platform.constants>;
+
+  beforeEach(() => {
+    // The resume-OS sentinel nativewind's colorScheme.set picks branches on
+    // Platform.constants().reactNativeVersion.minor, not on anything this project's own code
+    // decides. Stubbing it to this project's pinned minor (86, from apps/mobile/package.json)
+    // makes the cases below exercise the sentinel the shipped runtime actually produces, instead
+    // of whichever version jest-expo's default native-module mock happens to report.
+    platformConstantsSpy = jest.spyOn(Platform, 'constants', 'get').mockReturnValue({
+      reactNativeVersion: { major: 0, minor: 86, patch: 2, prerelease: undefined },
+    } as unknown as typeof Platform.constants);
+  });
+
+  afterEach(() => {
+    platformConstantsSpy.mockRestore();
+  });
+
   it("writes 'dark' under APPEARANCE_STORAGE_KEY and calls Appearance.setColorScheme('dark')", async () => {
     await setAppearance('dark');
     expect(mockedStorage.setItem).toHaveBeenCalledWith(APPEARANCE_STORAGE_KEY, 'dark');
@@ -84,17 +101,31 @@ describe('setAppearance', () => {
   it('writes \'system\' and hands Appearance.setColorScheme the resume-OS sentinel so the OS value resumes governing', async () => {
     await setAppearance('system');
     expect(mockedStorage.setItem).toHaveBeenCalledWith(APPEARANCE_STORAGE_KEY, 'system');
-    // Which sentinel means "resume OS" depends on the React Native version reported by
-    // Platform.constants: 'unspecified' from 0.82 on, null before it. Jest's mocked platform
-    // constants report 0.0.0, so both are accepted here rather than pinning the value the test
-    // environment happens to produce.
-    expect(['unspecified', null]).toContain(setColorSchemeSpy.mock.calls[0]?.[0] ?? null);
+    // With Platform.constants stubbed to this project's pinned React Native minor version (86,
+    // at or above the 0.82 threshold where the sentinel changed from null to 'unspecified'), the
+    // resume-OS call must be exactly 'unspecified'. A regression to the pre-0.82 null sentinel on
+    // this pinned runtime now fails this equality instead of passing a permissive membership check.
+    expect(setColorSchemeSpy.mock.calls[0]?.[0]).toBe('unspecified');
   });
 
   it('resolves without rejecting when the underlying storage write rejects, and still applies the selection', async () => {
     mockedStorage.setItem.mockRejectedValueOnce(new Error('storage unavailable'));
     await expect(setAppearance('dark')).resolves.toBeUndefined();
     expect(setColorSchemeSpy).toHaveBeenCalledWith('dark');
+  });
+
+  // This assertion exists so the stub above cannot silently outlive the version it claims to pin:
+  // if apps/mobile/package.json's react-native dependency is ever downgraded below the 0.82
+  // sentinel threshold, this case fails loudly, rather than leaving the stub above asserting a
+  // sentinel the project no longer ships.
+  it('is pinned to a React Native minor version at or above 0.82, the resume-OS sentinel threshold', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mobilePackageJson = require('../../package.json') as {
+      dependencies: Record<string, string>;
+    };
+    const pinnedReactNativeVersion = mobilePackageJson.dependencies['react-native'];
+    const [, minorSegment] = pinnedReactNativeVersion.split('.');
+    expect(Number(minorSegment)).toBeGreaterThanOrEqual(82);
   });
 });
 

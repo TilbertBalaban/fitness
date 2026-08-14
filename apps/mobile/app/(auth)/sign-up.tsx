@@ -6,6 +6,11 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { TextField } from '@/components/TextField';
 import { authClient } from '@/lib/auth-client';
+import {
+  DUPLICATE_EMAIL_LEAD,
+  DUPLICATE_EMAIL_LINK_LABEL,
+  DUPLICATE_EMAIL_TAIL,
+} from '@/lib/duplicate-email-copy';
 import { classifyAuthOutcome, type AuthOutcome } from '@/lib/session-guard';
 import { isValidEmail, isValidPassword } from '@/lib/validation';
 
@@ -14,15 +19,6 @@ const PASSWORD_TOO_SHORT = 'Password must be at least 8 characters.';
 const PASSWORDS_DO_NOT_MATCH = "Passwords don't match.";
 const SERVER_UNREACHABLE = "Can't reach the server. Check your connection and try again.";
 const UNEXPECTED_FAILURE = 'Something went wrong. Try again.';
-
-// Disclosure is the ordinary sign-up pattern and is deliberately unlike the sign-in path's generic
-// copy. The sentence below is the contract; the link split is derived from it so a later edit to
-// the copy cannot leave the rendered halves saying something else.
-const DUPLICATE_EMAIL = 'An account with this email already exists. Sign in instead.';
-const DUPLICATE_EMAIL_LINK_LABEL = 'Sign in instead';
-const [DUPLICATE_EMAIL_LEAD, DUPLICATE_EMAIL_TAIL] = DUPLICATE_EMAIL.split(
-  DUPLICATE_EMAIL_LINK_LABEL,
-);
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState('');
