@@ -55,7 +55,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A component needing platform-specific behavior can be written as `.web.tsx` and the shared code picks it up automatically
   4. The API carries an explicit version from its first request, so a months-old mobile build can never be broken by a server deploy
 
-**Plans**: 10 plans (8/8 executed; 2 gap-closure plans pending — see `01-VERIFICATION.md`)
+**Plans**: 10/10 plans executed (8/8 executed; 2 gap-closure plans pending — see `01-VERIFICATION.md`)
 
 Plans:
 **Wave 1**
@@ -83,8 +83,8 @@ Plans:
 
 **Wave 6** *(gap closure — `01-VERIFICATION.md` status: gaps_found)*
 
-- [ ] 01-09-PLAN.md — Native session credential: explicit sign-out actually revokes server-side, and a revocation becomes observable
-- [ ] 01-10-PLAN.md — Review warnings WR-02/WR-03, and a device-verification recipe for the four open human checks
+- [x] 01-09-PLAN.md — Native session credential: explicit sign-out actually revokes server-side, and a revocation becomes observable
+- [x] 01-10-PLAN.md — Review warnings WR-02/WR-03, and a device-verification recipe for the four open human checks
 
 ### Phase 2: Data Model & Sync Engine
 
@@ -311,7 +311,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Cross-Platform Foundation | 8/8 | In Progress|  |
+| 1. Cross-Platform Foundation | 10/10 | In Progress|  |
 | 2. Data Model & Sync Engine | 0/TBD | Not started | - |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
