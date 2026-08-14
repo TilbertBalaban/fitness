@@ -55,6 +55,37 @@ export async function classifyAuthOutcome(result: unknown): Promise<AuthOutcome>
   return 'rejected';
 }
 
+async function authoritativelyReportsNoSession(response: ResponseLike): Promise<boolean> {
+  try {
+    const readable = response.clone ? response.clone() : response;
+    const body: unknown = await readable.json();
+    if (body === null) return true;
+    return typeof body === 'object' && !(body as { user?: unknown }).user;
+  } catch {
+    return false;
+  }
+}
+
+// Wraps classifyAuthOutcome for the one call site whose entire purpose is asking "is this session
+// still valid": the background revocation probe. Better Auth's get-session route answers an unknown
+// or deleted session with a 200 and a null body, not a 401 — classifyAuthOutcome alone can never see
+// that as anything but `ok`. presentedCredential is load-bearing, not decoration: without it, a
+// device whose secure-storage read momentarily failed would send no credential, get the server's
+// ordinary "nobody is signed in" answer, and be signed out for a local storage hiccup, which D-01
+// forbids. classifyAuthOutcome itself is deliberately left unchanged — "the server says nobody is
+// signed in" is only evidence of revocation on this one probe endpoint, not for any other 200 in
+// the app.
+export async function classifySessionProbe(
+  result: unknown,
+  presentedCredential: boolean,
+): Promise<AuthOutcome> {
+  const outcome = await classifyAuthOutcome(result);
+  if (outcome !== 'ok' || !presentedCredential || !isResponseLike(result)) {
+    return outcome;
+  }
+  return (await authoritativelyReportsNoSession(result)) ? 'revoked' : outcome;
+}
+
 export function isRevocation(outcome: AuthOutcome): boolean {
   return outcome === 'revoked';
 }
