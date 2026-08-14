@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER } from '../client-version';
 import { classifyAuthOutcome, classifySessionProbe, isRevocation, SESSION_REVOKED_REASON } from '../session-guard';
-import { apiFetch, setSessionCredentialProvider } from '../api-client';
+import { apiFetch, isProjectOrigin, setSessionCredentialProvider } from '../api-client';
 import { AUTH_ENDPOINT, API_URL, clearCachedSession } from '../auth-storage';
 import { pendingWriteCount, signOut } from '../sign-out';
 
@@ -129,6 +129,31 @@ describe('classifySessionProbe', () => {
       },
     };
     await expect(classifySessionProbe(unparseable, true)).resolves.toBe('ok');
+  });
+});
+
+describe('isProjectOrigin', () => {
+  it.each([
+    [
+      'subdomain suffix extension',
+      'https://api.fitness.app.evil.com/v1/auth/get-session',
+      'https://api.fitness.app',
+      false,
+    ],
+    ['separator-less suffix extension', 'https://api.fitness.appevil.com/x', 'https://api.fitness.app', false],
+    ['userinfo authority confusion', 'https://api.fitness.app@evil.com/x', 'https://api.fitness.app', false],
+    ['same-origin request under the deployed API host', 'https://api.fitness.app/v1/auth/get-session', 'https://api.fitness.app', true],
+    ['port extension', 'http://localhost:30000/v1/auth/get-session', 'http://localhost:3000', false],
+    ['same-origin request under the default local API host', 'http://localhost:3000/v1/auth/get-session', 'http://localhost:3000', true],
+    ['scheme mismatch', 'http://localhost:3000/x', 'https://localhost:3000', false],
+    ['wholly different host', 'https://not-this-project.example.com/x', 'http://localhost:3000', false],
+    ['trailing slash on the API origin does not change the answer', 'http://localhost:3000/', 'http://localhost:3000', true],
+    ['empty request URL', '', 'http://localhost:3000', false],
+    ['unparseable request URL', 'not-a-url', 'http://localhost:3000', false],
+    ['protocol-relative request URL', '//evil.com/x', 'http://localhost:3000', false],
+    ['opaque-origin request URL', 'file:///etc/passwd', 'http://localhost:3000', false],
+  ])('%s', (_label, url, apiUrl, expected) => {
+    expect(isProjectOrigin(url, apiUrl)).toBe(expected);
   });
 });
 
