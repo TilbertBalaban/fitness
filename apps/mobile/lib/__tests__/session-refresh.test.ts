@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER } from '../client-version';
 import { classifyAuthOutcome, classifySessionProbe, isRevocation, SESSION_REVOKED_REASON } from '../session-guard';
 import { apiFetch, setSessionCredentialProvider } from '../api-client';
-import { AUTH_ENDPOINT } from '../auth-storage';
+import { AUTH_ENDPOINT, clearCachedSession } from '../auth-storage';
 import { pendingWriteCount, signOut } from '../sign-out';
 
 jest.mock('expo-secure-store', () => ({
@@ -16,6 +16,7 @@ jest.mock('expo-secure-store', () => ({
 
 const mockedSecureStore = SecureStore as unknown as {
   deleteItemAsync: jest.Mock;
+  setItemAsync: jest.Mock;
 };
 
 function fakeResponse(status: number, body: unknown = {}) {
@@ -249,6 +250,7 @@ describe('sign-out lifecycle', () => {
 
   beforeEach(() => {
     mockedSecureStore.deleteItemAsync.mockClear();
+    mockedSecureStore.setItemAsync.mockClear();
   });
 
   afterEach(() => {
@@ -338,5 +340,51 @@ describe('sign-out lifecycle', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.cookie).toBe('fitness_cookie=abc123');
+  });
+
+  it('resolves a second consecutive signOut() without throwing, sending no credential now that storage is empty', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    setSessionCredentialProvider(() => 'fitness_cookie=abc123');
+
+    await expect(signOut({ getPendingCount: async () => 0 })).resolves.toBeUndefined();
+
+    // The state the device is actually in after the first sign-out cleared storage: nothing to present.
+    setSessionCredentialProvider(() => '');
+    await expect(signOut({ getPendingCount: async () => 0 })).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [, secondInit] = fetchMock.mock.calls[1];
+    expect(secondInit.headers.cookie).toBeUndefined();
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalledWith(expect.stringContaining('_cookie'));
+  });
+
+  it('leaves secure storage cleared, with no credential re-persisted, when signOut and a revoked-probe clear resolve in the same tick', async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue(fakeResponse(200, {})) as unknown as typeof fetch;
+
+    // clearCachedSession() stands in for what app/_layout.tsx's background probe does on a
+    // `revoked` classification — the two paths racing to clear the same two keys.
+    await Promise.all([signOut({ getPendingCount: async () => 0 }), clearCachedSession()]);
+
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalledWith(expect.stringContaining('_cookie'));
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalledWith(expect.stringContaining('_session_data'));
+    expect(mockedSecureStore.setItemAsync).not.toHaveBeenCalled();
+  });
+
+  it('leaves secure storage cleared, with no credential re-persisted, when a revoked-probe clear resolves while a sign-out revoke request is still in flight', async () => {
+    let resolveFetch: (value: unknown) => void = () => undefined;
+    const pending = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+    globalThis.fetch = jest.fn(() => pending) as unknown as typeof fetch;
+
+    const signOutPromise = signOut({ getPendingCount: async () => 0 });
+    await clearCachedSession();
+    resolveFetch(fakeResponse(200, {}));
+    await signOutPromise;
+
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalledWith(expect.stringContaining('_cookie'));
+    expect(mockedSecureStore.deleteItemAsync).toHaveBeenCalledWith(expect.stringContaining('_session_data'));
+    expect(mockedSecureStore.setItemAsync).not.toHaveBeenCalled();
   });
 });
