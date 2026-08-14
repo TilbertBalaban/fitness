@@ -15,7 +15,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [ ] **PLAT-03**: User's offline changes sync automatically once connectivity returns, without any manual sync action
 - [ ] **PLAT-04**: User's phone and browser converge correctly after both made changes offline, with no logged set silently lost
 - [ ] **PLAT-05**: User can create an account and sign in with email and password
-- [x] **PLAT-06**: User stays signed in across app restarts, and can keep using the app offline even when the session cannot be refreshed
+- [ ] **PLAT-06**: User stays signed in across app restarts, and can keep using the app offline even when the session cannot be refreshed
 - [ ] **PLAT-07**: User's in-progress workout survives app force-quit, crash, or phone restart with every logged set intact
 - [ ] **PLAT-08**: User can choose kg or lb and see every weight in that unit, with no drift in stored values over repeated conversions
 - [ ] **PLAT-09**: User can switch between light and dark appearance
@@ -191,7 +191,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | PLAT-01 | Phase 1 — Cross-Platform Foundation | Gaps Found |
 | PLAT-05 | Phase 1 — Cross-Platform Foundation | Gaps Found |
-| PLAT-06 | Phase 1 — Cross-Platform Foundation | Complete |
+| PLAT-06 | Phase 1 — Cross-Platform Foundation | Gaps Found |
 | PLAT-09 | Phase 1 — Cross-Platform Foundation | Gaps Found |
 | PLAT-02 | Phase 2 — Data Model & Sync Engine | Pending |
 | PLAT-03 | Phase 2 — Data Model & Sync Engine | Pending |
