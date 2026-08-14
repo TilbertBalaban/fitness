@@ -54,3 +54,25 @@ blocked: 5
 ## Gaps
 
 <!-- No gaps: all outstanding items are prerequisite/environment gates, not code defects. -->
+
+## Web-Target Verification
+
+Driven with Playwright/Chromium against `expo start --web` (localhost:8081) + NestJS API
+(localhost:3000) + live Postgres, 2026-08-14. This is the **web half** of the phase goal only —
+it does NOT close tests 1-5 above, which are native-device by construction and remain blocked.
+
+| # | Web check | Result |
+|---|-----------|--------|
+| W1 | Sign up via UI → lands on authenticated five-tab shell | pass — `better-auth.session_token` set, 0 console errors |
+| W2 | Home/Programs/Workout/History/Profile all render | pass — all five present in web tab bar |
+| W3 | Sign in with the same account → same authenticated shell | pass — new session row created server-side |
+| W4 | Tabs are real deep-linkable URLs; back/forward work | pass — `/programs`, `/workout`, `/history`, `/profile`; direct load of `/history` renders |
+| W5 | Session survives a full cold reload | pass — authenticated shell renders, no re-auth |
+| W6 | API origin unreachable (device-offline analog) | pass — renders sign-in *provisionally* per UI-SPEC R2; cookie and server session row both left intact (D-03 respected) |
+| W6b | Recovery once the API returns | pass — shell swaps back in on `focus`/`visibilitychange`/`online`; a plain reload also restores. Does not self-heal on a timer alone (no retry is scheduled), which matches the design |
+| W7 | Wrap-and-grow at 320px / 480px | pass — tab bar wraps to 3 rows and grows; zero horizontal overflow; no clipping or truncation |
+| W8 | Sign-out revokes the session server-side | pass — session rows 4→3 in Postgres, cookie jar emptied, redirected to sign-in |
+| W9 | Protected route unreachable after sign-out | pass — `/` redirects to sign-in |
+| W10 | PLAT-09 light/dark switching | pass — Dark applies and persists across a full reload |
+
+Test accounts created during this run were deleted from Postgres afterward.
