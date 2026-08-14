@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER } from '../client-version';
 import { classifyAuthOutcome, classifySessionProbe, isRevocation, SESSION_REVOKED_REASON } from '../session-guard';
 import { apiFetch, setSessionCredentialProvider } from '../api-client';
-import { AUTH_ENDPOINT, clearCachedSession } from '../auth-storage';
+import { AUTH_ENDPOINT, API_URL, clearCachedSession } from '../auth-storage';
 import { pendingWriteCount, signOut } from '../sign-out';
 
 jest.mock('expo-secure-store', () => ({
@@ -237,6 +237,33 @@ describe('apiFetch', () => {
     });
 
     const result = await apiFetch(`${AUTH_ENDPOINT}/get-session`);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.cookie).toBeUndefined();
+    expect(result.outcome).toBe('ok');
+  });
+
+  it('attaches no cookie header for a URL that is a strict textual extension of API_URL on a different port', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    setSessionCredentialProvider(() => 'fitness_cookie=abc123');
+
+    const adversarialUrl = `${API_URL}0/probe`;
+    expect(adversarialUrl.indexOf(API_URL)).toBe(0);
+
+    await apiFetch(adversarialUrl);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.cookie).toBeUndefined();
+  });
+
+  it('attaches no cookie header for a URL the platform URL parser rejects', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    setSessionCredentialProvider(() => 'fitness_cookie=abc123');
+
+    const result = await apiFetch('not-a-url');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
