@@ -159,6 +159,10 @@ None - no external service configuration required.
 - `isProjectOrigin`'s parameterized signature is ready for reuse: Phase 2's sync and upload call sites (named in `01-REVIEW.md` CR-01 as the future blast radius) can validate against origins built from less-trusted values without any change to the predicate itself
 - No blockers. This plan's scope was deliberately narrow (one predicate, its call site, its tests) and that scope was held — no other file was touched
 
+## Self-Check: PASSED
+
+All claimed files exist (`apps/mobile/lib/api-client.ts`, `apps/mobile/lib/__tests__/session-refresh.test.ts`, this SUMMARY) and all four claimed commits (`ac1f5e5`, `b6b199c`, `95c3337`, `4ea0d35`) are present in `git log`.
+
 ---
 *Phase: 01-cross-platform-foundation*
 *Completed: 2026-08-14*
