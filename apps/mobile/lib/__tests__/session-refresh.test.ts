@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER } from '../client-version';
-import { classifyAuthOutcome, isRevocation, SESSION_REVOKED_REASON } from '../session-guard';
+import { classifyAuthOutcome, classifySessionProbe, isRevocation, SESSION_REVOKED_REASON } from '../session-guard';
 import { apiFetch, setSessionCredentialProvider } from '../api-client';
 import { AUTH_ENDPOINT } from '../auth-storage';
 import { pendingWriteCount, signOut } from '../sign-out';
@@ -80,6 +80,54 @@ describe('isRevocation', () => {
     expect(isRevocation('ok')).toBe(false);
     expect(isRevocation('offline')).toBe(false);
     expect(isRevocation('rejected')).toBe(false);
+  });
+});
+
+describe('classifySessionProbe', () => {
+  it('classifies a 200 no-session response as revoked when a credential was presented', async () => {
+    await expect(classifySessionProbe(fakeResponse(200, null), true)).resolves.toBe('revoked');
+  });
+
+  it('classifies the identical response as ok when no credential was presented', async () => {
+    await expect(classifySessionProbe(fakeResponse(200, null), false)).resolves.toBe('ok');
+  });
+
+  it('classifies a completed 2xx response that reports a session as ok, credential or not', async () => {
+    await expect(classifySessionProbe(fakeResponse(200, { user: { id: '1' } }), true)).resolves.toBe('ok');
+    await expect(classifySessionProbe(fakeResponse(200, { user: { id: '1' } }), false)).resolves.toBe('ok');
+  });
+
+  it('classifies a thrown network error as offline even with a credential presented', async () => {
+    await expect(classifySessionProbe(new TypeError('Network request failed'), true)).resolves.toBe('offline');
+  });
+
+  it('classifies a completed 5xx as offline even with a credential presented', async () => {
+    await expect(classifySessionProbe(fakeResponse(500, {}), true)).resolves.toBe('offline');
+  });
+
+  it('classifies a completed 401 with no revocation reason as rejected even with a credential presented', async () => {
+    await expect(classifySessionProbe(fakeResponse(401, { reason: 'bad_credentials' }), true)).resolves.toBe(
+      'rejected',
+    );
+  });
+
+  it('classifies a completed 401 carrying the revocation reason as revoked, unchanged', async () => {
+    await expect(classifySessionProbe(fakeResponse(401, { reason: SESSION_REVOKED_REASON }), true)).resolves.toBe(
+      'revoked',
+    );
+  });
+
+  it('falls back to the unupgraded classification when the body cannot be parsed', async () => {
+    const unparseable = {
+      status: 200,
+      json: async () => {
+        throw new Error('invalid json');
+      },
+      clone() {
+        return this;
+      },
+    };
+    await expect(classifySessionProbe(unparseable, true)).resolves.toBe('ok');
   });
 });
 

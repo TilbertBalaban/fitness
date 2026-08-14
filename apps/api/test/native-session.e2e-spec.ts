@@ -111,7 +111,12 @@ describe('Native session lifecycle (e2e)', () => {
 
     const afterSignOut = await request(baseUrl).get(`${AUTH_BASE_PATH}/get-session`).set('Cookie', cookie);
 
+    // Pins the server contract classifySessionProbe (session-guard.ts) is built against: a session
+    // that no longer exists answers with a 200 and no user, never a 401 and never a revocation
+    // reason code. An upstream change here must break this test rather than silently disabling the
+    // client's revocation-observability mechanism again.
     expect(afterSignOut.status).toBe(200);
     expect(afterSignOut.body?.user).toBeFalsy();
+    expect(afterSignOut.body?.reason).toBeUndefined();
   });
 });

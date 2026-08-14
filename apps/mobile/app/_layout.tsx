@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 import { apiFetch, setSessionCredentialProvider } from '@/lib/api-client';
 import { authClient, getSessionCookieHeader } from '@/lib/auth-client';
 import { AUTH_ENDPOINT, clearCachedSession } from '@/lib/auth-storage';
-import { isRevocation, WEB_SESSION_RESOLVE_BUDGET_MS } from '@/lib/session-guard';
+import { classifySessionProbe, isRevocation, WEB_SESSION_RESOLVE_BUDGET_MS } from '@/lib/session-guard';
 import { applyAppearance, readStoredAppearance } from '@/lib/theme';
 import { WebSessionSkeleton } from '@/components/WebSessionSkeleton';
 
@@ -40,13 +40,15 @@ export default function RootLayout() {
   // D-01/D-02/D-03: fired once, after the first frame, native only. This deliberately does not go
   // through authClient.getSession() — that would let Better Auth's own client silently clear the
   // session atom on a transport failure, exactly what D-03 exists to prevent. Routing it through
-  // apiFetch/classifyAuthOutcome keeps the transport-failure-vs-revocation split in this project's
-  // own code. An `offline` or `rejected` outcome is a silent no-op; only `revoked` clears anything.
+  // apiFetch/classifySessionProbe keeps the transport-failure-vs-revocation split in this project's
+  // own code.
   useEffect(() => {
     if (isWeb || backgroundRefreshFired.current) return;
     backgroundRefreshFired.current = true;
     void (async () => {
-      const { outcome } = await apiFetch(`${AUTH_ENDPOINT}/get-session`);
+      const credential = getSessionCookieHeader();
+      const { response } = await apiFetch(`${AUTH_ENDPOINT}/get-session`);
+      const outcome = await classifySessionProbe(response, !!credential);
       if (!isRevocation(outcome)) return;
       await clearCachedSession();
       await authClient.getSession();
