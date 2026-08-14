@@ -1,3 +1,8 @@
+import {
+  DUPLICATE_EMAIL_LEAD,
+  DUPLICATE_EMAIL_LINK_LABEL,
+  DUPLICATE_EMAIL_TAIL,
+} from '../duplicate-email-copy';
 import { isValidEmail, isValidPassword, MIN_PASSWORD_LENGTH } from '../validation';
 import { PASSWORD_RESET_REDIRECT_URL, WEB_APP_ORIGIN } from '../web-app-origin';
 
@@ -47,5 +52,13 @@ describe('password reset redirect target', () => {
 
   it('carries no trailing slash into the path', () => {
     expect(PASSWORD_RESET_REDIRECT_URL).not.toContain('//reset-password');
+  });
+});
+
+describe('sign-up duplicate-email error copy (WR-03)', () => {
+  it('concatenates the lead, link label, and tail to the UI-SPEC sentence verbatim', () => {
+    expect(`${DUPLICATE_EMAIL_LEAD}${DUPLICATE_EMAIL_LINK_LABEL}${DUPLICATE_EMAIL_TAIL}`).toBe(
+      'An account with this email already exists. Sign in instead.',
+    );
   });
 });
