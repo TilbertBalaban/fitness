@@ -1,159 +1,151 @@
 ---
 phase: 01-cross-platform-foundation
-verified: 2026-08-14T00:00:00Z
+verified: 2026-08-14T15:30:00Z
 status: gaps_found
-score: 3/6 must-haves verified
-behavior_unverified: 2
+score: 6/8 must-haves verified
+behavior_unverified: 0
 overrides_applied: 0
+re_verification:
+  previous_status: gaps_found
+  previous_score: 3/6
+  gaps_closed:
+    - "Explicit sign-out actually revokes the session server-side on native (D-01)"
+    - "The background native session-revocation-detection mechanism can actually observe a revoked session"
+  gaps_remaining: []
+  regressions:
+    - "New must-have introduced by plan 01-09 itself (the SessionCredentialProvider prohibition set) is not actually satisfied: the origin guard is a string-prefix check, not an origin comparison"
 gaps:
-  - truth: "Explicit sign-out actually revokes the session server-side on native (D-01: '...an explicit user sign-out...ends a session')"
+  - truth: "MUST NOT attach the session credential to a request whose destination is not this project's own API origin (01-09-PLAN.md must_haves.prohibitions, declared status: resolved)"
     status: failed
     reason: >
-      apps/mobile/lib/api-client.ts's apiFetch (the sole shared request path) never reads or attaches
-      the Better Auth session cookie persisted in SecureStore. sign-out.ts's revokeServerSession()
-      calls POST /v1/auth/sign-out through apiFetch with no credential on native (only web sets
-      `credentials: 'include'`, which relies on the browser's own cookie jar). The server therefore
-      cannot identify which session to revoke: the DB session row survives an explicit native sign-out
-      indefinitely, even though local SecureStore state is correctly wiped. This is CR-01 from
-      01-REVIEW.md (critical, filed 2026-08-11) and Broken-Windows ledger item #1 (kind: deviation,
-      status: open) — both still unresolved; no commit since the review touches api-client.ts,
-      sign-out.ts, or auth-storage.ts. Independently re-confirmed by reading the current source.
+      apps/mobile/lib/api-client.ts:29 implements the guard as `if (!url.startsWith(API_URL))
+      return null;` — a string-prefix test, not an origin comparison. This is a confirmed bypass,
+      independently reproduced by reading the code and confirming the values it operates on:
+      `API_URL` defaults to `http://localhost:3000` (apps/mobile/lib/auth-storage.ts:4), so
+      `'http://localhost:30000/x'.startsWith('http://localhost:3000')` evaluates true, and in a
+      deployed environment `https://api.fitness.app.evil.com` would satisfy
+      `startsWith('https://api.fitness.app')`. Either case attaches the user's live session cookie
+      to a non-project host. This is CR-01 in 01-REVIEW.md (critical, filed against this exact
+      re-review pass) — it is a NEW finding relative to the previous 01-VERIFICATION.md, introduced
+      by the same 01-09 gap-closure work that fixed the two previously-failed truths. The plan's own
+      frontmatter marks this prohibition `status: resolved`; the code does not bear that out, so the
+      claim is rejected on direct evidence rather than accepted at face value.
+
+      The one negative test that exists for this guard
+      (`apps/mobile/lib/__tests__/session-refresh.test.ts`, "attaches no cookie header for a request
+      to a host that is not the API origin, even with a provider registered") asserts against
+      `https://not-this-project.example.com/v1/auth/get-session` — a URL that also fails a
+      *correct* origin check, so it cannot distinguish a real origin comparison from this
+      prefix-based one. The full session-refresh.test.ts suite (42 tests) was run directly by this
+      verification and passes end to end, confirming the green suite is real but does not cover the
+      prefix-collision case — a green suite here is not evidence the prohibition holds.
     artifacts:
       - path: "apps/mobile/lib/api-client.ts"
-        issue: "apiFetch attaches CLIENT_VERSION_HEADER but never a session credential (cookie) on native"
-      - path: "apps/mobile/lib/sign-out.ts"
-        issue: "revokeServerSession() routes through apiFetch with no credential on native, so the server-side session row is not invalidated"
+        issue: "resolveSessionCredential (line 28-29) uses url.startsWith(API_URL) instead of comparing parsed request/API origins"
     missing:
-      - "Attach the SecureStore-persisted session cookie (or route through authClient's own $fetch) on every native apiFetch call, so revokeServerSession and the background revocation check can actually authenticate"
-      - "A unit test asserting the outgoing native request in these two call sites carries a session credential, so a regression fails loudly"
-  - truth: "The background native session-revocation-detection mechanism (app/_layout.tsx, D-01/D-03's 'positive server revocation response' escape hatch) can actually observe a revoked session"
-    status: failed
-    reason: >
-      The same missing-credential defect means app/_layout.tsx's background get-session check always
-      receives an unauthenticated 200-with-null-session response on native, so classifyAuthOutcome can
-      never return 'revoked' regardless of the real server-side session state. The mechanism is present
-      and unit-tested in isolation (session-guard.ts's classification logic is correct), but the one
-      call site that is supposed to feed it a real signal is structurally incapable of doing so on
-      native. No server route emits SESSION_REVOKED_REASON yet in Phase 1, so this has zero live blast
-      radius today — but it ships as code asserting a guarantee (via its own inline comment) it cannot
-      deliver, and nothing in the test suite catches the gap because session-refresh.test.ts mocks
-      fetch directly and never asserts a credential is attached.
-    artifacts:
-      - path: "apps/mobile/app/_layout.tsx"
-        issue: "Background revocation check (lines 40-49) calls apiFetch with no attached credential on native"
-    missing:
-      - "Same fix as the sign-out gap above — both call sites share the root cause"
+      - "Replace the startsWith check with a parsed-origin comparison (new URL(url).origin !== new URL(API_URL).origin), wrapped in try/catch so a malformed URL is treated as non-matching"
+      - "A regression test exercising the specific prefix-collision case (e.g. API_URL=http://localhost:3000 against a request to http://localhost:30000/..., or a same-scheme suffix-extension host like https://api.fitness.app.evil.com) so a future reversion to string comparison fails loudly"
 deferred: []
 human_verification:
   - test: "Sign up, sign in, and reach the same authenticated five-tab home screen on a real iOS simulator/device"
     expected: "Native tab chrome renders (NativeTabs), the authenticated stack shows on first frame, Home/Programs/Workout/History/Profile all reachable, identical account/session as the browser and Android builds"
-    why_human: "No iOS simulator was reachable from any worktree during this phase's execution or this verification. Every native-specific claim rests on typecheck, unit tests, and a static `expo export` — none of which render UI. The identical situation on web (typecheck/tests/export all green) concealed a real blank-page bug (WINDOWS.md #11/#13, fixed in plan 01-07) that only browser rendering caught. That precedent means green non-rendering checks cannot be extrapolated to 'native renders correctly.'"
+    why_human: "No iOS simulator was reachable from this verification environment. Every native-specific claim rests on typecheck, unit tests, and a static `expo export` — none of which render UI. Carried forward from WINDOWS.md ledger items #4, #5, #8, #9, #10 (all still open)."
   - test: "Sign up, sign in, and reach the same authenticated five-tab home screen on a real Android emulator/device"
     expected: "Same as iOS row above, on Android"
-    why_human: "Same reasoning as the iOS row; also flagged as open in WINDOWS.md ledger items #8, #9, #10."
+    why_human: "Same reasoning as the iOS row. Carried forward from WINDOWS.md ledger items #8, #9, #10 (still open)."
   - test: "Sign in on a device, put it in airplane mode, wait, and cold-start the app after a genuinely elapsed multi-week gap (or at minimum an extended offline period)"
     expected: "Authenticated UI renders immediately with no network wait and no sign-out, per D-01/D-02"
-    why_human: "Real elapsed time and true device airplane-mode behavior cannot be produced in this sandboxed environment. Unit tests (session-refresh.test.ts) prove the classification logic is correct in isolation but do not exercise the actual OS-level cold-start/network-loss path. Flagged as open in WINDOWS.md ledger item #2 and named explicitly as a Manual-Only Verification in 01-VALIDATION.md."
+    why_human: "Real elapsed time and true device airplane-mode behavior cannot be produced in this environment. Unit tests (session-refresh.test.ts) prove the classification logic is correct in isolation but do not exercise the actual OS-level cold-start/network-loss path. Carried forward from WINDOWS.md ledger item #2 (still open)."
+  - test: "On a real iOS or Android build, confirm the attached cookie header is accepted by the running server and the session row is deleted on explicit sign-out"
+    expected: "Same behavior the e2e suite (native-session.e2e-spec.ts) proves over HTTP, now observed on a physical/simulated device"
+    why_human: "No iOS/Android simulator or device is reachable from this environment. This truth was explicitly declared verification: backstop in 01-09-PLAN.md must_haves.truths — it rests on the HTTP-level e2e proof plus typecheck, not a device observation. Carried forward from WINDOWS.md ledger item #15 (still open)."
   - test: "Confirm maximum OS accessibility font scale wrap-and-grow behavior (auth fields, tab bar labels, placeholder body copy) on iOS and Android"
     expected: "Long text wraps and containers grow rather than clipping or truncating, per UI-SPEC R1"
-    why_human: "Verified only on web by shrinking the viewport (WINDOWS.md #9); never observed at real OS accessibility font scale on a native device (WINDOWS.md #7, #9)."
+    why_human: "Verified only on web by shrinking the viewport (WINDOWS.md #9); never observed at real OS accessibility font scale on a native device (WINDOWS.md #7, #9, still open)."
 ---
 
 # Phase 1: Cross-Platform Foundation Verification Report
 
 **Phase Goal:** A signed-in user can open the same account on iOS, Android, and a desktop browser, from one codebase.
-**Verified:** 2026-08-14
+**Verified:** 2026-08-14T15:30:00Z
 **Status:** gaps_found
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — after gap closure (01-09/01-10 gap-closure wave)
 
 ## Goal Achievement
 
 ### Observable Truths
 
-| # | Truth (ROADMAP success criterion) | Status | Evidence |
-|---|---|---|---|
-| 1 | User can create an account, sign in, and land on the same authenticated home screen on iOS, Android, and in a desktop browser | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | Code, e2e tests (`auth.e2e-spec.ts`, 6/6 green), and one live browser session all confirm this on **web only** (sign-up → 5-tab authenticated shell, `/history` pasted cold retains session). iOS and Android were **never rendered** in any worktree — no simulator/device reachable (WINDOWS.md #4, #5, #8, #9, #10). One-third proven, not three-thirds. Routed to human verification below. |
-| 2 | User stays signed in across app restarts, and the session survives a multi-week gap between opens | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | D-01/D-02/D-03 correctly implemented and unit-tested (`session-refresh.test.ts`, 24/24 green) covering every classification branch (offline/revoked/rejected/ok) and the cold-start-never-blocks path. But the device-level claim itself — real airplane mode, real elapsed multi-week gap — was never observed (WINDOWS.md #2; 01-VALIDATION.md lists this as Manual-Only). Classification logic verified; the runtime invariant it protects is not. |
-| 3 | A component needing platform-specific behavior can be written as `.web.tsx` and the shared code picks it up automatically | ✓ VERIFIED | `apps/mobile/app/(tabs)/_layout.tsx` (NativeTabs) + `_layout.web.tsx` (expo-router/ui, link-backed) share identical route names; Metro platform-extension resolution documented in `docs/platform-modules.md`. `reset-password.tsx` (stub) + `reset-password.web.tsx` (real page) is the second instance. Confirmed rendering on web via live browser session (deep-linkable `/history` URL worked cold). No `Platform.OS` branching found under `app/(tabs)/`. |
-| 4 | The API carries an explicit version from its first request, so a months-old mobile build can never be broken by a server deploy | ✓ VERIFIED | `main.ts` calls `app.enableVersioning(...)`; `MinClientVersionGuard` (APP_GUARD, global) plus `minClientVersionMiddleware` (for Better Auth's non-controller routes) both gate on `X-Client-Version`. `version-guard.e2e-spec.ts` (6/6 green) proves: below-floor → 426 with reason code; at/above floor → 200; absent header → 200 (treated as oldest supported, not hostile); malformed header → 200 (fails safe); unversioned path (`/auth/...` vs `/v1/auth/...`) → 404, never reaches a controller; `/health` reachable regardless of version. |
-| 5 | Explicit sign-out actually ends the session server-side, on every platform (D-01) | ✗ FAILED | `apiFetch` never attaches the SecureStore-persisted session cookie on native. `sign-out.ts`'s `revokeServerSession()` therefore sends an unauthenticated `POST /v1/auth/sign-out` on native — the server cannot identify or revoke the session row. Local SecureStore is still correctly wiped, so the *client* believes it signed out, but the *server-side session persists indefinitely*. Confirmed on web (browser cookie jar + `credentials: 'include'` → session row genuinely deleted, per live verification). This is CR-01 from 01-REVIEW.md (critical, still open) and WINDOWS.md ledger item #1 (still open, no fix commit since the review). |
-| 6 | The native background session-revocation-detection mechanism can observe a real server-side revocation (D-01's "positive server revocation response" escape hatch) | ✗ FAILED | Same root cause as #5: `app/_layout.tsx`'s background `get-session` check on native never carries a credential, so it always resolves `'ok'`, never `'revoked'`, regardless of actual server state. The classification logic itself (`session-guard.ts`) is correct and unit-tested in isolation; the one call site meant to feed it real signal cannot. Zero live blast radius today only because no route emits `SESSION_REVOKED_REASON` yet — the defect will still be present, silently, the moment one does. |
+| # | Truth | Status | Evidence |
+|---|-------|--------|----------|
+| 1 | User can create account, sign in, and land on same authenticated home screen on iOS/Android/desktop browser | ⚠️ Structurally present, device unverified | Sign-up/sign-in screens, `(tabs)/_layout.tsx` + `.web.tsx`, `auth.e2e-spec.ts` prove the server side end to end over real HTTP; no iOS/Android device observation (WINDOWS #4, #5, #8, #9, #10) |
+| 2 | User stays signed in across restarts, session survives multi-week gap, still usable offline | ⚠️ Structurally present, device unverified | SecureStore persistence (`auth-storage.ts`), `classifyAuthOutcome`/D-01/D-02 prohibitions never sign out on network failure (`session-guard.ts`, tested), but no real elapsed-time/airplane-mode device observation (WINDOWS #2) |
+| 3 | `.web.tsx` component override is picked up automatically by shared code | ✓ VERIFIED | `apps/mobile/app/(tabs)/_layout.web.tsx` and `apps/mobile/app/reset-password.web.tsx` exist alongside their non-`.web` counterparts; Expo Router/Metro platform-extension resolution is the mechanism, exercised by `expo export --platform web` in CI |
+| 4 | API carries explicit version from its first request, so an old build can never be broken by a server deploy | ✓ VERIFIED | `AUTH_BASE_PATH = '/v1/auth'` (auth-storage.ts), `MinClientVersionGuard` + `minClientVersionMiddleware` enforce `X-Client-Version` against `MIN_CLIENT_VERSION` and return 426 when below floor, exercised by `version-guard.e2e-spec.ts` |
+| 5 | Explicit sign-out actually revokes the session server-side on native (D-01) | ✓ VERIFIED (gap closed) | `SessionCredentialProvider` seam registered at module scope in `app/_layout.tsx`; `sign-out.ts`'s `revokeServerSession()` routes through `apiFetch`, which now attaches the credential; `native-session.e2e-spec.ts` proves the Postgres session row is deleted by a cookie-only-authenticated request |
+| 6 | Background native session-revocation-detection mechanism can observe a revoked session | ✓ VERIFIED (gap closed) | Same credential seam feeds `app/_layout.tsx`'s background `get-session` probe; `session-refresh.test.ts` covers classification of a real 401/revoked response with a credential attached |
+| 7 | MUST NOT sign the user out / degrade toward signed-out due to network unavailability or an empty secure-storage read | ✓ VERIFIED (judgment) | `apiFetch` never itself clears session state or signs out (confirmed by reading `api-client.ts` and `sign-out.ts`); `classifyAuthOutcome` treats offline/timeout as `offline`, never `revoked`, and no call site reacts to `offline` by clearing state |
+| 8 | MUST NOT write the session credential (or a fragment) to any logging/tracing/crash-reporting sink | ✓ VERIFIED (judgment) | No `console.*` calls found in `api-client.ts`, `sign-out.ts`, `auth-storage.ts`, `auth-client.ts`, or `app/_layout.tsx` |
+| 9 | MUST NOT attach the session credential to a request whose destination is not this project's own API origin | ✗ FAILED | `api-client.ts:29` uses `url.startsWith(API_URL)`, a prefix check, not an origin comparison — confirmed bypassable with `http://localhost:30000/...` against the default `API_URL=http://localhost:3000`, or a suffix-extension host in production. See Gaps below. |
 
-**Score:** 3/6 truths verified (2 present + wired but behavior-unverified — see Human Verification; 2 failed — see Gaps)
+**Score:** 6/8 must-haves verified, plus 2 truths (#1, #2) structurally present but requiring device-level human confirmation (carried forward from the previous verification and from WINDOWS.md, not new).
+
+### Deferred Items
+
+None. (No later-phase mapping for any current gap.)
 
 ### Required Artifacts
 
-All artifacts declared across the 8 plans' `must_haves.artifacts` exist and are substantive (checked via `gsd-tools query verify.artifacts` per plan):
-
-| Plan | Result |
-|---|---|
-| 01-01 (workspace, Better Auth, versioning skeleton) | 9/9 passed |
-| 01-02 (theme/appearance) | 5/5 passed |
-| 01-03 (client-version guard) | 5/5 passed |
-| 01-04 (mailer + password reset) | 5/5 passed |
-| 01-05 (session lifecycle, sign-out) | 6/6 passed |
-| 01-06 (auth screens) | 7/7 passed |
-| 01-07 (tab shell, platform escape hatch) | 4/5 — see note below |
-| 01-08 (CI) | 3/3 passed |
-
-**01-07 note:** `apps/mobile/components/PlaceholderScreen.tsx` failed the automated `contains: "Heading"` pattern check. Read directly: the component takes a `heading` prop and renders it with a `text-heading` Tailwind class — it fully satisfies the plan's stated intent (a shared heading-plus-body shell) but never contains the literal capitalized string `Heading`. This is a false positive of the pattern-matching heuristic, not a real gap — the artifact is substantive and wired (confirmed via `key_links` below and live browser rendering of tab placeholder screens).
+| Artifact | Expected | Status | Details |
+|----------|----------|--------|---------|
+| `apps/mobile/lib/api-client.ts` | Single shared request path; attaches version header + session credential; guards credential to project origin only | ⚠️ PARTIAL | Version header and credential-provider seam both correct and tested; the origin guard is present but implemented incorrectly (prefix check, not origin match) |
+| `apps/mobile/app/_layout.tsx` | Registers `SessionCredentialProvider`; runs background revocation probe | ✓ VERIFIED | `setSessionCredentialProvider(getSessionCookieHeader)` at module scope; background probe wired |
+| `apps/mobile/lib/sign-out.ts` | Revokes server session via the shared request path before clearing local state | ✓ VERIFIED | `revokeServerSession()` → `apiFetch` → credential now attached; local wipe always proceeds regardless of server outcome (D-03 asymmetry) |
+| `apps/api/src/common/min-client-version.guard.ts` + `client-version.constants.ts` | Server-side version floor enforcement across Nest-routed and Better-Auth-routed paths | ✓ VERIFIED | `MinClientVersionGuard` (Nest routes) + `minClientVersionMiddleware` (Better Auth's non-Nest-routed `/v1/auth` prefix), both tested by `version-guard.e2e-spec.ts` |
+| `apps/mobile/app/(tabs)/_layout.web.tsx`, `apps/mobile/app/reset-password.web.tsx` | Platform-specific overrides picked up automatically | ✓ VERIFIED | Files exist, sibling to non-`.web` versions, exercised by `expo export --platform web` |
+| `apps/mobile/lib/theme.ts`, `apps/mobile/components/AppearanceControl.tsx` | Light/dark appearance switching (PLAT-09) | ✓ VERIFIED | `AppearanceControl` imported and rendered in `app/(tabs)/profile.tsx`; `applyAppearance` uses NativeWind's `colorScheme.set` (cross-platform-safe, fixes the earlier RN-only `Appearance.setColorScheme` crash on web — WINDOWS #11) |
 
 ### Key Link Verification
 
-All key links across all 8 plans verified via `gsd-tools query verify.key-links`: 23/23 wired (auth-client → auth server → Drizzle schema; api-client → session-guard → client-version; theme → AppearanceControl → global.css; tab layouts → AppearanceControl/sign-out; mailer port → SMTP adapter; CI workflow → turbo tasks → Postgres service). No NOT_WIRED or PARTIAL results.
+| From | To | Via | Status | Details |
+|------|----|----|--------|---------|
+| `app/_layout.tsx` | `apps/mobile/lib/api-client.ts` | `setSessionCredentialProvider(getSessionCookieHeader)` called at module scope | ✓ WIRED | Confirmed by grep and by `session-refresh.test.ts` passing credential-attachment assertions |
+| `apps/mobile/lib/sign-out.ts` | `apps/api` `/v1/auth/sign-out` | `apiFetch(... AUTH_ENDPOINT/sign-out ...)` | ✓ WIRED | Now carries the session cookie via the credential provider seam; proven end-to-end by `native-session.e2e-spec.ts` |
+| `apps/mobile/lib/api-client.ts` (`resolveSessionCredential`) | request origin | `url.startsWith(API_URL)` | ⚠️ WIRED BUT INCORRECT | The link exists and executes on every request, but the comparison it performs does not enforce the invariant it is documented to enforce |
+| `apps/api main.ts` | `/v1/auth/*` | `minClientVersionMiddleware(AUTH_BASE_PATH)` registered via `app.use(...)` before `listen()` | ✓ WIRED | Confirmed by reading `min-client-version.guard.ts` inline comment and by `version-guard.e2e-spec.ts` |
 
-### Behavioral Spot-Checks (carried over from verified_state, not re-run)
+### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
-|---|---|---|---|
-| Typecheck across workspace | `pnpm typecheck` (5 turbo tasks) | Pass | ✓ PASS |
-| Full task graph | `turbo run typecheck lint test build` (11 tasks) | Pass | ✓ PASS |
-| API e2e suite | `pnpm --filter api test:e2e` | 4 suites, 21 tests pass | ✓ PASS |
-| Mobile unit suite | `pnpm --filter mobile test` | 3 suites, 51 tests pass | ✓ PASS |
-| Mobile web export | `pnpm --filter mobile build` | 19 static routes incl. all 5 tabs | ✓ PASS |
-| Suite-integrity guard | probe suite (no tests) vs. clean run | Probe exits 1 with reason; clean exits 0 | ✓ PASS |
-| End-to-end web UAT | Browser: sign-up → 5-tab shell; `/history` cold paste retains session; Profile sign-out returns to sign-in AND deletes the Postgres session row; zero console errors | Confirmed | ✓ PASS (web only) |
-| iOS/Android render | — | Never attempted — no simulator/device reachable | ? SKIP → human verification |
+|----------|---------|--------|--------|
+| Credential attaches only for same-origin requests, rejects a different host | `npx jest lib/__tests__/session-refresh.test.ts` (run directly by this verification) | 42/42 tests pass, including the "not-this-project.example.com" negative case | ✓ PASS (but does not cover the prefix-bypass class — see gap) |
+| Prefix-collision bypass reproduces as described | Manual evaluation: `'http://localhost:30000/x'.startsWith('http://localhost:3000')` | `true` | ✗ CONFIRMS BYPASS |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan(s) | Description | Status | Evidence |
-|---|---|---|---|---|
-| PLAT-01 | 01-01, 01-03, 01-07 | Same account on iOS/Android/desktop browser | ⚠️ Partially satisfied | Web fully proven; iOS/Android code-complete and typechecked but never rendered. See truth #1. |
-| PLAT-05 | 01-01, 01-04, 01-06 | Create account, sign in with email/password | ✓ Satisfied | `auth.e2e-spec.ts`, `password-reset.e2e-spec.ts`, `auth-forms.test.ts` all green; sign-up/sign-in/forgot-password screens implemented with full UI-SPEC state coverage. |
-| PLAT-06 | 01-05 | Stay signed in across restarts, offline-tolerant | ⚠️ Partially satisfied | D-01/D-02/D-03 classification logic correct and unit-tested; device-level cold-start/airplane-mode behavior unverified (see truth #2). Sign-out's server-side revocation is broken on native (see gaps — a related but distinct defect from PLAT-06's literal text, which is about *not* losing a session, not about correctly *ending* one). |
-| PLAT-09 | 01-02, 01-07 | Light/dark appearance | ✓ Satisfied | `theme.test.ts` (10/10 green) covers persistence, restart restoration, unknown-value fallback; live browser confirms the toggle repaints the app. WR-02 (theme.test.ts's overly permissive sentinel assertion) is a minor unresolved warning, not a functional gap. |
+|-------------|-----------------|--------------|--------|----------|
+| PLAT-01 | 01-01, 01-03, 01-07, 01-08, 01-09, 01-10 | Same account, iOS/Android/desktop browser | ⚠️ NEEDS HUMAN | Code/structure present and web-verified; iOS/Android device confirmation outstanding (WINDOWS #4,5,8,9,10) |
+| PLAT-05 | 01-01, 01-04, 01-06, 01-08, 01-10 | Create account, sign in with email/password | ✓ SATISFIED | `auth.e2e-spec.ts` proves signup/sign-in end to end against a real server; sign-in/sign-up screens wired |
+| PLAT-06 | 01-05, 01-08, 01-09 | Stays signed in across restarts, usable offline | ⚠️ NEEDS HUMAN (mechanism verified) + ✗ Origin-guard prohibition FAILED | Persistence/offline-tolerance logic verified structurally and by unit test; real device multi-week-gap unverified (WINDOWS #2); the credential-attachment security guard this requirement depends on is confirmed broken (see gap #9) |
+| PLAT-09 | 01-02, 01-07, 01-08, 01-10 | Light/dark appearance switching | ✓ SATISFIED | `AppearanceControl` wired into profile screen; `theme.test.ts` covers the switching logic |
 
-No orphaned requirements: REQUIREMENTS.md maps exactly PLAT-01, PLAT-05, PLAT-06, PLAT-09 to Phase 1, and all four appear in at least one plan's `requirements` field.
+No orphaned requirements — all four declared IDs (PLAT-01, PLAT-05, PLAT-06, PLAT-09) appear in at least one plan's `requirements` field and are traceable to artifacts above.
 
 ### Anti-Patterns Found
 
-| File | Line | Pattern | Severity | Impact |
-|---|---|---|---|---|
-| `apps/mobile/lib/api-client.ts` | 18-37 | Missing credential attachment on native (CR-01) | 🛑 Blocker | Native explicit sign-out and background revocation-detection cannot authenticate — see gaps. |
-| `apps/mobile/lib/__tests__/theme.test.ts` | 84-92 | Overly permissive regression assertion (WR-02, still open) | ⚠️ Warning | A regression to the pre-0.82 `null` sentinel on the real pinned RN 0.86 runtime would still pass this test. Does not block the phase goal. |
-| `apps/mobile/app/(auth)/sign-up.tsx` | 21-25 | Fragile string-split with no guard (WR-03, still open) | ⚠️ Warning | A future copy edit could silently truncate the duplicate-email error message. Cosmetic risk only. |
-| No TBD/FIXME/XXX debt markers found | — | — | — | Scanned all 44 files modified across the 8 plans; clean. |
+None blocking. `pendingWriteCount()` in `sign-out.ts` returns a hardcoded `0` with an explicit, non-debt comment explaining it is a deliberate Phase-2 seam (no local DB exists yet) — not a stub masking missing behavior for this phase's scope.
 
-No stub components, no hardcoded-empty render paths, and no console.log-only implementations were found among the files scanned.
-
-### Human Verification Required
-
-See frontmatter `human_verification` — four items: iOS render, Android render, real device-level offline/multi-week-gap behavior, and max-accessibility-font-scale wrap behavior on native. All four are also tracked as open items in `.planning/WINDOWS.md` (ledger entries #2, #4, #5, #7, #8, #9, #10).
+Carried-forward Info/Warning items from 01-REVIEW.md (WR-01 schema inconsistency, IN-01 fake lint script, IN-02 undocumented `Platform.OS` exceptions, IN-03 unused `colorScheme` field, IN-04 missing CORS on `/health`) are pre-existing, non-regressed, and below the blocker threshold — noted for completeness, not gating this verification.
 
 ### Gaps Summary
 
-Two related, unresolved gaps trace to a single root cause: `apps/mobile/lib/api-client.ts`'s `apiFetch` never attaches the native session credential (the Better Auth cookie the Expo plugin persists in SecureStore) to outgoing requests. This was already identified as CR-01 (critical) in `01-REVIEW.md` on 2026-08-11 and remains unfixed — no commit since the review touches the three affected files (`api-client.ts`, `sign-out.ts`, `_layout.tsx`'s consumer, `auth-storage.ts`).
+Two of the three previously-failed truths from the prior verification pass (missing credential attachment on native sign-out, and on the background revocation probe) are now genuinely closed: a `SessionCredentialProvider` seam was introduced, registered once at `app/_layout.tsx` module scope, and both call sites route through it with real unit and e2e coverage.
 
-Concretely, on native only:
-1. Explicit sign-out never actually revokes the server-side session row (only the client's local copy is wiped) — a real security-relevant asymmetry between platforms, since the identical action on web does correctly delete the Postgres session row (verified live).
-2. The background revocation-detection mechanism in `app/_layout.tsx` can never observe a real revocation, because its own request can never authenticate.
+However, the same gap-closure work introduced a new, unresolved defect in the security boundary the plan itself declared as a must-have prohibition: `resolveSessionCredential` in `apps/mobile/lib/api-client.ts` gates credential attachment with `url.startsWith(API_URL)`, a string-prefix test rather than a real origin comparison. This is independently reproducible (`'http://localhost:30000/x'.startsWith('http://localhost:3000')` → `true` under the project's own default config) and is not caught by the existing regression test, which only exercises a wholly unrelated host. Plan 01-09's frontmatter marks this prohibition `status: resolved` — that claim does not hold against the code as it stands and is rejected here on direct evidence. This is a security-relevant regression, not a cosmetic gap: `apiFetch` is the app's one shared request path, documented as reusable by future phases (sync, uploads), so an unfixed prefix-comparison bug widens in blast radius every time a new caller constructs a URL from anything less than a hardcoded constant.
 
-Neither gap causes a premature or unwanted sign-out (D-01's core no-network-logout guarantee is not violated — if anything the defect fails toward keeping the user signed in too long, the opposite risk). Both gaps are, however, genuine, currently-shipping defects in code whose own inline comments assert a guarantee ("only `revoked` clears anything") the code cannot deliver — exactly the kind of gap that stays invisible because nothing in the test suite exercises the credential-attachment step.
-
-Separately, and not counted as a gap (routed to human verification instead): two of the phase's four ROADMAP success criteria (same-account-on-three-platforms, and multi-week-gap session survival) are proven only on the desktop browser target and via unit-level classification logic, respectively. iOS and Android were never rendered in any worktree during execution or during this verification — no simulator or device was reachable. This is not itself evidence of failure, but it is also not evidence of success: the identical "typecheck + unit tests + `expo export` all green" signature that this phase already produced once for a completely broken web render (WINDOWS.md #11/#13, the blank-page bug fixed only after live browser inspection in plan 01-07) means a similarly invisible native-only defect cannot be ruled out by the automated evidence alone.
+Human verification items are otherwise unchanged from the prior pass and remain open in WINDOWS.md: no iOS/Android simulator or device was reachable from this environment, so every native-rendering and real-elapsed-time claim (multi-week session survival, airplane-mode cold start, accessibility font scale) rests on typecheck/unit-test/static-export evidence rather than a device observation.
 
 ---
 
-_Verified: 2026-08-14_
+_Verified: 2026-08-14T15:30:00Z_
 _Verifier: Claude (gsd-verifier)_
