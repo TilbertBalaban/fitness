@@ -1,7 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import { CLIENT_VERSION, CLIENT_VERSION_HEADER } from '../client-version';
 import { classifyAuthOutcome, isRevocation, SESSION_REVOKED_REASON } from '../session-guard';
-import { apiFetch } from '../api-client';
+import { apiFetch, setSessionCredentialProvider } from '../api-client';
+import { AUTH_ENDPOINT } from '../auth-storage';
 import { pendingWriteCount, signOut } from '../sign-out';
 
 jest.mock('expo-secure-store', () => ({
@@ -87,6 +88,7 @@ describe('apiFetch', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    setSessionCredentialProvider(() => null);
   });
 
   it('attaches CLIENT_VERSION under CLIENT_VERSION_HEADER on every request', async () => {
@@ -123,6 +125,75 @@ describe('apiFetch', () => {
 
     expect(result.outcome).toBe('offline');
   });
+
+  it('attaches a registered credential under the lowercase cookie header for a request under the API origin', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    setSessionCredentialProvider(() => 'fitness_cookie=abc123');
+
+    await apiFetch(`${AUTH_ENDPOINT}/get-session`);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.cookie).toBe('fitness_cookie=abc123');
+  });
+
+  it('attaches no cookie header when no provider is registered', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await apiFetch(`${AUTH_ENDPOINT}/get-session`);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.cookie).toBeUndefined();
+  });
+
+  it('attaches no cookie header when the registered provider yields an empty string', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    setSessionCredentialProvider(() => '');
+
+    await apiFetch(`${AUTH_ENDPOINT}/get-session`);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.cookie).toBeUndefined();
+  });
+
+  it('attaches no cookie header when the registered provider yields null', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    setSessionCredentialProvider(() => null);
+
+    await apiFetch(`${AUTH_ENDPOINT}/get-session`);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.cookie).toBeUndefined();
+  });
+
+  it('attaches no cookie header for a request to a host that is not the API origin, even with a provider registered', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    setSessionCredentialProvider(() => 'fitness_cookie=abc123');
+
+    await apiFetch('https://not-this-project.example.com/v1/auth/get-session');
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.cookie).toBeUndefined();
+  });
+
+  it('treats a throwing provider as no credential: the request still goes out with no cookie header', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    setSessionCredentialProvider(() => {
+      throw new Error('secure-storage read failed');
+    });
+
+    const result = await apiFetch(`${AUTH_ENDPOINT}/get-session`);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.cookie).toBeUndefined();
+    expect(result.outcome).toBe('ok');
+  });
 });
 
 describe('sign-out lifecycle', () => {
@@ -134,6 +205,7 @@ describe('sign-out lifecycle', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    setSessionCredentialProvider(() => null);
   });
 
   it('pendingWriteCount resolves to 0', async () => {
@@ -206,5 +278,17 @@ describe('sign-out lifecycle', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers[CLIENT_VERSION_HEADER]).toBe(CLIENT_VERSION);
+  });
+
+  it('attaches the registered session credential on the outgoing sign-out request, with no credential logic of its own', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, {}));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    setSessionCredentialProvider(() => 'fitness_cookie=abc123');
+
+    await signOut({ getPendingCount: async () => 0 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.cookie).toBe('fitness_cookie=abc123');
   });
 });

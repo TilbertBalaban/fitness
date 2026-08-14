@@ -3,14 +3,19 @@ import '@/global.css';
 import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import { apiFetch } from '@/lib/api-client';
-import { authClient } from '@/lib/auth-client';
+import { apiFetch, setSessionCredentialProvider } from '@/lib/api-client';
+import { authClient, getSessionCookieHeader } from '@/lib/auth-client';
 import { AUTH_ENDPOINT, clearCachedSession } from '@/lib/auth-storage';
 import { isRevocation, WEB_SESSION_RESOLVE_BUDGET_MS } from '@/lib/session-guard';
 import { applyAppearance, readStoredAppearance } from '@/lib/theme';
 import { WebSessionSkeleton } from '@/components/WebSessionSkeleton';
 
 const isWeb = Platform.OS === 'web';
+
+// Module scope, not inside a hook or effect: Expo Router evaluates this file before any screen
+// mounts, so every request from this launch — including the background probe below and a later
+// signOut() from the Profile screen — goes out through an already-registered provider.
+setSessionCredentialProvider(getSessionCookieHeader);
 
 export default function RootLayout() {
   const { data: session, isPending } = authClient.useSession();

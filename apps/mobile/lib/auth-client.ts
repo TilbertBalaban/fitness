@@ -1,6 +1,7 @@
 import { createAuthClient } from 'better-auth/react';
 import { expoClient } from '@better-auth/expo/client';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import { API_URL, AUTH_STORAGE_PREFIX } from './auth-storage';
 
 const AUTH_BASE_PATH = '/v1/auth';
@@ -27,3 +28,16 @@ export const authClient = createAuthClient({
     }),
   ],
 });
+
+// Delegates to the expoClient plugin's own getCookie() action, which reassembles any chunked
+// SecureStore write and drops expired cookie entries before serializing to a header string — see
+// storageAdapter/getCookie in @better-auth/expo's client.js. Re-reading SecureStore directly here
+// would re-implement that reassembly and drift from it.
+export function getSessionCookieHeader(): string {
+  if (Platform.OS === 'web') return '';
+  // @ts-expect-error Same upstream narrowing as the expoClient() composition above: because
+  // getActions($fetch) is typed more narrowly than BetterAuthClientPlugin declares,
+  // createAuthClient's inference drops the plugin's getCookie action from authClient's type even
+  // though it is registered and callable at runtime.
+  return authClient.getCookie() || '';
+}
