@@ -3,7 +3,7 @@ status: partial
 phase: 01-cross-platform-foundation
 source: [01-VERIFICATION.md]
 started: 2026-08-14T16:10:00Z
-updated: 2026-08-14T17:05:00Z
+updated: 2026-08-15T07:30:00Z
 ---
 
 ## Current Test
@@ -20,9 +20,8 @@ reason: "No iOS toolchain on this machine — xcode-select points at /Library/De
 
 ### 2. Sign up, sign in, and reach the same authenticated five-tab home screen on a real Android emulator/device
 expected: Same as iOS row above, on Android
-result: blocked
-blocked_by: physical-device
-reason: "No Android toolchain — no ~/Library/Android/sdk, `adb` not on PATH, no emulator image, no attached device. Same automated evidence as row 1; no native render observed."
+result: skipped
+reason: "Deferred follow-up: user decision 2026-08-15 — all Android verification is deferred to the final phase and will be performed in one pass once every phase is built. Tracked as Phase 999.1 in ROADMAP.md Backlog. (Environment state at deferral: no ~/Library/Android/sdk, `adb` not on PATH, no emulator image, no attached device.)"
 
 ### 3. Sign in on a device, put it in airplane mode, wait, and cold-start the app after a genuinely elapsed multi-week gap (or at minimum an extended offline period)
 expected: Authenticated UI renders immediately with no network wait and no sign-out, per D-01/D-02
@@ -36,11 +35,11 @@ result: blocked
 blocked_by: physical-device
 reason: "HTTP-level backstop independently re-run and green this session: `pnpm --filter api test:e2e` against live Postgres — 5 suites / 22 tests pass, including native-session.e2e-spec.ts. The device-level half of the checkpoint is unmet: no iOS/Android build can be installed or run here."
 
-### 5. Confirm maximum OS accessibility font scale wrap-and-grow behavior (auth fields, tab bar labels, placeholder body copy) on iOS and Android
+### 5. Confirm maximum OS accessibility font scale wrap-and-grow behavior (auth fields, tab bar labels, placeholder body copy) on iOS
 expected: Long text wraps and containers grow rather than clipping or truncating, per UI-SPEC R1
 result: blocked
 blocked_by: physical-device
-reason: "Requires setting OS accessibility text size on a native device. Web-viewport approximation was already performed in a prior pass (WINDOWS.md #9) and is explicitly not accepted as equivalent by 01-VERIFICATION.md."
+reason: "Narrowed to iOS only — the Android half is deferred to the final phase per user decision 2026-08-15 (Phase 999.1). The iOS half still requires setting OS accessibility text size on a simulator/device and remains blocked while no Xcode toolchain is installed. Web-viewport approximation was already performed in a prior pass (WINDOWS.md #9) and is explicitly not accepted as equivalent by 01-VERIFICATION.md."
 
 ## Summary
 
@@ -48,12 +47,21 @@ total: 5
 passed: 0
 issues: 0
 pending: 0
-skipped: 0
-blocked: 5
+skipped: 1
+blocked: 4
 
 ## Gaps
 
 <!-- No gaps: all outstanding items are prerequisite/environment gates, not code defects. -->
+
+## Deferred Follow-Ups
+
+- test: 2
+  idea: "Android verification deferred to the final phase — test the Android app once every phase is built, in a single pass. Tracked as Phase 999.1 in ROADMAP.md Backlog."
+  deferred_at: 2026-08-15
+- test: 5
+  idea: "Android half of the accessibility font-scale check deferred to the final phase alongside test 2; the iOS half stays in scope for Phase 01."
+  deferred_at: 2026-08-15
 
 ## Web-Target Verification
 

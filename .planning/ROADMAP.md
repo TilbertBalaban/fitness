@@ -308,6 +308,21 @@ Plans:
 
 - [ ] 12-01: TBD during `/gsd-plan-phase 12`
 
+## Backlog
+
+### Phase 999.1: Android verification sweep (BACKLOG)
+
+**Goal**: Verify the Android build across every phase's UAT criteria in a single pass, once all phases are built
+**Source phase**: all (project-wide policy)
+**Deferred at**: 2026-08-15 by user decision during `/gsd-verify-work 01`
+**Policy**: Android-specific UAT items are skipped in every phase and accumulate here. iOS and web verification proceed normally per phase and are NOT deferred.
+**Prerequisites**: Android SDK + JDK 17 + emulator image (none installed as of deferral), Expo dev-client Android build
+**Accumulated items**:
+
+- [ ] Phase 01 test 2: sign up / sign in reaching the authenticated five-tab home screen on Android
+- [ ] Phase 01 test 5: maximum OS accessibility font-scale wrap-and-grow on Android
+- [ ] (append Android items from phases 02-12 as each phase defers them)
+
 ## Progress
 
 **Execution Order:**
