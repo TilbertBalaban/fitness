@@ -16,10 +16,8 @@ export default function ProfileScreen() {
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // signOut consults pendingWriteCount and only calls this when the count is above zero, so in
-  // Phase 1 the dialog never mounts and sign-out proceeds immediately. The seam is wired now so
-  // Phase 2 replaces one function body instead of threading a confirmation through a shipped
-  // lifecycle (D-04).
+  // signOut consults pendingWriteCount and only calls this when the count is above zero, so the
+  // dialog never mounts and sign-out proceeds immediately when nothing is pending (D-04).
   const confirmDiscard = useCallback(
     (count: number) =>
       new Promise<boolean>((resolve) => setPendingConfirmation({ count, resolve })),
