@@ -104,7 +104,7 @@ Plans:
   4. Upgrading the app across a local schema change preserves unsynced on-device data, verified against a populated pre-migration database
   5. A weight entered in either unit round-trips through storage and display without drifting, and a workout finished at 11:45pm is attributed to that day regardless of timezone
 
-**Plans**: 2/8 plans executed
+**Plans**: 6/8 plans executed
 
 Plans:
 **Wave 1**
@@ -117,10 +117,10 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — Conflict policy, the durable conflict log, tombstones, and the two-device convergence proof
-- [ ] 02-04-PLAN.md — Weights in kilograms with exactly one conversion boundary
-- [ ] 02-05-PLAN.md — Durability: crash recovery, and unsynced writes surviving a client schema change
-- [ ] 02-06-PLAN.md — Data export, and the real unsynced-write count behind the sign-out confirmation
+- [x] 02-03-PLAN.md — Conflict policy, the durable conflict log, tombstones, and the two-device convergence proof
+- [x] 02-04-PLAN.md — Weights in kilograms with exactly one conversion boundary
+- [x] 02-05-PLAN.md — Durability: crash recovery, and unsynced writes surviving a client schema change
+- [x] 02-06-PLAN.md — Data export, and the real unsynced-write count behind the sign-out confirmation
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -348,7 +348,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
-| 2. Data Model & Sync Engine | 2/8 | In Progress|  |
+| 2. Data Model & Sync Engine | 6/8 | In Progress|  |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |

@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 20
+open_count: 23
 waived_count: 0
 fixed_count: 1
-total_count: 21
-last_updated: 2026-08-17T08:31:56.749Z
+total_count: 24
+last_updated: 2026-08-17T09:05:25.330Z
 ---
 
 # Broken Windows Ledger
@@ -36,6 +36,9 @@ last_updated: 2026-08-17T08:31:56.749Z
 | 19 | 02 | stub | apps/api/src/sync/sync.service.ts |  | 9 of 12 SYNCED_TABLES entries (routine, routine_day, routine_exercise, equipment_profile, exercise, personal_record, body_metric, progress_photo, user_preference) have no server-side apply path yet — ops for them are rejected unknown_table by the crash guard rather than applied; intentional scope boundary, not yet wired by this plan | open |  | 2026-08-17T08:03:47.271Z |  |
 | 20 | 02 | deviation | apps/api/src/sync/sync.service.ts | 120 | Sync push still coerces a missing/null weight_kg to string '0' (String(d.weight_kg ?? '0')) — a null-weighted local set would sync as zero, contradicting PLAT-08's never-coerce-to-zero invariant; owned by 02-03's file scope, not fixed here | open |  | 2026-08-17T08:31:50.032Z |  |
 | 21 | 02 | stub | apps/api/src/db/schema/session.ts | 91 | Postgres logged_set.weight_kg is still NOT NULL (only the local SQLite mirror was relaxed in 02-04) — a null-weighted bodyweight set cannot yet round-trip through sync; needs a migration + sync.service.ts fix before bodyweight-exercise UI ships | open |  | 2026-08-17T08:31:56.749Z |  |
+| 22 | 02 | unrun-verify | apps/mobile/lib/db/test-support.ts |  | Real PowerSync web database cannot be constructed under this Jest/Node sandbox: jest-environment-jsdom and fake-indexeddb are both absent from the lockfile (installing them is out of scope per the package-legitimacy gate); the RN-Web export condition Jest resolves under (customExportConditions includes react-native) forces @powersync/web's react_native_web dist build, which requires a real Worker global even with useWebWorker:false; the plain browser build also requires window.Worker for its default async/multi-tab path; the WASM sync-mode InMemoryVFS path hangs indefinitely (no companion browser context to service its synchronous cross-realm signaling); and forcing --experimental-vm-modules to satisfy the WASM loader's dynamic import() would require a project-wide Jest ESM migration, itself a Rule-4 architectural change out of plan 02-05's scope. crash-recovery.test.ts and schema-redefinition.test.ts (PLAT-07, roadmap criterion 4) could not be authored as real, passing suites against a live database; test-support.ts is written and typechecks against the real PowerSync/Drizzle types but is unexercised here. | open |  | 2026-08-17T09:05:25.013Z |  |
+| 23 | 02 | deviation | apps/mobile/lib/db/log-set.ts |  | startSession/addSessionExercise/logSet call the module-level getPowerSync() singleton from ./powersync directly, with no injectable database parameter. Even on an environment where a real PowerSync database could be constructed under Jest, a durability suite could not route these helpers to an isolated test database without either mocking the powersync module (forbidden by plan 02-05's acceptance criteria) or adding a DI seam to log-set.ts/powersync.ts (out of that plan's declared scope). A future plan that adds a real browser/device UAT harness for crash-recovery/schema-redefinition will need to add this seam. | open |  | 2026-08-17T09:05:25.185Z |  |
+| 24 | 02 | unrun-verify | apps/mobile/lib/export/export-training-data.ts |  | Native export path (expo-file-system write + expo-sharing share sheet) not exercised on iOS/Android — no Xcode/Android SDK on this machine. Verified instead: buildExportDocument's 10 behavior-line cases (Jest, fakes), tsc --noEmit, and expo export --platform web bundling both build-export-document.ts and export-training-data.web.ts (forced into the web build graph via a side-effect import in app/_layout.tsx, following Phase 2's db/powersync.ts precedent). | open |  | 2026-08-17T09:05:25.330Z |  |
 
 ````json
 [
@@ -289,6 +292,42 @@ last_updated: 2026-08-17T08:31:56.749Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-17T08:31:56.749Z",
+    "resolved_at": null
+  },
+  {
+    "id": 22,
+    "kind": "unrun-verify",
+    "phase": "02",
+    "file": "apps/mobile/lib/db/test-support.ts",
+    "line": null,
+    "description": "Real PowerSync web database cannot be constructed under this Jest/Node sandbox: jest-environment-jsdom and fake-indexeddb are both absent from the lockfile (installing them is out of scope per the package-legitimacy gate); the RN-Web export condition Jest resolves under (customExportConditions includes react-native) forces @powersync/web's react_native_web dist build, which requires a real Worker global even with useWebWorker:false; the plain browser build also requires window.Worker for its default async/multi-tab path; the WASM sync-mode InMemoryVFS path hangs indefinitely (no companion browser context to service its synchronous cross-realm signaling); and forcing --experimental-vm-modules to satisfy the WASM loader's dynamic import() would require a project-wide Jest ESM migration, itself a Rule-4 architectural change out of plan 02-05's scope. crash-recovery.test.ts and schema-redefinition.test.ts (PLAT-07, roadmap criterion 4) could not be authored as real, passing suites against a live database; test-support.ts is written and typechecks against the real PowerSync/Drizzle types but is unexercised here.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T09:05:25.013Z",
+    "resolved_at": null
+  },
+  {
+    "id": 23,
+    "kind": "deviation",
+    "phase": "02",
+    "file": "apps/mobile/lib/db/log-set.ts",
+    "line": null,
+    "description": "startSession/addSessionExercise/logSet call the module-level getPowerSync() singleton from ./powersync directly, with no injectable database parameter. Even on an environment where a real PowerSync database could be constructed under Jest, a durability suite could not route these helpers to an isolated test database without either mocking the powersync module (forbidden by plan 02-05's acceptance criteria) or adding a DI seam to log-set.ts/powersync.ts (out of that plan's declared scope). A future plan that adds a real browser/device UAT harness for crash-recovery/schema-redefinition will need to add this seam.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T09:05:25.185Z",
+    "resolved_at": null
+  },
+  {
+    "id": 24,
+    "kind": "unrun-verify",
+    "phase": "02",
+    "file": "apps/mobile/lib/export/export-training-data.ts",
+    "line": null,
+    "description": "Native export path (expo-file-system write + expo-sharing share sheet) not exercised on iOS/Android — no Xcode/Android SDK on this machine. Verified instead: buildExportDocument's 10 behavior-line cases (Jest, fakes), tsc --noEmit, and expo export --platform web bundling both build-export-document.ts and export-training-data.web.ts (forced into the web build graph via a side-effect import in app/_layout.tsx, following Phase 2's db/powersync.ts precedent).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T09:05:25.330Z",
     "resolved_at": null
   }
 ]
