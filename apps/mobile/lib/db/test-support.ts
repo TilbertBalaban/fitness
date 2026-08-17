@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import type { PowerSyncBackendConnector } from '@powersync/common';
 import { PowerSyncDatabase } from '@powersync/web';
 import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver';
 import {
@@ -189,4 +190,21 @@ export async function readAllLoggedSetsRaw(): Promise<Record<string, unknown>[]>
     throw new Error('readAllLoggedSetsRaw() called before openTestPowerSync()');
   }
   return rawDb.getAll<Record<string, unknown>>('SELECT * FROM logged_set');
+}
+
+// Connects the CURRENT isolated test-support.ts database directly — deliberately not routed
+// through apps/mobile/lib/db/powersync.ts's connectPowerSync/disconnectPowerSync, which are
+// hardwired to that module's own 'fitness.db' singleton. A schema-redefinition test needs to
+// prove its own isolated (and possibly v2-redefined) database's crud queue actually drains, which
+// only this instance's own real .connect()/.disconnect() can do.
+export async function connectTestPowerSync(connector: PowerSyncBackendConnector): Promise<void> {
+  if (!rawDb) {
+    throw new Error('connectTestPowerSync() called before openTestPowerSync()');
+  }
+  await rawDb.connect(connector);
+}
+
+export async function disconnectTestPowerSync(): Promise<void> {
+  if (!rawDb) return;
+  await rawDb.disconnect();
 }
