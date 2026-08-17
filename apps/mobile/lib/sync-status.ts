@@ -1,22 +1,44 @@
+import type { SyncRejectionReason } from '@fitness/api-contracts';
 import type { AuthOutcome } from './session-guard';
+
+export interface RejectedOpRecord {
+  opId: string;
+  reason: SyncRejectionReason;
+  table: string;
+  recordedAt: string;
+}
 
 export interface SyncStatus {
   pendingWrites: number;
   lastPushOutcome: AuthOutcome | null;
   lastSuccessfulPushAt: string | null;
+  rejectedOps: RejectedOpRecord[];
 }
+
+// Bounded so a pathological loop rejecting the same ops repeatedly cannot grow this without
+// limit (T-02-43) — oldest entries drop first.
+const MAX_RECORDED_REJECTED_OPS = 100;
 
 let lastPushOutcome: AuthOutcome | null = null;
 let lastSuccessfulPushAt: string | null = null;
+let rejectedOps: RejectedOpRecord[] = [];
 
 // The connector calls this after each drain (SyncConnector.uploadData) — the one place a push
 // outcome is known. No second connectivity concept: it branches on the same AuthOutcome union
-// session-guard.ts already defines.
-export function recordPushOutcome(outcome: AuthOutcome): void {
+// session-guard.ts already defines. hadRejections distinguishes an HTTP-level 2xx from an actual
+// fully-accepted push (CR-01) — a push carrying any rejection is not a successful push, so it must
+// not advance lastSuccessfulPushAt even though the transport outcome is 'ok'.
+export function recordPushOutcome(outcome: AuthOutcome, hadRejections = false): void {
   lastPushOutcome = outcome;
-  if (outcome === 'ok') {
+  if (outcome === 'ok' && !hadRejections) {
     lastSuccessfulPushAt = new Date().toISOString();
   }
+}
+
+// Called whenever a push response's `rejected` array is non-empty, terminal or not — this is the
+// one place a rejection becomes observable rather than silently discarded (CR-01).
+export function recordRejectedOps(records: RejectedOpRecord[]): void {
+  rejectedOps = [...rejectedOps, ...records].slice(-MAX_RECORDED_REJECTED_OPS);
 }
 
 // Read-only state a future sync indicator renders. Never issues a network request — everything
@@ -37,5 +59,6 @@ export async function getSyncStatus(): Promise<SyncStatus> {
     pendingWrites: await pendingWriteCount(),
     lastPushOutcome,
     lastSuccessfulPushAt,
+    rejectedOps: [...rejectedOps],
   };
 }
