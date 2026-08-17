@@ -193,18 +193,16 @@ async function countQueries<T>(fn: () => Promise<T>): Promise<{ result: T; query
   }
 }
 
+// Three queries, invariant in the number of child rows (PITFALLS.md §13): the session, its
+// exercises, and every logged set across those exercises in one batched IN query — never a
+// per-exercise or per-set round trip.
 async function readSessionWithChildren(sessionId: string) {
   const [session] = await db.select().from(workoutSession).where(eq(workoutSession.id, sessionId));
   const exercises = await db.select().from(sessionExercise).where(eq(sessionExercise.sessionId, sessionId));
   const exerciseIds = exercises.map((e) => e.id);
-  const setIdRows = exerciseIds.length
-    ? await db.select({ id: loggedSet.id }).from(loggedSet).where(inArray(loggedSet.sessionExerciseId, exerciseIds))
+  const sets = exerciseIds.length
+    ? await db.select().from(loggedSet).where(inArray(loggedSet.sessionExerciseId, exerciseIds))
     : [];
-  const sets = [];
-  for (const row of setIdRows) {
-    const [fullSet] = await db.select().from(loggedSet).where(eq(loggedSet.id, row.id));
-    sets.push(fullSet);
-  }
   return { session, exercises, sets };
 }
 
@@ -262,6 +260,7 @@ afterAll(async () => {
   if (api && !api.killed) {
     api.kill('SIGTERM');
   }
+  await pool.end();
 });
 
 describe('Seeded-corpus performance budget (e2e)', () => {
