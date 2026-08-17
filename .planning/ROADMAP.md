@@ -104,7 +104,7 @@ Plans:
   4. Upgrading the app across a local schema change preserves unsynced on-device data, verified against a populated pre-migration database
   5. A weight entered in either unit round-trips through storage and display without drifting, and a workout finished at 11:45pm is attributed to that day regardless of timezone
 
-**Plans**: 8/8 plans executed
+**Plans**: 12 plans (8/8 executed; 4 gap-closure plans added after verification returned `gaps_found`)
 
 Plans:
 **Wave 1**
@@ -126,6 +126,19 @@ Plans:
 
 - [x] 02-07-PLAN.md — The seeded 18-month corpus and the performance budget as assertions
 - [x] 02-08-PLAN.md — The pull leg: sync service, per-user buckets, and two devices converging
+
+**Wave 5** *(gap closure — criterion 4 unproven, and 4 critical code-review findings)*
+
+- [ ] 02-09-PLAN.md — Tracer: a set logged in a real browser, into a real PowerSync database, survives close and reopen
+- [ ] 02-10-PLAN.md — A bodyweight set round-trips as NULL, not as zero kilograms (CR-02, WINDOWS #20/#21)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 02-11-PLAN.md — The client reads what the server said; one bad op stops wedging the queue (CR-01, CR-03, CR-04)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 02-12-PLAN.md — Schema-change survival against a populated database, automatic reconnect drain, and two-client convergence
 
 ### Phase 3: Exercise Catalog
 
