@@ -10,6 +10,15 @@ import { DRIZZLE, type Database } from '../db/drizzle.module';
 import { workoutSession, sessionExercise, loggedSet } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { recordConflict, recordTombstone, isTombstoned } from './conflict-log';
+import {
+  LOGGED_SET_PATCH_FIELDS,
+  patchAwareSet,
+  SESSION_EXERCISE_PATCH_FIELDS,
+  WORKOUT_SESSION_PATCH_FIELDS,
+  type LoggedSetValues,
+  type SessionExerciseValues,
+  type WorkoutSessionValues,
+} from './patch-update-set';
 
 const TABLE_MAP = {
   workout_session: workoutSession,
@@ -80,7 +89,7 @@ interface LoggedSetOpData {
   logged_at?: string;
 }
 
-function toWorkoutSessionValues(id: string, userId: string, data: Record<string, unknown> | null | undefined) {
+function toWorkoutSessionValues(id: string, userId: string, data: Record<string, unknown> | null | undefined): WorkoutSessionValues {
   const d = (data ?? {}) as WorkoutSessionOpData;
   const startedAt = d.started_at ? new Date(d.started_at) : new Date();
   return {
@@ -92,14 +101,15 @@ function toWorkoutSessionValues(id: string, userId: string, data: Record<string,
     endedAt: d.ended_at ? new Date(d.ended_at) : null,
     status: d.status ?? 'in_progress',
     deviceId: d.device_id ?? null,
-    // Fallback only reachable when a client omits captureCalendarDay's stamp entirely (e.g. an
-    // older op replayed from the crud queue) — the real stamp is always client-supplied (LOG-22).
+    // Reaches storage only on the insert path: patchAwareSet (patch-update-set.ts) filters this
+    // column out of every PATCH's update set that omits it, so an update to an existing row can no
+    // longer clobber a real client-supplied timezone with this default (LOG-22).
     timezone: d.timezone ?? 'UTC',
     localDate: d.local_date ?? startedAt.toISOString().slice(0, 10),
   };
 }
 
-function toSessionExerciseValues(id: string, sessionId: string, data: Record<string, unknown> | null | undefined) {
+function toSessionExerciseValues(id: string, sessionId: string, data: Record<string, unknown> | null | undefined): SessionExerciseValues {
   const d = (data ?? {}) as SessionExerciseOpData;
   return {
     id,
@@ -125,7 +135,7 @@ function normalizeWeightKg(value: string | number | null | undefined): string | 
   return value === undefined || value === null ? null : String(value);
 }
 
-function toLoggedSetValues(id: string, sessionExerciseId: string, data: Record<string, unknown> | null | undefined) {
+function toLoggedSetValues(id: string, sessionExerciseId: string, data: Record<string, unknown> | null | undefined): LoggedSetValues {
   const d = (data ?? {}) as LoggedSetOpData;
   return {
     id,
@@ -141,23 +151,6 @@ function toLoggedSetValues(id: string, sessionExerciseId: string, data: Record<s
     restTakenSeconds: d.rest_taken_seconds ?? null,
     loggedAt: d.logged_at ? new Date(d.logged_at) : new Date(),
   };
-}
-
-// A PATCH that never mentions weight_kg must leave the stored weight untouched — an
-// onConflictDoUpdate `set` containing `weightKg: null` would clobber it. Checked against the raw
-// op.data key, not the mapped value: a key-presence check keeps absent and explicit-null
-// distinguishable, where a truthiness/undefined check on the mapped value would also swallow a
-// legitimate explicit null or zero.
-function loggedSetUpdateSet(
-  op: SyncCrudOp,
-  values: ReturnType<typeof toLoggedSetValues>,
-): Partial<ReturnType<typeof toLoggedSetValues>> {
-  const data = (op.data ?? {}) as Record<string, unknown>;
-  if (op.op === 'PATCH' && !('weight_kg' in data)) {
-    const { weightKg, ...rest } = values;
-    return rest;
-  }
-  return values;
 }
 
 function isNonNegativeInteger(value: unknown): boolean {
@@ -556,30 +549,32 @@ export class SyncService {
 
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
+            const workoutSessionValues = values as WorkoutSessionValues;
             const [{ serverSeq }] = await tx
               .insert(workoutSession)
-              .values({ ...(values as ReturnType<typeof toWorkoutSessionValues>), serverSeq: nextSeq })
+              .values({ ...workoutSessionValues, serverSeq: nextSeq })
               .onConflictDoUpdate({
                 target: workoutSession.id,
-                set: { ...(values as ReturnType<typeof toWorkoutSessionValues>), serverSeq: nextSeq },
+                set: { ...patchAwareSet(op, workoutSessionValues, WORKOUT_SESSION_PATCH_FIELDS), serverSeq: nextSeq },
               })
               .returning({ serverSeq: workoutSession.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           } else if (op.type === 'session_exercise') {
+            const sessionExerciseValues = values as SessionExerciseValues;
             await tx
               .insert(sessionExercise)
-              .values(values as ReturnType<typeof toSessionExerciseValues>)
+              .values(sessionExerciseValues)
               .onConflictDoUpdate({
                 target: sessionExercise.id,
-                set: values as ReturnType<typeof toSessionExerciseValues>,
+                set: patchAwareSet(op, sessionExerciseValues, SESSION_EXERCISE_PATCH_FIELDS),
               });
           } else {
-            const loggedSetValues = values as ReturnType<typeof toLoggedSetValues>;
+            const loggedSetValues = values as LoggedSetValues;
             await tx
               .insert(loggedSet)
               .values(loggedSetValues)
-              .onConflictDoUpdate({ target: loggedSet.id, set: loggedSetUpdateSet(op, loggedSetValues) });
+              .onConflictDoUpdate({ target: loggedSet.id, set: patchAwareSet(op, loggedSetValues, LOGGED_SET_PATCH_FIELDS) });
           }
 
           applied.push(op.op_id);

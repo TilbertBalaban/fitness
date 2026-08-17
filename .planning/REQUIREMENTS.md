@@ -71,7 +71,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [ ] **LOG-19**: User can correct entries directly from the summary screen before dismissing it
 - [ ] **LOG-20**: User can view, edit, rename, duplicate, and delete past workouts
 - [ ] **LOG-21**: User can backfill training history by editing a past workout's date and time
-- [ ] **LOG-22**: User's workout is attributed to the calendar day it was logged in, regardless of timezone or a late-night finish
+- [x] **LOG-22**: User's workout is attributed to the calendar day it was logged in, regardless of timezone or a late-night finish
 
 ### Advanced Set Types
 
@@ -199,7 +199,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PLAT-07 | Phase 2 — Data Model & Sync Engine | Complete |
 | PLAT-08 | Phase 2 — Data Model & Sync Engine | Complete |
 | PLAT-10 | Phase 2 — Data Model & Sync Engine | Pending |
-| LOG-22 | Phase 2 — Data Model & Sync Engine | Gaps Found |
+| LOG-22 | Phase 2 — Data Model & Sync Engine | Complete |
 | EXER-01 | Phase 3 — Exercise Catalog | Pending |
 | EXER-02 | Phase 3 — Exercise Catalog | Pending |
 | EXER-03 | Phase 3 — Exercise Catalog | Pending |

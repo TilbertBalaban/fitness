@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 21
+open_count: 26
 waived_count: 0
 fixed_count: 5
-total_count: 26
-last_updated: 2026-08-17T16:14:56.834Z
+total_count: 31
+last_updated: 2026-08-17T20:20:14.680Z
 ---
 
 # Broken Windows Ledger
@@ -41,6 +41,11 @@ last_updated: 2026-08-17T16:14:56.834Z
 | 24 | 02 | unrun-verify | apps/mobile/lib/export/export-training-data.ts |  | Native export path (expo-file-system write + expo-sharing share sheet) not exercised on iOS/Android — no Xcode/Android SDK on this machine. Verified instead: buildExportDocument's 10 behavior-line cases (Jest, fakes), tsc --noEmit, and expo export --platform web bundling both build-export-document.ts and export-training-data.web.ts (forced into the web build graph via a side-effect import in app/_layout.tsx, following Phase 2's db/powersync.ts precedent). | open |  | 2026-08-17T09:05:25.330Z |  |
 | 25 | 02 | stub | apps/api/src/db/schema/session.ts |  | logged_set has no duration_seconds/distance_meters column; time_based/distance_based exercises exist in the seeded catalog for load_type diversity but are never logged with realistic data (would require the reps=seconds anti-pattern PITFALLS.md §9 names) - a future plan should add these columns | open |  | 2026-08-17T09:41:16.603Z |  |
 | 26 | 02 | unrun-verify | apps/mobile/app/(tabs)/*.tsx |  | AMENDED by plan 02-12: the browser half is now automated and passing — sync.spec.ts's "two clients converge" case closes 02-08 Task 3's PLAT-03/PLAT-04 convergence check for two independent browser contexts signed into the same account, and its "service down stays usable" case closes the local-write-still-succeeds-with-the-service-down observation. The device half (two physical or simulated iOS/Android clients) is still blocked — no Xcode or Android SDK on this machine; deferred to the ROADMAP Phase 999.1 native UAT sweep. | open |  | 2026-08-17T10:20:14.945Z |  |
+| 27 | 02 | deviation | apps/api/src/sync/sync.service.ts |  | WR-01 (02-REVIEW.md): the single-known-root heal path retroactively poisons every op already grouped under a batch's one other resolvable root when an orphan (an op whose parent reference is entirely absent) heals into it, so one malformed payload takes a whole legitimate session's push down and the client retries the still-poisoned batch forever. poison-pill.e2e-spec.ts cannot reach this branch (it always uses two distinct session ids), and the shipped mobile client cannot produce such an op (log-set.ts always populates parent references). Not folded into 02-13's scope — a genuinely different concern (aggregate grouping, not the update set). | open |  | 2026-08-17T20:19:43.489Z |  |
+| 28 | 02 | deviation | apps/api/src/sync/sync.service.ts |  | WR-02 (02-REVIEW.md): highestServerSeq is not rewound when an aggregate's transaction rolls back — Postgres sequence nextval() is non-transactional, so a value obtained inside a rolled-back transaction is real but was never attached to any row that actually committed, and SyncPushResponse.server_seq can report a value ahead of anything durably stored. Latent: no client code reads server_seq today. Not folded into 02-13's scope. | open |  | 2026-08-17T20:19:51.979Z |  |
+| 29 | 02 | unrun-verify | .github/workflows/ci.yml |  | WR-03 (02-REVIEW.md): nothing in CI inspects the exported web bundle for the durability harness, so the dead-code-elimination claim (that DURABILITY_HARNESS_GLOBAL folds away and __fitnessDurability is Terser-eliminated when EXPO_PUBLIC_DURABILITY_HARNESS is unset) rests on code review alone. Worth closing with a mechanical grep-the-exported-bundle CI step, given this round's own framing of harness-in-production as the highest-severity risk class in its diff. Not folded into 02-13's scope — needs a CI job change plus a web export, entirely in apps/mobile / .github. | open |  | 2026-08-17T20:19:59.847Z |  |
+| 30 | 02 | stub | apps/mobile/lib/db/test-support.ts |  | WR-04 (02-REVIEW.md): DURABILITY_HARNESS_ENABLED is exported from test-support.ts with zero importers anywhere in apps/mobile (confirmed via repo-wide grep) — __durability.web.tsx re-derives the same check inline instead, per its own comment explaining why. Trivially cheap (one line, zero importers) but deliberately left out of 02-13's scope: taking it would pull apps/mobile into this plan's file scope and drag the mobile typecheck and the Playwright durability project into a verification set that is otherwise pure API e2e. One line whenever a mobile-touching plan next runs. | open |  | 2026-08-17T20:20:06.941Z |  |
+| 31 | 02 | deviation | apps/api/src/sync/sync.service.ts |  | The session_exercise PATCH constraint: isInvalidSessionExercise requires a non-empty exercise_id on every non-DELETE op, including a PATCH, so a genuinely narrow {order_index}-only PATCH to session_exercise is rejected invalid_field today. Not relaxed by 02-13, for a load-bearing reason: 02-13's patchAwareSet guard filters only the onConflictDoUpdate set: clause, never the insert .values() clause, so d.exercise_id ?? '' still reaches the database whenever a PATCH upserts an id the server has not seen — exactly the empty-string-FK case this validator was written to block (CR-04). Relaxing it needs its own decision about PATCH-as-insert semantics; whichever phase ships a reorder-exercises feature should read this before rediscovering the constraint. | open |  | 2026-08-17T20:20:14.680Z |  |
 
 ````json
 [
@@ -354,6 +359,66 @@ last_updated: 2026-08-17T16:14:56.834Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-17T10:20:14.945Z",
+    "resolved_at": null
+  },
+  {
+    "id": 27,
+    "kind": "deviation",
+    "phase": "02",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "WR-01 (02-REVIEW.md): the single-known-root heal path retroactively poisons every op already grouped under a batch's one other resolvable root when an orphan (an op whose parent reference is entirely absent) heals into it, so one malformed payload takes a whole legitimate session's push down and the client retries the still-poisoned batch forever. poison-pill.e2e-spec.ts cannot reach this branch (it always uses two distinct session ids), and the shipped mobile client cannot produce such an op (log-set.ts always populates parent references). Not folded into 02-13's scope — a genuinely different concern (aggregate grouping, not the update set).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T20:19:43.489Z",
+    "resolved_at": null
+  },
+  {
+    "id": 28,
+    "kind": "deviation",
+    "phase": "02",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "WR-02 (02-REVIEW.md): highestServerSeq is not rewound when an aggregate's transaction rolls back — Postgres sequence nextval() is non-transactional, so a value obtained inside a rolled-back transaction is real but was never attached to any row that actually committed, and SyncPushResponse.server_seq can report a value ahead of anything durably stored. Latent: no client code reads server_seq today. Not folded into 02-13's scope.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T20:19:51.979Z",
+    "resolved_at": null
+  },
+  {
+    "id": 29,
+    "kind": "unrun-verify",
+    "phase": "02",
+    "file": ".github/workflows/ci.yml",
+    "line": null,
+    "description": "WR-03 (02-REVIEW.md): nothing in CI inspects the exported web bundle for the durability harness, so the dead-code-elimination claim (that DURABILITY_HARNESS_GLOBAL folds away and __fitnessDurability is Terser-eliminated when EXPO_PUBLIC_DURABILITY_HARNESS is unset) rests on code review alone. Worth closing with a mechanical grep-the-exported-bundle CI step, given this round's own framing of harness-in-production as the highest-severity risk class in its diff. Not folded into 02-13's scope — needs a CI job change plus a web export, entirely in apps/mobile / .github.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T20:19:59.847Z",
+    "resolved_at": null
+  },
+  {
+    "id": 30,
+    "kind": "stub",
+    "phase": "02",
+    "file": "apps/mobile/lib/db/test-support.ts",
+    "line": null,
+    "description": "WR-04 (02-REVIEW.md): DURABILITY_HARNESS_ENABLED is exported from test-support.ts with zero importers anywhere in apps/mobile (confirmed via repo-wide grep) — __durability.web.tsx re-derives the same check inline instead, per its own comment explaining why. Trivially cheap (one line, zero importers) but deliberately left out of 02-13's scope: taking it would pull apps/mobile into this plan's file scope and drag the mobile typecheck and the Playwright durability project into a verification set that is otherwise pure API e2e. One line whenever a mobile-touching plan next runs.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T20:20:06.941Z",
+    "resolved_at": null
+  },
+  {
+    "id": 31,
+    "kind": "deviation",
+    "phase": "02",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "The session_exercise PATCH constraint: isInvalidSessionExercise requires a non-empty exercise_id on every non-DELETE op, including a PATCH, so a genuinely narrow {order_index}-only PATCH to session_exercise is rejected invalid_field today. Not relaxed by 02-13, for a load-bearing reason: 02-13's patchAwareSet guard filters only the onConflictDoUpdate set: clause, never the insert .values() clause, so d.exercise_id ?? '' still reaches the database whenever a PATCH upserts an id the server has not seen — exactly the empty-string-FK case this validator was written to block (CR-04). Relaxing it needs its own decision about PATCH-as-insert semantics; whichever phase ships a reorder-exercises feature should read this before rediscovering the constraint.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T20:20:14.680Z",
     "resolved_at": null
   }
 ]

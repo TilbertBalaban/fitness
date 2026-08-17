@@ -144,6 +144,32 @@ async function loggedSetWeight(id: string): Promise<{ weight_kg: string | null }
   return rows[0];
 }
 
+interface LoggedSetSnapshot {
+  weight_kg: string | null;
+  set_index: number;
+  set_type: string;
+  reps: number;
+  rir: number | null;
+  side: string | null;
+  completed: boolean;
+  parent_set_id: string | null;
+  rest_taken_seconds: number | null;
+  logged_at: string;
+}
+
+// Reads every mutable column, including the two the PATCH-clobber defect (02-13-PLAN.md) reset
+// silently: set_index and completed. logged_at is read via ::text — the `pg` driver otherwise
+// parses `timestamp` into a driver-local Date, which is not the reason under test here.
+async function loggedSetRow(id: string): Promise<LoggedSetSnapshot | undefined> {
+  const { rows } = await pg.query(
+    `SELECT weight_kg, set_index, set_type, reps, rir, side, completed, parent_set_id,
+            rest_taken_seconds, logged_at::text AS logged_at
+     FROM logged_set WHERE id = $1`,
+    [id],
+  );
+  return rows[0];
+}
+
 async function conflictLogRowsFor(rowId: string): Promise<{ losing_value: Record<string, unknown>; winning_value: Record<string, unknown> }[]> {
   const { rows } = await pg.query(
     'SELECT losing_value, winning_value FROM sync_conflict_log WHERE row_id = $1 ORDER BY detected_at ASC',
@@ -250,7 +276,10 @@ describe('Null-weight round trip (e2e)', () => {
     const initial = loggedSetOp(setId, { session_exercise_id: se1, set_index: 1, weight_kg: '40.000', reps: 5, completed: true });
     const initialRes = await push(cookie, [initial]);
     expect((initialRes.body as SyncPushResponse).rejected).toEqual([]);
-    expect((await loggedSetWeight(setId))?.weight_kg).toBe('40.000');
+    const before = await loggedSetRow(setId);
+    expect(before?.weight_kg).toBe('40.000');
+    expect(before?.set_index).toBe(1);
+    expect(before?.completed).toBe(true);
 
     const patchOp: SyncCrudOp = {
       op_id: randomUUID(),
@@ -264,7 +293,13 @@ describe('Null-weight round trip (e2e)', () => {
     const body: SyncPushResponse = patchRes.body;
     expect(body.applied).toEqual([patchOp.op_id]);
     expect(body.rejected).toEqual([]);
-    expect((await loggedSetWeight(setId))?.weight_kg).toBeNull();
+    const after = await loggedSetRow(setId);
+    expect(after?.weight_kg).toBeNull();
+    // The two other blind-spot fields identified in 02-VERIFICATION.md's gap: an update set that
+    // filtered every column out (the no-op trap) would also leave these unchanged, so this alone
+    // does not prove the fix — the reps-only case below asserts the changed column actually moved.
+    expect(after?.set_index).toBe(before?.set_index);
+    expect(after?.completed).toBe(before?.completed);
   });
 
   it('PATCH changing only reps, with weight_kg absent, leaves the previously-stored weight byte-identical', async () => {
@@ -275,7 +310,7 @@ describe('Null-weight round trip (e2e)', () => {
     const initial = loggedSetOp(setId, { session_exercise_id: se1, set_index: 1, weight_kg: '52.500', reps: 5, completed: true });
     const initialRes = await push(cookie, [initial]);
     expect((initialRes.body as SyncPushResponse).rejected).toEqual([]);
-    const before = await loggedSetWeight(setId);
+    const before = await loggedSetRow(setId);
     expect(before?.weight_kg).toBe('52.500');
 
     const patchOp: SyncCrudOp = {
@@ -288,8 +323,21 @@ describe('Null-weight round trip (e2e)', () => {
     const patchRes = await push(cookie, [patchOp]);
     expect((patchRes.body as SyncPushResponse).rejected).toEqual([]);
 
-    const after = await loggedSetWeight(setId);
+    const after = await loggedSetRow(setId);
     expect(after?.weight_kg).toBe(before?.weight_kg);
+    // The PATCH's own value must actually land — without this, an update set that filtered every
+    // column out would satisfy every survival assertion below while silently discarding the edit
+    // (02-VERIFICATION.md's gap: this exact PATCH silently reset set_index to 0 and completed to
+    // false at HEAD, and the pre-existing version of this test never looked).
+    expect(after?.reps).toBe(9);
+    expect(after?.set_index).toBe(before?.set_index);
+    expect(after?.set_type).toBe(before?.set_type);
+    expect(after?.completed).toBe(before?.completed);
+    expect(after?.rir).toBe(before?.rir);
+    expect(after?.side).toBe(before?.side);
+    expect(after?.parent_set_id).toBe(before?.parent_set_id);
+    expect(after?.rest_taken_seconds).toBe(before?.rest_taken_seconds);
+    expect(after?.logged_at).toBe(before?.logged_at);
   });
 
   it("PUT with weight_kg of '-5' is rejected invalid_field", async () => {
