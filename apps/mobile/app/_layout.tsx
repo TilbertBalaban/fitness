@@ -6,6 +6,13 @@ import '@/global.css';
 // time, so this is safe with no screen wired to it yet.
 import '@/lib/db/powersync';
 
+// Side-effect-only, same reasoning as above: forces Metro to resolve the platform-specific export
+// module (export-training-data.web.ts here, export-training-data.ts — and its expo-file-system /
+// expo-sharing imports — on native) through the module graph before any screen calls
+// exportTrainingData(), so `expo export --platform web` actually proves this file bundles rather
+// than silently skipping it as dead code.
+import '@/lib/export/export-training-data';
+
 import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';

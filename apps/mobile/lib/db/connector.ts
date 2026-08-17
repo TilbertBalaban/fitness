@@ -1,6 +1,7 @@
 import type { AbstractPowerSyncDatabase, CrudEntry, PowerSyncBackendConnector } from '@powersync/common';
 import { SYNC_PUSH_PATH, type SyncCrudOp, type SyncCrudOpType, type SyncPushRequest } from '@fitness/api-contracts';
 import { apiFetch } from '../api-client';
+import { recordPushOutcome } from '../sync-status';
 
 function toSyncCrudOp(entry: CrudEntry): SyncCrudOp {
   return {
@@ -30,6 +31,7 @@ export class SyncConnector implements PowerSyncBackendConnector {
       method: 'POST',
       body: JSON.stringify(body),
     });
+    recordPushOutcome(outcome);
 
     if (outcome === 'ok') {
       await transaction.complete();

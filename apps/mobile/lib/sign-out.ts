@@ -1,13 +1,7 @@
 import { Platform } from 'react-native';
 import { apiFetch } from './api-client';
 import { AUTH_ENDPOINT, clearCachedSession } from './auth-storage';
-
-// The seam D-04 requires. Always 0 in Phase 1 — there is no local database yet — so Phase 2
-// replaces this one function body with a real count rather than threading a confirmation into a
-// sign-out lifecycle that already shipped without one.
-export async function pendingWriteCount(): Promise<number> {
-  return 0;
-}
+import { pendingWriteCount } from './pending-write-count';
 
 export interface SignOutOptions {
   confirmDiscard?: (pendingCount: number) => Promise<boolean> | boolean;
