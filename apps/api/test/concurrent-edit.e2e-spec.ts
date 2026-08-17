@@ -133,6 +133,10 @@ function loggedSetOp(id: string, fields: LoggedSetFields, overrides: Partial<Syn
   };
 }
 
+function deleteOp(type: string, id: string): SyncCrudOp {
+  return { op_id: randomUUID(), op: 'DELETE', type, id, data: null };
+}
+
 async function loggedSetRow(
   id: string,
 ): Promise<{ id: string; session_exercise_id: string; weight_kg: string; reps: number; rir: number | null; set_index: number; completed: boolean } | undefined> {
@@ -163,6 +167,24 @@ async function conflictLogCount(rowIds: string[]): Promise<number> {
 
 async function tombstoneCount(rowIds: string[]): Promise<number> {
   const { rows } = await pg.query('SELECT count(*)::int AS n FROM sync_tombstone WHERE row_id = ANY($1::text[])', [rowIds]);
+  return rows[0].n;
+}
+
+async function workoutSessionExists(id: string): Promise<boolean> {
+  const { rows } = await pg.query('SELECT id FROM workout_session WHERE id = $1', [id]);
+  return rows.length > 0;
+}
+
+async function sessionExerciseCountForSession(sessionId: string): Promise<number> {
+  const { rows } = await pg.query('SELECT count(*)::int AS n FROM session_exercise WHERE session_id = $1', [sessionId]);
+  return rows[0].n;
+}
+
+async function loggedSetCountForSessionExercises(sessionExerciseIds: string[]): Promise<number> {
+  const { rows } = await pg.query(
+    'SELECT count(*)::int AS n FROM logged_set WHERE session_exercise_id = ANY($1::text[])',
+    [sessionExerciseIds],
+  );
   return rows[0].n;
 }
 
@@ -411,5 +433,148 @@ describe('Two-device concurrent edit (e2e)', () => {
     expect(rowA?.id).not.toBe(rowB?.id);
     expect(await loggedSetCount([setUnderSe1, setUnderSe2])).toBe(2);
     expect(await conflictLogCount([setUnderSe1, setUnderSe2])).toBe(0);
+  });
+});
+
+describe('Deletes that stay deleted (e2e)', () => {
+  it('removes a logged_set row and writes one sync_tombstone row on DELETE', async () => {
+    const cookie = await signUp('delete-set');
+    const { se1 } = await seedSession(cookie);
+    const setId = randomUUID();
+    await push(cookie, [
+      loggedSetOp(setId, { session_exercise_id: se1, set_index: 1, weight_kg: '60.000', reps: 10, completed: true }),
+    ]);
+
+    const res = await push(cookie, [deleteOp('logged_set', setId)]);
+    const body = res.body as SyncPushResponse;
+
+    expect(body.rejected).toEqual([]);
+    expect(await loggedSetRow(setId)).toBeUndefined();
+    expect(await tombstoneCount([setId])).toBe(1);
+  });
+
+  it('rejects a PUT for a tombstoned id with deleted and does not recreate the row', async () => {
+    const cookie = await signUp('put-after-delete');
+    const { se1 } = await seedSession(cookie);
+    const setId = randomUUID();
+    await push(cookie, [
+      loggedSetOp(setId, { session_exercise_id: se1, set_index: 1, weight_kg: '60.000', reps: 10, completed: true }),
+    ]);
+    await push(cookie, [deleteOp('logged_set', setId)]);
+
+    const staleEdit = loggedSetOp(setId, { session_exercise_id: se1, set_index: 1, weight_kg: '99.000', reps: 1, completed: true });
+    const res = await push(cookie, [staleEdit]);
+    const body = res.body as SyncPushResponse;
+
+    expect(body.applied).toEqual([]);
+    expect(body.rejected).toEqual([{ op_id: staleEdit.op_id, reason: 'deleted' }]);
+    expect(await loggedSetRow(setId)).toBeUndefined();
+  });
+
+  it('rejects a PATCH for a tombstoned id with deleted and does not recreate the row', async () => {
+    const cookie = await signUp('patch-after-delete');
+    const { se1 } = await seedSession(cookie);
+    const setId = randomUUID();
+    await push(cookie, [
+      loggedSetOp(setId, { session_exercise_id: se1, set_index: 1, weight_kg: '60.000', reps: 10, completed: true }),
+    ]);
+    await push(cookie, [deleteOp('logged_set', setId)]);
+
+    const staleEdit = loggedSetOp(
+      setId,
+      { session_exercise_id: se1, set_index: 1, weight_kg: '99.000', reps: 1, completed: true },
+      { op: 'PATCH' },
+    );
+    const res = await push(cookie, [staleEdit]);
+    const body = res.body as SyncPushResponse;
+
+    expect(body.applied).toEqual([]);
+    expect(body.rejected).toEqual([{ op_id: staleEdit.op_id, reason: 'deleted' }]);
+    expect(await loggedSetRow(setId)).toBeUndefined();
+  });
+
+  it('deletes the same id twice idempotently, adding no second tombstone row', async () => {
+    const cookie = await signUp('double-delete');
+    const { se1 } = await seedSession(cookie);
+    const setId = randomUUID();
+    await push(cookie, [
+      loggedSetOp(setId, { session_exercise_id: se1, set_index: 1, weight_kg: '60.000', reps: 10, completed: true }),
+    ]);
+
+    const first = await push(cookie, [deleteOp('logged_set', setId)]);
+    expect((first.body as SyncPushResponse).rejected).toEqual([]);
+    const second = await push(cookie, [deleteOp('logged_set', setId)]);
+    expect((second.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await tombstoneCount([setId])).toBe(1);
+  });
+
+  it('deletes a workout_session and removes its session_exercises and logged_sets in the same transaction, leaving no orphans', async () => {
+    const cookie = await signUp('delete-session');
+    const { sessionId, se1 } = await seedSession(cookie);
+    const setId = randomUUID();
+    await push(cookie, [
+      loggedSetOp(setId, { session_exercise_id: se1, set_index: 1, weight_kg: '60.000', reps: 10, completed: true }),
+    ]);
+
+    const res = await push(cookie, [deleteOp('workout_session', sessionId)]);
+    const body = res.body as SyncPushResponse;
+    expect(body.rejected).toEqual([]);
+
+    expect(await workoutSessionExists(sessionId)).toBe(false);
+    expect(await sessionExerciseCountForSession(sessionId)).toBe(0);
+    expect(await loggedSetCountForSessionExercises([se1])).toBe(0);
+  });
+
+  it('rejects a DELETE for a row belonging to another user with not_owner and leaves the row untouched', async () => {
+    const ownerCookie = await signUp('delete-owner');
+    const attackerCookie = await signUp('delete-attacker');
+    const { se1 } = await seedSession(ownerCookie);
+    const setId = randomUUID();
+    await push(ownerCookie, [
+      loggedSetOp(setId, { session_exercise_id: se1, set_index: 1, weight_kg: '60.000', reps: 10, completed: true }),
+    ]);
+
+    const res = await push(attackerCookie, [deleteOp('logged_set', setId)]);
+    const body = res.body as SyncPushResponse;
+
+    expect(body.applied).toEqual([]);
+    expect(body.rejected[0]).toEqual({ op_id: expect.any(String), reason: 'not_owner' });
+    expect(await loggedSetRow(setId)).toBeDefined();
+  });
+
+  it('rejects an attempt to delete an exercise row rather than applying it', async () => {
+    const cookie = await signUp('delete-exercise');
+    const op = deleteOp('exercise', exerciseId);
+
+    const res = await push(cookie, [op]);
+    const body = res.body as SyncPushResponse;
+
+    expect(body.applied).toEqual([]);
+    expect(body.rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
+  });
+
+  it('scopes a tombstone to one user: another user creating a row with the same id is unaffected', async () => {
+    const ownerCookie = await signUp('tombstone-owner');
+    const otherCookie = await signUp('tombstone-other');
+    const { se1: ownerSe1 } = await seedSession(ownerCookie);
+    const { se1: otherSe1 } = await seedSession(otherCookie);
+    const sharedId = randomUUID();
+
+    await push(ownerCookie, [
+      loggedSetOp(sharedId, { session_exercise_id: ownerSe1, set_index: 1, weight_kg: '60.000', reps: 10, completed: true }),
+    ]);
+    await push(ownerCookie, [deleteOp('logged_set', sharedId)]);
+    expect(await loggedSetRow(sharedId)).toBeUndefined();
+
+    const res = await push(otherCookie, [
+      loggedSetOp(sharedId, { session_exercise_id: otherSe1, set_index: 1, weight_kg: '40.000', reps: 5, completed: true }),
+    ]);
+    const body = res.body as SyncPushResponse;
+
+    expect(body.rejected).toEqual([]);
+    const row = await loggedSetRow(sharedId);
+    expect(row).toBeDefined();
+    expect(row?.session_exercise_id).toBe(otherSe1);
   });
 });
