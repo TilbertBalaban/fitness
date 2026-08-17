@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 18
+open_count: 20
 waived_count: 0
 fixed_count: 1
-total_count: 19
-last_updated: 2026-08-17T08:03:47.271Z
+total_count: 21
+last_updated: 2026-08-17T08:32:01.676Z
 ---
 
 # Broken Windows Ledger
@@ -34,6 +34,8 @@ last_updated: 2026-08-17T08:03:47.271Z
 | 17 | 02 | unrun-verify | apps/mobile/__tests__/offline-write.test.ts |  | PowerSync's real local-write and crud-queue population (native op-sqlite / web WASM+Worker+IndexedDB) cannot run inside this Jest process — no native runtime, no browser. offline-write.test.ts proves the id-generation contract and SyncConnector's mapping/branching logic against fakes instead of the real engine; the actual local-SQLite round trip is unverified beyond the expo export --platform web bundling/asset-resolution proof. | open |  | 2026-08-17T07:22:29.262Z |  |
 | 18 | 02 | stub | apps/mobile/lib/db/id.ts |  | UUID generator is not cryptographically random (Math.random-based) — should be replaced with expo-crypto randomUUID() once cleared through a package-legitimacy checkpoint | open |  | 2026-08-17T08:03:39.888Z |  |
 | 19 | 02 | stub | apps/api/src/sync/sync.service.ts |  | 9 of 12 SYNCED_TABLES entries (routine, routine_day, routine_exercise, equipment_profile, exercise, personal_record, body_metric, progress_photo, user_preference) have no server-side apply path yet — ops for them are rejected unknown_table by the crash guard rather than applied; intentional scope boundary, not yet wired by this plan | open |  | 2026-08-17T08:03:47.271Z |  |
+| 20 | 02 | unrun-verify | apps/mobile/lib/db/test-support.ts |  | Real PowerSync web database cannot be constructed under this Jest/Node sandbox: jest-environment-jsdom and fake-indexeddb are both absent from the lockfile (installing them is out of scope per the package-legitimacy gate); the RN-Web export condition Jest resolves under (customExportConditions includes react-native) forces @powersync/web's react_native_web dist build, which requires a real Worker global even with useWebWorker:false; the plain browser build also requires window.Worker for its default async/multi-tab path; the WASM sync-mode InMemoryVFS path hangs indefinitely (no companion browser context to service its synchronous cross-realm signaling); and forcing --experimental-vm-modules to satisfy the WASM loader's dynamic import() would require a project-wide Jest ESM migration, itself a Rule-4 architectural change out of this plan's scope. crash-recovery.test.ts and schema-redefinition.test.ts (PLAT-07, roadmap criterion 4) could not be authored as real, passing suites against a live database; test-support.ts is written and typechecks against the real PowerSync/Drizzle types but is unexercised here. | open |  | 2026-08-17T08:31:54.224Z |  |
+| 21 | 02 | deviation | apps/mobile/lib/db/log-set.ts |  | startSession/addSessionExercise/logSet call the module-level getPowerSync() singleton from ./powersync (not in this plan's files_modified scope) directly, with no injectable database parameter. Even on an environment where a real PowerSync database could be constructed under Jest, a durability suite could not route these helpers to an isolated test database without either mocking the powersync module (forbidden by this plan's own acceptance criteria) or adding a DI seam to log-set.ts/powersync.ts (out of this plan's declared scope, and a change other parallel plans in this wave may also touch). A future plan that adds a real browser/device UAT harness for crash-recovery/schema-redefinition will need to add this seam. | open |  | 2026-08-17T08:32:01.676Z |  |
 
 ````json
 [
@@ -263,6 +265,30 @@ last_updated: 2026-08-17T08:03:47.271Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-17T08:03:47.271Z",
+    "resolved_at": null
+  },
+  {
+    "id": 20,
+    "kind": "unrun-verify",
+    "phase": "02",
+    "file": "apps/mobile/lib/db/test-support.ts",
+    "line": null,
+    "description": "Real PowerSync web database cannot be constructed under this Jest/Node sandbox: jest-environment-jsdom and fake-indexeddb are both absent from the lockfile (installing them is out of scope per the package-legitimacy gate); the RN-Web export condition Jest resolves under (customExportConditions includes react-native) forces @powersync/web's react_native_web dist build, which requires a real Worker global even with useWebWorker:false; the plain browser build also requires window.Worker for its default async/multi-tab path; the WASM sync-mode InMemoryVFS path hangs indefinitely (no companion browser context to service its synchronous cross-realm signaling); and forcing --experimental-vm-modules to satisfy the WASM loader's dynamic import() would require a project-wide Jest ESM migration, itself a Rule-4 architectural change out of this plan's scope. crash-recovery.test.ts and schema-redefinition.test.ts (PLAT-07, roadmap criterion 4) could not be authored as real, passing suites against a live database; test-support.ts is written and typechecks against the real PowerSync/Drizzle types but is unexercised here.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T08:31:54.224Z",
+    "resolved_at": null
+  },
+  {
+    "id": 21,
+    "kind": "deviation",
+    "phase": "02",
+    "file": "apps/mobile/lib/db/log-set.ts",
+    "line": null,
+    "description": "startSession/addSessionExercise/logSet call the module-level getPowerSync() singleton from ./powersync (not in this plan's files_modified scope) directly, with no injectable database parameter. Even on an environment where a real PowerSync database could be constructed under Jest, a durability suite could not route these helpers to an isolated test database without either mocking the powersync module (forbidden by this plan's own acceptance criteria) or adding a DI seam to log-set.ts/powersync.ts (out of this plan's declared scope, and a change other parallel plans in this wave may also touch). A future plan that adds a real browser/device UAT harness for crash-recovery/schema-redefinition will need to add this seam.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T08:32:01.676Z",
     "resolved_at": null
   }
 ]
