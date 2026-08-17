@@ -1,16 +1,38 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import {
   SYNCED_TABLES,
-  SYNC_MAX_BATCH_OPS,
   type SyncCrudOp,
   type SyncPushResponse,
   type SyncRejectionReason,
 } from '@fitness/api-contracts';
 import { DRIZZLE, type Database } from '../db/drizzle.module';
-import { workoutSession } from '../db/schema';
+import { workoutSession, sessionExercise, loggedSet } from '../db/schema';
 
-const TABLE_MAP = { workout_session: workoutSession } as const;
+const TABLE_MAP = {
+  workout_session: workoutSession,
+  session_exercise: sessionExercise,
+  logged_set: loggedSet,
+} as const;
+
+type MappedTable = keyof typeof TABLE_MAP;
+
+function isMappedTable(type: string): type is MappedTable {
+  return type in TABLE_MAP;
+}
+
+// Parents apply before children within an aggregate — PowerSync's crud queue can genuinely
+// deliver ops in an order the app did not intend, so this is an explicit sort, not an assumption
+// (PITFALLS §4).
+const AGGREGATE_RANK: Record<MappedTable, number> = {
+  workout_session: 0,
+  session_exercise: 1,
+  logged_set: 2,
+};
+
+const SESSION_STATUSES = new Set(['in_progress', 'completed', 'discarded']);
+const SET_TYPES = new Set(['normal', 'warmup', 'drop', 'myorep', 'partial', 'failure', 'amrap']);
+const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface WorkoutSessionOpData {
   routine_day_id?: string | null;
@@ -21,6 +43,34 @@ interface WorkoutSessionOpData {
   device_id?: string | null;
   timezone?: string;
   local_date?: string;
+}
+
+interface SessionExerciseOpData {
+  session_id?: string;
+  exercise_id?: string;
+  order_index?: number;
+  superset_group_id?: string | null;
+  routine_exercise_id?: string | null;
+  target_sets?: number | null;
+  target_rep_min?: number | null;
+  target_rep_max?: number | null;
+  target_rir_min?: number | null;
+  target_rir_max?: number | null;
+  target_rest_seconds?: number | null;
+}
+
+interface LoggedSetOpData {
+  session_exercise_id?: string;
+  set_index?: number;
+  set_type?: string;
+  weight_kg?: string | number;
+  reps?: number;
+  rir?: number | null;
+  side?: string | null;
+  completed?: boolean;
+  parent_set_id?: string | null;
+  rest_taken_seconds?: number | null;
+  logged_at?: string;
 }
 
 function toWorkoutSessionValues(id: string, userId: string, data: Record<string, unknown> | null | undefined) {
@@ -42,67 +92,296 @@ function toWorkoutSessionValues(id: string, userId: string, data: Record<string,
   };
 }
 
+function toSessionExerciseValues(id: string, sessionId: string, data: Record<string, unknown> | null | undefined) {
+  const d = (data ?? {}) as SessionExerciseOpData;
+  return {
+    id,
+    sessionId,
+    exerciseId: d.exercise_id ?? '',
+    orderIndex: d.order_index ?? 0,
+    supersetGroupId: d.superset_group_id ?? null,
+    routineExerciseId: d.routine_exercise_id ?? null,
+    targetSets: d.target_sets ?? null,
+    targetRepMin: d.target_rep_min ?? null,
+    targetRepMax: d.target_rep_max ?? null,
+    targetRirMin: d.target_rir_min ?? null,
+    targetRirMax: d.target_rir_max ?? null,
+    targetRestSeconds: d.target_rest_seconds ?? null,
+  };
+}
+
+function toLoggedSetValues(id: string, sessionExerciseId: string, data: Record<string, unknown> | null | undefined) {
+  const d = (data ?? {}) as LoggedSetOpData;
+  return {
+    id,
+    sessionExerciseId,
+    setIndex: d.set_index ?? 0,
+    setType: d.set_type ?? 'normal',
+    weightKg: String(d.weight_kg ?? '0'),
+    reps: d.reps ?? 0,
+    rir: d.rir ?? null,
+    side: d.side ?? null,
+    completed: d.completed ?? false,
+    parentSetId: d.parent_set_id ?? null,
+    restTakenSeconds: d.rest_taken_seconds ?? null,
+    loggedAt: d.logged_at ? new Date(d.logged_at) : new Date(),
+  };
+}
+
+function isNonNegativeInteger(value: unknown): boolean {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isNonNegativeDecimal(value: unknown): boolean {
+  if (typeof value !== 'string' && typeof value !== 'number') return false;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0;
+}
+
+// Validated against the column each field targets before applying (T-02-05). An op failing
+// validation is rejected invalid_field and never reaches the apply phase.
+function hasInvalidField(op: SyncCrudOp): boolean {
+  if (op.op === 'DELETE') return false;
+  const data = (op.data ?? {}) as Record<string, unknown>;
+
+  if (op.type === 'workout_session') {
+    if (data.status !== undefined && !(typeof data.status === 'string' && SESSION_STATUSES.has(data.status))) {
+      return true;
+    }
+    if (data.local_date !== undefined && !(typeof data.local_date === 'string' && LOCAL_DATE_RE.test(data.local_date))) {
+      return true;
+    }
+    return false;
+  }
+
+  if (op.type === 'logged_set') {
+    if (data.weight_kg !== undefined && !isNonNegativeDecimal(data.weight_kg)) return true;
+    if (data.reps !== undefined && !isNonNegativeInteger(data.reps)) return true;
+    if (data.set_index !== undefined && !isNonNegativeInteger(data.set_index)) return true;
+    if (data.set_type !== undefined && !(typeof data.set_type === 'string' && SET_TYPES.has(data.set_type))) {
+      return true;
+    }
+    return false;
+  }
+
+  return false;
+}
+
+interface Aggregate {
+  root: string | null;
+  ops: SyncCrudOp[];
+  poisoned: boolean;
+}
+
 @Injectable()
 export class SyncService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  // Resolves ownership from the authenticated session only — never from a client-supplied
-  // user_id in an op's data (T-02-01). Batch-size gating is the controller's job; this method
-  // assumes it is only ever called with an already-bounded batch.
+  // Resolves ownership through the owning chain to workout_session.user_id for every op in an
+  // aggregate — a child is never trusted because its own id was accepted (T-02-01, T-02-03).
+  // Groups by aggregate (workout_session + its session_exercise + its logged_set rows) and
+  // applies each aggregate inside one transaction, so a partial push never leaves a set pointing
+  // at a parent that does not exist (PITFALLS §4).
   async applyBatch(userId: string, batch: SyncCrudOp[]): Promise<SyncPushResponse> {
     const applied: string[] = [];
     const rejected: { op_id: string; reason: SyncRejectionReason }[] = [];
     let highestServerSeq = 0n;
 
-    await this.db.transaction(async (tx) => {
-      for (const op of batch) {
-        if (!(SYNCED_TABLES as readonly string[]).includes(op.type)) {
-          rejected.push({ op_id: op.op_id, reason: 'unknown_table' });
-          continue;
-        }
-
-        const table = TABLE_MAP[op.type as keyof typeof TABLE_MAP];
-
-        // Re-verified on every op, not just on first insert (T-02-01): an id already accepted
-        // once is never treated as already-owned without this re-read inside the same transaction.
-        const existing = await tx
-          .select({ userId: table.userId })
-          .from(table)
-          .where(eq(table.id, op.id))
-          .for('update');
-
-        if (existing.length > 0 && existing[0].userId !== userId) {
-          rejected.push({ op_id: op.op_id, reason: 'not_owner' });
-          continue;
-        }
-
-        if (op.op === 'DELETE') {
-          if (existing.length > 0) {
-            await tx.delete(table).where(eq(table.id, op.id));
-          }
-          const seqResult = await tx.execute<{ seq: string }>(sql`select nextval('sync_seq') as seq`);
-          const seqValue = BigInt(seqResult.rows[0].seq);
-          if (seqValue > highestServerSeq) highestServerSeq = seqValue;
-          applied.push(op.op_id);
-          continue;
-        }
-
-        // PUT / PATCH — upsert keyed on the client UUID (D-02); a replayed op yields one row,
-        // not a duplicate-key error. serverSeq is bumped explicitly on both branches — the
-        // column's own nextval() default only fires on INSERT, never on an ON CONFLICT UPDATE.
-        const values = toWorkoutSessionValues(op.id, userId, op.data);
-        const nextSeq = sql`nextval('sync_seq')`;
-        const [{ serverSeq }] = await tx
-          .insert(table)
-          .values({ ...values, serverSeq: nextSeq })
-          .onConflictDoUpdate({ target: table.id, set: { ...values, serverSeq: nextSeq } })
-          .returning({ serverSeq: table.serverSeq });
-
-        const seqValue = BigInt(serverSeq);
-        if (seqValue > highestServerSeq) highestServerSeq = seqValue;
-        applied.push(op.op_id);
+    const workable: SyncCrudOp[] = [];
+    for (const op of batch) {
+      if (!(SYNCED_TABLES as readonly string[]).includes(op.type) || !isMappedTable(op.type)) {
+        rejected.push({ op_id: op.op_id, reason: 'unknown_table' });
+        continue;
       }
-    });
+      if (hasInvalidField(op)) {
+        rejected.push({ op_id: op.op_id, reason: 'invalid_field' });
+        continue;
+      }
+      workable.push(op);
+    }
+
+    if (workable.length === 0) {
+      return { applied, rejected, server_seq: highestServerSeq.toString() };
+    }
+
+    const sessionExerciseOps = workable.filter((op) => op.type === 'session_exercise');
+    const loggedSetOps = workable.filter((op) => op.type === 'logged_set');
+    const sessionExerciseSessionIdFromData = new Map<string, string>();
+    for (const op of sessionExerciseOps) {
+      const sessionId = (op.data as SessionExerciseOpData | null | undefined)?.session_id;
+      if (sessionId) sessionExerciseSessionIdFromData.set(op.id, sessionId);
+    }
+    const loggedSetSessionExerciseIdFromData = new Map<string, string>();
+    for (const op of loggedSetOps) {
+      const sessionExerciseId = (op.data as LoggedSetOpData | null | undefined)?.session_exercise_id;
+      if (sessionExerciseId) loggedSetSessionExerciseIdFromData.set(op.id, sessionExerciseId);
+    }
+
+    // Read every existing parent this batch might touch or reference in two batched queries —
+    // never a per-row lookup (an N+1 shape plan 02-07's query-count assertion will fail on).
+    // Every session_exercise id a session_exercise op OWNS, plus every one a logged_set op
+    // references, so an existing row's real linkage is always known.
+    const sessionExerciseIdsToCheck = new Set<string>([
+      ...sessionExerciseOps.map((op) => op.id),
+      ...loggedSetSessionExerciseIdFromData.values(),
+    ]);
+    const dbSessionExercises = sessionExerciseIdsToCheck.size
+      ? await this.db
+          .select({ id: sessionExercise.id, sessionId: sessionExercise.sessionId })
+          .from(sessionExercise)
+          .where(inArray(sessionExercise.id, [...sessionExerciseIdsToCheck]))
+      : [];
+    const dbSessionIdBySessionExerciseId = new Map(dbSessionExercises.map((row) => [row.id, row.sessionId]));
+
+    const loggedSetIdsToCheck = new Set(loggedSetOps.map((op) => op.id));
+    const dbLoggedSets = loggedSetIdsToCheck.size
+      ? await this.db
+          .select({ id: loggedSet.id, sessionExerciseId: loggedSet.sessionExerciseId })
+          .from(loggedSet)
+          .where(inArray(loggedSet.id, [...loggedSetIdsToCheck]))
+      : [];
+    const dbSessionExerciseIdByLoggedSetId = new Map(dbLoggedSets.map((row) => [row.id, row.sessionExerciseId]));
+
+    // Existing linkage always wins over a client-claimed value — an id that already exists cannot
+    // be reparented onto a different aggregate by simply claiming a different parent in this push
+    // (T-02-03); only a brand-new row (no existing linkage) trusts the client-supplied parent.
+    function resolveSessionIdForSessionExercise(sessionExerciseId: string): string | undefined {
+      return dbSessionIdBySessionExerciseId.get(sessionExerciseId) ?? sessionExerciseSessionIdFromData.get(sessionExerciseId);
+    }
+    function resolveSessionExerciseIdForLoggedSet(loggedSetOpId: string): string | undefined {
+      return dbSessionExerciseIdByLoggedSetId.get(loggedSetOpId) ?? loggedSetSessionExerciseIdFromData.get(loggedSetOpId);
+    }
+
+    // Root resolution — null means "could not be determined from the batch or the database".
+    const rootByOpId = new Map<string, string | null>();
+    for (const op of workable) {
+      if (op.type === 'workout_session') {
+        rootByOpId.set(op.op_id, op.id);
+      } else if (op.type === 'session_exercise') {
+        rootByOpId.set(op.op_id, resolveSessionIdForSessionExercise(op.id) ?? null);
+      } else {
+        const sessionExerciseId = resolveSessionExerciseIdForLoggedSet(op.id);
+        rootByOpId.set(op.op_id, sessionExerciseId ? (resolveSessionIdForSessionExercise(sessionExerciseId) ?? null) : null);
+      }
+    }
+
+    // A batch that fails to resolve is healed onto the batch's single other known root, matching
+    // the realistic shape of one offline session pushed as one batch — a genuinely ambiguous or
+    // multi-session batch never merges an orphan into the wrong aggregate.
+    const resolvedRoots = new Set([...rootByOpId.values()].filter((r): r is string => r !== null));
+    const healRoot = resolvedRoots.size === 1 ? [...resolvedRoots][0] : null;
+
+    const aggregates = new Map<string, Aggregate>();
+    let orphanSeq = 0;
+    for (const op of workable) {
+      const resolvedRoot = rootByOpId.get(op.op_id) ?? null;
+      const effectiveRoot = resolvedRoot ?? healRoot;
+      const key = effectiveRoot ?? `__orphan_${orphanSeq++}`;
+      const existing = aggregates.get(key);
+      if (existing) {
+        existing.ops.push(op);
+        if (resolvedRoot === null) existing.poisoned = true;
+      } else {
+        aggregates.set(key, { root: effectiveRoot, ops: [op], poisoned: resolvedRoot === null });
+      }
+    }
+
+    // Ownership is resolved once per aggregate, through the root — re-read from the database on
+    // every push rather than trusted from a prior op, so an id already accepted once is never
+    // treated as already-owned (T-02-01, T-02-03). One batched query for every aggregate's root.
+    const nonPoisonedRoots = [...aggregates.values()]
+      .filter((a) => !a.poisoned && a.root !== null)
+      .map((a) => a.root as string);
+    const existingRoots = nonPoisonedRoots.length
+      ? await this.db
+          .select({ id: workoutSession.id, userId: workoutSession.userId })
+          .from(workoutSession)
+          .where(inArray(workoutSession.id, nonPoisonedRoots))
+      : [];
+    const existingOwnerByRoot = new Map(existingRoots.map((row) => [row.id, row.userId]));
+
+    for (const aggregate of aggregates.values()) {
+      if (aggregate.poisoned || aggregate.root === null) {
+        for (const op of aggregate.ops) rejected.push({ op_id: op.op_id, reason: 'missing_parent' });
+        continue;
+      }
+
+      const root = aggregate.root;
+      const rootOp = aggregate.ops.find((op) => op.type === 'workout_session' && op.id === root);
+
+      // The existing row, if any, is always authoritative — a PUT for an id that already exists
+      // under another user is a takeover attempt, not a fresh insert, regardless of who pushed it.
+      let owner: string | undefined = existingOwnerByRoot.get(root);
+      if (owner === undefined && rootOp && rootOp.op !== 'DELETE') {
+        owner = userId;
+      }
+
+      if (owner === undefined) {
+        for (const op of aggregate.ops) rejected.push({ op_id: op.op_id, reason: 'missing_parent' });
+        continue;
+      }
+      if (owner !== userId) {
+        for (const op of aggregate.ops) rejected.push({ op_id: op.op_id, reason: 'not_owner' });
+        continue;
+      }
+
+      const orderedOps = [...aggregate.ops].sort((a, b) => AGGREGATE_RANK[a.type as MappedTable] - AGGREGATE_RANK[b.type as MappedTable]);
+
+      await this.db.transaction(async (tx) => {
+        for (const op of orderedOps) {
+          const table = TABLE_MAP[op.type as MappedTable];
+
+          const existingRow = await tx.select({ id: table.id }).from(table).where(eq(table.id, op.id)).for('update');
+
+          if (op.op === 'DELETE') {
+            if (existingRow.length > 0) {
+              await tx.delete(table).where(eq(table.id, op.id));
+            }
+            const seqResult = await tx.execute<{ seq: string }>(sql`select nextval('sync_seq') as seq`);
+            const seqValue = BigInt(seqResult.rows[0].seq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+            applied.push(op.op_id);
+            continue;
+          }
+
+          const values =
+            op.type === 'workout_session'
+              ? toWorkoutSessionValues(op.id, userId, op.data)
+              : op.type === 'session_exercise'
+                ? toSessionExerciseValues(op.id, resolveSessionIdForSessionExercise(op.id) ?? root, op.data)
+                : toLoggedSetValues(op.id, resolveSessionExerciseIdForLoggedSet(op.id) ?? '', op.data);
+
+          if (op.type === 'workout_session') {
+            const nextSeq = sql`nextval('sync_seq')`;
+            const [{ serverSeq }] = await tx
+              .insert(workoutSession)
+              .values({ ...(values as ReturnType<typeof toWorkoutSessionValues>), serverSeq: nextSeq })
+              .onConflictDoUpdate({
+                target: workoutSession.id,
+                set: { ...(values as ReturnType<typeof toWorkoutSessionValues>), serverSeq: nextSeq },
+              })
+              .returning({ serverSeq: workoutSession.serverSeq });
+            const seqValue = BigInt(serverSeq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else if (op.type === 'session_exercise') {
+            await tx
+              .insert(sessionExercise)
+              .values(values as ReturnType<typeof toSessionExerciseValues>)
+              .onConflictDoUpdate({
+                target: sessionExercise.id,
+                set: values as ReturnType<typeof toSessionExerciseValues>,
+              });
+          } else {
+            await tx
+              .insert(loggedSet)
+              .values(values as ReturnType<typeof toLoggedSetValues>)
+              .onConflictDoUpdate({ target: loggedSet.id, set: values as ReturnType<typeof toLoggedSetValues> });
+          }
+
+          applied.push(op.op_id);
+        }
+      });
+    }
 
     return { applied, rejected, server_seq: highestServerSeq.toString() };
   }
