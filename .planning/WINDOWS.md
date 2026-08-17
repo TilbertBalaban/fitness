@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 24
+open_count: 25
 waived_count: 0
 fixed_count: 1
-total_count: 25
-last_updated: 2026-08-17T09:41:16.603Z
+total_count: 26
+last_updated: 2026-08-17T10:20:14.945Z
 ---
 
 # Broken Windows Ledger
@@ -40,6 +40,7 @@ last_updated: 2026-08-17T09:41:16.603Z
 | 23 | 02 | deviation | apps/mobile/lib/db/log-set.ts |  | startSession/addSessionExercise/logSet call the module-level getPowerSync() singleton from ./powersync directly, with no injectable database parameter. Even on an environment where a real PowerSync database could be constructed under Jest, a durability suite could not route these helpers to an isolated test database without either mocking the powersync module (forbidden by plan 02-05's acceptance criteria) or adding a DI seam to log-set.ts/powersync.ts (out of that plan's declared scope). A future plan that adds a real browser/device UAT harness for crash-recovery/schema-redefinition will need to add this seam. | open |  | 2026-08-17T09:05:25.185Z |  |
 | 24 | 02 | unrun-verify | apps/mobile/lib/export/export-training-data.ts |  | Native export path (expo-file-system write + expo-sharing share sheet) not exercised on iOS/Android — no Xcode/Android SDK on this machine. Verified instead: buildExportDocument's 10 behavior-line cases (Jest, fakes), tsc --noEmit, and expo export --platform web bundling both build-export-document.ts and export-training-data.web.ts (forced into the web build graph via a side-effect import in app/_layout.tsx, following Phase 2's db/powersync.ts precedent). | open |  | 2026-08-17T09:05:25.330Z |  |
 | 25 | 02 | stub | apps/api/src/db/schema/session.ts |  | logged_set has no duration_seconds/distance_meters column; time_based/distance_based exercises exist in the seeded catalog for load_type diversity but are never logged with realistic data (would require the reps=seconds anti-pattern PITFALLS.md §9 names) - a future plan should add these columns | open |  | 2026-08-17T09:41:16.603Z |  |
+| 26 | 02 | unrun-verify | apps/mobile/app/(tabs)/*.tsx |  | Task 3 (checkpoint:human-verify, gate=blocking) of 02-08-PLAN.md is unresolved: two-browser-window PLAT-03/PLAT-04 convergence and service-down usability checks require driving the app in a real browser, which project policy (browser testing only on explicit request) and this execution's environment constraints forbid. Tasks 1-2 (self-host decision, running PowerSync Service, token endpoint, connector wiring) are complete and verified; the checkpoint awaits a human to run apps/mobile per 02-08-PLAN.md Task 3's how-to-verify steps. | open |  | 2026-08-17T10:20:14.945Z |  |
 
 ````json
 [
@@ -341,6 +342,18 @@ last_updated: 2026-08-17T09:41:16.603Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-17T09:41:16.603Z",
+    "resolved_at": null
+  },
+  {
+    "id": 26,
+    "kind": "unrun-verify",
+    "phase": "02",
+    "file": "apps/mobile/app/(tabs)/*.tsx",
+    "line": null,
+    "description": "Task 3 (checkpoint:human-verify, gate=blocking) of 02-08-PLAN.md is unresolved: two-browser-window PLAT-03/PLAT-04 convergence and service-down usability checks require driving the app in a real browser, which project policy (browser testing only on explicit request) and this execution's environment constraints forbid. Tasks 1-2 (self-host decision, running PowerSync Service, token endpoint, connector wiring) are complete and verified; the checkpoint awaits a human to run apps/mobile per 02-08-PLAN.md Task 3's how-to-verify steps.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T10:20:14.945Z",
     "resolved_at": null
   }
 ]
