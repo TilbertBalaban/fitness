@@ -15,5 +15,24 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  # Replicates from the native Homebrew postgresql@18 the API itself writes to (127.0.0.1:5432 on
+  # the host), not the `postgres` service above — that service is a separate, never-started
+  # database and starting it would collide with the host's own port 5432 binding. See
+  # ops/powersync/powersync.yaml for why.
+  powersync:
+    image: journeyapps/powersync-service:latest
+    restart: unless-stopped
+    command: ["start", "-r", "unified"]
+    volumes:
+      - ./ops/powersync/powersync.yaml:/config/powersync.yaml
+      - ./ops/powersync/sync-rules.yaml:/config/sync-rules.yaml
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/powersync.yaml
+      PS_DATA_SOURCE_URI: postgresql://powersync_role:${POWERSYNC_REPLICATION_PASSWORD}@host.docker.internal:5432/fitness
+      PS_STORAGE_SOURCE_URI: postgresql://powersync_role:${POWERSYNC_REPLICATION_PASSWORD}@host.docker.internal:5432/fitness
+      PS_JWT_SECRET: ${POWERSYNC_JWT_SECRET}
+    ports:
+      - "8080:8080"
+
 volumes:
   postgres-data:

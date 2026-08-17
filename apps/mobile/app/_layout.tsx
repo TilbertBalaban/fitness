@@ -19,6 +19,8 @@ import { Platform } from 'react-native';
 import { apiFetch, setSessionCredentialProvider } from '@/lib/api-client';
 import { authClient, getSessionCookieHeader } from '@/lib/auth-client';
 import { AUTH_ENDPOINT, clearCachedSession } from '@/lib/auth-storage';
+import { SyncConnector } from '@/lib/db/connector';
+import { connectPowerSync, disconnectPowerSync } from '@/lib/db/powersync';
 import { classifySessionProbe, isRevocation, WEB_SESSION_RESOLVE_BUDGET_MS } from '@/lib/session-guard';
 import { applyAppearance, readStoredAppearance } from '@/lib/theme';
 import { WebSessionSkeleton } from '@/components/WebSessionSkeleton';
@@ -32,6 +34,7 @@ setSessionCredentialProvider(getSessionCookieHeader);
 
 export default function RootLayout() {
   const { data: session, isPending } = authClient.useSession();
+  const signedIn = !!session;
   const [appearanceReady, setAppearanceReady] = useState(false);
   const [webBudgetElapsed, setWebBudgetElapsed] = useState(false);
   const backgroundRefreshFired = useRef(false);
@@ -78,6 +81,17 @@ export default function RootLayout() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Pull only — push already runs unconditionally once a local write happens (D-09, plan 02-01).
+  // disconnect() on sign-out matches revokeServerSession()'s own local-first cleanup: the crud
+  // queue's own upload loop is independent and untouched by either call (T-02-29).
+  useEffect(() => {
+    if (!signedIn) {
+      void disconnectPowerSync();
+      return;
+    }
+    void connectPowerSync(new SyncConnector());
+  }, [signedIn]);
+
   if (!appearanceReady) {
     return null;
   }
@@ -90,7 +104,6 @@ export default function RootLayout() {
   // already restored the session from SecureStore synchronously, so the correct branch renders on
   // the first frame. `isPending` is deliberately NOT gated on here for native — doing so would
   // reintroduce exactly the blocking cold start this project rejects.
-  const signedIn = !!session;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

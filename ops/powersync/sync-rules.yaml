@@ -1,0 +1,28 @@
+# Edition 3 (Sync Streams) rather than legacy bucket_definitions: session_exercise and logged_set
+# are two and three joins away from their owning user respectively (workout_session ->
+# session_exercise -> logged_set), and legacy Sync Rules parameter/data queries cannot express a
+# JOIN or a subquery at all — only Streams' expanded SQL compiler (JOIN, CTEs, multiple queries
+# per stream) can walk that chain. Every query below still resolves to exactly one user via
+# auth.user_id(), the same per-user boundary a legacy bucket_definitions setup would enforce.
+#
+# The seeded exercise taxonomy tables are deliberately absent from every query below: catalog
+# content delivered by the first-install download (D-01), never a per-user synced row.
+config:
+  edition: 3
+
+streams:
+  user_data:
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM workout_session WHERE user_id = auth.user_id()
+      - SELECT session_exercise.* FROM session_exercise INNER JOIN workout_session ON session_exercise.session_id = workout_session.id WHERE workout_session.user_id = auth.user_id()
+      - SELECT logged_set.* FROM logged_set INNER JOIN session_exercise ON logged_set.session_exercise_id = session_exercise.id INNER JOIN workout_session ON session_exercise.session_id = workout_session.id WHERE workout_session.user_id = auth.user_id()
+      - SELECT * FROM routine WHERE user_id = auth.user_id()
+      - SELECT routine_day.* FROM routine_day INNER JOIN routine ON routine_day.routine_id = routine.id WHERE routine.user_id = auth.user_id()
+      - SELECT routine_exercise.* FROM routine_exercise INNER JOIN routine_day ON routine_exercise.routine_day_id = routine_day.id INNER JOIN routine ON routine_day.routine_id = routine.id WHERE routine.user_id = auth.user_id()
+      - SELECT * FROM equipment_profile WHERE user_id = auth.user_id()
+      - SELECT * FROM exercise WHERE user_id = auth.user_id()
+      - SELECT * FROM personal_record WHERE user_id = auth.user_id()
+      - SELECT * FROM body_metric WHERE user_id = auth.user_id()
+      - SELECT * FROM progress_photo WHERE user_id = auth.user_id()
+      - SELECT * FROM user_preference WHERE user_id = auth.user_id()
