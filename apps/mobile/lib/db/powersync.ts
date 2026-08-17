@@ -5,6 +5,8 @@ import { drizzleSchema } from './schema';
 
 export const AppSchema = new DrizzleAppSchema(drizzleSchema);
 
+export type WriteDb = ReturnType<typeof wrapPowerSyncWithDrizzle>;
+
 let db: ReturnType<typeof wrapPowerSyncWithDrizzle> | null = null;
 let powersync: PowerSyncDatabase | null = null;
 

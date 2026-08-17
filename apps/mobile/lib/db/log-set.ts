@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import * as unitsContract from '@fitness/api-contracts';
 import { captureCalendarDay } from '../calendar-day';
 import { generateClientId } from './id';
-import { getPowerSync } from './powersync';
+import { getPowerSync, type WriteDb } from './powersync';
 import { loggedSet, routineExercise, sessionExercise, workoutSession } from './schema';
 
 export interface StartSessionInput {
@@ -14,8 +14,10 @@ export interface StartSessionInput {
 
 // Stamps timezone and local_date once, here, from the device's IANA zone (LOG-22) — nothing else
 // in this codebase ever writes those two columns, and no read path recomputes them (PITFALLS §12).
-export async function startSession(input: StartSessionInput = {}): Promise<string> {
-  const db = getPowerSync();
+export async function startSession(
+  input: StartSessionInput = {},
+  db: WriteDb = getPowerSync(),
+): Promise<string> {
   const id = generateClientId();
   const startedAt = input.now ?? new Date();
   const { timezone, localDate } = captureCalendarDay(startedAt);
@@ -64,8 +66,10 @@ const EMPTY_PRESCRIPTION: Prescription = {
 // Copies the prescription onto the row once, here, and stores routine_exercise_id for
 // traceability only — every later read of the prescription reads this snapshot, never
 // routine_exercise again (D-05).
-export async function addSessionExercise(input: AddSessionExerciseInput): Promise<string> {
-  const db = getPowerSync();
+export async function addSessionExercise(
+  input: AddSessionExerciseInput,
+  db: WriteDb = getPowerSync(),
+): Promise<string> {
   const id = generateClientId();
 
   let prescription = EMPTY_PRESCRIPTION;
@@ -117,8 +121,7 @@ export interface LogSetInput {
 
 // Writes the row and returns — no network call, no batching, no deferral to a finish action. A
 // set that only becomes durable when the workout is finished is a set lost to a force-quit.
-export async function logSet(input: LogSetInput): Promise<string> {
-  const db = getPowerSync();
+export async function logSet(input: LogSetInput, db: WriteDb = getPowerSync()): Promise<string> {
   const id = generateClientId();
 
   const [maxRow] = await db
