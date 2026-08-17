@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 14
+open_count: 16
 waived_count: 0
 fixed_count: 1
-total_count: 15
-last_updated: 2026-08-14T14:51:31.054Z
+total_count: 17
+last_updated: 2026-08-17T07:22:29.262Z
 ---
 
 # Broken Windows Ledger
@@ -30,6 +30,8 @@ last_updated: 2026-08-14T14:51:31.054Z
 | 13 | 01 | deviation | apps/mobile/app/_layout.tsx |  | No automated check can detect a blank web render. Expo static export emits a shell whose route content is an empty Suspense boundary, identical for a working and a broken app, so typecheck, unit tests and expo export all stay green through the failure recorded as entry 11. Closing this needs a browser-driving check, judged not worth the cost in phase 01. | open |  | 2026-08-11T11:29:00.817Z |  |
 | 14 | 01 | deviation | .github/workflows/ci.yml |  | The CI mailpit service is provisioned but never receives mail: password-reset.e2e-spec.ts sets MAIL_TRANSPORT=capture in its own spawn env, so the SMTP path is not on the assertion path in CI any more than it is locally. Kept because plan 01-08 requires the service, and it gives the ambient MAIL_TRANSPORT=smtp config a live endpoint. | open |  | 2026-08-11T11:29:06.577Z |  |
 | 15 | 01 | unrun-verify | apps/mobile/lib/api-client.ts |  | Backstop truth unrun: no iOS/Android simulator or device is reachable from this execution worktree, so the on-device half of 01-09's session-revocation truth (a real build's cookie header accepted by a running server, session row deleted, observed on device) rests on the e2e-over-HTTP proof (native-session.e2e-spec.ts) plus typecheck, not a device observation. | open |  | 2026-08-14T14:51:31.054Z |  |
+| 16 | 02 | unrun-verify | apps/mobile/lib/db/powersync.ts |  | @op-engineering/op-sqlite New-Architecture compatibility unverified — no Xcode/Android SDK on this machine (RESEARCH.md Open Question 2, precedented by Phase 1's native gaps) | open |  | 2026-08-17T07:22:21.574Z |  |
+| 17 | 02 | unrun-verify | apps/mobile/__tests__/offline-write.test.ts |  | PowerSync's real local-write and crud-queue population (native op-sqlite / web WASM+Worker+IndexedDB) cannot run inside this Jest process — no native runtime, no browser. offline-write.test.ts proves the id-generation contract and SyncConnector's mapping/branching logic against fakes instead of the real engine; the actual local-SQLite round trip is unverified beyond the expo export --platform web bundling/asset-resolution proof. | open |  | 2026-08-17T07:22:29.262Z |  |
 
 ````json
 [
@@ -211,6 +213,30 @@ last_updated: 2026-08-14T14:51:31.054Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-14T14:51:31.054Z",
+    "resolved_at": null
+  },
+  {
+    "id": 16,
+    "kind": "unrun-verify",
+    "phase": "02",
+    "file": "apps/mobile/lib/db/powersync.ts",
+    "line": null,
+    "description": "@op-engineering/op-sqlite New-Architecture compatibility unverified — no Xcode/Android SDK on this machine (RESEARCH.md Open Question 2, precedented by Phase 1's native gaps)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T07:22:21.574Z",
+    "resolved_at": null
+  },
+  {
+    "id": 17,
+    "kind": "unrun-verify",
+    "phase": "02",
+    "file": "apps/mobile/__tests__/offline-write.test.ts",
+    "line": null,
+    "description": "PowerSync's real local-write and crud-queue population (native op-sqlite / web WASM+Worker+IndexedDB) cannot run inside this Jest process — no native runtime, no browser. offline-write.test.ts proves the id-generation contract and SyncConnector's mapping/branching logic against fakes instead of the real engine; the actual local-SQLite round trip is unverified beyond the expo export --platform web bundling/asset-resolution proof.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T07:22:29.262Z",
     "resolved_at": null
   }
 ]
