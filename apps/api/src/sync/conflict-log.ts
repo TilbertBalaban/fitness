@@ -3,13 +3,14 @@ import { and, eq } from 'drizzle-orm';
 import { syncConflictLog, syncTombstone } from '../db/schema/sync';
 import type { Database } from '../db/drizzle.module';
 
-// The transaction handle db.transaction hands its callback — extracted from Database's own
-// transaction method rather than declared independently, so this type can never drift out of
-// sync with the real runtime value. Accepting this (not the pool-backed Database) is what makes
-// the trace and the overwrite it documents commit or roll back together (T-02-08).
-export type Tx = Parameters<Database['transaction']>[0] extends (tx: infer T, ...rest: never[]) => unknown
-  ? T
-  : never;
+// Accepts either the pool-backed Database or the transaction handle db.transaction hands its
+// callback — narrowed to just the two query-builder methods this module needs, since Database and
+// its transaction type are not supertypes of one another (a transaction lacks $client; the pool
+// lacks rollback/nestedIndex). isTombstoned is deliberately usable outside a transaction (a
+// pre-pass read before aggregate resolution even begins); recordConflict/recordTombstone are
+// always called with the transaction so the trace and the overwrite it documents commit or roll
+// back together (T-02-08).
+export type QueryExecutor = Pick<Database, 'select' | 'insert'>;
 
 export interface RecordConflictParams {
   userId: string;
@@ -21,7 +22,7 @@ export interface RecordConflictParams {
   winningServerSeq: number;
 }
 
-export async function recordConflict(tx: Tx, params: RecordConflictParams): Promise<void> {
+export async function recordConflict(tx: QueryExecutor, params: RecordConflictParams): Promise<void> {
   await tx.insert(syncConflictLog).values({
     id: randomUUID(),
     userId: params.userId,
@@ -41,7 +42,7 @@ export interface RecordTombstoneParams {
   deletedServerSeq: number;
 }
 
-export async function recordTombstone(tx: Tx, params: RecordTombstoneParams): Promise<void> {
+export async function recordTombstone(tx: QueryExecutor, params: RecordTombstoneParams): Promise<void> {
   // Idempotent on (table_name, row_id) — a second delete of the same id must not add a second
   // tombstone row.
   await tx
@@ -57,7 +58,7 @@ export async function recordTombstone(tx: Tx, params: RecordTombstoneParams): Pr
 
 // Scoped by userId (T-02-15) — one account's tombstone can never suppress another account's row
 // with a coincidentally equal id.
-export async function isTombstoned(tx: Tx, table: string, rowId: string, userId: string): Promise<boolean> {
+export async function isTombstoned(tx: QueryExecutor, table: string, rowId: string, userId: string): Promise<boolean> {
   const rows = await tx
     .select({ tableName: syncTombstone.tableName })
     .from(syncTombstone)
