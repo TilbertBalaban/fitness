@@ -29,6 +29,21 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+// FNV-1a — folds the target email into the seed so two different accounts never draw the same id
+// sequence from the same CORPUS_SHAPE.seed. Two runs against the SAME email still produce a
+// byte-identical corpus (the acceptance criterion this plan tests), but two different accounts no
+// longer collide on identical workout_session/session_exercise/logged_set ids, which the aggregate
+// resolver in sync.service.ts would otherwise reject `not_owner` — a real ownership rejection
+// disguised as a fixture problem the first time two seeded accounts existed side by side.
+function seedFor(baseSeed: number, email: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < email.length; i++) {
+    hash ^= email.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash ^ baseSeed) >>> 0;
+}
+
 // A UUID-shaped id drawn from the seeded PRNG, not a real random source — a client-generated
 // sync identity, not a secret (same reasoning as apps/mobile/lib/db/id.ts, 02-02's Deviation #3).
 function makeIdGenerator(rng: () => number): () => string {
@@ -509,7 +524,7 @@ export async function generateCorpus(options: GenerateCorpusOptions): Promise<Ge
   const routineId = `seed-routine-${userId}`;
   await ensureRoutine(userId, routineId);
 
-  const rng = mulberry32(CORPUS_SHAPE.seed);
+  const rng = mulberry32(seedFor(CORPUS_SHAPE.seed, options.email));
   const generateId = makeIdGenerator(rng);
   const weights = initWorkingWeights();
   const syncService = new SyncService(db);
