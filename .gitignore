@@ -12,5 +12,9 @@ expo-web-build/
 # (`powersync-web copy-assets -o public`) — never committed by hand.
 apps/mobile/public/
 
+# Playwright run output (traces, screenshots, HTML report) — regenerated per test:e2e run.
+apps/mobile/test-results/
+apps/mobile/playwright-report/
+
 # GSD runtime state
 .gsd/

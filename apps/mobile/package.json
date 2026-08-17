@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "jest",
+    "test:e2e": "EXPO_PUBLIC_DURABILITY_HARNESS=1 playwright test",
     "postinstall": "powersync-web copy-assets -o public"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "react-native-web": "~0.21.2"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.2.18",
     "babel-preset-expo": "^57.0.6",
