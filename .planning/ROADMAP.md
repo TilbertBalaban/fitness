@@ -28,7 +28,7 @@ cutting it — every v1 requirement is mapped.
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Cross-Platform Foundation** - Monorepo, Expo app on iOS/Android/web, NestJS API, accounts
-- [ ] **Phase 2: Data Model & Sync Engine** - Domain schema, local SQLite, offline writes, multi-device convergence
+- [x] **Phase 2: Data Model & Sync Engine** - Domain schema, local SQLite, offline writes, multi-device convergence (completed 2026-08-17)
 - [ ] **Phase 3: Exercise Catalog** - ~900 seeded exercises, muscle taxonomy, load types, custom exercises
 - [ ] **Phase 4: Program Builder** - Author routines with days, cycles, and per-exercise targets
 - [ ] **Phase 5: In-Gym Session Logging** - The core loop: log a full offline workout without friction *(dogfooding starts here)*
@@ -365,7 +365,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
-| 2. Data Model & Sync Engine | 13/13 | In Progress|  |
+| 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |

@@ -19,7 +19,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [x] **PLAT-07**: User's in-progress workout survives app force-quit, crash, or phone restart with every logged set intact
 - [x] **PLAT-08**: User can choose kg or lb and see every weight in that unit, with no drift in stored values over repeated conversions
 - [ ] **PLAT-09**: User can switch between light and dark appearance
-- [ ] **PLAT-10**: User can export their training data
+- [x] **PLAT-10**: User can export their training data
 
 ### Exercise Library
 
@@ -198,7 +198,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PLAT-04 | Phase 2 — Data Model & Sync Engine | Complete |
 | PLAT-07 | Phase 2 — Data Model & Sync Engine | Complete |
 | PLAT-08 | Phase 2 — Data Model & Sync Engine | Complete |
-| PLAT-10 | Phase 2 — Data Model & Sync Engine | Pending |
+| PLAT-10 | Phase 2 — Data Model & Sync Engine | Complete |
 | LOG-22 | Phase 2 — Data Model & Sync Engine | Complete |
 | EXER-01 | Phase 3 — Exercise Catalog | Pending |
 | EXER-02 | Phase 3 — Exercise Catalog | Pending |
