@@ -1,4 +1,4 @@
-import { logSet } from '../log-set';
+import { logSet, startSession } from '../log-set';
 import { getPowerSync } from '../powersync';
 
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
@@ -52,5 +52,41 @@ describe('logSet — the unit conversion boundary', () => {
     const [first, second] = insertedValuesSpy.mock.calls.map((call) => call[0].weightKg);
     expect(first).toBe(second);
     expect(first).toBe('100.000');
+  });
+});
+
+describe('logSet — the database-injection seam (WINDOWS #23)', () => {
+  it('writes to an explicitly-passed database and never resolves getPowerSync', async () => {
+    getPowerSyncMock.mockClear();
+    const insertedValuesSpy = jest.fn();
+    const explicitDb = fakeDb(insertedValuesSpy);
+
+    await logSet({ sessionExerciseId: 'se-1', weight: { value: '100', unit: 'kg' }, reps: 5 }, explicitDb);
+
+    expect(insertedValuesSpy).toHaveBeenCalledTimes(1);
+    expect(getPowerSyncMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to getPowerSync() when no database argument is passed', async () => {
+    const insertedValuesSpy = jest.fn();
+    getPowerSyncMock.mockReturnValue(fakeDb(insertedValuesSpy));
+
+    await logSet({ sessionExerciseId: 'se-1', weight: { value: '100', unit: 'kg' }, reps: 5 });
+
+    expect(insertedValuesSpy).toHaveBeenCalledTimes(1);
+    expect(getPowerSyncMock).toHaveBeenCalled();
+  });
+});
+
+describe('startSession — the database-injection seam (WINDOWS #23)', () => {
+  it('writes to an explicitly-passed database and never resolves getPowerSync', async () => {
+    getPowerSyncMock.mockClear();
+    const insertedValuesSpy = jest.fn();
+    const explicitDb = fakeDb(insertedValuesSpy);
+
+    await startSession({}, explicitDb);
+
+    expect(insertedValuesSpy).toHaveBeenCalledTimes(1);
+    expect(getPowerSyncMock).not.toHaveBeenCalled();
   });
 });
