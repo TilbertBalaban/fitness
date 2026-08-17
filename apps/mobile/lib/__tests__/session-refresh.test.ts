@@ -3,7 +3,8 @@ import { CLIENT_VERSION, CLIENT_VERSION_HEADER } from '../client-version';
 import { classifyAuthOutcome, classifySessionProbe, isRevocation, SESSION_REVOKED_REASON } from '../session-guard';
 import { apiFetch, isProjectOrigin, setSessionCredentialProvider } from '../api-client';
 import { AUTH_ENDPOINT, API_URL, clearCachedSession } from '../auth-storage';
-import { pendingWriteCount, signOut } from '../sign-out';
+import { signOut } from '../sign-out';
+import { pendingWriteCount } from '../pending-write-count';
 
 jest.mock('expo-secure-store', () => ({
   __esModule: true,
@@ -12,6 +13,10 @@ jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(async () => null),
   setItemAsync: jest.fn(async () => undefined),
   deleteItemAsync: jest.fn(async () => undefined),
+}));
+
+jest.mock('../db/powersync', () => ({
+  getUploadQueueStats: jest.fn().mockResolvedValue({ count: 0, size: null }),
 }));
 
 const mockedSecureStore = SecureStore as unknown as {
