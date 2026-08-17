@@ -1,4 +1,10 @@
 import '@/global.css';
+// Side-effect-only: forces Metro to resolve @powersync/react-native / @powersync/web through the
+// module graph on every platform build, including `expo export --platform web` — the one gate
+// that actually exercises PowerSync's beta web-target package-export resolution. Nothing here
+// calls getPowerSync() (lazy, DB-opening); only the pure AppSchema construction runs at import
+// time, so this is safe with no screen wired to it yet.
+import '@/lib/db/powersync';
 
 import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';

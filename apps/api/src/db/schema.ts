@@ -1,5 +1,8 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
+import { workoutSession, workoutSessionRelations, syncSeq } from './schema/session';
+
+export { workoutSession, workoutSessionRelations, syncSeq };
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -76,6 +79,7 @@ export const verification = pgTable(
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  workoutSessions: many(workoutSession),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -86,4 +90,4 @@ export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, { fields: [account.userId], references: [user.id] }),
 }));
 
-export const schema = { user, session, account, verification };
+export const schema = { user, session, account, verification, workoutSession };
