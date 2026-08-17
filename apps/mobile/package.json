@@ -8,14 +8,21 @@
     "build": "expo export --platform web",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest",
+    "postinstall": "powersync-web copy-assets -o public"
   },
   "dependencies": {
     "@better-auth/expo": "1.6.26",
     "@expo/vector-icons": "^15.1.1",
     "@fitness/api-contracts": "workspace:*",
+    "@op-engineering/op-sqlite": "^18.0.0",
+    "@powersync/common": "^2.1.0",
+    "@powersync/drizzle-driver": "^0.8.0",
+    "@powersync/react-native": "^2.1.0",
+    "@powersync/web": "^2.2.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "better-auth": "1.6.26",
+    "drizzle-orm": "^0.45.2",
     "expo": "57.0.12",
     "expo-constants": "~57.0.10",
     "expo-linking": "~57.0.5",
