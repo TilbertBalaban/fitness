@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 16
+open_count: 18
 waived_count: 0
 fixed_count: 1
-total_count: 17
-last_updated: 2026-08-17T07:22:29.262Z
+total_count: 19
+last_updated: 2026-08-17T08:03:47.271Z
 ---
 
 # Broken Windows Ledger
@@ -32,6 +32,8 @@ last_updated: 2026-08-17T07:22:29.262Z
 | 15 | 01 | unrun-verify | apps/mobile/lib/api-client.ts |  | Backstop truth unrun: no iOS/Android simulator or device is reachable from this execution worktree, so the on-device half of 01-09's session-revocation truth (a real build's cookie header accepted by a running server, session row deleted, observed on device) rests on the e2e-over-HTTP proof (native-session.e2e-spec.ts) plus typecheck, not a device observation. | open |  | 2026-08-14T14:51:31.054Z |  |
 | 16 | 02 | unrun-verify | apps/mobile/lib/db/powersync.ts |  | @op-engineering/op-sqlite New-Architecture compatibility unverified — no Xcode/Android SDK on this machine (RESEARCH.md Open Question 2, precedented by Phase 1's native gaps) | open |  | 2026-08-17T07:22:21.574Z |  |
 | 17 | 02 | unrun-verify | apps/mobile/__tests__/offline-write.test.ts |  | PowerSync's real local-write and crud-queue population (native op-sqlite / web WASM+Worker+IndexedDB) cannot run inside this Jest process — no native runtime, no browser. offline-write.test.ts proves the id-generation contract and SyncConnector's mapping/branching logic against fakes instead of the real engine; the actual local-SQLite round trip is unverified beyond the expo export --platform web bundling/asset-resolution proof. | open |  | 2026-08-17T07:22:29.262Z |  |
+| 18 | 02 | stub | apps/mobile/lib/db/id.ts |  | UUID generator is not cryptographically random (Math.random-based) — should be replaced with expo-crypto randomUUID() once cleared through a package-legitimacy checkpoint | open |  | 2026-08-17T08:03:39.888Z |  |
+| 19 | 02 | stub | apps/api/src/sync/sync.service.ts |  | 9 of 12 SYNCED_TABLES entries (routine, routine_day, routine_exercise, equipment_profile, exercise, personal_record, body_metric, progress_photo, user_preference) have no server-side apply path yet — ops for them are rejected unknown_table by the crash guard rather than applied; intentional scope boundary, not yet wired by this plan | open |  | 2026-08-17T08:03:47.271Z |  |
 
 ````json
 [
@@ -237,6 +239,30 @@ last_updated: 2026-08-17T07:22:29.262Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-17T07:22:29.262Z",
+    "resolved_at": null
+  },
+  {
+    "id": 18,
+    "kind": "stub",
+    "phase": "02",
+    "file": "apps/mobile/lib/db/id.ts",
+    "line": null,
+    "description": "UUID generator is not cryptographically random (Math.random-based) — should be replaced with expo-crypto randomUUID() once cleared through a package-legitimacy checkpoint",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T08:03:39.888Z",
+    "resolved_at": null
+  },
+  {
+    "id": 19,
+    "kind": "stub",
+    "phase": "02",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "9 of 12 SYNCED_TABLES entries (routine, routine_day, routine_exercise, equipment_profile, exercise, personal_record, body_metric, progress_photo, user_preference) have no server-side apply path yet — ops for them are rejected unknown_table by the crash guard rather than applied; intentional scope boundary, not yet wired by this plan",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T08:03:47.271Z",
     "resolved_at": null
   }
 ]

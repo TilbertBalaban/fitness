@@ -1,8 +1,33 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
-import { workoutSession, workoutSessionRelations, syncSeq } from './schema/session';
+import { workoutSession, sessionExercise, loggedSet, workoutSessionRelations, syncSeq } from './schema/session';
+import { muscleGroup, exercise, exerciseMuscleMapping } from './schema/catalog';
+import { equipmentProfile } from './schema/equipment';
+import { routine, routineDay, routineExercise } from './schema/program';
+import { personalRecord, bodyMetric, progressPhoto } from './schema/records';
+import { userPreference } from './schema/preference';
+import { syncConflictLog, syncTombstone } from './schema/sync';
 
-export { workoutSession, workoutSessionRelations, syncSeq };
+export {
+  workoutSession,
+  sessionExercise,
+  loggedSet,
+  workoutSessionRelations,
+  syncSeq,
+  muscleGroup,
+  exercise,
+  exerciseMuscleMapping,
+  equipmentProfile,
+  routine,
+  routineDay,
+  routineExercise,
+  personalRecord,
+  bodyMetric,
+  progressPhoto,
+  userPreference,
+  syncConflictLog,
+  syncTombstone,
+};
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -76,10 +101,19 @@ export const verification = pgTable(
   (table) => [index('verification_identifier_idx').on(table.identifier)],
 );
 
-export const userRelations = relations(user, ({ many }) => ({
+export const userRelations = relations(user, ({ many, one }) => ({
   sessions: many(session),
   accounts: many(account),
   workoutSessions: many(workoutSession),
+  routines: many(routine),
+  equipmentProfiles: many(equipmentProfile),
+  exercises: many(exercise),
+  personalRecords: many(personalRecord),
+  bodyMetrics: many(bodyMetric),
+  progressPhotos: many(progressPhoto),
+  syncConflictLogs: many(syncConflictLog),
+  syncTombstones: many(syncTombstone),
+  preference: one(userPreference, { fields: [user.id], references: [userPreference.userId] }),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -90,4 +124,25 @@ export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, { fields: [account.userId], references: [user.id] }),
 }));
 
-export const schema = { user, session, account, verification, workoutSession };
+export const schema = {
+  user,
+  session,
+  account,
+  verification,
+  workoutSession,
+  sessionExercise,
+  loggedSet,
+  muscleGroup,
+  exercise,
+  exerciseMuscleMapping,
+  equipmentProfile,
+  routine,
+  routineDay,
+  routineExercise,
+  personalRecord,
+  bodyMetric,
+  progressPhoto,
+  userPreference,
+  syncConflictLog,
+  syncTombstone,
+};
