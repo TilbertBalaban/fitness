@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit",
     "test": "jest",
     "test:e2e": "EXPO_PUBLIC_DURABILITY_HARNESS=1 playwright test",
+    "test:e2e:durability": "EXPO_PUBLIC_DURABILITY_HARNESS=1 playwright test --project=durability",
     "postinstall": "powersync-web copy-assets -o public"
   },
   "dependencies": {

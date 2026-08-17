@@ -92,3 +92,32 @@ jobs:
         run: pnpm --filter api db:push
 
       - run: pnpm --filter api test:e2e
+
+  browser-durability:
+    name: browser durability (real @powersync/web, no live sync stack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter mobile exec playwright install --with-deps chromium
+
+      # Only the `durability` Playwright project runs here — durability.spec.ts and
+      # schema-redefinition.spec.ts need nothing beyond a real browser (real Worker, real WASM
+      # loader, real IndexedDB) to construct a real @powersync/web database. The `sync` project
+      # (sync.spec.ts) is deliberately NOT run here: it needs the self-hosted PowerSync Service,
+      # which needs Postgres started with wal_level = logical, and a GitHub Actions service
+      # container cannot override its image's command to set that -- so the reconnect and
+      # convergence specs stay local-only until CI grows a compose-based Postgres it controls the
+      # startup command for. This is a documented boundary, not an unexplained omission, and there
+      # is no conditional skip standing in for it -- a failing durability run fails this job.
+      - run: pnpm --filter mobile test:e2e:durability
