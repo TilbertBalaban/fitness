@@ -65,7 +65,15 @@ export async function apiFetch(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(input, { ...init, headers, signal: controller.signal });
+    // 'include' is load-bearing on web: the API and the web app are two different origins (a
+    // different port at minimum, e.g. localhost:8081 vs localhost:3000), and fetch's default
+    // credentials mode ('same-origin') silently drops the session cookie on a cross-origin request
+    // — the browser's cookie jar is where a signed-in web session actually lives
+    // (getSessionCookieHeader() deliberately returns '' on web, see auth-client.ts), so without
+    // this every apiFetch call that needs auth (the sync token, the sync push, the background
+    // revocation probe, sign-out) would 401 on web despite a real, valid session cookie existing.
+    // A no-op on native, where the explicit cookie header above is what actually carries auth.
+    const response = await fetch(input, { ...init, headers, credentials: 'include', signal: controller.signal });
     const outcome = await classifyAuthOutcome(response);
     return { response, outcome };
   } catch (error) {

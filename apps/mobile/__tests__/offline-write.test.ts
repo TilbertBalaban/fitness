@@ -2,6 +2,7 @@ import type { AbstractPowerSyncDatabase, CrudEntry, CrudTransaction } from '@pow
 import { SYNC_PUSH_PATH, type SyncPushResponse } from '@fitness/api-contracts';
 import { workoutSession } from '../lib/db/schema';
 import { apiFetch } from '../lib/api-client';
+import { API_URL } from '../lib/auth-storage';
 import { SyncConnector } from '../lib/db/connector';
 import { getSyncStatus } from '../lib/sync-status';
 
@@ -115,7 +116,10 @@ describe('SyncConnector.uploadData — crud op mapping', () => {
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
     const [path, init] = apiFetchMock.mock.calls[0];
-    expect(path).toBe(SYNC_PUSH_PATH);
+    // Rule 1 fix (plan 02-12): a bare path resolves against the current page's own origin on web,
+    // not the API — connector.ts now builds a full URL from API_URL, same as every other apiFetch
+    // call site in this app (AUTH_ENDPOINT et al).
+    expect(path).toBe(`${API_URL}${SYNC_PUSH_PATH}`);
     const body = JSON.parse(init?.body as string);
     expect(body.batch).toHaveLength(1);
     expect(body.batch[0]).toMatchObject({ op: 'PUT', type: 'workout_session', id: rowId });

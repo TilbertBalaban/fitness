@@ -13,9 +13,15 @@ import {
   type SyncPushResponse,
 } from '@fitness/api-contracts';
 import { apiFetch } from '../api-client';
+import { API_URL } from '../auth-storage';
 import { recordPushOutcome, recordRejectedOps } from '../sync-status';
 
-const SYNC_TOKEN_PATH = '/v1/sync/token';
+// @fitness/api-contracts exports bare paths (no origin) — every other apiFetch call site in this
+// app (auth-storage.ts's AUTH_ENDPOINT, sign-out.ts, _layout.tsx) builds a full URL from API_URL
+// first. A bare path passed straight to fetch() resolves against the CURRENT PAGE's own origin on
+// web, not the API — a real, previously-unexercised bug (both calls below 404'd against the Expo
+// dev server's own origin the first time this connector actually ran in a real browser).
+const SYNC_TOKEN_PATH = `${API_URL}/v1/sync/token`;
 
 function toSyncCrudOp(entry: CrudEntry): SyncCrudOp {
   return {
@@ -50,8 +56,13 @@ export class SyncConnector implements PowerSyncBackendConnector {
     if (!transaction) return;
 
     const body: SyncPushRequest = { batch: transaction.crud.map(toSyncCrudOp) };
-    const { response, outcome } = await apiFetch(SYNC_PUSH_PATH, {
+    // fetch() defaults an unlabeled string body to `Content-Type: text/plain` — Nest's JSON
+    // body-parser only parses application/json, so without this header `body` arrives as
+    // undefined server-side (TypeError: Cannot read properties of undefined (reading 'batch')),
+    // a bug this connector never hit before it first ran against a real HTTP server in a browser.
+    const { response, outcome } = await apiFetch(`${API_URL}${SYNC_PUSH_PATH}`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
