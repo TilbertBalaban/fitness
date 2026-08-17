@@ -8,6 +8,8 @@ import {
 } from '@fitness/api-contracts';
 import { DRIZZLE, type Database } from '../db/drizzle.module';
 import { workoutSession, sessionExercise, loggedSet } from '../db/schema';
+import { resolveConflict } from './conflict-policy';
+import { recordConflict, recordTombstone, isTombstoned } from './conflict-log';
 
 const TABLE_MAP = {
   workout_session: workoutSession,
@@ -20,6 +22,11 @@ type MappedTable = keyof typeof TABLE_MAP;
 function isMappedTable(type: string): type is MappedTable {
   return type in TABLE_MAP;
 }
+
+// exercise/routine carry archived_at and are never hard-deleted — archiving one must leave its
+// past logged sets intact and correctly attributed. Checked ahead of isMappedTable so this fires
+// even for tables SYNCED_TABLES recognizes but TABLE_MAP does not (T-02-05).
+const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 
 // Parents apply before children within an aggregate — PowerSync's crud queue can genuinely
 // deliver ops in an order the app did not intend, so this is an explicit sort, not an assumption
@@ -189,6 +196,10 @@ export class SyncService {
 
     const workable: SyncCrudOp[] = [];
     for (const op of batch) {
+      if (op.op === 'DELETE' && HARD_DELETE_FORBIDDEN.has(op.type)) {
+        rejected.push({ op_id: op.op_id, reason: 'invalid_field' });
+        continue;
+      }
       if (!(SYNCED_TABLES as readonly string[]).includes(op.type) || !isMappedTable(op.type)) {
         rejected.push({ op_id: op.op_id, reason: 'unknown_table' });
         continue;
@@ -204,8 +215,34 @@ export class SyncService {
       return { applied, rejected, server_seq: highestServerSeq.toString() };
     }
 
-    const sessionExerciseOps = workable.filter((op) => op.type === 'session_exercise');
-    const loggedSetOps = workable.filter((op) => op.type === 'logged_set');
+    // A DELETE for a row this user has already tombstoned has no aggregate root left to resolve —
+    // its own row is gone, so there is nothing in the batch or the database to chain back to a
+    // session. Short-circuited here, ahead of root resolution, so a second delete of the same id
+    // stays idempotent instead of failing missing_parent.
+    const deleteOpsInBatch = workable.filter((op) => op.op === 'DELETE');
+    const alreadyTombstonedKeys = new Set<string>();
+    if (deleteOpsInBatch.length) {
+      const results = await Promise.all(
+        deleteOpsInBatch.map((op) => isTombstoned(this.db, op.type, op.id, userId)),
+      );
+      deleteOpsInBatch.forEach((op, index) => {
+        if (results[index]) alreadyTombstonedKeys.add(`${op.type}:${op.id}`);
+      });
+    }
+    const remaining: SyncCrudOp[] = [];
+    for (const op of workable) {
+      if (op.op === 'DELETE' && alreadyTombstonedKeys.has(`${op.type}:${op.id}`)) {
+        applied.push(op.op_id);
+        continue;
+      }
+      remaining.push(op);
+    }
+    if (remaining.length === 0) {
+      return { applied, rejected, server_seq: highestServerSeq.toString() };
+    }
+
+    const sessionExerciseOps = remaining.filter((op) => op.type === 'session_exercise');
+    const loggedSetOps = remaining.filter((op) => op.type === 'logged_set');
     const sessionExerciseSessionIdFromData = new Map<string, string>();
     for (const op of sessionExerciseOps) {
       const sessionId = (op.data as SessionExerciseOpData | null | undefined)?.session_id;
@@ -219,20 +256,9 @@ export class SyncService {
 
     // Read every existing parent this batch might touch or reference in two batched queries —
     // never a per-row lookup (an N+1 shape plan 02-07's query-count assertion will fail on).
-    // Every session_exercise id a session_exercise op OWNS, plus every one a logged_set op
-    // references, so an existing row's real linkage is always known.
-    const sessionExerciseIdsToCheck = new Set<string>([
-      ...sessionExerciseOps.map((op) => op.id),
-      ...loggedSetSessionExerciseIdFromData.values(),
-    ]);
-    const dbSessionExercises = sessionExerciseIdsToCheck.size
-      ? await this.db
-          .select({ id: sessionExercise.id, sessionId: sessionExercise.sessionId })
-          .from(sessionExercise)
-          .where(inArray(sessionExercise.id, [...sessionExerciseIdsToCheck]))
-      : [];
-    const dbSessionIdBySessionExerciseId = new Map(dbSessionExercises.map((row) => [row.id, row.sessionId]));
-
+    // logged_set is resolved first: a DELETE (and, in principle, any op omitting
+    // session_exercise_id from its data) carries no client-claimed parent at all, so its root can
+    // only be found through this existing row's real linkage — never through op.data.
     const loggedSetIdsToCheck = new Set(loggedSetOps.map((op) => op.id));
     const dbLoggedSets = loggedSetIdsToCheck.size
       ? await this.db
@@ -241,6 +267,22 @@ export class SyncService {
           .where(inArray(loggedSet.id, [...loggedSetIdsToCheck]))
       : [];
     const dbSessionExerciseIdByLoggedSetId = new Map(dbLoggedSets.map((row) => [row.id, row.sessionExerciseId]));
+
+    // Every session_exercise id a session_exercise op OWNS, plus every one a logged_set op
+    // references (from its own data or, for an existing set, from the database row just read
+    // above), so an existing row's real linkage is always known.
+    const sessionExerciseIdsToCheck = new Set<string>([
+      ...sessionExerciseOps.map((op) => op.id),
+      ...loggedSetSessionExerciseIdFromData.values(),
+      ...dbSessionExerciseIdByLoggedSetId.values(),
+    ]);
+    const dbSessionExercises = sessionExerciseIdsToCheck.size
+      ? await this.db
+          .select({ id: sessionExercise.id, sessionId: sessionExercise.sessionId })
+          .from(sessionExercise)
+          .where(inArray(sessionExercise.id, [...sessionExerciseIdsToCheck]))
+      : [];
+    const dbSessionIdBySessionExerciseId = new Map(dbSessionExercises.map((row) => [row.id, row.sessionId]));
 
     // Existing linkage always wins over a client-claimed value — an id that already exists cannot
     // be reparented onto a different aggregate by simply claiming a different parent in this push
@@ -254,7 +296,7 @@ export class SyncService {
 
     // Root resolution — null means "could not be determined from the batch or the database".
     const rootByOpId = new Map<string, string | null>();
-    for (const op of workable) {
+    for (const op of remaining) {
       if (op.type === 'workout_session') {
         rootByOpId.set(op.op_id, op.id);
       } else if (op.type === 'session_exercise') {
@@ -273,7 +315,7 @@ export class SyncService {
 
     const aggregates = new Map<string, Aggregate>();
     let orphanSeq = 0;
-    for (const op of workable) {
+    for (const op of remaining) {
       const resolvedRoot = rootByOpId.get(op.op_id) ?? null;
       const effectiveRoot = resolvedRoot ?? healRoot;
       const key = effectiveRoot ?? `__orphan_${orphanSeq++}`;
@@ -328,20 +370,110 @@ export class SyncService {
       const orderedOps = [...aggregate.ops].sort((a, b) => AGGREGATE_RANK[a.type as MappedTable] - AGGREGATE_RANK[b.type as MappedTable]);
 
       await this.db.transaction(async (tx) => {
+        // Merge order resolves through the aggregate root, never a per-child column (02-02's
+        // "no server_seq on a child row" decision) — captured once, before any op in this
+        // transaction touches it, so a conflict logged later in the same loop always compares
+        // against the value that was true before this push started (T-02-02).
+        const [rootBefore] = await tx
+          .select({ serverSeq: workoutSession.serverSeq })
+          .from(workoutSession)
+          .where(eq(workoutSession.id, root));
+        const capturedRootSeq = rootBefore?.serverSeq ?? 0;
+
         for (const op of orderedOps) {
           const table = TABLE_MAP[op.type as MappedTable];
 
-          const existingRow = await tx.select({ id: table.id }).from(table).where(eq(table.id, op.id)).for('update');
+          if (op.op !== 'DELETE') {
+            // A PUT/PATCH for a tombstoned id is a stale offline write racing a delete that has
+            // already landed — reject it rather than resurrecting the row (02-CONTEXT.md's
+            // push-side race; PowerSync's own delete-as-tombstone only covers the pull direction).
+            if (await isTombstoned(tx, op.type, op.id, userId)) {
+              rejected.push({ op_id: op.op_id, reason: 'deleted' });
+              continue;
+            }
+          }
+
+          const existingRow = await tx.select().from(table).where(eq(table.id, op.id)).for('update');
 
           if (op.op === 'DELETE') {
+            // Gathered before the delete: the FK cascade removes these rows at the database level
+            // the moment the parent is deleted, so their ids must be read first or there is
+            // nothing left to tombstone.
+            let childSessionExercises: { id: string }[] = [];
+            let childLoggedSets: { id: string }[] = [];
+            if (op.type === 'workout_session' && existingRow.length > 0) {
+              childSessionExercises = await tx
+                .select({ id: sessionExercise.id })
+                .from(sessionExercise)
+                .where(eq(sessionExercise.sessionId, op.id));
+              const childSessionExerciseIds = childSessionExercises.map((row) => row.id);
+              childLoggedSets = childSessionExerciseIds.length
+                ? await tx
+                    .select({ id: loggedSet.id })
+                    .from(loggedSet)
+                    .where(inArray(loggedSet.sessionExerciseId, childSessionExerciseIds))
+                : [];
+            }
+
             if (existingRow.length > 0) {
               await tx.delete(table).where(eq(table.id, op.id));
             }
             const seqResult = await tx.execute<{ seq: string }>(sql`select nextval('sync_seq') as seq`);
             const seqValue = BigInt(seqResult.rows[0].seq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+
+            // Idempotent regardless of whether existingRow was found this time — a second delete
+            // of an id already tombstoned must still succeed without adding a second row.
+            await recordTombstone(tx, { userId, table: op.type, rowId: op.id, deletedServerSeq: Number(seqValue) });
+            for (const child of childSessionExercises) {
+              await recordTombstone(tx, { userId, table: 'session_exercise', rowId: child.id, deletedServerSeq: Number(seqValue) });
+            }
+            for (const child of childLoggedSets) {
+              await recordTombstone(tx, { userId, table: 'logged_set', rowId: child.id, deletedServerSeq: Number(seqValue) });
+            }
+
             applied.push(op.op_id);
             continue;
+          }
+
+          // Every op that targets an existing row is routed through resolveConflict before it is
+          // written — insert/overwrite is decided identically whether or not the table logs.
+          const decision = resolveConflict(op.type, existingRow[0] as Record<string, unknown> | undefined, op);
+          if (decision.logConflict && op.type === 'logged_set') {
+            const stored = existingRow[0] as unknown as {
+              weightKg: string;
+              reps: number;
+              rir: number | null;
+              setIndex: number;
+              completed: boolean;
+            };
+            const incoming = (op.data ?? {}) as LoggedSetOpData;
+            const losingValue = {
+              weight_kg: stored.weightKg,
+              reps: stored.reps,
+              rir: stored.rir,
+              set_index: stored.setIndex,
+              completed: stored.completed,
+            };
+            const winningValue = {
+              weight_kg: incoming.weight_kg !== undefined ? String(incoming.weight_kg) : stored.weightKg,
+              reps: incoming.reps ?? stored.reps,
+              rir: incoming.rir !== undefined ? incoming.rir : stored.rir,
+              set_index: incoming.set_index ?? stored.setIndex,
+              completed: incoming.completed !== undefined ? incoming.completed : stored.completed,
+            };
+            const seqResult = await tx.execute<{ seq: string }>(sql`select nextval('sync_seq') as seq`);
+            const winningServerSeq = BigInt(seqResult.rows[0].seq);
+            if (winningServerSeq > highestServerSeq) highestServerSeq = winningServerSeq;
+            await recordConflict(tx, {
+              userId,
+              table: op.type,
+              rowId: op.id,
+              losingValue,
+              winningValue,
+              losingServerSeq: Number(capturedRootSeq),
+              winningServerSeq: Number(winningServerSeq),
+            });
           }
 
           const values =
