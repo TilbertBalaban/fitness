@@ -70,7 +70,7 @@ interface LoggedSetOpData {
   session_exercise_id?: string;
   set_index?: number;
   set_type?: string;
-  weight_kg?: string | number;
+  weight_kg?: string | number | null;
   reps?: number;
   rir?: number | null;
   side?: string | null;
@@ -117,6 +117,14 @@ function toSessionExerciseValues(id: string, sessionId: string, data: Record<str
   };
 }
 
+// A PUT omits `weight_kg` from `opData` entirely when the lifter recorded no external load
+// (PowerSync's `CrudEntry` contract), so absent and explicit null are both "no external load" and
+// both map to SQL NULL here — never the string "0", which would misrepresent a bodyweight set as
+// a zero-kilogram lift (CR-02).
+function normalizeWeightKg(value: string | number | null | undefined): string | null {
+  return value === undefined || value === null ? null : String(value);
+}
+
 function toLoggedSetValues(id: string, sessionExerciseId: string, data: Record<string, unknown> | null | undefined) {
   const d = (data ?? {}) as LoggedSetOpData;
   return {
@@ -124,7 +132,7 @@ function toLoggedSetValues(id: string, sessionExerciseId: string, data: Record<s
     sessionExerciseId,
     setIndex: d.set_index ?? 0,
     setType: d.set_type ?? 'normal',
-    weightKg: String(d.weight_kg ?? '0'),
+    weightKg: normalizeWeightKg(d.weight_kg),
     reps: d.reps ?? 0,
     rir: d.rir ?? null,
     side: d.side ?? null,
@@ -135,6 +143,23 @@ function toLoggedSetValues(id: string, sessionExerciseId: string, data: Record<s
   };
 }
 
+// A PATCH that never mentions weight_kg must leave the stored weight untouched — an
+// onConflictDoUpdate `set` containing `weightKg: null` would clobber it. Checked against the raw
+// op.data key, not the mapped value: a key-presence check keeps absent and explicit-null
+// distinguishable, where a truthiness/undefined check on the mapped value would also swallow a
+// legitimate explicit null or zero.
+function loggedSetUpdateSet(
+  op: SyncCrudOp,
+  values: ReturnType<typeof toLoggedSetValues>,
+): Partial<ReturnType<typeof toLoggedSetValues>> {
+  const data = (op.data ?? {}) as Record<string, unknown>;
+  if (op.op === 'PATCH' && !('weight_kg' in data)) {
+    const { weightKg, ...rest } = values;
+    return rest;
+  }
+  return values;
+}
+
 function isNonNegativeInteger(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
@@ -143,6 +168,12 @@ function isNonNegativeDecimal(value: unknown): boolean {
   if (typeof value !== 'string' && typeof value !== 'number') return false;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0;
+}
+
+// weight_kg only — an explicit null represents "no external load" and must validate, but this
+// exception must never leak onto reps or set_index, which stay non-nullable integer columns.
+function isNonNegativeDecimalOrNull(value: unknown): boolean {
+  return value === null || isNonNegativeDecimal(value);
 }
 
 // Validated against the column each field targets before applying (T-02-05). An op failing
@@ -162,7 +193,7 @@ function hasInvalidField(op: SyncCrudOp): boolean {
   }
 
   if (op.type === 'logged_set') {
-    if (data.weight_kg !== undefined && !isNonNegativeDecimal(data.weight_kg)) return true;
+    if (data.weight_kg !== undefined && !isNonNegativeDecimalOrNull(data.weight_kg)) return true;
     if (data.reps !== undefined && !isNonNegativeInteger(data.reps)) return true;
     if (data.set_index !== undefined && !isNonNegativeInteger(data.set_index)) return true;
     if (data.set_type !== undefined && !(typeof data.set_type === 'string' && SET_TYPES.has(data.set_type))) {
@@ -441,7 +472,7 @@ export class SyncService {
           const decision = resolveConflict(op.type, existingRow[0] as Record<string, unknown> | undefined, op);
           if (decision.logConflict && op.type === 'logged_set') {
             const stored = existingRow[0] as unknown as {
-              weightKg: string;
+              weightKg: string | null;
               reps: number;
               rir: number | null;
               setIndex: number;
@@ -456,7 +487,9 @@ export class SyncService {
               completed: stored.completed,
             };
             const winningValue = {
-              weight_kg: incoming.weight_kg !== undefined ? String(incoming.weight_kg) : stored.weightKg,
+              // A real null, not String(null)'s four-character spelling — an explicit null weight
+              // must serialise into sync_conflict_log as JSON null (CR-02).
+              weight_kg: incoming.weight_kg !== undefined ? normalizeWeightKg(incoming.weight_kg) : stored.weightKg,
               reps: incoming.reps ?? stored.reps,
               rir: incoming.rir !== undefined ? incoming.rir : stored.rir,
               set_index: incoming.set_index ?? stored.setIndex,
@@ -504,10 +537,11 @@ export class SyncService {
                 set: values as ReturnType<typeof toSessionExerciseValues>,
               });
           } else {
+            const loggedSetValues = values as ReturnType<typeof toLoggedSetValues>;
             await tx
               .insert(loggedSet)
-              .values(values as ReturnType<typeof toLoggedSetValues>)
-              .onConflictDoUpdate({ target: loggedSet.id, set: values as ReturnType<typeof toLoggedSetValues> });
+              .values(loggedSetValues)
+              .onConflictDoUpdate({ target: loggedSet.id, set: loggedSetUpdateSet(op, loggedSetValues) });
           }
 
           applied.push(op.op_id);

@@ -90,7 +90,7 @@ export const loggedSet = pgTable(
     // numeric, not real/doublePrecision — Drizzle surfaces numeric as a string in JavaScript,
     // which is exactly the point: a value that never becomes a binary float cannot accumulate
     // conversion error across a lifetime of aggregation (D-04).
-    weightKg: numeric('weight_kg', { precision: 8, scale: 3 }).notNull(),
+    weightKg: numeric('weight_kg', { precision: 8, scale: 3 }),
     reps: integer('reps').notNull(),
     rir: integer('rir'),
     side: text('side'),

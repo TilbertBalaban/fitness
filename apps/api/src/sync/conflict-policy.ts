@@ -17,7 +17,7 @@ interface MinimalOp {
 }
 
 interface LoggedSetStoredRow {
-  weightKg: string;
+  weightKg: string | null;
   reps: number;
   rir: number | null;
   setIndex: number;
@@ -25,11 +25,19 @@ interface LoggedSetStoredRow {
 }
 
 interface LoggedSetIncomingData {
-  weight_kg?: string | number;
+  weight_kg?: string | number | null;
   reps?: number;
   rir?: number | null;
   set_index?: number;
   completed?: boolean;
+}
+
+// String(null) stringifies to the four-character text "null", which would false-positive a
+// change against a stored NULL weight (or false-negative a real change into a decimal that
+// happens to render the same). Absent and null stay distinct: absent skips the comparison
+// entirely (handled by the `!== undefined` guard below), null normalizes to null.
+function normalizedWeightKg(value: string | number | null): string | null {
+  return value === null ? null : String(value);
 }
 
 function loggedSetChangedFields(stored: LoggedSetStoredRow, incoming: LoggedSetIncomingData): string[] {
@@ -37,7 +45,7 @@ function loggedSetChangedFields(stored: LoggedSetStoredRow, incoming: LoggedSetI
 
   // Compared as its exact decimal string — parsing to a float here would reintroduce the
   // representation D-04 chose numeric to avoid.
-  if (incoming.weight_kg !== undefined && String(incoming.weight_kg) !== stored.weightKg) {
+  if (incoming.weight_kg !== undefined && normalizedWeightKg(incoming.weight_kg) !== stored.weightKg) {
     changed.push('weight_kg');
   }
   if (incoming.reps !== undefined && incoming.reps !== stored.reps) {
