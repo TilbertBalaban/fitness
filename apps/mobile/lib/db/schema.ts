@@ -40,7 +40,9 @@ export const loggedSet = sqliteTable('logged_set', {
   sessionExerciseId: text('session_exercise_id').notNull(),
   setIndex: integer('set_index').notNull(),
   setType: text('set_type').notNull(),
-  weightKg: text('weight_kg').notNull(),
+  // Nullable, not notNull: a bodyweight exercise carries no external load, and toCanonicalKg
+  // passes a null weight straight through rather than coercing it to zero (D-04, PLAT-08).
+  weightKg: text('weight_kg'),
   reps: integer('reps').notNull(),
   rir: integer('rir'),
   side: text('side'),

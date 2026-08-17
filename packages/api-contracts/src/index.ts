@@ -40,3 +40,4 @@ export interface HealthResponse {
 }
 
 export * from './sync';
+export * from './units';
