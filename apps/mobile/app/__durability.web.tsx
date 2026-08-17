@@ -6,7 +6,10 @@ import {
   closeTestPowerSync,
   openTestPowerSync,
   pendingCrudCount,
+  readAllLoggedSetsRaw,
   readLoggedSets,
+  readLoggedSetsRaw,
+  readRawColumns,
   reopenTestPowerSync,
   type TestWriteDb,
 } from '../lib/db/test-support';
@@ -64,6 +67,24 @@ export default function DurabilityHarnessScreen() {
       },
       async crudCount() {
         return pendingCrudCount();
+      },
+      // Same open() semantics, but selecting the schema variant plan 02-12's redefinition test
+      // needs — 'v1' is the schema every other harness method above already exercises.
+      async openVariant(variant: 'v1' | 'v2') {
+        currentDb = openTestPowerSync({ variant });
+      },
+      async reopenVariant(variant: 'v1' | 'v2') {
+        currentDb = reopenTestPowerSync({ variant });
+        return currentDb !== lastClosedDb;
+      },
+      async readRawColumns(table: string) {
+        return readRawColumns(table);
+      },
+      async readSetsRaw(sessionExerciseId: string) {
+        return readLoggedSetsRaw(sessionExerciseId);
+      },
+      async readAllSetsRaw() {
+        return readAllLoggedSetsRaw();
       },
     };
 
