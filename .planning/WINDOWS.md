@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 18
+open_count: 19
 waived_count: 0
 fixed_count: 1
-total_count: 19
-last_updated: 2026-08-17T08:03:47.271Z
+total_count: 20
+last_updated: 2026-08-17T08:57:57.745Z
 ---
 
 # Broken Windows Ledger
@@ -34,6 +34,7 @@ last_updated: 2026-08-17T08:03:47.271Z
 | 17 | 02 | unrun-verify | apps/mobile/__tests__/offline-write.test.ts |  | PowerSync's real local-write and crud-queue population (native op-sqlite / web WASM+Worker+IndexedDB) cannot run inside this Jest process — no native runtime, no browser. offline-write.test.ts proves the id-generation contract and SyncConnector's mapping/branching logic against fakes instead of the real engine; the actual local-SQLite round trip is unverified beyond the expo export --platform web bundling/asset-resolution proof. | open |  | 2026-08-17T07:22:29.262Z |  |
 | 18 | 02 | stub | apps/mobile/lib/db/id.ts |  | UUID generator is not cryptographically random (Math.random-based) — should be replaced with expo-crypto randomUUID() once cleared through a package-legitimacy checkpoint | open |  | 2026-08-17T08:03:39.888Z |  |
 | 19 | 02 | stub | apps/api/src/sync/sync.service.ts |  | 9 of 12 SYNCED_TABLES entries (routine, routine_day, routine_exercise, equipment_profile, exercise, personal_record, body_metric, progress_photo, user_preference) have no server-side apply path yet — ops for them are rejected unknown_table by the crash guard rather than applied; intentional scope boundary, not yet wired by this plan | open |  | 2026-08-17T08:03:47.271Z |  |
+| 20 | 02 | unrun-verify | apps/mobile/lib/export/export-training-data.ts |  | Native export path (expo-file-system write + expo-sharing share sheet) not exercised on iOS/Android — no Xcode/Android SDK on this machine. Verified instead: buildExportDocument's 10 behavior-line cases (Jest, fakes), tsc --noEmit, and expo export --platform web bundling both build-export-document.ts and export-training-data.web.ts (forced into the web build graph via a side-effect import in app/_layout.tsx, following Phase 2's db/powersync.ts precedent). | open |  | 2026-08-17T08:57:57.745Z |  |
 
 ````json
 [
@@ -263,6 +264,18 @@ last_updated: 2026-08-17T08:03:47.271Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-17T08:03:47.271Z",
+    "resolved_at": null
+  },
+  {
+    "id": 20,
+    "kind": "unrun-verify",
+    "phase": "02",
+    "file": "apps/mobile/lib/export/export-training-data.ts",
+    "line": null,
+    "description": "Native export path (expo-file-system write + expo-sharing share sheet) not exercised on iOS/Android — no Xcode/Android SDK on this machine. Verified instead: buildExportDocument's 10 behavior-line cases (Jest, fakes), tsc --noEmit, and expo export --platform web bundling both build-export-document.ts and export-training-data.web.ts (forced into the web build graph via a side-effect import in app/_layout.tsx, following Phase 2's db/powersync.ts precedent).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-17T08:57:57.745Z",
     "resolved_at": null
   }
 ]
