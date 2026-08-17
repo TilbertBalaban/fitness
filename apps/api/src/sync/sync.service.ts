@@ -8,6 +8,8 @@ import {
 } from '@fitness/api-contracts';
 import { DRIZZLE, type Database } from '../db/drizzle.module';
 import { workoutSession, sessionExercise, loggedSet } from '../db/schema';
+import { resolveConflict } from './conflict-policy';
+import { recordConflict } from './conflict-log';
 
 const TABLE_MAP = {
   workout_session: workoutSession,
@@ -328,10 +330,20 @@ export class SyncService {
       const orderedOps = [...aggregate.ops].sort((a, b) => AGGREGATE_RANK[a.type as MappedTable] - AGGREGATE_RANK[b.type as MappedTable]);
 
       await this.db.transaction(async (tx) => {
+        // Merge order resolves through the aggregate root, never a per-child column (02-02's
+        // "no server_seq on a child row" decision) — captured once, before any op in this
+        // transaction touches it, so a conflict logged later in the same loop always compares
+        // against the value that was true before this push started (T-02-02).
+        const [rootBefore] = await tx
+          .select({ serverSeq: workoutSession.serverSeq })
+          .from(workoutSession)
+          .where(eq(workoutSession.id, root));
+        const capturedRootSeq = rootBefore?.serverSeq ?? 0;
+
         for (const op of orderedOps) {
           const table = TABLE_MAP[op.type as MappedTable];
 
-          const existingRow = await tx.select({ id: table.id }).from(table).where(eq(table.id, op.id)).for('update');
+          const existingRow = await tx.select().from(table).where(eq(table.id, op.id)).for('update');
 
           if (op.op === 'DELETE') {
             if (existingRow.length > 0) {
@@ -342,6 +354,46 @@ export class SyncService {
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
             applied.push(op.op_id);
             continue;
+          }
+
+          // Every op that targets an existing row is routed through resolveConflict before it is
+          // written — insert/overwrite is decided identically whether or not the table logs.
+          const decision = resolveConflict(op.type, existingRow[0] as Record<string, unknown> | undefined, op);
+          if (decision.logConflict && op.type === 'logged_set') {
+            const stored = existingRow[0] as unknown as {
+              weightKg: string;
+              reps: number;
+              rir: number | null;
+              setIndex: number;
+              completed: boolean;
+            };
+            const incoming = (op.data ?? {}) as LoggedSetOpData;
+            const losingValue = {
+              weight_kg: stored.weightKg,
+              reps: stored.reps,
+              rir: stored.rir,
+              set_index: stored.setIndex,
+              completed: stored.completed,
+            };
+            const winningValue = {
+              weight_kg: incoming.weight_kg !== undefined ? String(incoming.weight_kg) : stored.weightKg,
+              reps: incoming.reps ?? stored.reps,
+              rir: incoming.rir !== undefined ? incoming.rir : stored.rir,
+              set_index: incoming.set_index ?? stored.setIndex,
+              completed: incoming.completed !== undefined ? incoming.completed : stored.completed,
+            };
+            const seqResult = await tx.execute<{ seq: string }>(sql`select nextval('sync_seq') as seq`);
+            const winningServerSeq = BigInt(seqResult.rows[0].seq);
+            if (winningServerSeq > highestServerSeq) highestServerSeq = winningServerSeq;
+            await recordConflict(tx, {
+              userId,
+              table: op.type,
+              rowId: op.id,
+              losingValue,
+              winningValue,
+              losingServerSeq: Number(capturedRootSeq),
+              winningServerSeq: Number(winningServerSeq),
+            });
           }
 
           const values =
