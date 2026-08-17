@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
+import * as unitsContract from '@fitness/api-contracts';
 import { captureCalendarDay } from '../calendar-day';
 import { generateClientId } from './id';
 import { getPowerSync } from './powersync';
@@ -96,10 +97,15 @@ export async function addSessionExercise(input: AddSessionExerciseInput): Promis
   return id;
 }
 
+export interface LogSetWeightInput {
+  value: string | null;
+  unit: unitsContract.WeightUnit;
+}
+
 export interface LogSetInput {
   sessionExerciseId: string;
   setType?: string;
-  weightKg: string;
+  weight: LogSetWeightInput;
   reps: number;
   rir?: number | null;
   side?: string | null;
@@ -121,12 +127,14 @@ export async function logSet(input: LogSetInput): Promise<string> {
     .where(eq(loggedSet.sessionExerciseId, input.sessionExerciseId));
   const setIndex = (maxRow?.maxIndex ?? 0) + 1;
 
+  const weightKg = unitsContract.toCanonicalKg(input.weight.value, input.weight.unit);
+
   await db.insert(loggedSet).values({
     id,
     sessionExerciseId: input.sessionExerciseId,
     setIndex,
     setType: input.setType ?? 'normal',
-    weightKg: input.weightKg,
+    weightKg,
     reps: input.reps,
     rir: input.rir ?? null,
     side: input.side ?? null,
