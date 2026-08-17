@@ -1,0 +1,36 @@
+# Self-hosted PowerSync Service config for docker-compose.dev.yml. Replicates from the same
+# Postgres apps/api writes to (native Homebrew postgresql@18 on the host, reached via
+# host.docker.internal since this container is not on the host's own network namespace) — not
+# the unused `postgres` service also declared in docker-compose.dev.yml, which stays a
+# never-started placeholder until something else needs a containerized database.
+replication:
+  connections:
+    - type: postgresql
+      uri: !env PS_DATA_SOURCE_URI
+      sslmode: disable
+
+# Bucket storage lives in its own `powersync` schema inside the same `fitness` database — the
+# second database engine (MongoDB) older PowerSync versions required is not needed here.
+storage:
+  type: postgresql
+  uri: !env PS_STORAGE_SOURCE_URI
+  sslmode: disable
+
+port: 8080
+
+sync_config:
+  path: /config/sync-rules.yaml
+
+client_auth:
+  # A static, non-secret label this file and apps/api/src/sync/powersync-token.ts both pin to —
+  # not a network-reachable address, just a shared token-scoping tag (docs.powersync.com's own
+  # dev examples use the same kind of literal, e.g. 'powersync-dev').
+  audience: ['fitness-sync']
+  jwks:
+    keys:
+      - kty: oct
+        alg: HS256
+        kid: app-key-1
+        # Must start with PS_ -- the service's config parser refuses to substitute any other
+        # prefix. docker-compose.dev.yml maps this from the project's own POWERSYNC_JWT_SECRET.
+        k: !env PS_JWT_SECRET

@@ -1,6 +1,6 @@
 import { PowerSyncDatabase } from '@powersync/react-native';
 import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver';
-import type { UploadQueueStats } from '@powersync/common';
+import type { PowerSyncBackendConnector, UploadQueueStats } from '@powersync/common';
 import { drizzleSchema } from './schema';
 
 export const AppSchema = new DrizzleAppSchema(drizzleSchema);
@@ -8,8 +8,6 @@ export const AppSchema = new DrizzleAppSchema(drizzleSchema);
 let db: ReturnType<typeof wrapPowerSyncWithDrizzle> | null = null;
 let powersync: PowerSyncDatabase | null = null;
 
-// Local-only in this plan: never calls connect(), because pull needs a PowerSync Service that
-// plan 02-08 stands up. Local writes and the crud queue work with no service at all.
 export function getPowerSync() {
   if (!db) {
     powersync = new PowerSyncDatabase({
@@ -27,4 +25,16 @@ export function getPowerSync() {
 export function getUploadQueueStats(): Promise<UploadQueueStats> {
   getPowerSync();
   return powersync!.getUploadQueueStats();
+}
+
+// Pull failing (bad/unreachable service, expired token PowerSync itself will re-request through
+// SyncConnector.fetchCredentials) never blocks a local write — connect() only starts the crud
+// queue's own upload loop, which was already running before this call (T-02-29).
+export function connectPowerSync(connector: PowerSyncBackendConnector): Promise<void> {
+  getPowerSync();
+  return powersync!.connect(connector);
+}
+
+export function disconnectPowerSync(): Promise<void> {
+  return powersync ? powersync.disconnect() : Promise.resolve();
 }

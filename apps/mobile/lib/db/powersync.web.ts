@@ -1,6 +1,6 @@
 import { PowerSyncDatabase } from '@powersync/web';
 import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver';
-import type { UploadQueueStats } from '@powersync/common';
+import type { PowerSyncBackendConnector, UploadQueueStats } from '@powersync/common';
 import { drizzleSchema } from './schema';
 
 export const AppSchema = new DrizzleAppSchema(drizzleSchema);
@@ -14,7 +14,6 @@ let powersync: PowerSyncDatabase | null = null;
 // package.json; served from the static web root at the same path.
 const WORKER_PATH = '/@powersync/worker.js';
 
-// Local-only in this plan, same as the native sibling — never calls connect().
 export function getPowerSync() {
   if (!db) {
     powersync = new PowerSyncDatabase({
@@ -33,4 +32,13 @@ export function getPowerSync() {
 export function getUploadQueueStats(): Promise<UploadQueueStats> {
   getPowerSync();
   return powersync!.getUploadQueueStats();
+}
+
+export function connectPowerSync(connector: PowerSyncBackendConnector): Promise<void> {
+  getPowerSync();
+  return powersync!.connect(connector);
+}
+
+export function disconnectPowerSync(): Promise<void> {
+  return powersync ? powersync.disconnect() : Promise.resolve();
 }

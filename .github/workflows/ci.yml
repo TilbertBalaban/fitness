@@ -62,6 +62,10 @@ jobs:
       SMTP_HOST: 127.0.0.1
       SMTP_PORT: 1025
       MAIL_FROM: noreply@fitness.example.com
+      # No PowerSync Service container runs in this job -- only the token-minting half of
+      # 02-08's suite is exercised here. Its one case that needs a live service degrades to a
+      # documented connection-refused branch rather than failing (see powersync-token.e2e-spec.ts).
+      POWERSYNC_URL: http://127.0.0.1:8080
 
     steps:
       - uses: actions/checkout@v7
@@ -80,6 +84,9 @@ jobs:
       # needs a production credential, and referencing one would put it in a log-bearing runner.
       - name: Generate a throwaway signing secret
         run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Generate a throwaway PowerSync signing secret
+        run: echo "POWERSYNC_JWT_SECRET=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')" >> "$GITHUB_ENV"
 
       - name: Apply the Drizzle schema to the service database
         run: pnpm --filter api db:push
