@@ -1,11 +1,19 @@
 import type { AbstractPowerSyncDatabase, CrudEntry, CrudTransaction } from '@powersync/common';
-import { SYNC_PUSH_PATH } from '@fitness/api-contracts';
+import { SYNC_PUSH_PATH, type SyncPushResponse } from '@fitness/api-contracts';
 import { workoutSession } from '../lib/db/schema';
 import { apiFetch } from '../lib/api-client';
 import { SyncConnector } from '../lib/db/connector';
+import { getSyncStatus } from '../lib/sync-status';
 
 jest.mock('../lib/api-client', () => ({
   apiFetch: jest.fn(),
+}));
+
+// getSyncStatus (Task 3) lazily requires pending-write-count.ts, which reaches through to
+// db/powersync.ts — the same untransformable-ESM reason sync-status.ts's own comment documents.
+// Mocked here the same way session-refresh.test.ts and export.test.ts already do.
+jest.mock('../lib/db/powersync', () => ({
+  getUploadQueueStats: jest.fn().mockResolvedValue({ count: 0, size: null }),
 }));
 
 // Test-only id generator — avoids a Node-only crypto import in an RN test file. Format-only, not
@@ -42,6 +50,16 @@ function fakeDatabase(transaction: CrudTransaction | null): AbstractPowerSyncDat
   return {
     getNextCrudTransaction: jest.fn().mockResolvedValue(transaction),
   } as unknown as AbstractPowerSyncDatabase;
+}
+
+function fakePushResponse(body: Partial<SyncPushResponse> = {}) {
+  return { applied: [], rejected: [], server_seq: '1', ...body };
+}
+
+// json is a jest.fn (not a plain async closure) so a test can assert whether uploadData ever
+// attempted to read the body at all — the 'offline' behavior line requires it never does.
+function fakeResponse(jsonImpl: () => Promise<unknown>) {
+  return { json: jest.fn(jsonImpl) };
 }
 
 describe('local schema shape', () => {
@@ -85,7 +103,10 @@ describe('SyncConnector.uploadData — crud op mapping', () => {
   });
 
   it('enqueues exactly one crud op of type PUT for table workout_session', async () => {
-    apiFetchMock.mockResolvedValue({ response: null, outcome: 'ok' });
+    apiFetchMock.mockResolvedValue({
+      response: fakeResponse(async () => fakePushResponse()) as never,
+      outcome: 'ok',
+    });
     const rowId = fakeId();
     const transaction = fakeTransaction([fakeCrudEntry({ id: rowId })]);
     const database = fakeDatabase(transaction);
@@ -108,8 +129,11 @@ describe('SyncConnector.uploadData — crud op mapping', () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it('completes the crud transaction on an ok outcome so it is not replayed', async () => {
-    apiFetchMock.mockResolvedValue({ response: null, outcome: 'ok' });
+  it('completes the crud transaction on an ok outcome with an empty rejected array so it is not replayed', async () => {
+    apiFetchMock.mockResolvedValue({
+      response: fakeResponse(async () => fakePushResponse()) as never,
+      outcome: 'ok',
+    });
     const complete = jest.fn().mockResolvedValue(undefined);
     const transaction = fakeTransaction([fakeCrudEntry()], complete);
     const database = fakeDatabase(transaction);
@@ -151,5 +175,115 @@ describe('SyncConnector.uploadData — crud op mapping', () => {
 
     expect(complete).not.toHaveBeenCalled();
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// CR-01: the crud transaction must never be marked complete because the HTTP transport succeeded
+// — only because the server actually accepted every op. transaction.complete call counts are the
+// only place "kept" versus "destroyed" is observable in a unit test (no real PowerSync outbox here).
+describe('SyncConnector.uploadData — reading the push response body (CR-01)', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
+  it('completes the transaction on a 200 with an empty rejected array, exactly as before', async () => {
+    apiFetchMock.mockResolvedValue({
+      response: fakeResponse(async () => fakePushResponse({ rejected: [] })) as never,
+      outcome: 'ok',
+    });
+    const complete = jest.fn().mockResolvedValue(undefined);
+    const transaction = fakeTransaction([fakeCrudEntry()], complete);
+
+    await new SyncConnector().uploadData(fakeDatabase(transaction));
+
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('completes the transaction and records every rejected entry when every rejection is terminal for its table', async () => {
+    const entry = fakeCrudEntry({ clientId: 42, table: 'workout_session' });
+    apiFetchMock.mockResolvedValue({
+      response: fakeResponse(async () =>
+        fakePushResponse({ rejected: [{ op_id: '42', reason: 'invalid_field' }] }),
+      ) as never,
+      outcome: 'ok',
+    });
+    const complete = jest.fn().mockResolvedValue(undefined);
+    const transaction = fakeTransaction([entry], complete);
+
+    await new SyncConnector().uploadData(fakeDatabase(transaction));
+
+    expect(complete).toHaveBeenCalledTimes(1);
+    const status = await getSyncStatus();
+    expect(status.rejectedOps).toEqual(
+      expect.arrayContaining([expect.objectContaining({ opId: '42', reason: 'invalid_field', table: 'workout_session' })]),
+    );
+  });
+
+  it('does not complete the transaction on any non-terminal rejection, leaving it queued', async () => {
+    const entry = fakeCrudEntry({ clientId: 7, table: 'workout_session' });
+    apiFetchMock.mockResolvedValue({
+      response: fakeResponse(async () =>
+        fakePushResponse({ rejected: [{ op_id: '7', reason: 'missing_parent' }] }),
+      ) as never,
+      outcome: 'ok',
+    });
+    const complete = jest.fn().mockResolvedValue(undefined);
+    const transaction = fakeTransaction([entry], complete);
+
+    await new SyncConnector().uploadData(fakeDatabase(transaction));
+
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it('does not complete the transaction when the response body cannot be parsed as JSON', async () => {
+    apiFetchMock.mockResolvedValue({
+      response: fakeResponse(async () => {
+        throw new SyntaxError('Unexpected end of JSON input');
+      }) as never,
+      outcome: 'ok',
+    });
+    const complete = jest.fn().mockResolvedValue(undefined);
+    const transaction = fakeTransaction([fakeCrudEntry()], complete);
+
+    await new SyncConnector().uploadData(fakeDatabase(transaction));
+
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it('does not complete the transaction and never attempts to read a body on an offline outcome', async () => {
+    // A non-null response with outcome 'offline' models the real classifyAuthOutcome path for a
+    // completed 5xx (OFFLINE_STATUSES) — a genuinely reachable response the client must still
+    // never read as evidence of a successful push.
+    const response = fakeResponse(async () => fakePushResponse());
+    apiFetchMock.mockResolvedValue({ response: response as never, outcome: 'offline' });
+    const complete = jest.fn().mockResolvedValue(undefined);
+    const transaction = fakeTransaction([fakeCrudEntry()], complete);
+
+    await new SyncConnector().uploadData(fakeDatabase(transaction));
+
+    expect(complete).not.toHaveBeenCalled();
+    expect(response.json).not.toHaveBeenCalled();
+  });
+
+  it('surfaces recorded rejections through getSyncStatus() and does not advance lastSuccessfulPushAt for a push with rejections', async () => {
+    // lastSuccessfulPushAt is module-level state shared across this suite's tests, so the only
+    // order-independent assertion is "unchanged by this push" rather than "still null".
+    const before = await getSyncStatus();
+    const entry = fakeCrudEntry({ clientId: 99, table: 'logged_set' });
+    apiFetchMock.mockResolvedValue({
+      response: fakeResponse(async () =>
+        fakePushResponse({ rejected: [{ op_id: '99', reason: 'not_owner' }] }),
+      ) as never,
+      outcome: 'ok',
+    });
+    const transaction = fakeTransaction([entry]);
+
+    await new SyncConnector().uploadData(fakeDatabase(transaction));
+
+    const after = await getSyncStatus();
+    expect(after.rejectedOps).toEqual(
+      expect.arrayContaining([expect.objectContaining({ opId: '99', reason: 'not_owner', table: 'logged_set' })]),
+    );
+    expect(after.lastSuccessfulPushAt).toBe(before.lastSuccessfulPushAt);
   });
 });

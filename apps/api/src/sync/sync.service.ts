@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { eq, inArray, sql } from 'drizzle-orm';
 import {
   SYNCED_TABLES,
@@ -176,6 +176,28 @@ function isNonNegativeDecimalOrNull(value: unknown): boolean {
   return value === null || isNonNegativeDecimal(value);
 }
 
+function isNonNegativeIntegerOrNull(value: unknown): boolean {
+  return value === null || isNonNegativeInteger(value);
+}
+
+// session_exercise.exercise_id is a NOT NULL foreign key (apps/api/src/db/schema/session.ts) —
+// unlike every other field here, absent is invalid the same as empty, because toSessionExerciseValues'
+// `d.exercise_id ?? ''` fallback would otherwise insert or (via the unconditional onConflictDoUpdate
+// `set`) silently clobber an existing row's FK with an empty string (CR-04). order_index and the six
+// target_* fields keep the "checked only when present" pattern the other validators use; each
+// target_* column is nullable, so an explicit null is a legitimate "no prescription" value.
+function isInvalidSessionExercise(data: SessionExerciseOpData): boolean {
+  if (typeof data.exercise_id !== 'string' || data.exercise_id.length === 0) return true;
+  if (data.order_index !== undefined && !isNonNegativeInteger(data.order_index)) return true;
+  if (data.target_sets !== undefined && !isNonNegativeIntegerOrNull(data.target_sets)) return true;
+  if (data.target_rep_min !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_min)) return true;
+  if (data.target_rep_max !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_max)) return true;
+  if (data.target_rir_min !== undefined && !isNonNegativeIntegerOrNull(data.target_rir_min)) return true;
+  if (data.target_rir_max !== undefined && !isNonNegativeIntegerOrNull(data.target_rir_max)) return true;
+  if (data.target_rest_seconds !== undefined && !isNonNegativeIntegerOrNull(data.target_rest_seconds)) return true;
+  return false;
+}
+
 // Validated against the column each field targets before applying (T-02-05). An op failing
 // validation is rejected invalid_field and never reaches the apply phase.
 function hasInvalidField(op: SyncCrudOp): boolean {
@@ -202,6 +224,10 @@ function hasInvalidField(op: SyncCrudOp): boolean {
     return false;
   }
 
+  if (op.type === 'session_exercise') {
+    return isInvalidSessionExercise(data as SessionExerciseOpData);
+  }
+
   return false;
 }
 
@@ -213,6 +239,8 @@ interface Aggregate {
 
 @Injectable()
 export class SyncService {
+  private readonly logger = new Logger(SyncService.name);
+
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   // Resolves ownership through the owning chain to workout_session.user_id for every op in an
@@ -400,7 +428,17 @@ export class SyncService {
 
       const orderedOps = [...aggregate.ops].sort((a, b) => AGGREGATE_RANK[a.type as MappedTable] - AGGREGATE_RANK[b.type as MappedTable]);
 
-      await this.db.transaction(async (tx) => {
+      // appliedBefore/rejectedBefore snapshot this aggregate's starting point in the shared
+      // applied/rejected arrays. The transaction below is a real Postgres transaction — a caught
+      // error means every write inside it already rolled back — but applied.push(...) runs as a
+      // side effect *inside* that callback, so a throw partway through can leave op ids in
+      // `applied` for writes the database itself undid. On catch, applied is rewound to its
+      // pre-attempt length so it never reports a rolled-back write as a success (CR-04's error
+      // boundary must not trade a 500 for a false "applied").
+      const appliedBefore = applied.length;
+      const rejectedBefore = rejected.length;
+      try {
+        await this.db.transaction(async (tx) => {
         // Merge order resolves through the aggregate root, never a per-child column (02-02's
         // "no server_seq on a child row" decision) — captured once, before any op in this
         // transaction touches it, so a conflict logged later in the same loop always compares
@@ -546,7 +584,24 @@ export class SyncService {
 
           applied.push(op.op_id);
         }
-      });
+        });
+      } catch (error) {
+        // The transaction already rolled back every write it made — this catch's job is only to
+        // let the loop over aggregates.values() survive and continue to the next one (CR-04). An
+        // op already rejected earlier in this same attempt (e.g. a tombstone race) keeps that
+        // reason rather than being overwritten.
+        applied.length = appliedBefore;
+        const alreadyRejected = new Set(rejected.slice(rejectedBefore).map((r) => r.op_id));
+        for (const op of aggregate.ops) {
+          if (!alreadyRejected.has(op.op_id)) {
+            rejected.push({ op_id: op.op_id, reason: 'invalid_field' });
+          }
+        }
+        this.logger.error(
+          `applyBatch: aggregate root=${root} failed and was rolled back (opIds=${aggregate.ops.map((op) => op.op_id).join(',')})`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
     }
 
     return { applied, rejected, server_seq: highestServerSeq.toString() };

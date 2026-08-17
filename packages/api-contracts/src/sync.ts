@@ -21,6 +21,32 @@ export const SYNCED_TABLES = [
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
+// The three tables SyncService.TABLE_MAP actually applies today (CR-03). Kept as a separate
+// tuple rather than derived from TABLE_MAP so this contract stays importable from the mobile
+// client without pulling in the server's Drizzle schema.
+export const PUSH_APPLIED_TABLES = ['workout_session', 'session_exercise', 'logged_set'] as const;
+export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
+
+// No apply path yet. Each table lands here until the phase that owns its validation rules and
+// conflict semantics builds one — moving an entry to PUSH_APPLIED_TABLES is a one-line change
+// when that phase ships. Verified against ROADMAP.md's phase ownership, not guessed: equipment_profile
+// and user_preference are Phase 6 (Gym Profiles & Plate Math — GYM-01/02 own multi-gym config and
+// user_preference.defaultEquipmentProfileId references it), and personal_record is Phase 9
+// (Records & Client Analytics — ANLY-01 owns PR detection), not Phase 5/7 as an earlier draft of
+// this classification assumed.
+export const PUSH_DEFERRED_TABLES = [
+  'routine', // Phase 4 — Program Builder
+  'routine_day', // Phase 4 — Program Builder
+  'routine_exercise', // Phase 4 — Program Builder
+  'exercise', // Phase 3 — Exercise Catalog
+  'equipment_profile', // Phase 6 — Gym Profiles & Plate Math
+  'user_preference', // Phase 6 — Gym Profiles & Plate Math
+  'personal_record', // Phase 9 — Records & Client Analytics
+  'body_metric', // Phase 12 — Body Metrics & Dashboard
+  'progress_photo', // Phase 12 — Body Metrics & Dashboard
+] as const;
+export type PushDeferredTable = (typeof PUSH_DEFERRED_TABLES)[number];
+
 export type SyncCrudOpType = 'PUT' | 'PATCH' | 'DELETE';
 
 export interface SyncCrudOp {
@@ -50,4 +76,18 @@ export interface SyncPushResponse {
   rejected: { op_id: string; reason: SyncRejectionReason }[];
   // Stringified bigint — a Postgres bigint does not survive a JSON number.
   server_seq: string;
+}
+
+const TERMINAL_REASONS = new Set<SyncRejectionReason>(['not_owner', 'invalid_field', 'deleted']);
+const NON_TERMINAL_REASONS = new Set<SyncRejectionReason>(['missing_parent', 'batch_too_large']);
+
+// Terminal means "retrying this identical op can never succeed" — the only question the client
+// needs answered to decide whether completing the crud transaction destroys a recoverable write.
+// unknown_table is the one reason whose terminality depends on the table: a name in
+// PUSH_DEFERRED_TABLES is a known, permanent gap (terminal), but a name recognized by neither
+// list means contract drift a later client/server deploy may cure (not terminal).
+export function isTerminalRejection(reason: SyncRejectionReason, table: string): boolean {
+  if (TERMINAL_REASONS.has(reason)) return true;
+  if (NON_TERMINAL_REASONS.has(reason)) return false;
+  return (PUSH_DEFERRED_TABLES as readonly string[]).includes(table);
 }
