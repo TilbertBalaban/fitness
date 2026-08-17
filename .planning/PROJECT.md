@@ -17,13 +17,20 @@ you what to lift next time.
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] Local-first offline logging — full workout capture with zero connectivity, sync on reconnect
+      *Validated in Phase 02: data-model-sync-engine. Proven on the web target against a real
+      browser, a live self-hosted PowerSync Service and real Postgres — an offline-logged set
+      reaches Postgres with no manual action, and a logged set survives close-and-reopen with no
+      finish/flush/sync step. Native (iOS/Android) observation deferred to Phase 999.1; no Xcode or
+      Android SDK on this machine.*
+- [x] NestJS backend API with real user accounts and multi-device sync
+      *Validated in Phase 02: two browser contexts on one account each logging offline both
+      converge after reconnect with no logged set lost. Device half deferred to Phase 999.1.*
 
 ### Active
 
 - [ ] Cross-platform client: React Native mobile + React Native Web browser from one codebase
-- [ ] NestJS backend API with real user accounts and multi-device sync
-- [ ] Local-first offline logging — full workout capture with zero connectivity, sync on reconnect
+      *Web target exercised end-to-end in Phase 02; native runtime still unverified (Phase 999.1).*
 - [ ] Exercise library seeded from an open dataset (text cues + static images)
 - [ ] Custom program builder — user-authored routines from scratch
 - [ ] Auto-generated programs from goal, experience level, equipment, and schedule
@@ -77,11 +84,11 @@ you what to lift next time.
 |----------|-----------|---------|
 | React Native + RN Web from one codebase | Mobile is the primary in-gym surface; web is wanted too, and a single codebase avoids maintaining two clients solo | — Pending |
 | NestJS backend | Structured, opinionated Node framework; part of the stack the author wants to learn properly | — Pending |
-| Local-first, offline-capable logging | Gyms have poor connectivity; a logger that fails mid-set is unusable | — Pending |
+| Local-first, offline-capable logging | Gyms have poor connectivity; a logger that fails mid-set is unusable | ✓ Validated in Phase 02 — proven in a real browser against real Postgres. The call paid for itself: three production sync bugs (wrong origin, dropped session cookie, unparsed body) were invisible to every unit test and only surfaced once a real browser drove the real HTTP path |
 | Full feature parity as the v1 bar | The point is the real thing, not a toy logger; parity defines a concrete finish line | — Pending |
 | Open exercise dataset, no video | 900 exercises with 3-angle video is a content production problem that would stall the software | — Pending |
 | Rule-based progression, not AI | Mirrors MacroFactor's deliberate design; deterministic rules are testable and explainable | — Pending |
-| Accounts + multi-device sync in scope | Phone and browser must converge; deferring auth would force a data model rewrite later | — Pending |
+| Accounts + multi-device sync in scope | Phone and browser must converge; deferring auth would force a data model rewrite later | ✓ Validated in Phase 02 — two browser contexts on one account converge after both log offline. Device half deferred to Phase 999.1 |
 | No nutrition tracking | MacroFactor's macro coaching is a separate product surface; including it would multiply scope | — Pending |
 
 ## Evolution
@@ -102,4 +109,15 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-10 after initialization*
+
+## Current State
+
+**Phase 02 (Data Model & Sync Engine) complete** — 13 plans, all 5 roadmap success criteria verified
+against a real browser, a live self-hosted PowerSync Service and real Postgres. PLAT-02, PLAT-03,
+PLAT-04, PLAT-07, PLAT-08, PLAT-10 and LOG-22 are satisfied. The local-first foundation the rest of
+the app sits on is in place and proven, not assumed.
+
+Next: Phase 03 — Exercise Catalog.
+
+---
+*Last updated: 2026-08-17 after Phase 02 completion*
