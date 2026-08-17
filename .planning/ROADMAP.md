@@ -104,7 +104,7 @@ Plans:
   4. Upgrading the app across a local schema change preserves unsynced on-device data, verified against a populated pre-migration database
   5. A weight entered in either unit round-trips through storage and display without drifting, and a workout finished at 11:45pm is attributed to that day regardless of timezone
 
-**Plans**: 13 plans (12/12 executed; 8 planned + 4 gap-closure after round-1 verification + 1 gap-closure after round-2 verification returned `gaps_found`)
+**Plans**: 13/13 plans executed (12/12 executed; 8 planned + 4 gap-closure after round-1 verification + 1 gap-closure after round-2 verification returned `gaps_found`)
 
 Plans:
 **Wave 1**
@@ -142,7 +142,7 @@ Plans:
 
 **Wave 8** *(gap closure — round-2 verification: the PATCH apply path clobbers every field a PATCH does not name)*
 
-- [ ] 02-13-PLAN.md — A PATCH writes only what it named, on all three applied tables (LOG-22 finish-workout case)
+- [x] 02-13-PLAN.md — A PATCH writes only what it named, on all three applied tables (LOG-22 finish-workout case)
 
 ### Phase 3: Exercise Catalog
 
@@ -365,7 +365,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
-| 2. Data Model & Sync Engine | 12/12 | In Progress|  |
+| 2. Data Model & Sync Engine | 13/13 | In Progress|  |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |
