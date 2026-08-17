@@ -104,7 +104,7 @@ Plans:
   4. Upgrading the app across a local schema change preserves unsynced on-device data, verified against a populated pre-migration database
   5. A weight entered in either unit round-trips through storage and display without drifting, and a workout finished at 11:45pm is attributed to that day regardless of timezone
 
-**Plans**: 12 plans (8/8 executed; 4 gap-closure plans added after verification returned `gaps_found`)
+**Plans**: 10/12 plans executed (8/8 executed; 4 gap-closure plans added after verification returned `gaps_found`)
 
 Plans:
 **Wave 1**
@@ -129,8 +129,8 @@ Plans:
 
 **Wave 5** *(gap closure — criterion 4 unproven, and 4 critical code-review findings)*
 
-- [ ] 02-09-PLAN.md — Tracer: a set logged in a real browser, into a real PowerSync database, survives close and reopen
-- [ ] 02-10-PLAN.md — A bodyweight set round-trips as NULL, not as zero kilograms (CR-02, WINDOWS #20/#21)
+- [x] 02-09-PLAN.md — Tracer: a set logged in a real browser, into a real PowerSync database, survives close and reopen
+- [x] 02-10-PLAN.md — A bodyweight set round-trips as NULL, not as zero kilograms (CR-02, WINDOWS #20/#21)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -361,7 +361,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
-| 2. Data Model & Sync Engine | 8/8 | In Progress|  |
+| 2. Data Model & Sync Engine | 10/12 | In Progress|  |
 | 3. Exercise Catalog | 0/TBD | Not started | - |
 | 4. Program Builder | 0/TBD | Not started | - |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |
