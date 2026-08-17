@@ -1326,9 +1326,6 @@ packages:
   '@expo/code-signing-certificates@0.0.6':
     resolution: {integrity: sha512-iNe0puxwBNEcuua9gmTGzq+SuMDa0iATai1FlFTMHJ/vUmKvN/V//drXoLJkVb5i5H3iE/n/qIJxyoBnXouD0w==}
 
-  '@expo/config-plugins@57.0.7':
-    resolution: {integrity: sha512-jvXMiNuH8W7fmU9yCk4/jVwDX2G/5rWUg5PZ22mriccEeQVS9HJjQiUHivMaK6MxEG5L9f0RPScxe/nQfnpQvg==}
-
   '@expo/config-plugins@57.0.8':
     resolution: {integrity: sha512-x6lx4s/19i39/+1dMPwb9tFCc4WR843dG5Yi+C64lhKL3YHX+6oKrT2Kv72PCEalnUY+usQDkB3NrLSrYOWtDg==}
 
@@ -7568,7 +7565,7 @@ snapshots:
     dependencies:
       '@expo/code-signing-certificates': 0.0.6
       '@expo/config': 57.0.7(typescript@5.9.3)
-      '@expo/config-plugins': 57.0.7(typescript@5.9.3)
+      '@expo/config-plugins': 57.0.8(typescript@5.9.3)
       '@expo/devcert': 1.2.1
       '@expo/env': 2.4.2
       '@expo/image-utils': 0.11.4(typescript@5.9.3)
@@ -7645,7 +7642,7 @@ snapshots:
     dependencies:
       '@expo/code-signing-certificates': 0.0.6
       '@expo/config': 57.0.7(typescript@6.0.3)
-      '@expo/config-plugins': 57.0.7(typescript@6.0.3)
+      '@expo/config-plugins': 57.0.8(typescript@6.0.3)
       '@expo/devcert': 1.2.1
       '@expo/env': 2.4.2
       '@expo/image-utils': 0.11.4(typescript@6.0.3)
@@ -7722,31 +7719,12 @@ snapshots:
     dependencies:
       node-forge: 1.4.0
 
-  '@expo/config-plugins@57.0.7(typescript@5.9.3)':
+  '@expo/config-plugins@57.0.8(typescript@5.9.3)':
     dependencies:
       '@expo/config-types': 57.0.2
       '@expo/json-file': 11.0.1
       '@expo/plist': 0.8.1
       '@expo/require-utils': 57.0.4(typescript@5.9.3)
-      '@expo/sdk-runtime-versions': 1.0.0
-      chalk: 4.1.2
-      debug: 4.4.3
-      getenv: 2.0.0
-      glob: 13.0.6
-      semver: 7.8.5
-      slugify: 1.6.9
-      xcode: 3.0.1
-      xml2js: 0.6.0
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
-
-  '@expo/config-plugins@57.0.7(typescript@6.0.3)':
-    dependencies:
-      '@expo/config-types': 57.0.2
-      '@expo/json-file': 11.0.1
-      '@expo/plist': 0.8.1
-      '@expo/require-utils': 57.0.4(typescript@6.0.3)
       '@expo/sdk-runtime-versions': 1.0.0
       chalk: 4.1.2
       debug: 4.4.3
@@ -7783,7 +7761,7 @@ snapshots:
 
   '@expo/config@57.0.7(typescript@5.9.3)':
     dependencies:
-      '@expo/config-plugins': 57.0.7(typescript@5.9.3)
+      '@expo/config-plugins': 57.0.8(typescript@5.9.3)
       '@expo/config-types': 57.0.2
       '@expo/json-file': 11.0.1
       '@expo/require-utils': 57.0.4(typescript@5.9.3)
@@ -7799,7 +7777,7 @@ snapshots:
 
   '@expo/config@57.0.7(typescript@6.0.3)':
     dependencies:
-      '@expo/config-plugins': 57.0.7(typescript@6.0.3)
+      '@expo/config-plugins': 57.0.8(typescript@6.0.3)
       '@expo/config-types': 57.0.2
       '@expo/json-file': 11.0.1
       '@expo/require-utils': 57.0.4(typescript@6.0.3)
@@ -7887,14 +7865,14 @@ snapshots:
 
   '@expo/inline-modules@0.1.5(typescript@5.9.3)':
     dependencies:
-      '@expo/config-plugins': 57.0.7(typescript@5.9.3)
+      '@expo/config-plugins': 57.0.8(typescript@5.9.3)
     transitivePeerDependencies:
       - supports-color
       - typescript
 
   '@expo/inline-modules@0.1.5(typescript@6.0.3)':
     dependencies:
-      '@expo/config-plugins': 57.0.7(typescript@6.0.3)
+      '@expo/config-plugins': 57.0.8(typescript@6.0.3)
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -8062,7 +8040,7 @@ snapshots:
   '@expo/prebuild-config@57.0.11(typescript@5.9.3)':
     dependencies:
       '@expo/config': 57.0.7(typescript@5.9.3)
-      '@expo/config-plugins': 57.0.7(typescript@5.9.3)
+      '@expo/config-plugins': 57.0.8(typescript@5.9.3)
       '@expo/config-types': 57.0.2
       '@expo/image-utils': 0.11.4(typescript@5.9.3)
       '@expo/json-file': 11.0.1
@@ -8078,7 +8056,7 @@ snapshots:
   '@expo/prebuild-config@57.0.11(typescript@6.0.3)':
     dependencies:
       '@expo/config': 57.0.7(typescript@6.0.3)
-      '@expo/config-plugins': 57.0.7(typescript@6.0.3)
+      '@expo/config-plugins': 57.0.8(typescript@6.0.3)
       '@expo/config-types': 57.0.2
       '@expo/image-utils': 0.11.4(typescript@6.0.3)
       '@expo/json-file': 11.0.1
@@ -10809,7 +10787,7 @@ snapshots:
       '@babel/runtime': 7.29.7
       '@expo/cli': 57.0.14(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.9)(expo-constants@57.0.10)(expo-font@57.0.1)(expo-router@57.0.12)(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
       '@expo/config': 57.0.7(typescript@5.9.3)
-      '@expo/config-plugins': 57.0.7(typescript@5.9.3)
+      '@expo/config-plugins': 57.0.8(typescript@5.9.3)
       '@expo/devtools': 57.0.1(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@expo/fingerprint': 0.20.7
       '@expo/local-build-cache-provider': 57.0.6(typescript@5.9.3)
@@ -10820,7 +10798,7 @@ snapshots:
       babel-preset-expo: 57.0.6(@babel/core@7.29.7)(@babel/runtime@7.29.7)(expo@57.0.12)(react-refresh@0.14.2)
       expo-asset: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
       expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))
-      expo-file-system: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))
+      expo-file-system: 57.0.4(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))
       expo-font: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       expo-keep-awake: 57.0.1(expo@57.0.12)(react@19.2.3)
       expo-modules-autolinking: 57.0.9(typescript@5.9.3)
@@ -10851,7 +10829,7 @@ snapshots:
       '@babel/runtime': 7.29.7
       '@expo/cli': 57.0.14(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.9)(expo-constants@57.0.10)(expo-font@57.0.1)(expo-router@57.0.12)(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       '@expo/config': 57.0.7(typescript@6.0.3)
-      '@expo/config-plugins': 57.0.7(typescript@6.0.3)
+      '@expo/config-plugins': 57.0.8(typescript@6.0.3)
       '@expo/devtools': 57.0.1(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@expo/fingerprint': 0.20.7
       '@expo/local-build-cache-provider': 57.0.6(typescript@6.0.3)
