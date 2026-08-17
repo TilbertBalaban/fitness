@@ -19,19 +19,26 @@ interface WorkoutSessionOpData {
   ended_at?: string | null;
   status?: string;
   device_id?: string | null;
+  timezone?: string;
+  local_date?: string;
 }
 
 function toWorkoutSessionValues(id: string, userId: string, data: Record<string, unknown> | null | undefined) {
   const d = (data ?? {}) as WorkoutSessionOpData;
+  const startedAt = d.started_at ? new Date(d.started_at) : new Date();
   return {
     id,
     userId,
     routineDayId: d.routine_day_id ?? null,
     equipmentProfileId: d.equipment_profile_id ?? null,
-    startedAt: d.started_at ? new Date(d.started_at) : new Date(),
+    startedAt,
     endedAt: d.ended_at ? new Date(d.ended_at) : null,
     status: d.status ?? 'in_progress',
     deviceId: d.device_id ?? null,
+    // Fallback only reachable when a client omits captureCalendarDay's stamp entirely (e.g. an
+    // older op replayed from the crud queue) — the real stamp is always client-supplied (LOG-22).
+    timezone: d.timezone ?? 'UTC',
+    localDate: d.local_date ?? startedAt.toISOString().slice(0, 10),
   };
 }
 
