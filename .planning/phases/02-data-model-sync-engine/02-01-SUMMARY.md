@@ -223,3 +223,8 @@ None — no external service configuration required. `pull` (a running PowerSync
 ---
 *Phase: 02-data-model-sync-engine*
 *Completed: 2026-08-17*
+
+## Self-Check: PASSED
+
+All 14 created files confirmed tracked via `git ls-files`; all 6 referenced commit hashes
+(`8cd570a`, `138738e`, `1fd61ef`, `a933f70`, `45d4721`, `975f253`) confirmed present in `git log`.
