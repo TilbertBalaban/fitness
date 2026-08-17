@@ -104,7 +104,7 @@ Plans:
   4. Upgrading the app across a local schema change preserves unsynced on-device data, verified against a populated pre-migration database
   5. A weight entered in either unit round-trips through storage and display without drifting, and a workout finished at 11:45pm is attributed to that day regardless of timezone
 
-**Plans**: 12/12 plans executed (8/8 executed; 4 gap-closure plans added after verification returned `gaps_found`)
+**Plans**: 13 plans (12/12 executed; 8 planned + 4 gap-closure after round-1 verification + 1 gap-closure after round-2 verification returned `gaps_found`)
 
 Plans:
 **Wave 1**
@@ -139,6 +139,10 @@ Plans:
 **Wave 7** *(blocked on Wave 6 completion)*
 
 - [x] 02-12-PLAN.md — Schema-change survival against a populated database, automatic reconnect drain, and two-client convergence
+
+**Wave 8** *(gap closure — round-2 verification: the PATCH apply path clobbers every field a PATCH does not name)*
+
+- [ ] 02-13-PLAN.md — A PATCH writes only what it named, on all three applied tables (LOG-22 finish-workout case)
 
 ### Phase 3: Exercise Catalog
 
