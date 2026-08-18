@@ -1,6 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import { and, eq, isNull } from 'drizzle-orm';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { ExerciseListRow } from '@/components/ExerciseListRow';
@@ -38,6 +38,14 @@ interface CatalogData {
 
 const EMPTY_FILTERS: CatalogFilters = { muscleGroupIds: [], equipment: [], movementPatterns: [] };
 const SKELETON_ROW_COUNT = 6;
+export const ADD_CUSTOM_EXERCISE_ROUTE = '/exercises/new';
+
+// Extracted so "the Add Custom Exercise control is enabled and targets /exercises/new" is a real
+// behavioral assertion (a fake router's push spy) rather than a grep over the file's own source —
+// a stale comment mentioning an earlier disabled/no-op state can never decide this test.
+export function handleAddCustomExercisePress(router: { push: (href: string) => void }): void {
+  router.push(ADD_CUSTOM_EXERCISE_ROUTE);
+}
 
 function parseJsonArray(raw: string | null): string[] {
   if (!raw) return [];
@@ -57,7 +65,7 @@ function parseJsonArray(raw: string | null): string[] {
 // the drift path archived, must never reach the list — this is a different concept from the
 // per-user archive/never-suggest state in user_exercise_preference, which applyCatalogFilters
 // handles separately.
-async function loadCatalogRows(db: WriteDb): Promise<CatalogData> {
+export async function loadCatalogRows(db: WriteDb): Promise<CatalogData> {
   const seededRows = await db
     .select({
       id: seededExercise.id,
@@ -113,6 +121,7 @@ async function loadCatalogRows(db: WriteDb): Promise<CatalogData> {
 }
 
 export default function ExercisesScreen() {
+  const router = useRouter();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
@@ -237,9 +246,7 @@ export default function ExercisesScreen() {
           <View className="mt-xl gap-md">
             <View className="flex-row items-center justify-between gap-sm">
               <Text className="text-heading font-semibold text-foreground">Exercises</Text>
-              {/* Routes to /exercises/new, which 03-08 creates — inert until then (no-op onPress,
-                  documented in 03-06-SUMMARY.md's Known Stubs rather than left unexplained). */}
-              <PrimaryButton label="Add Custom Exercise" onPress={() => {}} />
+              <PrimaryButton label="Add Custom Exercise" onPress={() => handleAddCustomExercisePress(router)} />
             </View>
 
             <SearchField onDebouncedChange={setQuery} />
