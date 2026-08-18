@@ -19,6 +19,7 @@ const REQUIRED_TABLES = [
   'muscle_group',
   'exercise',
   'exercise_muscle_mapping',
+  'user_exercise_preference',
   'equipment_profile',
   'routine',
   'routine_day',
@@ -42,6 +43,17 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
   logged_set: ['id', 'session_exercise_id', 'set_index', 'weight_kg', 'reps', 'completed', 'parent_set_id'],
   session_exercise: ['id', 'session_id', 'target_sets', 'target_rep_min', 'target_rep_max', 'superset_group_id'],
   user_preference: ['user_id', 'weight_unit'],
+  exercise: [
+    'id',
+    'user_id',
+    'load_type',
+    'bodyweight_contribution_pct',
+    'archived_at',
+    'is_custom',
+    'variation_of_id',
+    'source',
+  ],
+  user_exercise_preference: ['id', 'user_id', 'exercise_id', 'archived_at', 'never_suggest', 'updated_at', 'server_seq'],
 };
 
 let pg: Client;
@@ -123,5 +135,51 @@ describe('Schema parity (e2e)', () => {
       (r) => r.indexdef.includes('UNIQUE') && /\(email\)/.test(r.indexdef),
     );
     expect(hasUniqueEmail).toBe(true);
+  });
+
+  it('exercise_load_type_check exists and names all six load-type literals', async () => {
+    // A CHECK that exists but lists five values would otherwise pass silently — asserting the
+    // constraint's own definition, not just its presence in pg_constraint, is what has teeth.
+    const { rows } = await pg.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname = $1`,
+      ['exercise_load_type_check'],
+    );
+
+    expect(rows.length).toBe(1);
+    const definition = rows[0].definition;
+    for (const literal of [
+      'external_weight',
+      'bodyweight',
+      'bodyweight_plus_added',
+      'assisted',
+      'time_based',
+      'distance_based',
+    ]) {
+      expect(definition).toContain(literal);
+    }
+  });
+
+  it('rejects an exercise row with an out-of-vocabulary load_type at the database level', async () => {
+    // Proves the constraint has teeth, not merely exists — a direct pg insert bypasses
+    // sync.service.ts's application-level validator entirely, which is exactly the path the seed
+    // script and any future direct-DB tooling take.
+    const badId = `schema-parity-bogus-load-type-${Date.now()}`;
+    await expect(
+      pg.query(`INSERT INTO exercise (id, name, load_type, source) VALUES ($1, $2, $3, $4)`, [
+        badId,
+        'Schema Parity Bogus Load Type',
+        'bogus',
+        'test',
+      ]),
+    ).rejects.toThrow();
+
+    const validId = `schema-parity-valid-load-type-${Date.now()}`;
+    await pg.query(`INSERT INTO exercise (id, name, load_type, source) VALUES ($1, $2, $3, $4)`, [
+      validId,
+      'Schema Parity Valid Load Type',
+      'external_weight',
+      'test',
+    ]);
+    await pg.query(`DELETE FROM exercise WHERE id = $1`, [validId]);
   });
 });

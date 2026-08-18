@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { isCatalogSnapshot } from '@fitness/api-contracts';
 import catalogSnapshotJson from '../../assets/catalog/catalog-snapshot.json';
 import { getPowerSync, type WriteDb } from '../db/powersync';
-import { catalogMeta, exercise, exerciseMuscleMapping, muscleGroup } from '../db/schema';
+import { catalogMeta, exerciseMuscleMapping, muscleGroup, seededExercise } from '../db/schema';
 
 const CATALOG_META_ID = 'singleton';
 
@@ -60,10 +60,11 @@ export async function loadCatalogSnapshot(
         });
     }
 
+    // WINDOWS #32: seeded rows go into seededExercise (localOnly — zero ps_crud entries), never
+    // the ordinary synced `exercise` table. `exercise` is reserved for a user's own custom rows.
     for (const item of snapshot.exercises) {
       const values = {
         id: item.id,
-        userId: null,
         name: item.name,
         aliases: item.aliases ? JSON.stringify(item.aliases) : null,
         movementPattern: item.movement_pattern,
@@ -74,12 +75,13 @@ export async function loadCatalogSnapshot(
         cueText: item.cue_text,
         imageUrls: JSON.stringify(item.image_urls),
         bodyweightContributionPct: item.bodyweight_contribution_pct,
-        isCustom: false,
         variationOfId: item.variation_of_id,
         source: item.source,
-        archivedAt: null,
       };
-      await tx.insert(exercise).values(values).onConflictDoUpdate({ target: exercise.id, set: values });
+      await tx
+        .insert(seededExercise)
+        .values(values)
+        .onConflictDoUpdate({ target: seededExercise.id, set: values });
     }
 
     for (const mapping of snapshot.mappings) {

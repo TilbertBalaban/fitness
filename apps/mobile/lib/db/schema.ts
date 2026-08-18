@@ -131,6 +131,43 @@ export const muscleGroup = sqliteTable('muscle_group', {
   bodyRegion: text('body_region').notNull(),
 });
 
+// Seeded catalog rows only (is_custom=false, user_id=null equivalent) — split out of `exercise`
+// to close WINDOWS #32: PowerSync installs CRUD triggers per table, not per row, so writing
+// seeded rows into the ordinary synced `exercise` table generated a real ps_crud entry per row
+// regardless of user_id being null. Registered as localOnly in powersync.ts/powersync.web.ts, so
+// loadCatalogSnapshot's writes here never reach the sync protocol. Custom (user-authored)
+// exercises stay in `exercise` and sync normally; readers union both tables (see
+// apps/mobile/app/exercises/index.tsx, [id].tsx).
+export const seededExercise = sqliteTable('seeded_exercise', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  aliases: text('aliases'),
+  movementPattern: text('movement_pattern'),
+  equipmentRequired: text('equipment_required'),
+  loadType: text('load_type').notNull(),
+  unilateral: integer('unilateral', { mode: 'boolean' }).notNull(),
+  instructionsText: text('instructions_text'),
+  cueText: text('cue_text'),
+  imageUrls: text('image_urls'),
+  bodyweightContributionPct: text('bodyweight_contribution_pct'),
+  variationOfId: text('variation_of_id'),
+  source: text('source').notNull(),
+});
+
+// Per-user archive/never-suggest state on any exercise (seeded or custom) — mirrors
+// apps/api/src/db/schema/catalog.ts's userExercisePreference exactly. A normal synced table
+// (not localOnly): every user's own preference row is real per-user state that must survive
+// across devices, unlike the shared seeded catalog content above.
+export const userExercisePreference = sqliteTable('user_exercise_preference', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  exerciseId: text('exercise_id').notNull(),
+  archivedAt: text('archived_at'),
+  neverSuggest: integer('never_suggest', { mode: 'boolean' }).notNull(),
+  updatedAt: text('updated_at').notNull(),
+  serverSeq: integer('server_seq'),
+});
+
 // Composite-PK on Postgres; PowerSync requires a single TEXT PRIMARY KEY on every managed table,
 // so id is derived deterministically as `${exercise_id}:${muscle_group_id}` at load time — that
 // determinism is what makes loadCatalogSnapshot's upsert idempotent across re-runs.
@@ -200,11 +237,13 @@ export const drizzleSchema = {
   routineExercise,
   equipmentProfile,
   exercise,
+  userExercisePreference,
   personalRecord,
   bodyMetric,
   progressPhoto,
   userPreference,
   muscleGroup,
+  seededExercise,
   exerciseMuscleMapping,
   catalogMeta,
 };
