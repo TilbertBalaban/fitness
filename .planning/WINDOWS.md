@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 37
+open_count: 36
 waived_count: 0
-fixed_count: 7
+fixed_count: 8
 total_count: 44
-last_updated: 2026-08-18T20:24:50.324Z
+last_updated: 2026-08-18T20:42:11.576Z
 ---
 
 # Broken Windows Ledger
@@ -58,7 +58,7 @@ last_updated: 2026-08-18T20:24:50.324Z
 | 41 | 03 | unrun-verify | apps/mobile/app/exercises/new.tsx |  | The rendered create and edit forms (blank-on-open placeholder, inline per-field errors, Save disabled-and-never-hidden, multiline auto-grow/scroll, muscle-mapping chip picker, ownership-gated not-permitted state) were never observed in a browser, simulator or device -- no @testing-library/react-native in this codebase's lockfile, no simulator/device on this machine, and CLAUDE.md forbids launching a browser unless explicitly asked. Verified instead: typecheck, expo export --platform web bundling both routes, and 33 unit tests over every extracted presentational decision. | open |  | 2026-08-18T19:29:38.608Z |  |
 | 45 | 03 | unrun-verify | apps/mobile/app/exercises/[id].tsx |  | duplicateExercise is imported from lib/catalog/custom-exercise (owned by 03-08, running concurrently in a separate worktree this wave, not present in 03-09's worktree). pnpm --filter mobile test all pass (219/219, incl. a virtual-mocked duplicateExercise), and pnpm --filter mobile typecheck / build each fail with exactly one error -- Cannot find module '../../lib/catalog/custom-exercise' -- confirmed to be the only error either command produces. Needs re-running after 03-08 and 03-09 merge to confirm the two plans' work integrates cleanly (signature match: duplicateExercise(db, userId, sourceId) => Promise<string>, per 03-08-PLAN.md). | fixed |  | 2026-08-18T19:20:00.883Z | 2026-08-18T20:24:16.512Z |
 | 46 | 03 | unrun-verify | apps/mobile/components/SwapSuggestionList.tsx |  | Smart-swap suggestion rows (thumbnail, name, why string, empty state, Browse Catalog link) were never observed in a real browser, simulator or device -- no simulator/device on this machine, and CLAUDE.md forbids launching a browser unless explicitly asked. Verified instead: 20 scorer unit tests, 7 direct-invocation component tests, typecheck, and expo export --platform web bundling the route cleanly. | open |  | 2026-08-18T20:24:39.731Z |  |
-| 47 | 03 | unrun-verify | apps/api |  | This plan's phase-level <verification> block names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite was not re-run in this session (no server files in this plan's scope; api/.env is permission-restricted from this worktree's sandbox). Confidence it is unaffected rests on file-scope reasoning (zero server files touched: smart-swap.ts, SwapSuggestionList.tsx and the [id].tsx edit are all client-only), not a fresh green run. | open |  | 2026-08-18T20:24:50.324Z |  |
+| 47 | 03 | unrun-verify | apps/api |  | This plan's phase-level <verification> block names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite was not re-run in this session (no server files in this plan's scope; api/.env is permission-restricted from this worktree's sandbox). Confidence it is unaffected rests on file-scope reasoning (zero server files touched: smart-swap.ts, SwapSuggestionList.tsx and the [id].tsx edit are all client-only), not a fresh green run. | fixed |  | 2026-08-18T20:24:50.324Z | 2026-08-18T20:42:11.576Z |
 
 ````json
 [
@@ -585,10 +585,10 @@ last_updated: 2026-08-18T20:24:50.324Z
     "file": "apps/api",
     "line": null,
     "description": "This plan's phase-level <verification> block names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite was not re-run in this session (no server files in this plan's scope; api/.env is permission-restricted from this worktree's sandbox). Confidence it is unaffected rests on file-scope reasoning (zero server files touched: smart-swap.ts, SwapSuggestionList.tsx and the [id].tsx edit are all client-only), not a fresh green run.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-18T20:24:50.324Z",
-    "resolved_at": null
+    "resolved_at": "2026-08-18T20:42:11.576Z"
   }
 ]
 ````
