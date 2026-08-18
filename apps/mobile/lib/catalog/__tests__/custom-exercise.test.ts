@@ -1,13 +1,19 @@
 import {
   MAX_NAME_LENGTH,
   createCustomExercise,
+  draftFromExerciseDetail,
   duplicateExercise,
   getExerciseOwnerUserId,
+  isSaveEnabled,
   normalizeExerciseName,
+  resolveEditAccess,
+  submitEditExercise,
+  submitNewExercise,
   updateCustomExercise,
   validateCustomExercise,
   type CustomExerciseDraft,
 } from '../custom-exercise';
+import type { ExerciseDetail } from '../exercise-detail';
 import { getPowerSync } from '../../db/powersync';
 
 jest.mock('../../db/id', () => ({ generateClientId: jest.fn(() => 'fixed-id') }));
@@ -397,5 +403,130 @@ describe('getExerciseOwnerUserId', () => {
     const owner = await getExerciseOwnerUserId(db as unknown as PowerSyncDb, 'seed-1');
 
     expect(owner).toBeNull();
+  });
+});
+
+describe('isSaveEnabled', () => {
+  it('is false while name or load_type is unset', () => {
+    expect(isSaveEnabled({ name: '', loadType: null })).toBe(false);
+    expect(isSaveEnabled({ name: 'Bench Press', loadType: null })).toBe(false);
+    expect(isSaveEnabled({ name: '', loadType: 'external_weight' })).toBe(false);
+  });
+
+  it('is true once name and load_type are both set, regardless of other optional fields', () => {
+    expect(isSaveEnabled({ name: 'Bench Press', loadType: 'external_weight' })).toBe(true);
+  });
+});
+
+describe('resolveEditAccess', () => {
+  it('is owned when the current user matches the row owner', () => {
+    expect(resolveEditAccess('user-1', 'user-1')).toBe('owned');
+  });
+
+  it('is not-permitted for a seeded row (null owner) — every seeded row', () => {
+    expect(resolveEditAccess(null, 'user-1')).toBe('not-permitted');
+  });
+
+  it("is not-permitted for another user's custom row", () => {
+    expect(resolveEditAccess('user-2', 'user-1')).toBe('not-permitted');
+  });
+
+  it('is not-permitted when there is no signed-in user', () => {
+    expect(resolveEditAccess('user-1', null)).toBe('not-permitted');
+  });
+});
+
+describe('draftFromExerciseDetail', () => {
+  it('maps a loaded ExerciseDetail into a pre-filled draft with primary/secondary muscle mappings', () => {
+    const detail: ExerciseDetail = {
+      id: 'ex-1',
+      name: 'Pull-Up',
+      aliases: [],
+      movementPattern: 'vertical_pull',
+      equipmentRequired: null,
+      loadType: 'bodyweight',
+      unilateral: false,
+      instructionsText: 'Grip the bar.',
+      cueText: 'Chest up.',
+      imageUrls: [],
+      primaryMuscles: [{ muscleGroupId: 'lats', name: 'Lats', bodyRegion: 'back', weightFactor: '1.00' }],
+      secondaryMuscles: [{ muscleGroupId: 'biceps', name: 'Biceps', bodyRegion: 'arms', weightFactor: '0.50' }],
+    };
+
+    const draft = draftFromExerciseDetail(detail);
+
+    expect(draft.name).toBe('Pull-Up');
+    expect(draft.loadType).toBe('bodyweight');
+    expect(draft.instructionsText).toBe('Grip the bar.');
+    expect(draft.muscleMappings).toEqual([
+      { muscleGroupId: 'lats', role: 'primary', weightFactor: '1.00' },
+      { muscleGroupId: 'biceps', role: 'secondary', weightFactor: '0.50' },
+    ]);
+  });
+});
+
+describe('submitNewExercise', () => {
+  it('does not call the write function for an invalid draft and returns per-field errors', async () => {
+    const schema = loadSchema();
+    const { db, rows } = fakeDb(schema);
+
+    const result = await submitNewExercise(db as unknown as PowerSyncDb, 'user-1', { name: '', loadType: null });
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.errors.name).toBeDefined();
+    expect(rows.get(schema.exercise)?.length ?? 0).toBe(0);
+  });
+
+  it('calls the write function exactly once for a valid draft and returns the new id', async () => {
+    const schema = loadSchema();
+    const { db, rows } = fakeDb(schema);
+
+    const result = await submitNewExercise(db as unknown as PowerSyncDb, 'user-1', {
+      name: 'Cable Fly',
+      loadType: 'external_weight',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.id).toBe('fixed-id');
+    expect(rows.get(schema.exercise)?.length).toBe(1);
+  });
+});
+
+describe('submitEditExercise', () => {
+  it('does not call the write function for an invalid draft', async () => {
+    const schema = loadSchema();
+    const { db, rows } = fakeDb(schema);
+    const id = await createCustomExercise(db as unknown as PowerSyncDb, 'user-1', {
+      name: 'Original',
+      loadType: 'external_weight',
+    });
+
+    const result = await submitEditExercise(db as unknown as PowerSyncDb, 'user-1', id, {
+      name: '',
+      loadType: null,
+    });
+
+    expect(result.ok).toBe(false);
+    const [row] = rows.get(schema.exercise) ?? [];
+    expect(row.name).toBe('Original');
+  });
+
+  it('calls the write function exactly once for a valid draft and updates the row', async () => {
+    const schema = loadSchema();
+    const { db, rows } = fakeDb(schema);
+    const id = await createCustomExercise(db as unknown as PowerSyncDb, 'user-1', {
+      name: 'Original',
+      loadType: 'external_weight',
+    });
+
+    const result = await submitEditExercise(db as unknown as PowerSyncDb, 'user-1', id, {
+      name: 'Renamed',
+      loadType: 'bodyweight',
+    });
+
+    expect(result.ok).toBe(true);
+    const [row] = rows.get(schema.exercise) ?? [];
+    expect(row.name).toBe('Renamed');
+    expect(rows.get(schema.exercise)?.length).toBe(1);
   });
 });

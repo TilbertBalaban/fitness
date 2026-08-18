@@ -14,6 +14,7 @@ import {
 import { generateClientId } from '../db/id';
 import type { WriteDb } from '../db/powersync';
 import { exercise, exerciseMuscleMapping, seededExercise } from '../db/schema';
+import type { ExerciseDetail } from './exercise-detail';
 
 // tx parameter type extracted from WriteDb['transaction']'s own declared callback signature
 // (matches apps/mobile/lib/catalog/load-snapshot.ts's identical extraction) so this always
@@ -341,4 +342,84 @@ export async function duplicateExercise(db: WriteDb, userId: string, sourceId: s
 export async function getExerciseOwnerUserId(db: WriteDb, id: string): Promise<string | null> {
   const [row] = await db.select({ userId: exercise.userId }).from(exercise).where(eq(exercise.id, id));
   return row ? row.userId : null;
+}
+
+// --- Screen-presentational helpers ---------------------------------------------------------
+// apps/mobile/app/exercises/new.tsx and edit/[id].tsx have no component-render test available
+// in this codebase (@testing-library/react-native is not installed) — per this plan's own
+// instruction, the forms' presentational decisions (whether Save is enabled, which state the
+// edit route renders, prefilling a draft from a loaded detail, and whether the write function
+// gets called at all) are extracted here as small exported, unit-tested functions instead of
+// asserted against a rendered tree.
+
+// Save is enabled once name and load_type are both set — equipment, cues and instructions may
+// stay empty (E4 UI Considerations, "partial" row). Deliberately narrower than
+// validateCustomExercise: an invalid equipment_required/movement_pattern/muscle mapping is still
+// caught at submit time via the inline per-field error, not by keeping Save disabled.
+export function isSaveEnabled(draft: CustomExerciseDraft): boolean {
+  const errors = validateCustomExercise(draft);
+  return errors.name === undefined && errors.load_type === undefined;
+}
+
+export type EditAccess = 'owned' | 'not-permitted';
+
+// A seeded row (ownerUserId null) and another user's row both route to 'not-permitted' — the
+// edit route never distinguishes the two in its rendered state, only in the reason (T-03-33).
+export function resolveEditAccess(ownerUserId: string | null, currentUserId: string | null): EditAccess {
+  if (currentUserId !== null && ownerUserId === currentUserId) return 'owned';
+  return 'not-permitted';
+}
+
+// Converts a loaded ExerciseDetail (apps/mobile/lib/catalog/exercise-detail.ts) into an editable
+// draft — the edit form's pre-fill. detail.loadType/equipmentRequired/movementPattern are always
+// members of their respective vocabularies on read (the row could not have been written
+// otherwise), so casting here is a read of already-validated storage, not a new trust boundary.
+export function draftFromExerciseDetail(detail: ExerciseDetail): CustomExerciseDraft {
+  return {
+    name: detail.name,
+    loadType: detail.loadType as LoadType,
+    equipmentRequired: (detail.equipmentRequired as EquipmentType | null) ?? null,
+    movementPattern: (detail.movementPattern as MovementPattern | null) ?? null,
+    unilateral: detail.unilateral,
+    instructionsText: detail.instructionsText,
+    cueText: detail.cueText,
+    muscleMappings: [
+      ...detail.primaryMuscles.map((target) => ({
+        muscleGroupId: target.muscleGroupId,
+        role: 'primary' as const,
+        weightFactor: target.weightFactor,
+      })),
+      ...detail.secondaryMuscles.map((target) => ({
+        muscleGroupId: target.muscleGroupId,
+        role: 'secondary' as const,
+        weightFactor: target.weightFactor,
+      })),
+    ],
+  };
+}
+
+export type SubmitOutcome = { ok: true; id: string } | { ok: false; errors: CustomExerciseErrors };
+
+// Validates before calling the write function at all, so an invalid draft never reaches
+// createCustomExercise/updateCustomExercise — the screen renders errors.<field> inline and never
+// queues a write for a draft this function rejected.
+export async function submitNewExercise(db: WriteDb, userId: string, draft: CustomExerciseDraft): Promise<SubmitOutcome> {
+  const errors = validateCustomExercise(draft);
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+
+  const id = await createCustomExercise(db, userId, draft);
+  return { ok: true, id };
+}
+
+export async function submitEditExercise(
+  db: WriteDb,
+  userId: string,
+  id: string,
+  draft: CustomExerciseDraft,
+): Promise<SubmitOutcome> {
+  const errors = validateCustomExercise(draft);
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+
+  await updateCustomExercise(db, userId, id, draft);
+  return { ok: true, id };
 }
