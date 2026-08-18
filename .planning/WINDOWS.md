@@ -1,9 +1,9 @@
 ---
 schema_version: 1
-open_count: 32
+open_count: 33
 waived_count: 0
 fixed_count: 6
-total_count: 38
+total_count: 39
 last_updated: 2026-08-18T18:52:43.887Z
 ---
 
@@ -50,9 +50,10 @@ last_updated: 2026-08-18T18:52:43.887Z
 | 33 | 03 | unrun-verify | apps/mobile/lib/db/test-support.ts |  | loadCatalogSnapshot's zero-ps_crud claim for muscle_group/exercise_muscle_mapping/catalog_meta is proven only against a Jest mock that faithfully models PowerSync's documented per-table trigger installation, not against a real PowerSync engine -- new PowerSyncDatabase() from @powersync/web hangs indefinitely under this project's Jest (Node) environment (confirmed by a timed spike, killed after 60s+), matching WINDOWS #22's prior finding. The real-engine confirmation needs a Playwright e2e case (real browser, real Worker/IndexedDB) alongside the existing durability harness. | open |  | 2026-08-18T09:28:44.482Z |  |
 | 34 | 03 | unrun-verify | apps/mobile/app/exercises/index.tsx |  | The offline first-boot flow (fresh install, no network, open /exercises, see 3 seeded exercises, open one, see target muscles) and the error-state UI ('Exercise catalog couldn't load') were verified only by typecheck, unit tests and expo export --platform web bundling -- not observed rendered in a browser, simulator or device. No Xcode/Android SDK on this machine; no Playwright browsers installed in this worktree, consistent with prior phases' native/browser gaps (WINDOWS #4, #8, #26). | open |  | 2026-08-18T09:28:46.987Z |  |
 | 35 | 03 | unmet-truth | docs/catalog-dataset-license.md |  | Task 1's fedb-with-images decision was accepted against the characterization 'an open, unanswered upstream GitHub issue' on image licensing. Direct re-verification (03-04, 2026-08-18) found this stale: yuhonas/free-exercise-db issues #2 and #12 are both closed/answered -- the maintainer disclaims knowledge of image provenance, and the upstream wrkout/exercises.json CONTRIBUTING.md explicitly states images were scraped from the internet, copyright is not owned, and advises against commercial use. image_urls now points at live raw.githubusercontent.com URLs (not yet vendored/bundled -- that is 03-05's job). This corrected, more concrete risk should be reweighed before /gsd-ship; see docs/catalog-dataset-license.md's 'Image licensing: corrected finding' section. | open |  | 2026-08-18T10:50:22.424Z |  |
-| 36 | 03 | stub | apps/mobile/components/ExerciseImageTile.tsx |  | Catalog images (1740 files, 870 exercises) vendored to apps/mobile/assets/catalog/images/ with a committed manifest (03-05), but not wired into the render layer -- ExerciseImageTile still only accepts a remote uri; needs a Metro static-require map plus a prop-shape change to render local images offline. | open |  | 2026-08-18T12:30:40.757Z |  |
+| 36 | 03 | stub | apps/mobile/components/ExerciseImageTile.tsx |  | AMENDED by plan 03-07: the wiring is now done -- ExerciseImageTile gained an additive `localSource` prop, catalog-image-map.generated.ts provides 1740 static requires keyed by exercise id, and app/exercises/[id].tsx renders through it. Left `open`, not `fixed`: this only has bundler-level proof (all 1740 requires resolve, all 1740 jpgs land in `expo export --platform web`'s dist/, 97MB) -- no browser/simulator/device observed an image actually paint on screen (see WINDOWS #37). | open |  | 2026-08-18T12:30:40.757Z |  |
 | 37 | 03 | unrun-verify | apps/mobile/app/exercises/index.tsx |  | FlashList rendering/scrolling all ~870 seeded rows without dropped frames (03-06's held-out performance backstop truth) was not observed on device or in a real browser -- no simulator/device, no Playwright browsers installed in this worktree. Verified instead: typecheck, 178/178 jest tests, and expo export --platform web bundling FlashList and the new screen for the web target. | open |  | 2026-08-18T18:52:43.762Z |  |
 | 38 | 03 | unrun-verify | apps/mobile/app/exercises/index.tsx |  | The catalog-load-failure error state ('Exercise catalog couldn't load') is wired through loadCatalogSnapshot's already-tested invalid-shape path, but this screen's own rendering of that path was not observed in a rendered tree -- @testing-library/react-native is not installed in this codebase, so 03-06's component-level assertions were extracted into pure, unit-tested helpers (deriveExerciseListScreenState et al.) in catalog-filter.ts per the plan's own instruction, rather than rendered. | open |  | 2026-08-18T18:52:43.887Z |  |
+| 39 | 03 | unrun-verify | apps/mobile/app/exercises/[id].tsx |  | The vendored local catalog images (1740 files, 03-05) are now wired through catalog-image-map.generated.ts + ExerciseImageTile's localSource prop -- bundler-level proof confirms all 1740 requires resolve and are included in the web export (find dist -iname '*.jpg' | wc -l == 1740, 97MB). Actual visual rendering (a real image painting on the exercise detail screen) is unverified: Playwright Chromium is present on this machine (contradicting WINDOWS #34's prior claim) but CLAUDE.md's global 'never launch a browser unless explicitly asked' rule takes precedence over verifying this here; no Xcode/Android SDK either (WINDOWS #16). | open |  | 2026-08-18T18:51:58.018Z |  |
 
 ````json
 [
@@ -482,7 +483,7 @@ last_updated: 2026-08-18T18:52:43.887Z
     "phase": "03",
     "file": "apps/mobile/components/ExerciseImageTile.tsx",
     "line": null,
-    "description": "Catalog images (1740 files, 870 exercises) vendored to apps/mobile/assets/catalog/images/ with a committed manifest (03-05), but not wired into the render layer -- ExerciseImageTile still only accepts a remote uri; needs a Metro static-require map plus a prop-shape change to render local images offline.",
+    "description": "AMENDED by plan 03-07: the wiring is now done -- ExerciseImageTile gained an additive `localSource` prop, catalog-image-map.generated.ts provides 1740 static requires keyed by exercise id, and app/exercises/[id].tsx renders through it. Left `open`, not `fixed`: this only has bundler-level proof (all 1740 requires resolve, all 1740 jpgs land in `expo export --platform web`'s dist/, 97MB) -- no browser/simulator/device observed an image actually paint on screen (see WINDOWS #37).",
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-18T12:30:40.757Z",
@@ -510,6 +511,18 @@ last_updated: 2026-08-18T18:52:43.887Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-18T18:52:43.887Z",
+    "resolved_at": null
+  },
+  {
+    "id": 39,
+    "kind": "unrun-verify",
+    "phase": "03",
+    "file": "apps/mobile/app/exercises/[id].tsx",
+    "line": null,
+    "description": "The vendored local catalog images (1740 files, 03-05) are now wired through catalog-image-map.generated.ts + ExerciseImageTile's localSource prop -- bundler-level proof confirms all 1740 requires resolve and are included in the web export (find dist -iname '*.jpg' | wc -l == 1740, 97MB). Actual visual rendering (a real image painting on the exercise detail screen) is unverified: Playwright Chromium is present on this machine (contradicting WINDOWS #34's prior claim) but CLAUDE.md's global 'never launch a browser unless explicitly asked' rule takes precedence over verifying this here; no Xcode/Android SDK either (WINDOWS #16).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-18T18:51:58.018Z",
     "resolved_at": null
   }
 ]
