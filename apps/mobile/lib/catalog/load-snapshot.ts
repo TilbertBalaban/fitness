@@ -27,13 +27,20 @@ function muscleMappingId(exerciseId: string, muscleGroupId: string): string {
   return `${exerciseId}:${muscleGroupId}`;
 }
 
+// snapshotOverride exists purely for tests to drive a deliberately malformed artifact through
+// this function without touching the bundled JSON asset (WINDOWS #23-style injection seam,
+// matching log-set.ts's db parameter) — production call sites never pass it.
+//
 // Structural validation runs before the transaction opens (T-03-08) — a shape failure never
 // reaches a write, so the fail-closed path always leaves every table exactly as it found them.
-export async function loadCatalogSnapshot(db: WriteDb = getPowerSync()): Promise<CatalogLoadResult> {
-  if (!isCatalogSnapshot(catalogSnapshotJson)) {
+export async function loadCatalogSnapshot(
+  db: WriteDb = getPowerSync(),
+  snapshotOverride: unknown = catalogSnapshotJson,
+): Promise<CatalogLoadResult> {
+  if (!isCatalogSnapshot(snapshotOverride)) {
     return { status: 'invalid' };
   }
-  const snapshot = catalogSnapshotJson;
+  const snapshot = snapshotOverride;
 
   const currentVersion = await readCatalogVersion(db);
   if (currentVersion === snapshot.catalog_version) {
