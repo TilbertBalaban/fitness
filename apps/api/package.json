@@ -14,7 +14,8 @@
     "db:verify": "pnpm run test:e2e -- schema-parity",
     "seed:corpus": "ts-node src/seed/generate-corpus.ts",
     "seed:catalog:normalize": "ts-node src/seed/normalize-catalog.ts",
-    "seed:catalog": "ts-node src/seed/seed-catalog.ts"
+    "seed:catalog": "ts-node src/seed/seed-catalog.ts",
+    "sync:catalog-snapshot": "node ../../scripts/sync-catalog-snapshot.cjs"
   },
   "dependencies": {
     "@better-auth/expo": "1.6.26",

@@ -53,6 +53,9 @@ function fakeDb(schema: DbSchema, localOnlyTables: unknown[]) {
         onConflictDoUpdate: (args: { target?: unknown; set: Record<string, unknown> }) => Promise<void>;
       };
     };
+    update: (table: unknown) => {
+      set: (setValues: Record<string, unknown>) => { where: (condition?: unknown) => Promise<void> };
+    };
     transaction: (callback: (tx: FakeDb) => Promise<void>) => Promise<void>;
   }
 
@@ -75,6 +78,24 @@ function fakeDb(schema: DbSchema, localOnlyTables: unknown[]) {
       values: (values: Record<string, unknown>) => ({
         onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => {
           upsert(table, { ...values, ...set });
+          return Promise.resolve();
+        },
+      }),
+    }),
+    // A real WHERE-clause condition (drizzle-orm's own and()/isNull()/notInArray(), not mocked
+    // here) is opaque to this fake — it applies `setValues` to every row currently in `table`
+    // rather than evaluating the condition. Safe for every assertion in this file (none inspect
+    // archivedAt); a genuinely selective archive-drift assertion needs a real engine or a
+    // purpose-built condition evaluator, neither of which exists in this Jest/Node sandbox
+    // (WINDOWS #22/#33's standing constraint).
+    update: (table: unknown) => ({
+      set: (setValues: Record<string, unknown>) => ({
+        where: () => {
+          const tableRows = rows.get(table) ?? [];
+          rows.set(
+            table,
+            tableRows.map((row) => ({ ...row, ...setValues })),
+          );
           return Promise.resolve();
         },
       }),
@@ -132,10 +153,17 @@ describe('loadCatalogSnapshot — happy path (bundled snapshot)', () => {
     expect(result.status).toBe('loaded');
     // Seeded rows land in seededExercise (WINDOWS #32), not exercise — exercise stays empty here
     // because loadCatalogSnapshot never writes to it; it is reserved for a user's own custom rows.
-    expect(rows.get(schema.seededExercise)?.length).toBe(3);
+    // 03-05 replaced 03-01's hand-authored 3-exercise tracer fixture with the real, committed
+    // 870-exercise catalog (byte-identical copy of catalog-normalized.json) — these counts are the
+    // real artifact's, not the tracer's.
+    expect(rows.get(schema.seededExercise)?.length).toBe(870);
     expect(rows.get(schema.exercise)?.length).toBe(0);
-    expect(rows.get(schema.muscleGroup)?.length).toBe(8);
-    expect(rows.get(schema.exerciseMuscleMapping)?.length).toBe(8);
+    expect(rows.get(schema.muscleGroup)?.length).toBe(19);
+    // The artifact's raw mapping array carries 43 rows sharing an (exercise_id, muscle_group_id)
+    // pair with another row (03-04 upstream data-quality debt, also handled server-side by
+    // seed-catalog.ts's explicit dedup) — this loop's per-row onConflictDoUpdate naturally
+    // deduplicates via last-write-wins on the composite id, unlike a bulk multi-row insert.
+    expect(rows.get(schema.exerciseMuscleMapping)?.length).toBe(3134);
     expect(rows.get(schema.catalogMeta)?.length).toBe(1);
   });
 });
@@ -287,6 +315,7 @@ describe('readCatalogVersion', () => {
     await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>);
     const version = await readCatalogVersion(db as unknown as ReturnType<typeof getPowerSync>);
 
-    expect(version).toBe('tracer-0001');
+    // 03-05: real catalog_version (fb701c18b7999d47), not the 03-01 tracer's 'tracer-0001'.
+    expect(version).toBe('fb701c18b7999d47');
   });
 });
