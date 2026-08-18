@@ -1,0 +1,71 @@
+{
+  "catalog_version": "tracer-0001",
+  "generated_at": "2026-08-18T00:00:00.000Z",
+  "muscle_groups": [
+    { "id": "quads", "name": "Quads", "body_region": "legs" },
+    { "id": "glutes", "name": "Glutes", "body_region": "legs" },
+    { "id": "lower_back", "name": "Lower Back", "body_region": "back" },
+    { "id": "lats", "name": "Lats", "body_region": "back" },
+    { "id": "biceps", "name": "Biceps", "body_region": "arms" },
+    { "id": "chest", "name": "Chest", "body_region": "chest" },
+    { "id": "triceps", "name": "Triceps", "body_region": "arms" },
+    { "id": "front_delts", "name": "Front Delts", "body_region": "shoulders" }
+  ],
+  "exercises": [
+    {
+      "id": "ex-barbell-back-squat",
+      "name": "Barbell Back Squat",
+      "aliases": ["Back Squat"],
+      "movement_pattern": "squat",
+      "equipment_required": "barbell",
+      "load_type": "external_weight",
+      "unilateral": false,
+      "instructions_text": "Bar racked across the upper back, feet shoulder-width, bend knees and hips together to descend, drive through the floor to stand.",
+      "cue_text": "Knees track over toes, chest stays proud.",
+      "image_urls": [],
+      "bodyweight_contribution_pct": null,
+      "variation_of_id": null,
+      "source": "tracer"
+    },
+    {
+      "id": "ex-pull-up",
+      "name": "Pull-Up",
+      "aliases": null,
+      "movement_pattern": "vertical_pull",
+      "equipment_required": "bodyweight",
+      "load_type": "bodyweight",
+      "unilateral": false,
+      "instructions_text": "Hang from a bar with an overhand grip, pull until the chin clears the bar, lower under control.",
+      "cue_text": "Drive elbows down and back.",
+      "image_urls": [],
+      "bodyweight_contribution_pct": "1.000",
+      "variation_of_id": null,
+      "source": "tracer"
+    },
+    {
+      "id": "ex-assisted-dip",
+      "name": "Assisted Dip",
+      "aliases": null,
+      "movement_pattern": "horizontal_push",
+      "equipment_required": "machine",
+      "load_type": "assisted",
+      "unilateral": false,
+      "instructions_text": "Set the assist stack, grip the parallel bars, lower until upper arms are parallel to the floor, press back up.",
+      "cue_text": "Lean forward slightly, elbows track back.",
+      "image_urls": [],
+      "bodyweight_contribution_pct": "0.950",
+      "variation_of_id": null,
+      "source": "tracer"
+    }
+  ],
+  "mappings": [
+    { "exercise_id": "ex-barbell-back-squat", "muscle_group_id": "quads", "role": "primary", "weight_factor": "1.00" },
+    { "exercise_id": "ex-barbell-back-squat", "muscle_group_id": "glutes", "role": "secondary", "weight_factor": "0.50" },
+    { "exercise_id": "ex-barbell-back-squat", "muscle_group_id": "lower_back", "role": "secondary", "weight_factor": "0.30" },
+    { "exercise_id": "ex-pull-up", "muscle_group_id": "lats", "role": "primary", "weight_factor": "1.00" },
+    { "exercise_id": "ex-pull-up", "muscle_group_id": "biceps", "role": "secondary", "weight_factor": "0.40" },
+    { "exercise_id": "ex-assisted-dip", "muscle_group_id": "chest", "role": "primary", "weight_factor": "1.00" },
+    { "exercise_id": "ex-assisted-dip", "muscle_group_id": "triceps", "role": "secondary", "weight_factor": "0.50" },
+    { "exercise_id": "ex-assisted-dip", "muscle_group_id": "front_delts", "role": "secondary", "weight_factor": "0.30" }
+  ]
+}

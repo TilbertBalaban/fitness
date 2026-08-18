@@ -114,11 +114,40 @@ export const exercise = sqliteTable('exercise', {
   instructionsText: text('instructions_text'),
   cueText: text('cue_text'),
   imageUrls: text('image_urls'),
+  bodyweightContributionPct: text('bodyweight_contribution_pct'),
   isCustom: integer('is_custom', { mode: 'boolean' }).notNull(),
   variationOfId: text('variation_of_id'),
   source: text('source').notNull(),
   archivedAt: text('archived_at'),
   serverSeq: integer('server_seq'),
+});
+
+// Global seeded taxonomy, delivered by the bundled first-install snapshot (D-01/D-06), not by
+// sync — registered as localOnly in apps/mobile/lib/db/powersync.ts so it generates zero
+// ps_crud entries.
+export const muscleGroup = sqliteTable('muscle_group', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  bodyRegion: text('body_region').notNull(),
+});
+
+// Composite-PK on Postgres; PowerSync requires a single TEXT PRIMARY KEY on every managed table,
+// so id is derived deterministically as `${exercise_id}:${muscle_group_id}` at load time — that
+// determinism is what makes loadCatalogSnapshot's upsert idempotent across re-runs.
+export const exerciseMuscleMapping = sqliteTable('exercise_muscle_mapping', {
+  id: text('id').primaryKey(),
+  exerciseId: text('exercise_id').notNull(),
+  muscleGroupId: text('muscle_group_id').notNull(),
+  role: text('role').notNull(),
+  weightFactor: text('weight_factor').notNull(),
+});
+
+// Singleton row (id is always the literal 'singleton') tracking which catalog_version has been
+// applied locally — loadCatalogSnapshot compares against this to skip a no-op reload.
+export const catalogMeta = sqliteTable('catalog_meta', {
+  id: text('id').primaryKey(),
+  catalogVersion: text('catalog_version').notNull(),
+  appliedAt: text('applied_at').notNull(),
 });
 
 export const personalRecord = sqliteTable('personal_record', {
@@ -175,4 +204,7 @@ export const drizzleSchema = {
   bodyMetric,
   progressPhoto,
   userPreference,
+  muscleGroup,
+  exerciseMuscleMapping,
+  catalogMeta,
 };

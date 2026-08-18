@@ -1,0 +1,272 @@
+import { loadCatalogSnapshot, readCatalogVersion } from '../load-snapshot';
+import { getPowerSync, getUploadQueueStats } from '../../db/powersync';
+
+jest.mock('../../db/powersync', () => ({ getPowerSync: jest.fn(), getUploadQueueStats: jest.fn() }));
+
+const getPowerSyncMock = getPowerSync as jest.MockedFunction<typeof getPowerSync>;
+
+type DbSchema = typeof import('../../db/schema');
+
+// A minimal in-memory stand-in for the drizzle-wrapped PowerSync db, following the same
+// established fakeDb() shape as lib/db/__tests__/log-set.test.ts. Table identity (not row shape)
+// is what every query in load-snapshot.ts branches on, so the fake keys its state by the drizzle
+// table object itself.
+//
+// crudCounts models PowerSync's real, documented behavior (confirmed against the PowerSync SDK
+// source, Table.internalName): a localOnly table's underlying storage carries no CRUD triggers at
+// all, so writes to it never populate ps_crud — writes to any other (synced) table always do,
+// regardless of the row's own field values (e.g. a seeded exercise.user_id of null). Passing
+// `localOnlyTables` into the fake is what lets a test assert the true, scoped claim rather than a
+// blanket "the whole queue is zero" claim that the real engine would falsify for `exercise`.
+function fakeDb(schema: DbSchema, localOnlyTables: unknown[]) {
+  const rows = new Map<unknown, Record<string, unknown>[]>([
+    [schema.muscleGroup, []],
+    [schema.exercise, []],
+    [schema.exerciseMuscleMapping, []],
+    [schema.catalogMeta, []],
+  ]);
+  const localOnlySet = new Set(localOnlyTables);
+  let crudCount = 0;
+
+  function upsert(table: unknown, values: Record<string, unknown>) {
+    const existing = rows.get(table) ?? [];
+    const index = existing.findIndex((row) => row.id === values.id);
+    if (index >= 0) {
+      existing[index] = values;
+    } else {
+      existing.push(values);
+      if (!localOnlySet.has(table)) crudCount += 1;
+    }
+    rows.set(table, existing);
+  }
+
+  interface FakeDb {
+    select: (fields: Record<string, unknown>) => {
+      from: (table: unknown) => {
+        where: () => Promise<Record<string, unknown>[]>;
+        then: (resolve: (value: unknown[]) => unknown) => unknown;
+      };
+    };
+    insert: (table: unknown) => {
+      values: (values: Record<string, unknown>) => {
+        onConflictDoUpdate: (args: { target?: unknown; set: Record<string, unknown> }) => Promise<void>;
+      };
+    };
+    transaction: (callback: (tx: FakeDb) => Promise<void>) => Promise<void>;
+  }
+
+  const db: FakeDb = {
+    select: (fields: Record<string, unknown>) => ({
+      from: (table: unknown) => {
+        const tableRows = rows.get(table) ?? [];
+        const project = (row: Record<string, unknown>) => {
+          const projected: Record<string, unknown> = {};
+          for (const key of Object.keys(fields)) projected[key] = row[key];
+          return projected;
+        };
+        return {
+          where: () => Promise.resolve(tableRows.map(project)),
+          then: (resolve: (value: unknown[]) => unknown) => resolve(tableRows.map(project)),
+        };
+      },
+    }),
+    insert: (table: unknown) => ({
+      values: (values: Record<string, unknown>) => ({
+        onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => {
+          upsert(table, { ...values, ...set });
+          return Promise.resolve();
+        },
+      }),
+    }),
+    transaction: async (callback: (tx: FakeDb) => Promise<void>) => {
+      await callback(db);
+    },
+  };
+
+  return { db, rows, getCrudCount: () => crudCount };
+}
+
+function loadSchema(): DbSchema {
+  return jest.requireActual('../../db/schema');
+}
+
+function totalRows(rows: Map<unknown, Record<string, unknown>[]>): number {
+  let total = 0;
+  for (const table of rows.values()) total += table.length;
+  return total;
+}
+
+const VALID_SNAPSHOT = {
+  catalog_version: 'test-0001',
+  generated_at: '2026-01-01T00:00:00.000Z',
+  muscle_groups: [{ id: 'chest', name: 'Chest', body_region: 'chest' }],
+  exercises: [
+    {
+      id: 'ex-1',
+      name: 'Bench Press',
+      aliases: null,
+      movement_pattern: 'horizontal_push',
+      equipment_required: 'barbell',
+      load_type: 'external_weight',
+      unilateral: false,
+      instructions_text: null,
+      cue_text: null,
+      image_urls: [],
+      bodyweight_contribution_pct: null,
+      variation_of_id: null,
+      source: 'test',
+    },
+  ],
+  mappings: [{ exercise_id: 'ex-1', muscle_group_id: 'chest', role: 'primary', weight_factor: '1.00' }],
+};
+
+describe('loadCatalogSnapshot — happy path (bundled snapshot)', () => {
+  it('inserts the bundled snapshot rows on a fresh database and reports loaded', async () => {
+    const schema = loadSchema();
+    const { db, rows } = fakeDb(schema, []);
+    getPowerSyncMock.mockReturnValue(db as unknown as ReturnType<typeof getPowerSync>);
+
+    const result = await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>);
+
+    expect(result.status).toBe('loaded');
+    expect(rows.get(schema.exercise)?.length).toBe(3);
+    expect(rows.get(schema.muscleGroup)?.length).toBe(8);
+    expect(rows.get(schema.exerciseMuscleMapping)?.length).toBe(8);
+    expect(rows.get(schema.catalogMeta)?.length).toBe(1);
+  });
+});
+
+describe('loadCatalogSnapshot — idempotency', () => {
+  it('produces identical row counts on a second load and reports current, not loaded', async () => {
+    const schema = loadSchema();
+    const { db, rows } = fakeDb(schema, []);
+
+    const first = await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>);
+    const countsAfterFirst = totalRows(rows);
+
+    const second = await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>);
+    const countsAfterSecond = totalRows(rows);
+
+    expect(first.status).toBe('loaded');
+    expect(second.status).toBe('current');
+    expect(countsAfterSecond).toBe(countsAfterFirst);
+  });
+});
+
+describe('loadCatalogSnapshot — fail-closed on a malformed artifact', () => {
+  it('rejects an empty catalog_version and leaves every table empty', async () => {
+    const schema = loadSchema();
+    const { db, rows } = fakeDb(schema, []);
+    const badSnapshot = { ...VALID_SNAPSHOT, catalog_version: '' };
+
+    const result = await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>, badSnapshot);
+
+    expect(result.status).toBe('invalid');
+    expect(totalRows(rows)).toBe(0);
+  });
+
+  it('rejects an exercise with an unrecognized load_type and leaves every table empty', async () => {
+    const schema = loadSchema();
+    const { db, rows } = fakeDb(schema, []);
+    const badSnapshot = {
+      ...VALID_SNAPSHOT,
+      exercises: [{ ...VALID_SNAPSHOT.exercises[0], load_type: 'bogus' }],
+    };
+
+    const result = await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>, badSnapshot);
+
+    expect(result.status).toBe('invalid');
+    expect(totalRows(rows)).toBe(0);
+  });
+
+  // Structural guard: if isCatalogSnapshot's call in loadCatalogSnapshot is ever removed or
+  // bypassed, this test goes red because the malformed snapshot above would otherwise reach the
+  // transaction and write rows — the fail-closed test has teeth (03-01 task 3 acceptance).
+  it('never opens a transaction for an invalid snapshot', async () => {
+    const schema = loadSchema();
+    const { db } = fakeDb(schema, []);
+    const transactionSpy = jest.spyOn(db, 'transaction');
+    const badSnapshot = { ...VALID_SNAPSHOT, catalog_version: '' };
+
+    await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>, badSnapshot);
+
+    expect(transactionSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadCatalogSnapshot — sync-queue visibility of localOnly tables', () => {
+  it('produces zero tracked crud entries for the three localOnly tables specifically', async () => {
+    const schema = loadSchema();
+    // Only the three actual localOnly tables (matching apps/mobile/lib/db/powersync.ts's
+    // localOnlyCatalogTables) are passed as localOnly here — schema.exercise is deliberately
+    // NOT included, because it is registered as an ordinary synced table in drizzleSchema.
+    const { db, getCrudCount } = fakeDb(schema, [schema.muscleGroup, schema.exerciseMuscleMapping, schema.catalogMeta]);
+
+    // Isolate the localOnly-only claim: write directly to the three localOnly tables without the
+    // exercise insert loadCatalogSnapshot also performs, so this assertion is not confounded by
+    // the synced exercise table's own crud behavior (covered separately below).
+    await db.insert(schema.muscleGroup).values({ id: 'chest', name: 'Chest', bodyRegion: 'chest' }).onConflictDoUpdate({
+      target: schema.muscleGroup.id,
+      set: { name: 'Chest', bodyRegion: 'chest' },
+    });
+    await db
+      .insert(schema.exerciseMuscleMapping)
+      .values({ id: 'ex-1:chest', exerciseId: 'ex-1', muscleGroupId: 'chest', role: 'primary', weightFactor: '1.00' })
+      .onConflictDoUpdate({
+        target: schema.exerciseMuscleMapping.id,
+        set: { role: 'primary', weightFactor: '1.00' },
+      });
+    await db
+      .insert(schema.catalogMeta)
+      .values({ id: 'singleton', catalogVersion: 'test-0001', appliedAt: '2026-01-01T00:00:00.000Z' })
+      .onConflictDoUpdate({ target: schema.catalogMeta.id, set: { catalogVersion: 'test-0001' } });
+
+    expect(getCrudCount()).toBe(0);
+  });
+
+  // Known, documented gap (see 03-01-SUMMARY.md "Architecture Finding"): loadCatalogSnapshot
+  // writes seeded exercise rows into the SAME `exercise` table PowerSync registers as synced (for
+  // custom exercises). PowerSync's CRUD trigger is installed per-table, not per-row, so this
+  // insert is expected to generate a real ps_crud entry despite user_id being null. This test
+  // documents that expectation against the fake's table-level model rather than asserting a false
+  // "the whole queue stays zero after a full catalog load" claim.
+  it('a full catalog load DOES increment the tracked crud count, via the synced exercise table', async () => {
+    const schema = loadSchema();
+    const { db, getCrudCount } = fakeDb(schema, [schema.muscleGroup, schema.exerciseMuscleMapping, schema.catalogMeta]);
+
+    await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>);
+
+    // 3 exercise inserts — muscle_group/exercise_muscle_mapping/catalog_meta contribute 0.
+    expect(getCrudCount()).toBe(3);
+  });
+
+  it('getUploadQueueStats is available for a real-engine assertion of this same property', () => {
+    // Not driven against a real PowerSyncDatabase here — @powersync/web's WASM engine requires a
+    // real browser Worker/IndexedDB and hangs under this project's Jest (Node) environment; the
+    // existing test-support.ts real-db harness is exercised exclusively by the Playwright
+    // durability harness (apps/mobile/app/__durability.web.tsx), never by Jest. Filed as an
+    // unrun-verify item in .planning/WINDOWS.md rather than silently skipped.
+    expect(typeof getUploadQueueStats).toBe('function');
+  });
+});
+
+describe('readCatalogVersion', () => {
+  it('returns null before any load has run', async () => {
+    const schema = loadSchema();
+    const { db } = fakeDb(schema, []);
+
+    const version = await readCatalogVersion(db as unknown as ReturnType<typeof getPowerSync>);
+
+    expect(version).toBeNull();
+  });
+
+  it('returns the applied catalog_version after a successful load', async () => {
+    const schema = loadSchema();
+    const { db } = fakeDb(schema, []);
+
+    await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>);
+    const version = await readCatalogVersion(db as unknown as ReturnType<typeof getPowerSync>);
+
+    expect(version).toBe('tracer-0001');
+  });
+});

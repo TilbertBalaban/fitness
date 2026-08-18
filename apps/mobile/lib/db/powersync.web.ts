@@ -1,9 +1,21 @@
 import { PowerSyncDatabase } from '@powersync/web';
 import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver';
 import type { PowerSyncBackendConnector, UploadQueueStats } from '@powersync/common';
-import { drizzleSchema } from './schema';
+import { catalogMeta, drizzleSchema, exerciseMuscleMapping, muscleGroup } from './schema';
 
-export const AppSchema = new DrizzleAppSchema(drizzleSchema);
+// Mirrors powersync.ts's localOnly wiring — Metro resolves this file, not powersync.ts, for the
+// web target, so the RN-Web build must carry the identical override or the localOnly claim is
+// unverified on the one platform `expo export --platform web` actually exercises.
+export const localOnlyCatalogTables = {
+  muscleGroup: { tableDefinition: muscleGroup, options: { localOnly: true } },
+  exerciseMuscleMapping: { tableDefinition: exerciseMuscleMapping, options: { localOnly: true } },
+  catalogMeta: { tableDefinition: catalogMeta, options: { localOnly: true } },
+} as const;
+
+export const AppSchema = new DrizzleAppSchema({
+  ...drizzleSchema,
+  ...localOnlyCatalogTables,
+});
 
 export type WriteDb = ReturnType<typeof wrapPowerSyncWithDrizzle>;
 
