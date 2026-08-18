@@ -101,37 +101,78 @@ Accent reserved for: primary CTA fill, active-filter-chip indicator, focused-inp
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: 20 covered, 3 backstop, 1 unresolved
+**Probe run:** 8 elements (E1–E8), 56 applicable considerations, 0 unclassified.
+**Resolved:** 49 covered (explicit) · 2 backstop · 5 dismissed · 1 unresolved (carried, see final row).
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | Exercise list (search/filter results) | ✅ covered | Zero results renders the "Empty state heading/body" row above, plus a **Clear Filters** action when a filter is active. |
-| loading | Exercise list (initial local-catalog query) | ✅ covered | Catalog is seeded into local SQLite before the tab is reachable (Pattern 1, `localOnly` tables); the list itself only ever renders an on-device query, so loading is a brief (<200ms) 6-row skeleton, never a spinner tied to network. |
-| error | Exercise list (local-catalog seed failure) | 🧪 backstop | Renders the "Error state" row above. Rare defensive path (bundled-asset seed with no network dependency) — verified by a held-out fault-injection test (force the first-boot insert to fail, assert the fallback screen renders), not by a naturally-occurring UAT flow. |
-| populated | Exercise list (~900 rows, virtualized) | 🧪 backstop | List renders and scrolls all ~900 seeded rows via `@shopify/flash-list` v2 without dropped frames on both native and web. Verified by a held-out performance assertion (per RESEARCH.md's Validation Architecture), not visual inspection alone. |
-| partial | Exercise list row (missing image or missing cue text) | ✅ covered | Row rendering never depends on optional fields: a row with no `image_urls` shows the muted 4:3 placeholder tile (surface background, no glyph text needed at list-row scale); a row with no `aliases` simply omits that line — no broken layout, no "undefined" text. |
-| overflow | Exercise list row (long name, long muscle/equipment tag list) | ✅ covered | Exercise name is single-line, `numberOfLines={1}`, ellipsis-truncated. Muscle/equipment tag chips wrap to a maximum of 2 lines, then collapse remaining tags into a single "+N" chip rather than a 3rd wrapped line. |
-| zero-one-many | Exercise list result-count line | ✅ covered | Result line reads "{n} exercise" / "{n} exercises" (pluralized); an `n = 0` result routes to the `empty` row above rather than rendering "0 exercises". |
-| long-text | Exercise list row name vs. detail-screen name | ✅ covered | List row: truncates per the `overflow` row above. Detail screen: name wraps across multiple lines (Heading role) with no truncation — the screen has vertical room the list row does not. |
-| empty | Exercise detail — target-muscle image / list-row thumbnail (media) | ✅ covered | Fixed 4:3 placeholder tile, `surface` background, a static "No image available" label — never a native broken-image icon, never blank whitespace. This is the literal failure mode CONTEXT.md names ("a detail screen that shows a broken image placeholder mid-workout") and this resolution exists specifically to prevent it. |
-| error | Exercise detail — image fails to load (media) | ✅ covered | An `<Image>` load failure swaps to the identical placeholder tile used for the `empty` row above — one fallback component, not a second broken-image state. |
-| loading | Exercise detail — image resolving (media) | ✅ covered | The 4:3 placeholder tile is reserved and rendered immediately; the real image swaps in on load with no layout shift. Whether images are bundled, cached, or entirely absent for v1 is RESEARCH.md's open "Images (EXER-03)" question — this state contract is intentionally independent of that answer (see the `unresolved` row below). |
-| unclassified | Whether images ship at all in v1 (bundled / on-device-cached / text-cues-only) | ⚠ unresolved | RESEARCH.md explicitly leaves this open ("no single verified-safe default; flagged for a locked decision at plan time" — licensing risk on `free-exercise-db` images specifically is an unanswered upstream GitHub issue). The planner must treat "images ship in v1" as an assumption to confirm, not a given; the loading/empty/error contract above holds either way. |
-| form (empty) | Custom-exercise create/edit form | ✅ covered | Blank form on create; no silently-defaulted `load_type` — the tracking-type field starts on an explicit "Select tracking type" placeholder, forcing a deliberate choice given EXER-08's downstream importance. |
-| form (loading) | Custom-exercise create/edit form — submit | ✅ covered | Save button reuses `PrimaryButton`'s existing `submitting` prop (spinner + disabled state) exactly as the auth screens already do — no new submit-button pattern. |
-| form (error) | Custom-exercise create/edit form — validation | ✅ covered | Inline per-field error text below the invalid field, in `destructive` color at Label size — reuses `TextField`'s existing `error` prop styling verbatim. Validation is client-side (required-field + `load_type` enum membership) and runs before the write is queued, since the write path is local-first and does not round-trip to a server to fail. |
-| partial | Custom-exercise create/edit form — required vs. optional fields | ✅ covered | Save button is disabled (not hidden) until name and load_type are set; equipment, cues, and instructions may stay empty. |
-| long-text | Custom-exercise create/edit form — name and cue fields | ✅ covered | Name field wraps normally while typing (no truncation in the input itself — truncation only applies at list-row display time). Cue/instructions field is multiline, auto-grows to a max height, then scrolls internally. |
-| loading/error | Archive / never-suggest toggle (interactive-control) | ✅ covered | Dismissed — these are optimistic local-first writes to `user_exercise_preference` (Pattern 3, `overwrite`-only conflict policy); there is no network-dependent loading spinner or user-facing failure state to render for either action. |
-| overflow | Filter chip row (muscle group / equipment / movement pattern) | ✅ covered | Chips wrap to additional rows rather than horizontally scrolling — every filter option must stay visible and discoverable, which matters more here than vertical compactness. |
-| empty | Smart-swap suggestion list | ✅ covered | Renders the "Smart-swap empty state" row in Copywriting Contract above when the scorer returns zero candidates above threshold. |
-| zero-one-many | Smart-swap suggestion list | ✅ covered | "{n} suggested alternative" / "{n} suggested alternatives" (pluralized); the scorer surfaces the top 3–5 ranked candidates, not an exhaustive list. |
-| populated | Smart-swap suggestion list | ✅ covered | Each row shows the candidate exercise name plus a one-line, plain-language "why" string (e.g. "Same primary muscle: chest") per RESEARCH.md Pattern 6's explainability requirement — never an unexplained score. |
+Element key: **E1** exercise list screen · **E2** exercise list row · **E3** exercise detail screen ·
+**E4** custom-exercise create/edit form · **E5** filter chip row · **E6** smart-swap suggestion list ·
+**E7** archive / never-suggest toggles · **E8** search input.
+
+| Category | Element | Status | Resolution / Reason |
+|----------|---------|--------|---------------------|
+| empty | E1 exercise list | ✅ covered | Zero search/filter results renders the "Empty state heading/body" rows in Copywriting Contract, plus a visible **Clear Filters** action whenever any filter is active. |
+| loading | E1 exercise list | ✅ covered | Catalog is seeded into local SQLite before the tab is reachable (`localOnly` tables); the list only ever renders an on-device query, so loading is a brief (<200ms) 6-row skeleton, never a network-tied spinner. |
+| error | E1 exercise list | 🧪 backstop | Local-catalog seed failure renders the "Error state" row in Copywriting Contract. Rare defensive path (bundled-asset seed, no network dependency) — verified by a held-out fault-injection test (force the first-boot insert to fail, assert the fallback screen renders), not by a naturally-occurring UAT flow. |
+| populated | E1 exercise list | 🧪 backstop | List renders and scrolls all ~900 seeded rows via `@shopify/flash-list` v2 without dropped frames on both native and web. Verified by a held-out performance assertion (per RESEARCH.md's Validation Architecture), not visual inspection alone. |
+| partial | E1 exercise list | ✅ covered | Rows never depend on optional fields: no `image_urls` → muted 4:3 placeholder tile; no `aliases` → the line is omitted. No broken layout and no literal "undefined" text in any row. |
+| overflow | E1 exercise list | ✅ covered | The list scrolls vertically and is virtualized; it never clips content and never paginates. |
+| zero-one-many | E1 exercise list | ✅ covered | Result line reads "{n} exercise" / "{n} exercises" (pluralized); `n = 0` routes to the `empty` row above rather than rendering "0 exercises". |
+| long-text | E1 exercise list | ✅ covered | Result-count line and section headers wrap; they are never truncated. |
+| empty | E2 list row | ✅ covered | A row with no thumbnail shows the muted 4:3 placeholder tile (`surface` background) — never a native broken-image glyph, never collapsed whitespace. |
+| loading | E2 list row | ✅ covered | The 4:3 tile is reserved and rendered immediately; the real image swaps in on load with zero layout shift. |
+| error | E2 list row | ✅ covered | An `<Image>` load failure swaps to the identical placeholder tile used for the `empty` case — one fallback component, not a second broken-image state. |
+| populated | E2 list row | ✅ covered | Name + up to 2 wrapped lines of muscle/equipment chips + thumbnail + chevron, within the 48×48px minimum hit target. |
+| partial | E2 list row | ✅ covered | Missing `aliases` omits that line; missing cues do not affect the row at all. Row height bounds stay constant either way. |
+| overflow | E2 list row | ✅ covered | Exercise name is `numberOfLines={1}`, ellipsis-truncated. Muscle/equipment chips wrap to a maximum of 2 lines, then collapse remaining tags into a single "+N" chip rather than a 3rd wrapped line. |
+| zero-one-many | E2 list row | ✅ covered | A row with one tag and a row with many tags stay within the same height bounds (2-line cap + "+N" chip). |
+| long-text | E2 list row | ✅ covered | The list row truncates per the `overflow` row; the same name wraps in full on the detail screen (Heading role, no truncation). |
+| empty | E3 detail screen | ✅ covered | No image → fixed 4:3 placeholder tile, `surface` background, static "No image available" label. This is the literal failure mode CONTEXT.md names ("a detail screen that shows a broken image placeholder mid-workout"); this row exists specifically to prevent it. |
+| loading | E3 detail screen | ✅ covered | The 4:3 placeholder tile is reserved and rendered immediately; the real image swaps in on load with no layout shift. |
+| error | E3 detail screen | ✅ covered | Image load failure swaps to the identical placeholder tile used for the `empty` row — one fallback component, not a second broken-image state. |
+| populated | E3 detail screen | ✅ covered | Name (Heading, wrapping) + 4:3 image tile + Target Muscles + cues/instructions + Suggested Alternatives, in that order. |
+| partial | E3 detail screen | ✅ covered | Absent cues, instructions, or aliases omit their entire section header rather than rendering an empty section with a heading and no body. |
+| overflow | E3 detail screen | ✅ covered | The screen scrolls vertically; cue and instruction body text wraps with no truncation. |
+| zero-one-many | E3 detail screen | ✅ covered | Target Muscles renders singular/plural correctly; a zero-length secondary-muscle list omits its sub-line entirely rather than rendering an empty one. |
+| long-text | E3 detail screen | ✅ covered | Exercise name wraps across multiple lines at Heading role with no truncation — the screen has vertical room the list row does not. |
+| empty | E4 custom-exercise form | ✅ covered | Blank form on create; `load_type` is never silently defaulted — the tracking-type field starts on an explicit "Select tracking type" placeholder, forcing a deliberate choice given EXER-08's downstream importance. |
+| loading | E4 custom-exercise form | ✅ covered | Save button reuses `PrimaryButton`'s existing `submitting` prop (spinner + disabled) exactly as the auth screens already do — no new submit-button pattern. |
+| error | E4 custom-exercise form | ✅ covered | Inline per-field error text below the invalid field, `destructive` color at Label size, reusing `TextField`'s existing `error` prop styling verbatim. Validation is client-side (required-field + `load_type` enum membership) and runs before the write is queued — the write path is local-first and does not round-trip to a server to fail. |
+| partial | E4 custom-exercise form | ✅ covered | Save is disabled (not hidden) until name and `load_type` are set; equipment, cues, and instructions may stay empty. Edit mode opens pre-filled with the existing values. |
+| overflow | E4 custom-exercise form | ✅ covered | The cue/instructions field is multiline, auto-grows to a max height, then scrolls internally rather than pushing the Save button off-screen. |
+| long-text | E4 custom-exercise form | ✅ covered | Name field wraps normally while typing — no truncation in the input itself; truncation applies only at list-row display time. |
+| empty | E5 filter chip row | ✅ covered | A facet with no available values is hidden entirely rather than rendering an empty chip row with a heading. |
+| loading | E5 filter chip row | ✅ covered | Facet values are derived from the already-seeded local catalog; chips render synchronously with the screen and have no loading state. |
+| error | E5 filter chip row | ⊘ dismissed | The facet vocabulary is a local constant over already-seeded data — there is no fetch that can fail, so no error state exists to render. |
+| populated | E5 filter chip row | ✅ covered | Chips wrap to additional rows; the active chip uses the `accent` border+label per the Color contract. |
+| partial | E5 filter chip row | ✅ covered | An exercise missing a facet value is excluded from that facet's filter but stays reachable by name search — a missing field never makes an exercise unreachable. |
+| overflow | E5 filter chip row | ✅ covered | Chips wrap to additional rows rather than scrolling horizontally — every filter option must stay visible and discoverable, which matters more here than vertical compactness. |
+| zero-one-many | E5 filter chip row | ✅ covered | Combining filters that yield zero rows routes to E1's `empty` state with the **Clear Filters** action, never a blank list body. |
+| long-text | E5 filter chip row | ✅ covered | A long equipment or movement-pattern label wraps within its chip to a maximum of 2 lines; the chip grows vertically while keeping the 48×48px minimum hit target. |
+| empty | E6 smart-swap list | ✅ covered | Renders the "Smart-swap empty state" row in Copywriting Contract when the scorer returns zero candidates above threshold. |
+| loading | E6 smart-swap list | ✅ covered | The scorer runs on-device over the local catalog; results render synchronously with the section, no spinner. |
+| error | E6 smart-swap list | ⊘ dismissed | The scorer is a local pure function over already-seeded data with no network dependency — there is no failure mode to surface to the user. |
+| populated | E6 smart-swap list | ✅ covered | Each row shows the candidate exercise name plus a one-line, plain-language "why" string (e.g. "Same primary muscle: chest") per RESEARCH.md Pattern 6's explainability requirement — never an unexplained score. |
+| partial | E6 smart-swap list | ✅ covered | A candidate missing a thumbnail still renders with name + why string; the why string is mandatory and is never blank. |
+| overflow | E6 smart-swap list | ✅ covered | Capped at the top 3–5 ranked candidates, so the section never needs its own nested scroll region inside the detail screen. |
+| zero-one-many | E6 smart-swap list | ✅ covered | "{n} suggested alternative" / "{n} suggested alternatives" (pluralized); zero routes to the `empty` row above. |
+| long-text | E6 smart-swap list | ✅ covered | Candidate name truncates to one line; the why string wraps to a maximum of 2 lines. |
+| loading | E7 archive / never-suggest | ⊘ dismissed | Optimistic local-first writes to `user_exercise_preference` (Pattern 3, `overwrite`-only conflict policy) — no network-dependent spinner exists for either action. |
+| error | E7 archive / never-suggest | ⊘ dismissed | Same local-first write path; there is no user-facing failure state to render for a local write that cannot fail against a server. |
+| overflow | E7 archive / never-suggest | ✅ covered | Both controls hold the 48×48px minimum hit target; their short labels do not wrap. |
+| long-text | E7 archive / never-suggest | ✅ covered | Labels are fixed strings ("Archive", "Never suggest"), not user data — the control has no variable-length text path. Archive's confirmation copy is fixed in Copywriting Contract. |
+| empty | E8 search input | ✅ covered | An empty query shows the full catalog unfiltered — it does not render an empty state. |
+| loading | E8 search input | ✅ covered | Search is a synchronous in-memory `minisearch` query over the already-seeded local catalog, debounced on input; there is no async loading state. |
+| error | E8 search input | ⊘ dismissed | In-memory index over already-seeded local data — no fetch exists that could fail. |
+| partial | E8 search input | ✅ covered | A partial/prefix token matches via `minisearch` prefix search; a query matching nothing routes to E1's `empty` state. |
+| overflow | E8 search input | ✅ covered | The input is single-line; long query text scrolls horizontally within the field rather than growing the field. |
+| long-text | E8 search input | ✅ covered | An unusually long query keeps the field at fixed height with internal horizontal scroll — it never reflows the list header. |
+| — | Whether images ship at all in v1 (bundled / on-device-cached / text-cues-only) | ⚠ unresolved | RESEARCH.md explicitly leaves this open ("no single verified-safe default; flagged for a locked decision at plan time" — licensing risk on `free-exercise-db` images specifically is an unanswered upstream GitHub issue). The planner must treat "images ship in v1" as an assumption to confirm, not a given. Every loading/empty/error row above holds either way, so this blocks the content decision, not the state contract. |
 
 <!-- Status vocabulary (locked by probe-core projectTruths):
      ✅ covered   → a plain truth string lifted into must_haves.truths
      🧪 backstop  → a flat scalar { statement, verification: backstop }; at verify time, no explicit
                     evidence → insufficient_spec → human_needed (never a silent pass, #1154)
+     ⊘ dismissed  → not applicable to this surface, reason recorded; NOT lifted into must_haves
      ⚠ unresolved → an explicit planner assumption (surfaced, never silently dropped)
      Rows are REPLACED (not appended) on a probe re-run — idempotent. -->
 
@@ -148,11 +189,11 @@ Applicable state considerations resolved: 20 covered, 3 backstop, 1 unresolved
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: FLAG (non-blocking) — focal points and visual hierarchy not declared per screen; icon-only controls (filter-chip check, list-row chevron) lack an explicit accessibility-label statement
+- [x] Dimension 3 Color: FLAG (non-blocking) — accent and destructive correctly scoped, but the 60/30/10 split is implicit in the role table rather than stated as a principle
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-08-18 — gsd-ui-checker returned `## UI-SPEC VERIFIED` (APPROVED). Two FLAGs are non-blocking recommendations, not gate failures.
