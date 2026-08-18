@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 28
+open_count: 29
 waived_count: 0
 fixed_count: 6
-total_count: 34
-last_updated: 2026-08-18T10:14:26.259Z
+total_count: 35
+last_updated: 2026-08-18T10:50:22.424Z
 ---
 
 # Broken Windows Ledger
@@ -49,6 +49,7 @@ last_updated: 2026-08-18T10:14:26.259Z
 | 32 | 03 | unmet-truth | apps/mobile/lib/catalog/load-snapshot.ts |  | Seeded exercise rows are written into the shared, PowerSync-synced exercise table (not a localOnly table), so a full catalog load is expected to generate real ps_crud entries despite user_id being null -- PowerSync installs CRUD triggers per-table, not per-row. The zero-sync-traffic must_haves truth holds only for muscle_group/exercise_muscle_mapping/catalog_meta, not for the seeded exercise rows themselves. | fixed |  | 2026-08-18T09:28:36.379Z | 2026-08-18T10:14:26.259Z |
 | 33 | 03 | unrun-verify | apps/mobile/lib/db/test-support.ts |  | loadCatalogSnapshot's zero-ps_crud claim for muscle_group/exercise_muscle_mapping/catalog_meta is proven only against a Jest mock that faithfully models PowerSync's documented per-table trigger installation, not against a real PowerSync engine -- new PowerSyncDatabase() from @powersync/web hangs indefinitely under this project's Jest (Node) environment (confirmed by a timed spike, killed after 60s+), matching WINDOWS #22's prior finding. The real-engine confirmation needs a Playwright e2e case (real browser, real Worker/IndexedDB) alongside the existing durability harness. | open |  | 2026-08-18T09:28:44.482Z |  |
 | 34 | 03 | unrun-verify | apps/mobile/app/exercises/index.tsx |  | The offline first-boot flow (fresh install, no network, open /exercises, see 3 seeded exercises, open one, see target muscles) and the error-state UI ('Exercise catalog couldn't load') were verified only by typecheck, unit tests and expo export --platform web bundling -- not observed rendered in a browser, simulator or device. No Xcode/Android SDK on this machine; no Playwright browsers installed in this worktree, consistent with prior phases' native/browser gaps (WINDOWS #4, #8, #26). | open |  | 2026-08-18T09:28:46.987Z |  |
+| 35 | 03 | unmet-truth | docs/catalog-dataset-license.md |  | Task 1's fedb-with-images decision was accepted against the characterization 'an open, unanswered upstream GitHub issue' on image licensing. Direct re-verification (03-04, 2026-08-18) found this stale: yuhonas/free-exercise-db issues #2 and #12 are both closed/answered -- the maintainer disclaims knowledge of image provenance, and the upstream wrkout/exercises.json CONTRIBUTING.md explicitly states images were scraped from the internet, copyright is not owned, and advises against commercial use. image_urls now points at live raw.githubusercontent.com URLs (not yet vendored/bundled -- that is 03-05's job). This corrected, more concrete risk should be reweighed before /gsd-ship; see docs/catalog-dataset-license.md's 'Image licensing: corrected finding' section. | open |  | 2026-08-18T10:50:22.424Z |  |
 
 ````json
 [
@@ -458,6 +459,18 @@ last_updated: 2026-08-18T10:14:26.259Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-18T09:28:46.987Z",
+    "resolved_at": null
+  },
+  {
+    "id": 35,
+    "kind": "unmet-truth",
+    "phase": "03",
+    "file": "docs/catalog-dataset-license.md",
+    "line": null,
+    "description": "Task 1's fedb-with-images decision was accepted against the characterization 'an open, unanswered upstream GitHub issue' on image licensing. Direct re-verification (03-04, 2026-08-18) found this stale: yuhonas/free-exercise-db issues #2 and #12 are both closed/answered -- the maintainer disclaims knowledge of image provenance, and the upstream wrkout/exercises.json CONTRIBUTING.md explicitly states images were scraped from the internet, copyright is not owned, and advises against commercial use. image_urls now points at live raw.githubusercontent.com URLs (not yet vendored/bundled -- that is 03-05's job). This corrected, more concrete risk should be reweighed before /gsd-ship; see docs/catalog-dataset-license.md's 'Image licensing: corrected finding' section.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-18T10:50:22.424Z",
     "resolved_at": null
   }
 ]
