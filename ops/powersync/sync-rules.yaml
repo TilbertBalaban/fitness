@@ -6,7 +6,13 @@
 # auth.user_id(), the same per-user boundary a legacy bucket_definitions setup would enforce.
 #
 # The seeded exercise taxonomy tables are deliberately absent from every query below: catalog
-# content delivered by the first-install download (D-01), never a per-user synced row.
+# content delivered by the first-install download (D-01), never a per-user synced row. This now
+# also covers the seeded half of `exercise` itself — WINDOWS #32 moved seeded rows into a
+# client-local, localOnly `seeded_exercise` table (apps/mobile/lib/db/schema.ts), so the
+# `exercise` query below only ever needs to resolve a user's own custom rows.
+#
+# user_exercise_preference is per-user state ABOUT any exercise (seeded or custom), not the
+# seeded taxonomy itself, so it belongs in this stream like every other per-user table.
 config:
   edition: 3
 
@@ -22,6 +28,7 @@ streams:
       - SELECT routine_exercise.* FROM routine_exercise INNER JOIN routine_day ON routine_exercise.routine_day_id = routine_day.id INNER JOIN routine ON routine_day.routine_id = routine.id WHERE routine.user_id = auth.user_id()
       - SELECT * FROM equipment_profile WHERE user_id = auth.user_id()
       - SELECT * FROM exercise WHERE user_id = auth.user_id()
+      - SELECT * FROM user_exercise_preference WHERE user_id = auth.user_id()
       - SELECT * FROM personal_record WHERE user_id = auth.user_id()
       - SELECT * FROM body_metric WHERE user_id = auth.user_id()
       - SELECT * FROM progress_photo WHERE user_id = auth.user_id()

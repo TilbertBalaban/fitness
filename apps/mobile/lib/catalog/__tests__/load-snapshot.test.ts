@@ -22,6 +22,7 @@ function fakeDb(schema: DbSchema, localOnlyTables: unknown[]) {
   const rows = new Map<unknown, Record<string, unknown>[]>([
     [schema.muscleGroup, []],
     [schema.exercise, []],
+    [schema.seededExercise, []],
     [schema.exerciseMuscleMapping, []],
     [schema.catalogMeta, []],
   ]);
@@ -129,7 +130,10 @@ describe('loadCatalogSnapshot — happy path (bundled snapshot)', () => {
     const result = await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>);
 
     expect(result.status).toBe('loaded');
-    expect(rows.get(schema.exercise)?.length).toBe(3);
+    // Seeded rows land in seededExercise (WINDOWS #32), not exercise — exercise stays empty here
+    // because loadCatalogSnapshot never writes to it; it is reserved for a user's own custom rows.
+    expect(rows.get(schema.seededExercise)?.length).toBe(3);
+    expect(rows.get(schema.exercise)?.length).toBe(0);
     expect(rows.get(schema.muscleGroup)?.length).toBe(8);
     expect(rows.get(schema.exerciseMuscleMapping)?.length).toBe(8);
     expect(rows.get(schema.catalogMeta)?.length).toBe(1);
@@ -195,20 +199,30 @@ describe('loadCatalogSnapshot — fail-closed on a malformed artifact', () => {
 });
 
 describe('loadCatalogSnapshot — sync-queue visibility of localOnly tables', () => {
-  it('produces zero tracked crud entries for the three localOnly tables specifically', async () => {
+  it('produces zero tracked crud entries for the four localOnly tables specifically', async () => {
     const schema = loadSchema();
-    // Only the three actual localOnly tables (matching apps/mobile/lib/db/powersync.ts's
-    // localOnlyCatalogTables) are passed as localOnly here — schema.exercise is deliberately
-    // NOT included, because it is registered as an ordinary synced table in drizzleSchema.
-    const { db, getCrudCount } = fakeDb(schema, [schema.muscleGroup, schema.exerciseMuscleMapping, schema.catalogMeta]);
+    // The four actual localOnly tables (matching apps/mobile/lib/db/powersync.ts's
+    // localOnlyCatalogTables) are passed as localOnly here — schema.exercise is deliberately NOT
+    // included, because it stays registered as an ordinary synced table in drizzleSchema
+    // (reserved for a user's own custom exercises, which must sync).
+    const { db, getCrudCount } = fakeDb(schema, [
+      schema.muscleGroup,
+      schema.seededExercise,
+      schema.exerciseMuscleMapping,
+      schema.catalogMeta,
+    ]);
 
-    // Isolate the localOnly-only claim: write directly to the three localOnly tables without the
+    // Isolate the localOnly-only claim: write directly to the four localOnly tables without the
     // exercise insert loadCatalogSnapshot also performs, so this assertion is not confounded by
     // the synced exercise table's own crud behavior (covered separately below).
     await db.insert(schema.muscleGroup).values({ id: 'chest', name: 'Chest', bodyRegion: 'chest' }).onConflictDoUpdate({
       target: schema.muscleGroup.id,
       set: { name: 'Chest', bodyRegion: 'chest' },
     });
+    await db
+      .insert(schema.seededExercise)
+      .values({ id: 'ex-1', name: 'Bench Press', loadType: 'external_weight', unilateral: false, source: 'test' })
+      .onConflictDoUpdate({ target: schema.seededExercise.id, set: { name: 'Bench Press' } });
     await db
       .insert(schema.exerciseMuscleMapping)
       .values({ id: 'ex-1:chest', exerciseId: 'ex-1', muscleGroupId: 'chest', role: 'primary', weightFactor: '1.00' })
@@ -224,20 +238,26 @@ describe('loadCatalogSnapshot — sync-queue visibility of localOnly tables', ()
     expect(getCrudCount()).toBe(0);
   });
 
-  // Known, documented gap (see 03-01-SUMMARY.md "Architecture Finding"): loadCatalogSnapshot
-  // writes seeded exercise rows into the SAME `exercise` table PowerSync registers as synced (for
-  // custom exercises). PowerSync's CRUD trigger is installed per-table, not per-row, so this
-  // insert is expected to generate a real ps_crud entry despite user_id being null. This test
-  // documents that expectation against the fake's table-level model rather than asserting a false
-  // "the whole queue stays zero after a full catalog load" claim.
-  it('a full catalog load DOES increment the tracked crud count, via the synced exercise table', async () => {
+  // Regression guard for WINDOWS #32's fix: loadCatalogSnapshot used to write seeded exercise
+  // rows into the SAME `exercise` table PowerSync registers as synced (for custom exercises).
+  // PowerSync installs a CRUD trigger per table, not per row, so that insert generated a real
+  // ps_crud entry per seeded row despite user_id being null — real upload traffic on every first
+  // boot, ~900 rows once 03-05 seeds the full catalog. Seeded rows now go into the localOnly
+  // seededExercise table instead (apps/mobile/lib/db/schema.ts), so a full catalog load must
+  // produce ZERO tracked crud entries. If seeded rows ever go back into the synced `exercise`
+  // table, this test goes red.
+  it('a full catalog load produces zero tracked crud entries — seeded rows never enter the sync queue', async () => {
     const schema = loadSchema();
-    const { db, getCrudCount } = fakeDb(schema, [schema.muscleGroup, schema.exerciseMuscleMapping, schema.catalogMeta]);
+    const { db, getCrudCount } = fakeDb(schema, [
+      schema.muscleGroup,
+      schema.seededExercise,
+      schema.exerciseMuscleMapping,
+      schema.catalogMeta,
+    ]);
 
     await loadCatalogSnapshot(db as unknown as ReturnType<typeof getPowerSync>);
 
-    // 3 exercise inserts — muscle_group/exercise_muscle_mapping/catalog_meta contribute 0.
-    expect(getCrudCount()).toBe(3);
+    expect(getCrudCount()).toBe(0);
   });
 
   it('getUploadQueueStats is available for a real-engine assertion of this same property', () => {

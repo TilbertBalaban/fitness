@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { loadCatalogSnapshot } from '@/lib/catalog/load-snapshot';
 import { getPowerSync } from '@/lib/db/powersync';
-import { exercise, exerciseMuscleMapping, muscleGroup } from '@/lib/db/schema';
+import { exercise, exerciseMuscleMapping, muscleGroup, seededExercise } from '@/lib/db/schema';
 
 interface ExerciseRow {
   id: string;
@@ -28,7 +28,16 @@ export default function ExercisesScreen() {
           return;
         }
 
-        const exerciseRows = await db.select({ id: exercise.id, name: exercise.name }).from(exercise);
+        // Union seeded rows (localOnly, WINDOWS #32) with the user's own custom rows (synced
+        // `exercise`, is_custom=true) — two plain selects rather than a SQL UNION, since a mixed
+        // plain/localOnly DrizzleAppSchema's query-wrapper support for UNION is unverified in this
+        // codebase (RESEARCH.md Pattern 1's own caveat about untested combinations).
+        const seededRows = await db.select({ id: seededExercise.id, name: seededExercise.name }).from(seededExercise);
+        const customRows = await db
+          .select({ id: exercise.id, name: exercise.name })
+          .from(exercise)
+          .where(eq(exercise.isCustom, true));
+        const exerciseRows = [...seededRows, ...customRows];
 
         const withMuscles: ExerciseRow[] = [];
         for (const row of exerciseRows) {

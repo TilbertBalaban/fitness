@@ -1,13 +1,16 @@
 import { PowerSyncDatabase } from '@powersync/react-native';
 import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver';
 import type { PowerSyncBackendConnector, UploadQueueStats } from '@powersync/common';
-import { catalogMeta, drizzleSchema, exerciseMuscleMapping, muscleGroup } from './schema';
+import { catalogMeta, drizzleSchema, exerciseMuscleMapping, muscleGroup, seededExercise } from './schema';
 
 // The seeded catalog taxonomy lives inside the same schema PowerSync manages (D-06), but marked
 // localOnly so it produces zero ps_crud entries — the sync protocol never sees these tables.
+// seededExercise closes WINDOWS #32: it used to be the ordinary synced `exercise` table, which
+// installs a CRUD trigger regardless of a seeded row's null user_id.
 // Exported so tests and other call sites can name exactly which tables carry this override.
 export const localOnlyCatalogTables = {
   muscleGroup: { tableDefinition: muscleGroup, options: { localOnly: true } },
+  seededExercise: { tableDefinition: seededExercise, options: { localOnly: true } },
   exerciseMuscleMapping: { tableDefinition: exerciseMuscleMapping, options: { localOnly: true } },
   catalogMeta: { tableDefinition: catalogMeta, options: { localOnly: true } },
 } as const;

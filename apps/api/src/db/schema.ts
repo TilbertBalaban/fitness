@@ -1,7 +1,13 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
 import { workoutSession, sessionExercise, loggedSet, workoutSessionRelations, syncSeq } from './schema/session';
-import { muscleGroup, exercise, exerciseMuscleMapping } from './schema/catalog';
+import {
+  muscleGroup,
+  exercise,
+  exerciseMuscleMapping,
+  userExercisePreference,
+  userExercisePreferenceRelations,
+} from './schema/catalog';
 import { equipmentProfile } from './schema/equipment';
 import { routine, routineDay, routineExercise } from './schema/program';
 import { personalRecord, bodyMetric, progressPhoto } from './schema/records';
@@ -17,6 +23,8 @@ export {
   muscleGroup,
   exercise,
   exerciseMuscleMapping,
+  userExercisePreference,
+  userExercisePreferenceRelations,
   equipmentProfile,
   routine,
   routineDay,
@@ -108,6 +116,7 @@ export const userRelations = relations(user, ({ many, one }) => ({
   routines: many(routine),
   equipmentProfiles: many(equipmentProfile),
   exercises: many(exercise),
+  exercisePreferences: many(userExercisePreference),
   personalRecords: many(personalRecord),
   bodyMetrics: many(bodyMetric),
   progressPhotos: many(progressPhoto),
@@ -135,6 +144,7 @@ export const schema = {
   muscleGroup,
   exercise,
   exerciseMuscleMapping,
+  userExercisePreference,
   equipmentProfile,
   routine,
   routineDay,

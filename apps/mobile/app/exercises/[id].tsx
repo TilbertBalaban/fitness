@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { ExerciseImageTile } from '@/components/ExerciseImageTile';
 import { getPowerSync } from '@/lib/db/powersync';
-import { exercise, exerciseMuscleMapping, muscleGroup } from '@/lib/db/schema';
+import { exercise, exerciseMuscleMapping, muscleGroup, seededExercise } from '@/lib/db/schema';
 
 interface ExerciseDetail {
   id: string;
@@ -31,15 +31,31 @@ export default function ExerciseDetailScreen() {
     (async () => {
       try {
         const db = getPowerSync();
-        const [row] = await db
+        // Seeded rows live in localOnly seededExercise (WINDOWS #32); custom rows stay in the
+        // synced `exercise` table. An id is unique across both, so at most one query returns a row.
+        const [seededRow] = await db
           .select({
-            id: exercise.id,
-            name: exercise.name,
-            cueText: exercise.cueText,
-            instructionsText: exercise.instructionsText,
+            id: seededExercise.id,
+            name: seededExercise.name,
+            cueText: seededExercise.cueText,
+            instructionsText: seededExercise.instructionsText,
           })
-          .from(exercise)
-          .where(eq(exercise.id, id));
+          .from(seededExercise)
+          .where(eq(seededExercise.id, id));
+
+        const row =
+          seededRow ??
+          (
+            await db
+              .select({
+                id: exercise.id,
+                name: exercise.name,
+                cueText: exercise.cueText,
+                instructionsText: exercise.instructionsText,
+              })
+              .from(exercise)
+              .where(eq(exercise.id, id))
+          )[0];
 
         if (!row) {
           if (mounted) setFailed(true);
