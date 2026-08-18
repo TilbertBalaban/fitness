@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 29
+open_count: 30
 waived_count: 0
 fixed_count: 6
-total_count: 35
-last_updated: 2026-08-18T10:50:22.424Z
+total_count: 36
+last_updated: 2026-08-18T12:30:40.757Z
 ---
 
 # Broken Windows Ledger
@@ -50,6 +50,7 @@ last_updated: 2026-08-18T10:50:22.424Z
 | 33 | 03 | unrun-verify | apps/mobile/lib/db/test-support.ts |  | loadCatalogSnapshot's zero-ps_crud claim for muscle_group/exercise_muscle_mapping/catalog_meta is proven only against a Jest mock that faithfully models PowerSync's documented per-table trigger installation, not against a real PowerSync engine -- new PowerSyncDatabase() from @powersync/web hangs indefinitely under this project's Jest (Node) environment (confirmed by a timed spike, killed after 60s+), matching WINDOWS #22's prior finding. The real-engine confirmation needs a Playwright e2e case (real browser, real Worker/IndexedDB) alongside the existing durability harness. | open |  | 2026-08-18T09:28:44.482Z |  |
 | 34 | 03 | unrun-verify | apps/mobile/app/exercises/index.tsx |  | The offline first-boot flow (fresh install, no network, open /exercises, see 3 seeded exercises, open one, see target muscles) and the error-state UI ('Exercise catalog couldn't load') were verified only by typecheck, unit tests and expo export --platform web bundling -- not observed rendered in a browser, simulator or device. No Xcode/Android SDK on this machine; no Playwright browsers installed in this worktree, consistent with prior phases' native/browser gaps (WINDOWS #4, #8, #26). | open |  | 2026-08-18T09:28:46.987Z |  |
 | 35 | 03 | unmet-truth | docs/catalog-dataset-license.md |  | Task 1's fedb-with-images decision was accepted against the characterization 'an open, unanswered upstream GitHub issue' on image licensing. Direct re-verification (03-04, 2026-08-18) found this stale: yuhonas/free-exercise-db issues #2 and #12 are both closed/answered -- the maintainer disclaims knowledge of image provenance, and the upstream wrkout/exercises.json CONTRIBUTING.md explicitly states images were scraped from the internet, copyright is not owned, and advises against commercial use. image_urls now points at live raw.githubusercontent.com URLs (not yet vendored/bundled -- that is 03-05's job). This corrected, more concrete risk should be reweighed before /gsd-ship; see docs/catalog-dataset-license.md's 'Image licensing: corrected finding' section. | open |  | 2026-08-18T10:50:22.424Z |  |
+| 36 | 03 | stub | apps/mobile/components/ExerciseImageTile.tsx |  | Catalog images (1740 files, 870 exercises) vendored to apps/mobile/assets/catalog/images/ with a committed manifest (03-05), but not wired into the render layer -- ExerciseImageTile still only accepts a remote uri; needs a Metro static-require map plus a prop-shape change to render local images offline. | open |  | 2026-08-18T12:30:40.757Z |  |
 
 ````json
 [
@@ -471,6 +472,18 @@ last_updated: 2026-08-18T10:50:22.424Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-18T10:50:22.424Z",
+    "resolved_at": null
+  },
+  {
+    "id": 36,
+    "kind": "stub",
+    "phase": "03",
+    "file": "apps/mobile/components/ExerciseImageTile.tsx",
+    "line": null,
+    "description": "Catalog images (1740 files, 870 exercises) vendored to apps/mobile/assets/catalog/images/ with a committed manifest (03-05), but not wired into the render layer -- ExerciseImageTile still only accepts a remote uri; needs a Metro static-require map plus a prop-shape change to render local images offline.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-18T12:30:40.757Z",
     "resolved_at": null
   }
 ]
