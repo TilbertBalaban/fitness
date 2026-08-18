@@ -251,7 +251,10 @@ export interface WeightFactorFamilyRule {
 }
 
 export const WEIGHT_FACTOR_FAMILY_RULES: WeightFactorFamilyRule[] = [
-  { family: 'stiff_leg_deadlift', match: /stiff[- ]leg deadlift|romanian deadlift|\brdl\b/i },
+  {
+    family: 'stiff_leg_deadlift',
+    match: /stiff.{0,12}leg.{0,20}deadlift|deadlift.{0,20}stiff.{0,12}leg|romanian deadlift|\brdl\b/i,
+  },
   { family: 'lunge_split_squat', match: /lunge|split squat/i },
   { family: 'hip_thrust', match: /hip thrust/i },
   { family: 'upright_row', match: /upright row/i },

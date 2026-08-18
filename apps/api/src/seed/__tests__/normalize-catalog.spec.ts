@@ -1,4 +1,12 @@
-import { LOAD_TYPES, MOVEMENT_PATTERNS, MUSCLE_GROUPS, EQUIPMENT_TYPES } from '@fitness/api-contracts';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import {
+  LOAD_TYPES,
+  MOVEMENT_PATTERNS,
+  MUSCLE_GROUPS,
+  EQUIPMENT_TYPES,
+  isCatalogSnapshot,
+} from '@fitness/api-contracts';
 import {
   AMBIGUOUS_DELT,
   BODYWEIGHT_CONTRIBUTION_DEFAULTS,
@@ -8,6 +16,7 @@ import {
   SOURCE_MUSCLE_TO_CANONICAL,
   WEIGHT_FACTOR_OVERRIDES,
 } from '../catalog-taxonomy';
+import { normalizeCatalog, type SourceExercise } from '../normalize-catalog';
 
 // The 17 free-exercise-db muscle values [VERIFIED via direct fetch of dist/exercises.json,
 // 2026-08-18] this table must cover, exactly.
@@ -159,5 +168,104 @@ describe('catalog-taxonomy', () => {
         }
       }
     });
+  });
+});
+
+describe('normalizeCatalog', () => {
+  const sourcePath = resolve(__dirname, '../data/free-exercise-db.source.json');
+  const source = JSON.parse(readFileSync(sourcePath, 'utf-8')) as SourceExercise[];
+  const { snapshot, report } = normalizeCatalog(source);
+
+  const mappingsByExerciseId = new Map<string, typeof snapshot.mappings>();
+  for (const mapping of snapshot.mappings) {
+    const existing = mappingsByExerciseId.get(mapping.exercise_id) ?? [];
+    existing.push(mapping);
+    mappingsByExerciseId.set(mapping.exercise_id, existing);
+  }
+
+  it('gives every normalized exercise a load_type in LOAD_TYPES and at least one primary mapping', () => {
+    expect(snapshot.exercises.length).toBeGreaterThan(0);
+    for (const exercise of snapshot.exercises) {
+      expect(LOAD_TYPE_SET.has(exercise.load_type)).toBe(true);
+      const mappings = mappingsByExerciseId.get(exercise.id) ?? [];
+      expect(mappings.some((m) => m.role === 'primary')).toBe(true);
+    }
+  });
+
+  it('gives every muscle_group_id across all mappings a MUSCLE_GROUPS member', () => {
+    expect(snapshot.mappings.length).toBeGreaterThan(0);
+    for (const mapping of snapshot.mappings) {
+      expect(MUSCLE_GROUP_SET.has(mapping.muscle_group_id)).toBe(true);
+    }
+  });
+
+  it('has more than 2 distinct weight_factor values across all mappings -- Pitfall 3s mechanical check', () => {
+    const distinct = new Set(snapshot.mappings.map((m) => m.weight_factor));
+    expect(distinct.size).toBeGreaterThan(2);
+  });
+
+  it('satisfies the count-preservation invariant: source = normalized + merged + excluded', () => {
+    expect(report.source_record_count).toBe(
+      report.normalized_count + report.merged_duplicate_count + report.excluded_count,
+    );
+    expect(report.source_record_count).toBe(source.length);
+  });
+
+  it('gives every excluded record a non-empty reason', () => {
+    for (const exclusion of report.exclusions) {
+      expect(exclusion.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('flags every derived-field record with a non-empty rule explanation (provenance)', () => {
+    expect(report.derived.length).toBeGreaterThan(0);
+    for (const record of report.derived) {
+      expect(record.rule.length).toBeGreaterThan(0);
+      expect(record.exercise_id.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('produces a deep-equal artifact and an identical catalog_version on a second run over the same source', () => {
+    const second = normalizeCatalog(source);
+    expect(second.snapshot).toEqual(snapshot);
+    expect(second.snapshot.catalog_version).toBe(snapshot.catalog_version);
+    expect(second.report.catalog_version).toBe(report.catalog_version);
+  });
+
+  it('satisfies isCatalogSnapshot', () => {
+    expect(isCatalogSnapshot(snapshot)).toBe(true);
+  });
+
+  it('merges at least one near-duplicate pair, with the merged rows aliases containing the alternate name', () => {
+    expect(report.merges.length).toBeGreaterThan(0);
+    const bandGoodMorning = snapshot.exercises.find((e) => e.id === 'seed_Band_Good_Morning_Pull_Through');
+    expect(bandGoodMorning).toBeDefined();
+    expect(bandGoodMorning?.aliases).toContain('Band Good Morning');
+  });
+
+  // Deliberately conservative and word-bounded -- verified against this dataset's actual generated
+  // text to have zero false positives (fitness instructional text legitimately contains substrings
+  // like "secure", "prescribed amount of reps" and "fat bar"/"fat grip" as equipment terms, which a
+  // naive un-bounded substring deny-list would incorrectly flag).
+  const DENY_LIST: RegExp[] = [
+    /\bobese\b/i,
+    /\bugly\b/i,
+    /\bskinny\b/i,
+    /\blazy\b/i,
+    /\bfatty\b/i,
+    /\bunattractive\b/i,
+    /\bdiagnos(e|is|ed)\b/i,
+    /\bconsult (a|your) (doctor|physician)\b/i,
+    /\bmedical (condition|advice)\b/i,
+    /\btreat(s|ing|ment)? (a|your) (disease|condition|illness)\b/i,
+  ];
+
+  it('has no normalized name, cue_text or instructions_text matching a body-shaming or medical-advice term', () => {
+    for (const exercise of snapshot.exercises) {
+      const haystack = `${exercise.name} ${exercise.cue_text ?? ''} ${exercise.instructions_text ?? ''}`;
+      for (const term of DENY_LIST) {
+        expect(haystack).not.toMatch(term);
+      }
+    }
   });
 });
