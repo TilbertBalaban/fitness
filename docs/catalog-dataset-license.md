@@ -28,6 +28,24 @@ question" / "an open, unanswered upstream GitHub issue." Re-verification during 
 that characterization. This is recorded plainly below, not narrowed or hidden, per this plan's own
 instruction not to re-litigate the human's decision but to document accurately.
 
+### Re-confirmed after the corrected finding (2026-08-18)
+
+The corrected finding was put back to the human before any image binary was vendored, with the
+option to drop images from v1 at no cost. **The decision was re-confirmed: keep images, ship
+anyway** — on the explicit ground that *this project is not for commercial use for now*.
+
+That ground matters, because it is exactly the condition the upstream statement is scoped to:
+`wrkout/exercises.json`'s `CONTRIBUTING.md` advises against use **in commercial projects**. A
+personal, non-distributed training app is outside the case upstream warns about.
+
+**This makes the decision contingent, not settled.** If this project is ever distributed
+commercially — sold, monetized, or published to an app store as a paid or ad-supported product —
+the image-licensing question must be reopened before that happens. `.planning/WINDOWS.md` #35 is
+deliberately left **open** rather than waived so `/gsd-ship` keeps surfacing it.
+
+Not legal advice: the upstream note is a stated position by a third party, not an adjudication of
+the underlying rights.
+
 ## Source
 
 - **Dataset:** `yuhonas/free-exercise-db` (GitHub)
