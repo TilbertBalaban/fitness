@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -6,6 +6,7 @@ import { ArchiveDialog } from '@/components/ArchiveDialog';
 import { DetailSection } from '@/components/DetailSection';
 import { ExerciseImageTile } from '@/components/ExerciseImageTile';
 import { MuscleTargetList } from '@/components/MuscleTargetList';
+import { SwapSuggestionList } from '@/components/SwapSuggestionList';
 import { authClient } from '@/lib/auth-client';
 import { getLocalCatalogImage } from '@/lib/catalog/catalog-image-map.generated';
 // 03-08 owns this module (same wave 6, running concurrently) — it does not exist in this worktree
@@ -24,8 +25,9 @@ import {
   setNeverSuggest,
   type ExercisePreference,
 } from '@/lib/catalog/preferences';
+import { scoreAlternatives, type ScoredCandidate, type SwapExercise, type SwapMuscleMapping, type SwapPreference } from '@/lib/catalog/smart-swap';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
-import { exercise } from '@/lib/db/schema';
+import { exercise, exerciseMuscleMapping, seededExercise, userExercisePreference } from '@/lib/db/schema';
 
 export type DetailScreenState =
   | { status: 'found'; detail: ExerciseDetail }
@@ -50,12 +52,76 @@ export async function resolveDetailScreenState(
 const DEFAULT_PREFERENCE: ExercisePreference = { archivedAt: null, neverSuggest: false };
 
 // Whether this id belongs to the current user's own `exercise` row (owned) or was found only in
-// the localOnly `seededExercise` table (owner null, every seeded row). Kept separate from
-// loadExerciseDetail's own two-table fallback rather than extending that function's return shape,
-// since exercise-detail.ts is outside this plan's declared file scope.
-async function loadOwnerId(db: WriteDb, id: string): Promise<string | null> {
-  const [row] = await db.select({ userId: exercise.userId }).from(exercise).where(eq(exercise.id, id));
-  return row?.userId ?? null;
+// the localOnly `seededExercise` table (owner null, every seeded row) — plus its variation_of_id,
+// which loadExerciseDetail's own return shape does not carry (03-10 needs it for the smart-swap
+// sibling bonus). Kept separate from loadExerciseDetail rather than extending that function's
+// return shape, since exercise-detail.ts is outside this plan's declared file scope.
+async function loadOwnerAndVariation(db: WriteDb, id: string): Promise<{ ownerId: string | null; variationOfId: string | null }> {
+  const [seededRow] = await db
+    .select({ variationOfId: seededExercise.variationOfId })
+    .from(seededExercise)
+    .where(eq(seededExercise.id, id));
+  if (seededRow) return { ownerId: null, variationOfId: seededRow.variationOfId };
+
+  const [customRow] = await db
+    .select({ userId: exercise.userId, variationOfId: exercise.variationOfId })
+    .from(exercise)
+    .where(eq(exercise.id, id));
+  return { ownerId: customRow?.userId ?? null, variationOfId: customRow?.variationOfId ?? null };
+}
+
+// The candidate set for smart-swap: every seeded and custom exercise plus every muscle mapping and
+// every user_exercise_preference row, read as three whole-table queries — never a per-candidate
+// lookup (PITFALLS.md §13's canonical N+1 shape, the exact risk a suggestion list would first hit).
+// Mirrors apps/mobile/app/exercises/index.tsx's loadCatalogRows union-and-filter shape.
+async function loadSwapCandidates(
+  db: WriteDb,
+): Promise<{ candidates: SwapExercise[]; mappings: SwapMuscleMapping[]; preferences: SwapPreference[] }> {
+  const seededRows = await db
+    .select({
+      id: seededExercise.id,
+      name: seededExercise.name,
+      movementPattern: seededExercise.movementPattern,
+      equipmentRequired: seededExercise.equipmentRequired,
+      variationOfId: seededExercise.variationOfId,
+    })
+    .from(seededExercise)
+    .where(isNull(seededExercise.archivedAt));
+
+  const customRows = await db
+    .select({
+      id: exercise.id,
+      name: exercise.name,
+      movementPattern: exercise.movementPattern,
+      equipmentRequired: exercise.equipmentRequired,
+      variationOfId: exercise.variationOfId,
+    })
+    .from(exercise)
+    .where(and(eq(exercise.isCustom, true), isNull(exercise.archivedAt)));
+
+  const candidates: SwapExercise[] = [...seededRows, ...customRows];
+
+  const mappings: SwapMuscleMapping[] = (
+    await db
+      .select({
+        exerciseId: exerciseMuscleMapping.exerciseId,
+        muscleGroupId: exerciseMuscleMapping.muscleGroupId,
+        role: exerciseMuscleMapping.role,
+        weightFactor: exerciseMuscleMapping.weightFactor,
+      })
+      .from(exerciseMuscleMapping)
+  ).map((row) => ({ ...row, role: row.role as SwapMuscleMapping['role'] }));
+
+  const preferences: SwapPreference[] = await db
+    .select({
+      userId: userExercisePreference.userId,
+      exerciseId: userExercisePreference.exerciseId,
+      archivedAt: userExercisePreference.archivedAt,
+      neverSuggest: userExercisePreference.neverSuggest,
+    })
+    .from(userExercisePreference);
+
+  return { candidates, mappings, preferences };
 }
 
 export default function ExerciseDetailScreen() {
@@ -70,6 +136,7 @@ export default function ExerciseDetailScreen() {
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [preference, setPreference] = useState<ExercisePreference>(DEFAULT_PREFERENCE);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [swapCandidates, setSwapCandidates] = useState<ScoredCandidate[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -82,13 +149,27 @@ export default function ExerciseDetailScreen() {
 
       if (state.status === 'found') {
         setDetail(state.detail);
-        const [owner, pref] = await Promise.all([
-          loadOwnerId(db, id),
+        const [ownerAndVariation, pref, swapData] = await Promise.all([
+          loadOwnerAndVariation(db, id),
           userId ? readPreference(db, userId, id) : Promise.resolve(DEFAULT_PREFERENCE),
+          loadSwapCandidates(db),
         ]);
         if (!mounted) return;
-        setOwnerId(owner);
+        setOwnerId(ownerAndVariation.ownerId);
         setPreference(pref);
+
+        const target: SwapExercise = {
+          id: state.detail.id,
+          name: state.detail.name,
+          movementPattern: state.detail.movementPattern,
+          equipmentRequired: state.detail.equipmentRequired,
+          variationOfId: ownerAndVariation.variationOfId,
+        };
+        // No equipment constraint yet — Phase 7 owns gym profiles and
+        // equipment_profile.machine_availability. Passing a fabricated constraint here would be
+        // inventing data this screen has no source for; the omission is this seam left open on
+        // purpose, not an oversight.
+        setSwapCandidates(scoreAlternatives(target, swapData.candidates, swapData.mappings, swapData.preferences, userId));
       } else if (state.status === 'not-found') {
         setNotFound(true);
       } else {
@@ -239,10 +320,7 @@ export default function ExerciseDetailScreen() {
 
       <DetailSection heading="Cues">{detail.cueText}</DetailSection>
 
-      <View className="mt-lg gap-xs">
-        <Text className="text-body font-semibold text-foreground">Suggested Alternatives</Text>
-        <Text className="text-body font-normal text-foreground-muted">Coming in this phase.</Text>
-      </View>
+      <SwapSuggestionList candidates={swapCandidates} />
 
       {archiveDialogOpen ? (
         <ArchiveDialog

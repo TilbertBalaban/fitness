@@ -51,7 +51,10 @@ function buildMuscleGroupsByExercise(mappings: CatalogMuscleMapping[]): Map<stri
   return byExercise;
 }
 
-function buildArchivedSet(preferences: CatalogPreference[], userId: string | null): Set<string> {
+// Exported (03-10) so smart-swap.ts's exclusion set reuses this exact predicate rather than a
+// second implementation — PITFALLS.md §11's "one archive code path" rule applies across modules,
+// not just within this file.
+export function buildArchivedSet(preferences: CatalogPreference[], userId: string | null): Set<string> {
   if (userId === null) return new Set();
   const archived = new Set<string>();
   for (const preference of preferences) {
