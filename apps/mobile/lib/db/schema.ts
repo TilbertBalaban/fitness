@@ -152,6 +152,13 @@ export const seededExercise = sqliteTable('seeded_exercise', {
   bodyweightContributionPct: text('bodyweight_contribution_pct'),
   variationOfId: text('variation_of_id'),
   source: text('source').notNull(),
+  // Added for 03-05's refresh path (Rule 2 — missing critical functionality): a hard delete on a
+  // seeded row this device once used in a logged session would leave session_exercise.exercise_id
+  // dangling with no reference-check backstop, the exact PITFALLS.md §11 failure mode the server
+  // side's archive-not-delete design already guards against. A catalog refresh stamps archivedAt on
+  // a row that vanishes from a newer artifact instead of deleting it; never present in the bundled
+  // first-install snapshot's insert path, only set later by refresh-catalog.ts.
+  archivedAt: text('archived_at'),
 });
 
 // Per-user archive/never-suggest state on any exercise (seeded or custom) — mirrors
