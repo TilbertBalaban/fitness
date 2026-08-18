@@ -26,13 +26,13 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [x] **EXER-01**: User can search the exercise library by name
 - [x] **EXER-02**: User can filter exercises by muscle group, equipment, and movement pattern
 - [x] **EXER-03**: User can view an exercise's detail: target muscles, equipment, setup instructions, technique cues, and static images
-- [ ] **EXER-04**: User can create a custom exercise with name, target muscles, equipment, and tracking type
-- [ ] **EXER-05**: User can edit or duplicate a custom exercise
-- [ ] **EXER-06**: User can archive an exercise, and its past logged sets remain intact and correctly attributed
-- [ ] **EXER-07**: User can mark an exercise as never-suggest, without deleting it
+- [x] **EXER-04**: User can create a custom exercise with name, target muscles, equipment, and tracking type
+- [x] **EXER-05**: User can edit or duplicate a custom exercise
+- [x] **EXER-06**: User can archive an exercise, and its past logged sets remain intact and correctly attributed
+- [x] **EXER-07**: User can mark an exercise as never-suggest, without deleting it
 - [x] **EXER-08**: User can log sets against exercises of any load type — external weight, bodyweight, bodyweight plus added load, assisted, time-based, or distance-based
 - [ ] **EXER-09**: User's bodyweight contribution is accounted for on bodyweight-loaded exercises so volume and load stay meaningful as bodyweight changes
-- [ ] **EXER-10**: User can request suggested alternative exercises for any exercise (smart swap)
+- [x] **EXER-10**: User can request suggested alternative exercises for any exercise (smart swap)
 
 ### Program Builder
 
@@ -203,13 +203,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | EXER-01 | Phase 3 — Exercise Catalog | Complete |
 | EXER-02 | Phase 3 — Exercise Catalog | Complete |
 | EXER-03 | Phase 3 — Exercise Catalog | Complete |
-| EXER-04 | Phase 3 — Exercise Catalog | Pending |
-| EXER-05 | Phase 3 — Exercise Catalog | Pending |
-| EXER-06 | Phase 3 — Exercise Catalog | Pending |
-| EXER-07 | Phase 3 — Exercise Catalog | Pending |
+| EXER-04 | Phase 3 — Exercise Catalog | Complete |
+| EXER-05 | Phase 3 — Exercise Catalog | Complete |
+| EXER-06 | Phase 3 — Exercise Catalog | Complete |
+| EXER-07 | Phase 3 — Exercise Catalog | Complete |
 | EXER-08 | Phase 3 — Exercise Catalog | Complete |
 | EXER-09 | Phase 3 — Exercise Catalog | Pending |
-| EXER-10 | Phase 3 — Exercise Catalog | Pending |
+| EXER-10 | Phase 3 — Exercise Catalog | Complete |
 | PROG-01 | Phase 4 — Program Builder | Pending |
 | PROG-02 | Phase 4 — Program Builder | Pending |
 | PROG-03 | Phase 4 — Program Builder | Pending |
