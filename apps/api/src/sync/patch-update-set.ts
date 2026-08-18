@@ -47,6 +47,34 @@ export interface LoggedSetValues {
   loggedAt: Date;
 }
 
+export interface ExerciseValues {
+  id: string;
+  userId: string | null;
+  name: string;
+  aliases: string[] | null;
+  movementPattern: string | null;
+  equipmentRequired: string | null;
+  loadType: string;
+  unilateral: boolean;
+  instructionsText: string | null;
+  cueText: string | null;
+  imageUrls: string[] | null;
+  isCustom: boolean;
+  variationOfId: string | null;
+  source: string;
+  bodyweightContributionPct: string | null;
+  archivedAt: Date | null;
+}
+
+export interface UserExercisePreferenceValues {
+  id: string;
+  userId: string;
+  exerciseId: string;
+  archivedAt: Date | null;
+  neverSuggest: boolean;
+  updatedAt: Date;
+}
+
 // A mapped type over keyof V, so every property of V is a required key here — adding a column to
 // a values interface without classifying it in the matching map is a compile error, not a
 // silently-always-written column. That compile error is the exhaustiveness gate this module
@@ -96,6 +124,43 @@ export const LOGGED_SET_PATCH_FIELDS: PatchFieldMap<LoggedSetValues> = {
   parentSetId: 'parent_set_id',
   restTakenSeconds: 'rest_taken_seconds',
   loggedAt: 'logged_at',
+};
+
+// id/userId/isCustom/source are set once at insert and never client-patchable — ownership,
+// custom-vs-seeded classification and provenance do not change after creation. archivedAt is
+// never client-patchable on this table at all: archive state lives exclusively in
+// user_exercise_preference (Pattern 3), and accepting archived_at here would reopen the
+// two-code-path picker problem the schema was shaped to avoid — sync.service.ts's
+// hasInvalidField rejects any op naming it, independent of this map, but the map itself stays
+// null here too so the exhaustiveness gate documents the same rule in one place.
+export const EXERCISE_PATCH_FIELDS: PatchFieldMap<ExerciseValues> = {
+  id: null,
+  userId: null,
+  name: 'name',
+  aliases: 'aliases',
+  movementPattern: 'movement_pattern',
+  equipmentRequired: 'equipment_required',
+  loadType: 'load_type',
+  unilateral: 'unilateral',
+  instructionsText: 'instructions_text',
+  cueText: 'cue_text',
+  imageUrls: 'image_urls',
+  isCustom: null,
+  variationOfId: 'variation_of_id',
+  source: null,
+  bodyweightContributionPct: 'bodyweight_contribution_pct',
+  archivedAt: null,
+};
+
+// id/userId/exerciseId are fixed at insert — a preference row's identity never moves once
+// created; re-targeting it would just be a new row.
+export const USER_EXERCISE_PREFERENCE_PATCH_FIELDS: PatchFieldMap<UserExercisePreferenceValues> = {
+  id: null,
+  userId: null,
+  exerciseId: null,
+  archivedAt: 'archived_at',
+  neverSuggest: 'never_suggest',
+  updatedAt: 'updated_at',
 };
 
 // The values object is keyed by Drizzle property names (camelCase); op.data is keyed by wire

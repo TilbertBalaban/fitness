@@ -18,8 +18,15 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('contains exactly workout_session, session_exercise and logged_set in PUSH_APPLIED_TABLES', () => {
-    expect([...PUSH_APPLIED_TABLES].sort()).toEqual(['logged_set', 'session_exercise', 'workout_session']);
+  it('contains exactly workout_session, session_exercise, logged_set, exercise and user_exercise_preference in PUSH_APPLIED_TABLES', () => {
+    expect([...PUSH_APPLIED_TABLES].sort()).toEqual(
+      ['exercise', 'logged_set', 'session_exercise', 'user_exercise_preference', 'workout_session'].sort(),
+    );
+  });
+
+  it('exercise is applied, not deferred — the phase this plan closes', () => {
+    expect((PUSH_APPLIED_TABLES as readonly string[]).includes('exercise')).toBe(true);
+    expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('exercise')).toBe(false);
   });
 });
 
@@ -30,6 +37,10 @@ describe('isTerminalRejection', () => {
 
   it('is false for an unrecognized table name\'s unknown_table rejection — a later deploy may cure it', () => {
     expect(isTerminalRejection('unknown_table', 'something_unrecognised')).toBe(false);
+  });
+
+  it('is false for exercise\'s unknown_table rejection — no longer a known permanent gap', () => {
+    expect(isTerminalRejection('unknown_table', 'exercise')).toBe(false);
   });
 
   it('is true for not_owner, invalid_field and deleted regardless of table', () => {

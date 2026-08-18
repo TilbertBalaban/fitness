@@ -214,7 +214,7 @@ beforeAll(async () => {
   exerciseId = randomUUID();
   await pg.query(
     `INSERT INTO exercise (id, name, load_type, is_custom, unilateral, source)
-     VALUES ($1, 'Barbell Bench Press', 'external_load', false, false, 'seed')`,
+     VALUES ($1, 'Barbell Bench Press', 'external_weight', false, false, 'seed')`,
     [exerciseId],
   );
 }, 60000);
