@@ -153,3 +153,64 @@ export function deriveFacets(exercises: CatalogExercise[], mappings: CatalogMusc
     movementPatterns: MOVEMENT_PATTERNS.filter((id) => presentMovementPatterns.has(id)),
   };
 }
+
+// --- Screen-presentational helpers ---------------------------------------------------------
+// The exercises list screen (apps/mobile/app/exercises/index.tsx) has no component-render test
+// available in this codebase (@testing-library/react-native is not installed) — per Task 3's own
+// action, its pure presentational decisions (pluralization, the +N collapse threshold, facet-row
+// visibility, which of loading/error/empty/populated state to show, and snake_case facet-id
+// display formatting) are extracted here as small exported functions instead, so <behavior>'s
+// screen-state assertions stay unit-testable without a rendered tree.
+
+// "{n} exercise" / "{n} exercises" — the exact Copywriting Contract pluralization. n=0 is the
+// caller's job to route to the empty state instead of calling this at all.
+export function formatResultCount(count: number): string {
+  return `${count} exercise${count === 1 ? '' : 's'}`;
+}
+
+// The Clear Filters action is visible whenever any dimension carries a selection.
+export function hasActiveFilters(filters: CatalogFilters): boolean {
+  return filters.muscleGroupIds.length > 0 || filters.equipment.length > 0 || filters.movementPatterns.length > 0;
+}
+
+export interface CollapsedTags {
+  visible: string[];
+  overflowCount: number;
+}
+
+// The +N collapse threshold: renders at most `maxVisible` tag chips before folding the remainder
+// into a single "+N" chip, so a long tag list can never grow past its allotted row height into a
+// third wrapped line.
+export function collapseTags(tags: string[], maxVisible: number): CollapsedTags {
+  if (tags.length <= maxVisible) return { visible: tags, overflowCount: 0 };
+  return { visible: tags.slice(0, maxVisible), overflowCount: tags.length - maxVisible };
+}
+
+export type ExerciseListScreenState = 'loading' | 'error' | 'empty' | 'populated';
+
+export interface ExerciseListScreenStateInput {
+  failed: boolean;
+  rows: unknown[] | null;
+  resultCount: number;
+}
+
+// Which of the four screen states (UI-SPEC E1) to render — a local-catalog load failure always
+// wins, then "still loading" (rows not read yet), then the search/filter result count.
+export function deriveExerciseListScreenState({ failed, rows, resultCount }: ExerciseListScreenStateInput): ExerciseListScreenState {
+  if (failed) return 'error';
+  if (rows === null) return 'loading';
+  if (resultCount === 0) return 'empty';
+  return 'populated';
+}
+
+// snake_case facet id -> a readable chip label ("horizontal_push" -> "Horizontal Push"). Muscle
+// groups carry a real display name from the seeded muscle_group table instead and never go
+// through this — it exists only for the equipment and movement-pattern facets, whose ids are the
+// only readable form available.
+export function formatFacetLabel(id: string): string {
+  return id
+    .split('_')
+    .filter((part) => part.length > 0)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(' ');
+}

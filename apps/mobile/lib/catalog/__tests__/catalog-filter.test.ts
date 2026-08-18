@@ -1,6 +1,11 @@
 import {
   applyCatalogFilters,
+  collapseTags,
+  deriveExerciseListScreenState,
   deriveFacets,
+  formatFacetLabel,
+  formatResultCount,
+  hasActiveFilters,
   sortCatalogResults,
   type CatalogExercise,
   type CatalogMuscleMapping,
@@ -186,5 +191,66 @@ describe('deriveFacets', () => {
     expect(facets.muscleGroupIds.sort()).toEqual(['chest', 'lats', 'quads', 'triceps'].sort());
     expect(facets.equipment.sort()).toEqual(['barbell', 'cable'].sort());
     expect(facets.movementPatterns.sort()).toEqual(['horizontal_pull', 'horizontal_push', 'squat'].sort());
+  });
+});
+
+describe('formatResultCount', () => {
+  it('reads "1 exercise" for one result and "2 exercises" for two', () => {
+    expect(formatResultCount(1)).toBe('1 exercise');
+    expect(formatResultCount(2)).toBe('2 exercises');
+    expect(formatResultCount(0)).toBe('0 exercises');
+  });
+});
+
+describe('hasActiveFilters', () => {
+  it('is false when every dimension is empty and true when any one carries a selection', () => {
+    expect(hasActiveFilters({ muscleGroupIds: [], equipment: [], movementPatterns: [] })).toBe(false);
+    expect(hasActiveFilters({ muscleGroupIds: ['chest'], equipment: [], movementPatterns: [] })).toBe(true);
+    expect(hasActiveFilters({ muscleGroupIds: [], equipment: ['barbell'], movementPatterns: [] })).toBe(true);
+    expect(hasActiveFilters({ muscleGroupIds: [], equipment: [], movementPatterns: ['squat'] })).toBe(true);
+  });
+});
+
+describe('collapseTags', () => {
+  it('returns every tag with zero overflow when the list fits within maxVisible', () => {
+    expect(collapseTags(['a', 'b'], 3)).toEqual({ visible: ['a', 'b'], overflowCount: 0 });
+  });
+
+  it('collapses the remainder into a single overflow count beyond maxVisible', () => {
+    expect(collapseTags(['a', 'b', 'c', 'd', 'e'], 3)).toEqual({ visible: ['a', 'b', 'c'], overflowCount: 2 });
+  });
+
+  it('keeps the same visible count and height bounds for one tag and for many tags', () => {
+    const one = collapseTags(['a'], 3);
+    const many = collapseTags(['a', 'b', 'c', 'd', 'e', 'f', 'g'], 3);
+    expect(one.visible.length).toBeLessThanOrEqual(3);
+    expect(many.visible.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('deriveExerciseListScreenState', () => {
+  it('shows the error state when the local catalog failed to load, before anything else', () => {
+    expect(deriveExerciseListScreenState({ failed: true, rows: null, resultCount: 0 })).toBe('error');
+    expect(deriveExerciseListScreenState({ failed: true, rows: [{}], resultCount: 5 })).toBe('error');
+  });
+
+  it('shows loading while rows have not been read yet', () => {
+    expect(deriveExerciseListScreenState({ failed: false, rows: null, resultCount: 0 })).toBe('loading');
+  });
+
+  it('shows empty for a zero-result search or filter, and does not render the count line', () => {
+    expect(deriveExerciseListScreenState({ failed: false, rows: [], resultCount: 0 })).toBe('empty');
+  });
+
+  it('shows populated for a non-zero result count', () => {
+    expect(deriveExerciseListScreenState({ failed: false, rows: [{}], resultCount: 3 })).toBe('populated');
+  });
+});
+
+describe('formatFacetLabel', () => {
+  it('title-cases a snake_case facet id into a readable chip label', () => {
+    expect(formatFacetLabel('horizontal_push')).toBe('Horizontal Push');
+    expect(formatFacetLabel('ez_bar')).toBe('Ez Bar');
+    expect(formatFacetLabel('barbell')).toBe('Barbell');
   });
 });
