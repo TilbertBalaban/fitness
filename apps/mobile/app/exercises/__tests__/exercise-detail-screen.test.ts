@@ -4,6 +4,17 @@
 // top-level `import { getPowerSync } from '@/lib/db/powersync'` never reaches that chain.
 jest.mock('../../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
 
+// 03-09 added authClient.useSession() to resolve the current user id for archive/never-suggest —
+// the real client reaches expo-secure-store's native module, which Jest cannot resolve.
+jest.mock('../../../lib/auth-client', () => ({ authClient: { useSession: jest.fn(() => ({ data: null })) } }));
+
+// 03-08 owns apps/mobile/lib/catalog/custom-exercise.ts and is running in a separate, concurrent
+// worktree this wave — the file does not exist here yet. Mocked with `virtual: true` so this test
+// (and `pnpm --filter mobile test`) can exercise every other part of the screen's wiring without
+// waiting on that merge; typecheck/build genuinely need the real module and are expected to only
+// go green after both plans land (see 03-09-SUMMARY.md's Deviations section, WINDOWS #45).
+jest.mock('../../../lib/catalog/custom-exercise', () => ({ duplicateExercise: jest.fn() }), { virtual: true });
+
 import ExerciseDetailScreen, { resolveDetailScreenState } from '../[id]';
 import type { ExerciseDetail } from '../../../lib/catalog/exercise-detail';
 
@@ -54,5 +65,17 @@ describe('exercise detail screen — structural invariants', () => {
 
   it('never truncates the exercise name — no numberOfLines anywhere in the component body', () => {
     expect(source).not.toMatch(/numberOfLines/);
+  });
+
+  it('wires the archive, never-suggest and duplicate controls to their real functions (03-09)', () => {
+    expect(source).toContain('setArchived');
+    expect(source).toContain('setNeverSuggest');
+    expect(source).toContain('readPreference');
+    expect(source).toContain('duplicateExercise');
+    expect(source).toContain('ArchiveDialog');
+  });
+
+  it('never renders the destructive token directly — it is scoped to ArchiveDialog only', () => {
+    expect(source).not.toMatch(/destructive/);
   });
 });
