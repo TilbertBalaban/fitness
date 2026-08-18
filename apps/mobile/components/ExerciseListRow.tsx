@@ -11,6 +11,10 @@ const MAX_VISIBLE_ROW_TAGS = 3;
 export interface ExerciseListRowProps {
   name: string;
   imageUri: string | null;
+  // A vendored-bundle asset id for a seeded exercise. Takes precedence over imageUri inside
+  // ExerciseImageTile, which is what keeps the list offline-capable; imageUri remains the
+  // fallback for custom exercises, which have no entry in the vendored image map.
+  localSource?: number | null;
   tags: string[];
   onPress: () => void;
 }
@@ -20,7 +24,7 @@ export interface ExerciseListRowProps {
 // target and holds the 48x48 minimum. ExerciseImageTile alone decides between a real image and
 // the muted placeholder tile for both the missing-thumbnail and the load-failure case, so this
 // row never renders its own second broken-image state.
-export function ExerciseListRow({ name, imageUri, tags, onPress }: ExerciseListRowProps) {
+export function ExerciseListRow({ name, imageUri, localSource, tags, onPress }: ExerciseListRowProps) {
   const colors = useThemeColors();
   const { visible, overflowCount } = collapseTags(tags, MAX_VISIBLE_ROW_TAGS);
 
@@ -33,7 +37,7 @@ export function ExerciseListRow({ name, imageUri, tags, onPress }: ExerciseListR
       style={{ minHeight: 48 }}
     >
       <View style={{ width: 56 }}>
-        <ExerciseImageTile uri={imageUri} />
+        <ExerciseImageTile uri={imageUri} localSource={localSource} />
       </View>
 
       <View className="flex-1 gap-xs">

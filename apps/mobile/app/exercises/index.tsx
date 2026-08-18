@@ -21,6 +21,7 @@ import {
   type CatalogMuscleMapping,
   type CatalogPreference,
 } from '@/lib/catalog/catalog-filter';
+import { getLocalCatalogImage } from '@/lib/catalog/catalog-image-map.generated';
 import { loadCatalogSnapshot } from '@/lib/catalog/load-snapshot';
 import { refreshCatalog } from '@/lib/catalog/refresh-catalog';
 import { buildSearchIndex, searchCatalog } from '@/lib/catalog/search-index';
@@ -233,6 +234,7 @@ export default function ExercisesScreen() {
               <ExerciseListRow
                 name={item.name}
                 imageUri={item.imageUri}
+                localSource={getLocalCatalogImage(item.id)}
                 tags={[
                   ...(tagsByExerciseId.get(item.id) ?? []),
                   ...(item.equipmentRequired ? [formatFacetLabel(item.equipmentRequired)] : []),
