@@ -1,9 +1,21 @@
 import { PowerSyncDatabase } from '@powersync/react-native';
 import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver';
 import type { PowerSyncBackendConnector, UploadQueueStats } from '@powersync/common';
-import { drizzleSchema } from './schema';
+import { catalogMeta, drizzleSchema, exerciseMuscleMapping, muscleGroup } from './schema';
 
-export const AppSchema = new DrizzleAppSchema(drizzleSchema);
+// The seeded catalog taxonomy lives inside the same schema PowerSync manages (D-06), but marked
+// localOnly so it produces zero ps_crud entries — the sync protocol never sees these tables.
+// Exported so tests and other call sites can name exactly which tables carry this override.
+export const localOnlyCatalogTables = {
+  muscleGroup: { tableDefinition: muscleGroup, options: { localOnly: true } },
+  exerciseMuscleMapping: { tableDefinition: exerciseMuscleMapping, options: { localOnly: true } },
+  catalogMeta: { tableDefinition: catalogMeta, options: { localOnly: true } },
+} as const;
+
+export const AppSchema = new DrizzleAppSchema({
+  ...drizzleSchema,
+  ...localOnlyCatalogTables,
+});
 
 export type WriteDb = ReturnType<typeof wrapPowerSyncWithDrizzle>;
 
