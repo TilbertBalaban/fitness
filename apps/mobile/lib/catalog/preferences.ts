@@ -117,3 +117,30 @@ export async function setNeverSuggest(
 ): Promise<void> {
   await upsertPreference(db, userId, exerciseId, { neverSuggest });
 }
+
+export interface DetailActionVisibility {
+  showEdit: boolean;
+  showDuplicate: boolean;
+  archiveLabel: 'Archive' | 'Unarchive';
+}
+
+// The detail screen's control-visibility predicate, extracted here (rather than inlined in the
+// hook-bearing screen component) so it stays unit-testable without a renderer. `exerciseOwnerId`
+// is null for every seeded exercise (seededExercise carries no owner column at all) and the
+// current user's own id for a custom row the screen loaded from `exercise` — PowerSync's sync
+// rules only ever deliver a user's own rows there, so a non-null, non-matching owner id is not a
+// reachable case in production, but the equality check is written explicitly rather than assumed.
+// Duplicate is offered regardless of ownership (a user may want a second copy of their own
+// exercise too); Edit is offered only when owned — a seeded exercise never renders Edit.
+export function resolveDetailActions(
+  currentUserId: string | null,
+  exerciseOwnerId: string | null,
+  archivedAt: string | null,
+): DetailActionVisibility {
+  const owned = exerciseOwnerId !== null && exerciseOwnerId === currentUserId;
+  return {
+    showEdit: owned,
+    showDuplicate: true,
+    archiveLabel: archivedAt !== null ? 'Unarchive' : 'Archive',
+  };
+}

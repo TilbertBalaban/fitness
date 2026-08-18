@@ -1,7 +1,7 @@
 import { Column, is, Param, SQL } from 'drizzle-orm';
 import { userExercisePreference } from '../../db/schema';
 import { applyCatalogFilters } from '../catalog-filter';
-import { readPreference, setArchived, setNeverSuggest } from '../preferences';
+import { readPreference, resolveDetailActions, setArchived, setNeverSuggest } from '../preferences';
 
 jest.mock('../../db/id', () => {
   let counter = 0;
@@ -264,5 +264,24 @@ describe('catalog-filter integration — archiving every exercise leaves the cat
     );
 
     expect(result).toEqual([]);
+  });
+});
+
+describe('resolveDetailActions', () => {
+  it('a seeded exercise (null owner) shows Duplicate and never Edit', () => {
+    const result = resolveDetailActions('user-a', null, null);
+    expect(result.showEdit).toBe(false);
+    expect(result.showDuplicate).toBe(true);
+  });
+
+  it('a user-owned exercise shows both Edit and Duplicate', () => {
+    const result = resolveDetailActions('user-a', 'user-a', null);
+    expect(result.showEdit).toBe(true);
+    expect(result.showDuplicate).toBe(true);
+  });
+
+  it('archiveLabel is Archive when archivedAt is null and Unarchive when it is set', () => {
+    expect(resolveDetailActions('user-a', 'user-a', null).archiveLabel).toBe('Archive');
+    expect(resolveDetailActions('user-a', 'user-a', '2026-08-18T00:00:00.000Z').archiveLabel).toBe('Unarchive');
   });
 });
