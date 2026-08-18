@@ -12,7 +12,8 @@
     "test": "jest --config jest.config.js",
     "test:e2e": "pnpm run db:push && nest build && jest --config ./test/jest-e2e.json --runInBand",
     "db:verify": "pnpm run test:e2e -- schema-parity",
-    "seed:corpus": "ts-node src/seed/generate-corpus.ts"
+    "seed:corpus": "ts-node src/seed/generate-corpus.ts",
+    "seed:catalog:normalize": "ts-node src/seed/normalize-catalog.ts"
   },
   "dependencies": {
     "@better-auth/expo": "1.6.26",
