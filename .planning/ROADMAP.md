@@ -157,7 +157,7 @@ Plans:
   3. Archiving an exercise removes it from pickers while leaving its past logged sets intact and correctly attributed
   4. Every exercise carries an explicit load type, so bodyweight, assisted, time-based, and distance-based movements are all representable before any logging UI exists
 
-**Plans**: 4/10 plans executed
+**Plans**: 5/10 plans executed
 
 Plans:
 **Wave 1**
@@ -175,7 +175,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 03-05-PLAN.md — The seed and the delivery endpoints: ~900 rows in Postgres, versioned snapshot on device
+- [x] 03-05-PLAN.md — The seed and the delivery endpoints: ~900 rows in Postgres, versioned snapshot on device
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -394,7 +394,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
-| 3. Exercise Catalog | 4/10 | In Progress|  |
+| 3. Exercise Catalog | 5/10 | In Progress|  |
 | 4. Program Builder | 0/TBD | Not started | - |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
