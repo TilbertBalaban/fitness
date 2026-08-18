@@ -60,6 +60,23 @@ describe('scoreAlternatives', () => {
     expect(a.score).toBeGreaterThan(b.score);
   });
 
+  it('breaks a muscle-and-pattern tie via a matching equipment_required bonus', () => {
+    const target = ex({ id: 'target', name: 'Barbell Bench Press', movementPattern: 'horizontal_push', equipmentRequired: 'barbell' });
+    const sameEquipment = ex({ id: 'same-equipment', name: 'Barbell Incline Press', movementPattern: 'horizontal_push', equipmentRequired: 'barbell' });
+    const differentEquipment = ex({ id: 'different-equipment', name: 'Dumbbell Incline Press', movementPattern: 'horizontal_push', equipmentRequired: 'dumbbell' });
+    const mappings = [
+      mapping('target', 'chest', 'primary', '1.00'),
+      mapping('same-equipment', 'chest', 'primary', '1.00'),
+      mapping('different-equipment', 'chest', 'primary', '1.00'),
+    ];
+
+    const results = scoreAlternatives(target, [sameEquipment, differentEquipment], mappings, [], null);
+    const sameResult = results.find((r) => r.id === 'same-equipment')!;
+    const differentResult = results.find((r) => r.id === 'different-equipment')!;
+
+    expect(sameResult.score).toBeGreaterThan(differentResult.score);
+  });
+
   it('finds a lat pulldown a reasonable alternative to a pull-up despite sharing no variation_of_id', () => {
     const target = ex({ id: 'pull-up', name: 'Pull-Up', movementPattern: 'vertical_pull', equipmentRequired: 'bodyweight' });
     const latPulldown = ex({ id: 'lat-pulldown', name: 'Lat Pulldown', movementPattern: 'vertical_pull', equipmentRequired: 'cable' });
