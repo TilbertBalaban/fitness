@@ -1,10 +1,14 @@
 import {
+  EXERCISE_PATCH_FIELDS,
   LOGGED_SET_PATCH_FIELDS,
   patchAwareSet,
   SESSION_EXERCISE_PATCH_FIELDS,
+  USER_EXERCISE_PREFERENCE_PATCH_FIELDS,
   WORKOUT_SESSION_PATCH_FIELDS,
+  type ExerciseValues,
   type LoggedSetValues,
   type SessionExerciseValues,
+  type UserExercisePreferenceValues,
   type WorkoutSessionValues,
 } from '../patch-update-set';
 import type { SyncCrudOp } from '@fitness/api-contracts';
@@ -57,6 +61,40 @@ function sessionExerciseValues(overrides: Partial<SessionExerciseValues> = {}): 
     targetRirMin: null,
     targetRirMax: null,
     targetRestSeconds: null,
+    ...overrides,
+  };
+}
+
+function exerciseValues(overrides: Partial<ExerciseValues> = {}): ExerciseValues {
+  return {
+    id: 'ex-1',
+    userId: 'user-1',
+    name: 'Barbell Back Squat',
+    aliases: ['Back Squat'],
+    movementPattern: 'squat',
+    equipmentRequired: 'barbell',
+    loadType: 'external_weight',
+    unilateral: false,
+    instructionsText: 'Set up under the bar...',
+    cueText: 'Knees track toes',
+    imageUrls: ['https://example.com/squat.png'],
+    isCustom: true,
+    variationOfId: null,
+    source: 'user',
+    bodyweightContributionPct: null,
+    archivedAt: null,
+    ...overrides,
+  };
+}
+
+function userExercisePreferenceValues(overrides: Partial<UserExercisePreferenceValues> = {}): UserExercisePreferenceValues {
+  return {
+    id: 'uep-1',
+    userId: 'user-1',
+    exerciseId: 'ex-1',
+    archivedAt: null,
+    neverSuggest: false,
+    updatedAt: new Date('2026-06-15T20:00:00Z'),
     ...overrides,
   };
 }
@@ -208,5 +246,99 @@ describe('patchAwareSet', () => {
     });
     const result = patchAwareSet(patchOp, values, LOGGED_SET_PATCH_FIELDS);
     expect(Object.keys(result).sort()).toEqual(Object.keys(values).sort());
+  });
+
+  it('a PATCH for exercise naming only name produces an update set of exactly the identity/server-owned keys plus name — load_type, cue_text and every other patchable column are absent', () => {
+    const values = exerciseValues({ name: 'New Name' });
+    const patchOp = op({ type: 'exercise', id: 'ex-1', data: { name: 'New Name' } });
+    const result = patchAwareSet(patchOp, values, EXERCISE_PATCH_FIELDS);
+    expect(Object.keys(result).sort()).toEqual(
+      ['id', 'userId', 'isCustom', 'source', 'archivedAt', 'name'].sort(),
+    );
+    expect(result.name).toBe('New Name');
+    expect('loadType' in result).toBe(false);
+    expect('cueText' in result).toBe(false);
+  });
+
+  it('a PUT for exercise produces an update set containing every patchable column', () => {
+    const values = exerciseValues();
+    const putOp = op({
+      op: 'PUT',
+      type: 'exercise',
+      id: 'ex-1',
+      data: {
+        name: 'Barbell Back Squat',
+        aliases: ['Back Squat'],
+        movement_pattern: 'squat',
+        equipment_required: 'barbell',
+        load_type: 'external_weight',
+        unilateral: false,
+        instructions_text: 'Set up under the bar...',
+        cue_text: 'Knees track toes',
+        image_urls: ['https://example.com/squat.png'],
+        variation_of_id: null,
+        bodyweight_contribution_pct: null,
+      },
+    });
+    const result = patchAwareSet(putOp, values, EXERCISE_PATCH_FIELDS);
+    expect(result).toBe(values);
+  });
+
+  it('always retains identity/server-owned keys regardless of op.data — exercise (id, userId, isCustom, source, archivedAt), and never with a client-claimed value', () => {
+    const values = exerciseValues();
+    const patchOp = op({
+      type: 'exercise',
+      id: 'ex-1',
+      data: { user_id: 'someone-else', is_custom: false, source: 'seed', archived_at: '2026-06-01T00:00:00Z', name: 'x' },
+    });
+    const result = patchAwareSet(patchOp, values, EXERCISE_PATCH_FIELDS);
+    // Present — but only with the server-computed value from `values`, which toExerciseValues
+    // (sync.service.ts) builds from the authenticated session, never from op.data. patchAwareSet
+    // never reads op.data for a null-mapped key, so a value claimed in the payload can never
+    // reach this result regardless of key presence.
+    expect(result.userId).toBe(values.userId);
+    expect(result.userId).not.toBe('someone-else');
+    expect(result.isCustom).toBe(values.isCustom);
+    expect(result.isCustom).not.toBe(false);
+    expect(result.source).toBe(values.source);
+    expect(result.source).not.toBe('seed');
+    expect(result.archivedAt).toBe(values.archivedAt);
+  });
+
+  it('a PATCH for user_exercise_preference naming only never_suggest produces an update set of exactly the identity keys plus neverSuggest — archivedAt is absent', () => {
+    const values = userExercisePreferenceValues();
+    const patchOp = op({ type: 'user_exercise_preference', id: 'uep-1', data: { never_suggest: true } });
+    const result = patchAwareSet(patchOp, values, USER_EXERCISE_PREFERENCE_PATCH_FIELDS);
+    expect(Object.keys(result).sort()).toEqual(['id', 'userId', 'exerciseId', 'neverSuggest'].sort());
+    expect('archivedAt' in result).toBe(false);
+  });
+
+  it('always retains identity/server-owned keys regardless of op.data — user_exercise_preference (id, userId, exerciseId), and never with a client-claimed value', () => {
+    const values = userExercisePreferenceValues();
+    const patchResult = patchAwareSet(
+      op({
+        type: 'user_exercise_preference',
+        id: 'uep-1',
+        data: { user_id: 'someone-else', exercise_id: 'ex-2', never_suggest: true },
+      }),
+      values,
+      USER_EXERCISE_PREFERENCE_PATCH_FIELDS,
+    );
+    expect(patchResult.userId).toBe(values.userId);
+    expect(patchResult.userId).not.toBe('someone-else');
+    expect(patchResult.exerciseId).toBe(values.exerciseId);
+    expect(patchResult.exerciseId).not.toBe('ex-2');
+  });
+
+  it('a PUT for user_exercise_preference produces an update set containing every patchable column', () => {
+    const values = userExercisePreferenceValues();
+    const putOp = op({
+      op: 'PUT',
+      type: 'user_exercise_preference',
+      id: 'uep-1',
+      data: { archived_at: null, never_suggest: false, updated_at: '2026-06-15T20:00:00Z' },
+    });
+    const result = patchAwareSet(putOp, values, USER_EXERCISE_PREFERENCE_PATCH_FIELDS);
+    expect(result).toBe(values);
   });
 });
