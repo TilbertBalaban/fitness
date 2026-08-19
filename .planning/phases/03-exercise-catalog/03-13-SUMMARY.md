@@ -191,3 +191,7 @@ The plan's own `<verification>` section names three residual items a browser wou
 ---
 *Phase: 03-exercise-catalog*
 *Completed: 2026-08-19*
+
+## Self-Check: PASSED
+
+All 9 files tracked by git (`git ls-files`), all 5 task commits plus the plan-metadata commit found in `git log`.
