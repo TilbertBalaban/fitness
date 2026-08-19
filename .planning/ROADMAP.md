@@ -157,7 +157,7 @@ Plans:
   3. Archiving an exercise removes it from pickers while leaving its past logged sets intact and correctly attributed
   4. Every exercise carries an explicit load type, so bodyweight, assisted, time-based, and distance-based movements are all representable before any logging UI exists
 
-**Plans**: 14 plans (12 executed, 2 gap closure outstanding)
+**Plans**: 13/14 plans executed (12 executed, 2 gap closure outstanding)
 
 Plans:
 **Wave 1**
@@ -201,7 +201,7 @@ Plans:
 
 **Wave 10** *(gap closure — blocked on Wave 9 completion)*
 
-- [ ] 03-13-PLAN.md — Close G-03-3: an image tile whose box cannot collapse, applied to all three call sites, with the first tests that assert an image element exists
+- [x] 03-13-PLAN.md — Close G-03-3: an image tile whose box cannot collapse, applied to all three call sites, with the first tests that assert an image element exists
 
 **Wave 11** *(gap closure — blocked on Wave 10 completion)*
 
@@ -410,7 +410,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
-| 3. Exercise Catalog | 12/12 | In Progress|  |
+| 3. Exercise Catalog | 13/14 | In Progress|  |
 | 4. Program Builder | 0/TBD | Not started | - |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
