@@ -38,7 +38,7 @@ fetched 2026-08-18), plus its image assets.
 | `force` | INTEGRATE | feeds `movement_pattern` inference |
 | `mechanic` | INTEGRATE | feeds `movement_pattern` and `load_type` inference |
 | `instructions` | INTEGRATE | |
-| `images` | OPT-OUT | image copyright is an open, unanswered upstream question (`yuhonas/free-exercise-db` issue 13). `image_urls` stays empty in v1 and the UI renders the 4:3 placeholder tile contract; revisit when the upstream question is answered. Locked at `03-04` task 1. |
+| `images` | OPT-OUT | image copyright is an unresolved upstream question (`yuhonas/free-exercise-db` issue 13); `image_urls` stays empty in v1 and the UI renders the 4:3 placeholder tile. Locked at `03-04` task 1. |
 | `level` | OPT-OUT | no column and no requirement — EXER-01..10 never reference difficulty. Tracked for a later phase if a difficulty filter is ever requested. |
 
 ## Source B — wger REST API (`wger.de/api/v2`)
