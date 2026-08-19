@@ -397,11 +397,11 @@ Plans:
 **Prerequisites**: Xcode + iOS simulator (absent as of deferral: `xcode-select` → CommandLineTools, no Xcode.app, `xcrun simctl` unavailable), Android SDK + JDK 17 + emulator image (absent), Expo dev-client builds for both platforms
 **Accumulated items**:
 
-- [ ] Phase 01 test 1: sign up / sign in reaching the authenticated five-tab home screen on iOS
-- [ ] Phase 01 test 2: sign up / sign in reaching the authenticated five-tab home screen on Android
-- [ ] Phase 01 test 3: offline cold-start after a genuinely elapsed multi-week gap renders authenticated UI with no sign-out (D-01/D-02)
-- [ ] Phase 01 test 4: on-device cookie header accepted by the server and session row deleted on explicit sign-out
-- [ ] Phase 01 test 5: maximum OS accessibility font-scale wrap-and-grow on iOS and Android
+- [ ] Phase 01 test 11: sign up / sign in reaching the authenticated five-tab home screen on iOS
+- [ ] Phase 01 test 12: sign up / sign in reaching the authenticated five-tab home screen on Android
+- [ ] Phase 01 test 13: offline cold-start after a genuinely elapsed multi-week gap renders authenticated UI with no sign-out (D-01/D-02)
+- [ ] Phase 01 test 14: on-device cookie header accepted by the server and session row deleted on explicit sign-out
+- [ ] Phase 01 test 15: maximum OS accessibility font-scale wrap-and-grow on iOS and Android
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
 ## Progress

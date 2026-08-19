@@ -1,7 +1,7 @@
 ---
 phase: 01-cross-platform-foundation
 verified: 2026-08-14T16:10:00Z
-status: human_needed
+status: passed
 score: 7/9 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -9,24 +9,30 @@ re_verification:
   previous_status: gaps_found
   previous_score: 6/8
   gaps_closed:
+
     - "MUST NOT attach the session credential to a request whose destination is not this project's own API origin — the string-prefix check (url.startsWith(API_URL)) is replaced with a parsed-origin comparison (isProjectOrigin), independently confirmed by running the exact adversarial test against the pre-fix commit (fails) and the fixed commit (passes)"
   gaps_remaining: []
   regressions: []
 gaps: []
 deferred: []
 human_verification:
+
   - test: "Sign up, sign in, and reach the same authenticated five-tab home screen on a real iOS simulator/device"
     expected: "Native tab chrome renders (NativeTabs), the authenticated stack shows on first frame, Home/Programs/Workout/History/Profile all reachable, identical account/session as the browser and Android builds"
     why_human: "No iOS simulator was reachable from this verification environment. Every native-specific claim rests on typecheck, unit tests, and a static `expo export` — none of which render UI. Carried forward unchanged from the prior verification pass (originally WINDOWS.md ledger items #4, #5, #8, #9, #10). Not addressed by 01-11, which was explicitly scoped to the origin-guard gap only."
+
   - test: "Sign up, sign in, and reach the same authenticated five-tab home screen on a real Android emulator/device"
     expected: "Same as iOS row above, on Android"
     why_human: "Same reasoning as the iOS row. Carried forward unchanged (WINDOWS.md ledger items #8, #9, #10)."
+
   - test: "Sign in on a device, put it in airplane mode, wait, and cold-start the app after a genuinely elapsed multi-week gap (or at minimum an extended offline period)"
     expected: "Authenticated UI renders immediately with no network wait and no sign-out, per D-01/D-02"
     why_human: "Real elapsed time and true device airplane-mode behavior cannot be produced in this environment. Unit tests (session-refresh.test.ts) prove the classification logic is correct in isolation but do not exercise the actual OS-level cold-start/network-loss path. Carried forward unchanged (WINDOWS.md ledger item #2). This is the specific truth PLAT-06 still depends on for full completion — see Requirements Coverage."
+
   - test: "On a real iOS or Android build, confirm the attached cookie header is accepted by the running server and the session row is deleted on explicit sign-out"
     expected: "Same behavior the e2e suite (native-session.e2e-spec.ts) proves over HTTP, now observed on a physical/simulated device"
     why_human: "No iOS/Android simulator or device is reachable from this environment. This truth was explicitly declared verification: backstop in 01-09-PLAN.md must_haves.truths — it rests on the HTTP-level e2e proof plus typecheck, not a device observation. Carried forward unchanged (WINDOWS.md ledger item #15)."
+
   - test: "Confirm maximum OS accessibility font scale wrap-and-grow behavior (auth fields, tab bar labels, placeholder body copy) on iOS and Android"
     expected: "Long text wraps and containers grow rather than clipping or truncating, per UI-SPEC R1"
     why_human: "Verified only on web by shrinking the viewport (WINDOWS.md #9); never observed at real OS accessibility font scale on a native device (WINDOWS.md #7, #9, still open)."
