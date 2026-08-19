@@ -6,8 +6,14 @@
 // this is the static-require-map WINDOWS #36 calls for, closing the gap 03-05 left open: the
 // vendored images were on disk but never reachable from any require() call, so Metro never
 // included them in the bundle and no component could render them.
+//
+// On native, require() resolves to that numeric asset module id. On the web target, Metro's
+// asset transformer emits an object carrying {uri, width, height} instead -- ImageSourcePropType
+// (React Native's own asset-source union) admits both, so the declared type matches what the
+// bundler actually returns on either shipping platform (G-03-3 Task 3).
+import type { ImageSourcePropType } from 'react-native';
 
-const catalogImageMap: Record<string, number[]> = {
+const catalogImageMap: Record<string, ImageSourcePropType[]> = {
   "seed_3_4_Sit-Up": [require("../../assets/catalog/images/seed_3_4_Sit-Up/0.jpg"), require("../../assets/catalog/images/seed_3_4_Sit-Up/1.jpg")],
   "seed_90_90_Hamstring": [require("../../assets/catalog/images/seed_90_90_Hamstring/0.jpg"), require("../../assets/catalog/images/seed_90_90_Hamstring/1.jpg")],
   "seed_Ab_Crunch_Machine": [require("../../assets/catalog/images/seed_Ab_Crunch_Machine/0.jpg"), require("../../assets/catalog/images/seed_Ab_Crunch_Machine/1.jpg")],
@@ -884,7 +890,7 @@ const catalogImageMap: Record<string, number[]> = {
 // the offline render path (ExerciseImageTile's localSource prop) branches on this, never on
 // the exercise's own (still-remote) image_urls field, so a stale or missing manifest entry
 // falls back to the placeholder tile instead of a live network fetch.
-export function getLocalCatalogImage(exerciseId: string): number | null {
+export function getLocalCatalogImage(exerciseId: string): ImageSourcePropType | null {
   const images = catalogImageMap[exerciseId];
   return images && images.length > 0 ? images[0] : null;
 }
