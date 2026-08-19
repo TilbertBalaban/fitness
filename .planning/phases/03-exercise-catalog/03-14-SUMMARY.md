@@ -185,3 +185,7 @@ Also recorded as a `deviation` kind entry: the T-03-58 security fix itself (segm
 ---
 *Phase: 03-exercise-catalog*
 *Completed: 2026-08-19*
+
+## Self-Check: PASSED
+
+All created files confirmed present on disk (`back.ts`, `back.test.ts`, `NavBackButton.tsx`, `_layout.tsx`, this SUMMARY.md). All four commits (`bdbedff`, `2fcdb29`, `7cf985e`, `a7286ef`) confirmed present in `git log --all`.
