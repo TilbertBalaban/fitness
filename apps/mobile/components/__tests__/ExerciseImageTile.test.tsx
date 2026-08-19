@@ -3,8 +3,11 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import {
   EXERCISE_IMAGE_LABEL_MIN_WIDTH,
   ExerciseImageTileView,
+  resolveDisplaySource,
   resolveHeroImageWidth,
+  resolveSourceKey,
   resolveTileBox,
+  resolveTileSource,
 } from '../ExerciseImageTile';
 
 // ExerciseImageTileView has no hooks, so it is a plain `(props) => ReactElement` function --
@@ -143,5 +146,98 @@ describe('ExerciseImageTileView', () => {
 
     expect(container.props.className as string).toContain('border');
     expect(container.props.className as string).toContain('border-foreground-muted');
+  });
+});
+
+// WR-01 (03-REVIEW.md): ExerciseListRow renders inside a recycling FlashList, so one component
+// instance serves many exercises without unmounting. The failure must therefore be remembered
+// against the source that failed, not as a bare "something failed" flag. The stateful
+// ExerciseImageTile cannot be rendered here (no renderer in this workspace, see the header note),
+// so the decision is exercised through the pure function that carries it.
+describe('resolveSourceKey', () => {
+  it('gives separate uri sources separate keys', () => {
+    expect(resolveSourceKey('https://cdn/a.png')).not.toBe(resolveSourceKey('https://cdn/b.png'));
+  });
+
+  it('gives separate numeric asset ids separate keys', () => {
+    expect(resolveSourceKey(null, 1)).not.toBe(resolveSourceKey(null, 2));
+  });
+
+  it('is stable across separate but equal object sources', () => {
+    const first = resolveSourceKey(null, { uri: 'https://cdn/a.png' });
+    const second = resolveSourceKey(null, { uri: 'https://cdn/a.png' });
+
+    expect(first).toBe(second);
+  });
+
+  it('is stable across re-derivation for the same uri, so a fresh {uri} wrapper each render cannot reset the failure', () => {
+    expect(resolveSourceKey('https://cdn/a.png')).toBe(resolveSourceKey('https://cdn/a.png'));
+  });
+
+  it('does not collide a localSource uri with a bare uri carrying the same string', () => {
+    expect(resolveSourceKey(null, { uri: 'https://cdn/a.png' })).not.toBe(resolveSourceKey('https://cdn/a.png'));
+  });
+
+  it('returns null when there is no source to identify', () => {
+    expect(resolveSourceKey(null, null)).toBeNull();
+    expect(resolveSourceKey(undefined, undefined)).toBeNull();
+    expect(resolveSourceKey('', null)).toBeNull();
+  });
+});
+
+describe('resolveTileSource', () => {
+  it('prefers localSource over uri', () => {
+    expect(resolveTileSource('https://cdn/a.png', SENTINEL_SOURCE)).toBe(SENTINEL_SOURCE);
+  });
+
+  it('falls back to a uri wrapper when there is no localSource', () => {
+    expect(resolveTileSource('https://cdn/a.png', null)).toEqual({ uri: 'https://cdn/a.png' });
+  });
+
+  it('returns null when neither is supplied', () => {
+    expect(resolveTileSource(null, null)).toBeNull();
+  });
+});
+
+describe('resolveDisplaySource — failure is scoped to the source that failed (WR-01)', () => {
+  it('suppresses the source that actually failed', () => {
+    const failedKey = resolveSourceKey('https://cdn/a.png');
+
+    expect(resolveDisplaySource('https://cdn/a.png', null, failedKey)).toBeNull();
+  });
+
+  it('does NOT suppress a different exercise recycled into the same slot', () => {
+    const failedKey = resolveSourceKey('https://cdn/a.png');
+
+    expect(resolveDisplaySource('https://cdn/b.png', null, failedKey)).toEqual({ uri: 'https://cdn/b.png' });
+  });
+
+  it('does NOT suppress a different numeric asset recycled into the same slot', () => {
+    const failedKey = resolveSourceKey(null, 1);
+
+    expect(resolveDisplaySource(null, 2, failedKey)).toBe(2);
+  });
+
+  it('does NOT suppress a vendored localSource after a remote uri failed in the same slot', () => {
+    const failedKey = resolveSourceKey('https://cdn/a.png');
+
+    expect(resolveDisplaySource('https://cdn/a.png', SENTINEL_SOURCE, failedKey)).toBe(SENTINEL_SOURCE);
+  });
+
+  it('still suppresses a failed localSource re-derived from an equal but not identical object', () => {
+    const failedKey = resolveSourceKey(null, { uri: 'https://cdn/a.png' });
+
+    expect(resolveDisplaySource(null, { uri: 'https://cdn/a.png' }, failedKey)).toBeNull();
+  });
+
+  it('shows the source when nothing has failed yet', () => {
+    expect(resolveDisplaySource('https://cdn/a.png', null, null)).toEqual({ uri: 'https://cdn/a.png' });
+  });
+
+  it('treats an absent source as absent rather than failed, so a null key cannot match a null failedKey', () => {
+    expect(resolveDisplaySource(null, null, null)).toBeNull();
+    expect(resolveDisplaySource('https://cdn/a.png', null, resolveSourceKey(null, null))).toEqual({
+      uri: 'https://cdn/a.png',
+    });
   });
 });

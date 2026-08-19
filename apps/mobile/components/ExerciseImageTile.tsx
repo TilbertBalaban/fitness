@@ -69,13 +69,60 @@ export function ExerciseImageTileView({ source, width, onError }: ExerciseImageT
   );
 }
 
-// The stateful wrapper: resolves which source wins (localSource takes precedence over uri) and
-// tracks load failure so a failed image degrades back to the placeholder tile.
-export function ExerciseImageTile({ uri, localSource, width = EXERCISE_THUMBNAIL_WIDTH }: ExerciseImageTileProps) {
-  const [failed, setFailed] = useState(false);
-  const handleError = useCallback(() => setFailed(true), []);
-  const source: ImageSourcePropType | null =
-    localSource != null ? localSource : uri ? { uri } : null;
+// Pure function: the source precedence rule -- localSource wins over uri, since vendoring exists
+// precisely to avoid the remote fetch a uri implies.
+export function resolveTileSource(
+  uri?: string | null,
+  localSource?: ImageSourcePropType | null,
+): ImageSourcePropType | null {
+  return localSource != null ? localSource : uri ? { uri } : null;
+}
 
-  return <ExerciseImageTileView source={failed ? null : source} width={width} onError={handleError} />;
+// Pure function: a stable string identity for whichever source currently wins. A bare object
+// identity cannot be used here -- `{ uri }` is freshly allocated on every render, and a web
+// localSource is an object too, so an identity comparison would read as "changed" every render and
+// reset the failure on each pass. Returns null when there is no source to identify.
+export function resolveSourceKey(
+  uri?: string | null,
+  localSource?: ImageSourcePropType | null,
+): string | null {
+  if (localSource != null) {
+    if (typeof localSource === 'number') return `local:${localSource}`;
+    const asObject = localSource as { uri?: unknown };
+    if (typeof asObject.uri === 'string') return `local:${asObject.uri}`;
+    return `local:${JSON.stringify(localSource)}`;
+  }
+  return uri ? `uri:${uri}` : null;
+}
+
+// Pure function: the whole display decision. A failure is remembered against the source that
+// actually failed, so it suppresses that source and nothing else.
+export function resolveDisplaySource(
+  uri: string | null | undefined,
+  localSource: ImageSourcePropType | null | undefined,
+  failedKey: string | null,
+): ImageSourcePropType | null {
+  const key = resolveSourceKey(uri, localSource);
+  if (key !== null && key === failedKey) return null;
+  return resolveTileSource(uri, localSource);
+}
+
+// The stateful wrapper. It stores WHICH source failed rather than a bare "something failed" flag:
+// ExerciseListRow renders inside a recycling FlashList, so this same component instance is handed a
+// different exercise without unmounting, and a boolean would strand every later exercise in that
+// slot on the placeholder (WR-01). Deriving `failed` during render rather than resetting it in an
+// effect matters too -- an effect runs after paint, so a recycled row would flash the previous
+// exercise's placeholder for one frame.
+export function ExerciseImageTile({ uri, localSource, width = EXERCISE_THUMBNAIL_WIDTH }: ExerciseImageTileProps) {
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const sourceKey = resolveSourceKey(uri, localSource);
+  const handleError = useCallback(() => setFailedKey(sourceKey), [sourceKey]);
+
+  return (
+    <ExerciseImageTileView
+      source={resolveDisplaySource(uri, localSource, failedKey)}
+      width={width}
+      onError={handleError}
+    />
+  );
 }
