@@ -1,10 +1,10 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { ArchiveDialog } from '@/components/ArchiveDialog';
 import { DetailSection } from '@/components/DetailSection';
-import { ExerciseImageTile } from '@/components/ExerciseImageTile';
+import { ExerciseImageTile, resolveHeroImageWidth } from '@/components/ExerciseImageTile';
 import { MuscleTargetList } from '@/components/MuscleTargetList';
 import { SwapSuggestionList } from '@/components/SwapSuggestionList';
 import { authClient } from '@/lib/auth-client';
@@ -129,6 +129,7 @@ export default function ExerciseDetailScreen() {
   const router = useRouter();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
+  const { width: windowWidth } = useWindowDimensions();
 
   const [detail, setDetail] = useState<ExerciseDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -306,7 +307,7 @@ export default function ExerciseDetailScreen() {
       </View>
 
       <View className="mt-md">
-        <ExerciseImageTile localSource={localImage} />
+        <ExerciseImageTile localSource={localImage} width={resolveHeroImageWidth(windowWidth)} />
       </View>
 
       {detail.primaryMuscles.length > 0 ? (

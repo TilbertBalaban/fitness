@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Text } from 'react-native';
+import { ExerciseImageTile } from '../ExerciseImageTile';
 import { SwapSuggestionList } from '../SwapSuggestionList';
 import type { ScoredCandidate } from '../../lib/catalog/smart-swap';
 
@@ -104,6 +105,47 @@ describe('SwapSuggestionList', () => {
 
     expect(nameNode?.props.numberOfLines).toBe(1);
     expect(whyNode?.props.numberOfLines).toBe(2);
+  });
+
+  it('produces exactly one ExerciseImageTile with a non-null vendored localSource for a real seeded id', () => {
+    const result = SwapSuggestionList({
+      candidates: [candidate({ id: 'seed_90_90_Hamstring', name: '90/90 Hamstring', why: 'Same primary muscle: hamstrings' })],
+    });
+    const tiles = findByType(result, ExerciseImageTile);
+
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0].props.localSource).not.toBeNull();
+    expect(tiles[0].props.localSource).not.toBeUndefined();
+  });
+
+  it("that tile's width prop is a finite number greater than zero", () => {
+    const result = SwapSuggestionList({
+      candidates: [candidate({ id: 'seed_90_90_Hamstring', name: '90/90 Hamstring', why: 'Same primary muscle: hamstrings' })],
+    });
+    const [tile] = findByType(result, ExerciseImageTile);
+
+    expect(typeof tile.props.width).toBe('number');
+    expect(Number.isFinite(tile.props.width as number)).toBe(true);
+    expect((tile.props.width as number) > 0).toBe(true);
+  });
+
+  it('a candidate absent from the vendored manifest still produces a tile with a positive width and a null localSource', () => {
+    const result = SwapSuggestionList({
+      candidates: [candidate({ id: 'not-in-manifest', name: 'Some Exercise', why: 'Same primary muscle: chest' })],
+    });
+    const [tile] = findByType(result, ExerciseImageTile);
+
+    expect(tile.props.localSource).toBeNull();
+    expect((tile.props.width as number) > 0).toBe(true);
+  });
+
+  it('renders exactly five ExerciseImageTile elements for five candidates', () => {
+    const candidates = Array.from({ length: 5 }, (_, i) =>
+      candidate({ id: `cand-${i}`, name: `Candidate ${i}`, why: 'Same primary muscle: chest' }),
+    );
+    const result = SwapSuggestionList({ candidates });
+
+    expect(findByType(result, ExerciseImageTile)).toHaveLength(5);
   });
 
   it('drops any candidate whose why string is blank rather than rendering an unexplained row', () => {
