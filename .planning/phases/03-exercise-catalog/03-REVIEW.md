@@ -1,16 +1,19 @@
 ---
 phase: 03-exercise-catalog
-reviewed: 2026-08-18T00:00:00Z
+reviewed: 2026-08-19T00:00:00Z
 depth: standard
-files_reviewed: 73
+files_reviewed: 68
 files_reviewed_list:
   - apps/api/package.json
   - apps/api/src/app.module.ts
+  - apps/api/src/auth/auth.ts
   - apps/api/src/catalog/catalog.controller.ts
   - apps/api/src/catalog/catalog.module.ts
   - apps/api/src/catalog/catalog.service.ts
+  - apps/api/src/common/web-origins.ts
   - apps/api/src/db/schema.ts
   - apps/api/src/db/schema/catalog.ts
+  - apps/api/src/main.ts
   - apps/api/src/seed/__tests__/normalize-catalog.spec.ts
   - apps/api/src/seed/catalog-taxonomy.ts
   - apps/api/src/seed/normalize-catalog.ts
@@ -20,6 +23,7 @@ files_reviewed_list:
   - apps/api/src/sync/sync.service.ts
   - apps/api/test/catalog-delivery.e2e-spec.ts
   - apps/api/test/concurrent-edit.e2e-spec.ts
+  - apps/api/test/cors.e2e-spec.ts
   - apps/api/test/exercise-sync.e2e-spec.ts
   - apps/api/test/poison-pill.e2e-spec.ts
   - apps/api/test/schema-parity.e2e-spec.ts
@@ -78,190 +82,158 @@ files_reviewed_list:
   - scripts/sync-catalog-snapshot.cjs
   - scripts/vendor-catalog-images.cjs
 findings:
-  critical: 1
-  warning: 2
+  critical: 0
+  warning: 3
   info: 1
   total: 4
 status: issues_found
 ---
 
-# Phase 3: Exercise Catalog — Code Review Report
+# Phase 03: Code Review Report
 
-**Reviewed:** 2026-08-18T00:00:00Z
+**Reviewed:** 2026-08-19T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 73
+**Files Reviewed:** 68 (of 75 listed in scope)
 **Status:** issues_found
 
-## Summary
+## Scope Notes
 
-This phase is unusually disciplined: the seeded/synced table split (invariant 1), the per-user
-preference boundary (invariant 3/4), the deterministic smart-swap scorer (invariant 5), and the
-fail-closed snapshot loader (priority 2) are all correctly implemented and are backed by
-e2e/unit tests that actually assert the security-relevant boundary rather than merely exercising
-the happy path (`exercise-sync.e2e-spec.ts`'s seed-takeover test, `user-exercise-preference.e2e-spec.ts`'s
-cross-user archive-isolation test, `patch-update-set.spec.ts`'s client-claimed-value tests). I could
-not find a violation of any of the seven stated architectural invariants in the server-side sync
-path, the schema, or the client preference/filter/swap logic.
+- 7 machine-generated/lockfile artifacts were deliberately excluded from review per the workflow's
+  instructions: `catalog-snapshot.json`, `catalog-normalized.json`, `free-exercise-db.source.json`,
+  `catalog-normalization-report.json`, `pnpm-lock.yaml`, `catalog-image-map.generated.ts`,
+  `image-manifest.json` (~6 MB of generated data). This narrowing means the review below covers the
+  code that produces and consumes those artifacts, not the artifacts' own content — it should not be
+  read as full coverage of the committed catalog dataset.
+- Prior finding **CR-01** ("exercise list thumbnails fetch images over the network instead of from
+  the vendored local bundle," recorded 2026-08-18) was re-verified against the current code
+  (`ExerciseImageTile.tsx`, `ExerciseListRow.tsx`, `exercises/index.tsx`, `exercises/[id].tsx`) and
+  is confirmed fixed by commit `1169067`: `localSource` (the vendored Metro asset id) takes
+  precedence over `uri` (the remote URL) in `ExerciseImageTile`, and both list and detail screens
+  pass `getLocalCatalogImage(...)` as `localSource`. It is not carried forward here.
+- The most recent change, plan 03-11 (CORS), was reviewed in depth: `web-origins.ts`,
+  `main.ts`'s `app.enableCors(...)` placement relative to `minClientVersionMiddleware`, `auth.ts`'s
+  `trustedOrigins` construction, and `cors.e2e-spec.ts`'s assertions. No defects were found there —
+  the allowlist is a real allowlist (a disallowed origin gets no `Access-Control-Allow-Origin`
+  header), `Vary: Origin` is asserted, and both the Better-Auth mount and ordinary Nest routes are
+  covered by the same middleware registered ahead of the version guard.
 
-The one real defect found is in the mobile exercise **list** screen, which — unlike the detail
-screen and the swap-suggestion list built in the same phase — was wired to the wrong image source
-and performs a live network fetch per row instead of using the vendored local image bundle. This is
-a direct violation of the phase's offline-first invariant and is the kind of drift you'd expect
-from ten parallel agents each building one screen against the same underlying data shape. A second,
-lower-severity defect sits in the image-vendoring/generator script pair: a partial per-image
-download failure can silently produce a `null` path in the manifest that the generator does not
-filter, which would emit a `require()` call to a nonexistent asset and could break the whole Metro
-bundle on a future re-vendor run.
+## Narrative Findings (AI reviewer)
 
-## Critical Issues
+### WR-01: `refreshCatalog` can throw despite its own "never throws" contract, becoming an unhandled promise rejection
 
-### CR-01: Exercise list thumbnails fetch images over the network instead of from the vendored local bundle
-
-**File:** `apps/mobile/app/exercises/index.tsx:93-103` (image URI selection) and `apps/mobile/app/exercises/index.tsx:233-241` (render), `apps/mobile/components/ExerciseListRow.tsx:23-37`
-
-**Issue:** `loadCatalogRows` builds each list row's `imageUri` from `seededExercise.imageUrls` /
-`exercise.imageUrls`, which — per `docs/catalog-dataset-license.md` and `CatalogSnapshotExercise`
-— store the **raw, live `raw.githubusercontent.com` URLs**, not vendored local assets:
+**File:** `apps/mobile/lib/catalog/refresh-catalog.ts:66-74`
+**Issue:** The function's own doc comment states: "Never throws: every non-success path resolves to
+an outcome instead ... a caller can legitimately ignore an 'offline' result." Every other failure
+path in the function is indeed guarded (fetch errors return `{status:'offline'}`, JSON parse
+failures are caught, shape validation returns `{status:'invalid'}`). However the final write is not
+guarded:
 
 ```ts
-// apps/mobile/app/exercises/index.tsx
-const imageUrls = parseJsonArray(row.imageUrls);
-return { ..., imageUri: imageUrls[0] ?? null };
-```
-
-`ExerciseListRow` then passes this straight through to `ExerciseImageTile` as the **network** `uri`
-prop, never as `localSource`:
-
-```tsx
-// apps/mobile/components/ExerciseListRow.tsx
-<ExerciseImageTile uri={imageUri} />
-```
-
-`ExerciseImageTile` renders `<Image source={{ uri }} />` for this path, which is a real network
-fetch. This is exactly the failure mode `apps/mobile/app/exercises/[id].tsx` and
-`apps/mobile/components/SwapSuggestionList.tsx` were explicitly written to avoid — both of those
-call `getLocalCatalogImage(id)` from `catalog-image-map.generated.ts` and pass the result as
-`localSource`, with `[id].tsx` carrying the comment: *"The offline guarantee this screen exists to
-keep: never resolve an image over the network... this deliberately never reads that field
-[image_urls]."* The list screen does read that field, for every visible row, on every mount,
-including the explicit "walk into a gym with no signal" scenario this project's Core Value
-statement names. `ExerciseImageTile`'s `onError` fallback keeps this from crashing, but it still
-fires a real, wasted network request per row and contradicts invariant 6 (images were deliberately
-vendored to `assets/catalog/images/` for exactly this reason). `ExerciseListRow`'s prop type
-(`imageUri: string | null`) does not even expose a `localSource` slot, so this cannot be fixed by
-the caller alone — the component's API needs to change too.
-
-**Fix:**
-```tsx
-// ExerciseListRowProps
-export interface ExerciseListRowProps {
-  name: string;
-  localImage: number | null; // from getLocalCatalogImage(id)
-  tags: string[];
-  onPress: () => void;
-}
-
-export function ExerciseListRow({ name, localImage, tags, onPress }: ExerciseListRowProps) {
-  // ...
-  <ExerciseImageTile localSource={localImage} />
-```
-```ts
-// apps/mobile/app/exercises/index.tsx
-import { getLocalCatalogImage } from '@/lib/catalog/catalog-image-map.generated';
-// in loadCatalogRows' row mapping, or in the renderItem:
-const localImage = getLocalCatalogImage(item.id);
-<ExerciseListRow name={item.name} localImage={localImage} ... />
-```
-
-## Warnings
-
-### WR-01: Partial per-image download failure can corrupt the manifest with a `null` path, breaking the Metro require-map generator
-
-**File:** `scripts/vendor-catalog-images.cjs:66-71`, `scripts/generate-catalog-image-map.cjs:33-40`
-
-**Issue:** `vendor-catalog-images.cjs` builds `manifest[job.id]` as a plain array indexed by each
-image's per-exercise position:
-
-```js
-if (!manifest[job.id]) manifest[job.id] = [];
-manifest[job.id][job.index] = `images/${job.id}/${job.index}.jpg`;
-```
-
-If image index 0 for an exercise fails after all `MAX_ATTEMPTS` retries but index 1 succeeds, this
-produces a sparse array with a hole at index 0. `JSON.stringify` serializes an array hole as `null`,
-so `image-manifest.json` would contain e.g. `"seed_X": [null, "images/seed_X/1.jpg"]`.
-`generate-catalog-image-map.cjs` then maps over this array unconditionally:
-
-```js
-const requireCalls = paths.map((path) => {
-  totalImages += 1;
-  return `require(${JSON.stringify(`${RELATIVE_ASSET_PREFIX}/${path}`)})`;
+await db.transaction(async (tx) => {
+  await applyCatalogSnapshot(tx, snapshot);
 });
+
+return { status: 'updated', catalogVersion: snapshot.catalog_version };
 ```
 
-For the `null` entry this emits `require("../../assets/catalog/null")` — a static string Metro will
-try (and fail) to resolve at bundle time, since no such file exists. Because Metro's static-require
-resolution failures are bundle-fatal, a single partial download failure on a future re-vendor run
-would break the entire mobile app build, not just that one exercise's thumbnail. The currently
-committed manifest apparently has no such holes (all 1740 images present), so this is latent rather
-than actively broken — but nothing in either script guards against it.
+If `applyCatalogSnapshot` throws for any reason (SQLite disk-full, a constraint violation, a
+PowerSync internal error), this propagates out of `refreshCatalog` uncaught. Its only production
+call site, `apps/mobile/app/exercises/index.tsx:155`, invokes it fire-and-forget as
+`void refreshCatalog(db);` with no `.catch()`, so a thrown error here becomes an unhandled promise
+rejection rather than the documented graceful outcome. This contradicts the explicit "never throws"
+guarantee the module's own comment makes to its caller, and unlike `loadCatalogSnapshot`'s call site
+(which is wrapped in a `try { ... } catch { setFailed(true) }` in the same file), nothing catches it.
+**Fix:** Wrap the transaction in a try/catch and return a status (e.g. reuse `'invalid'` or add an
+`'error'` variant) instead of letting it propagate:
+```ts
+try {
+  await db.transaction(async (tx) => {
+    await applyCatalogSnapshot(tx, snapshot);
+  });
+} catch {
+  return { status: 'offline' }; // or a new 'error' outcome
+}
+return { status: 'updated', catalogVersion: snapshot.catalog_version };
+```
 
-**Fix:** Filter falsy/`null` entries before emitting `require()` calls, and/or have
-`vendor-catalog-images.cjs` omit a failed index entirely (e.g. compact via `.filter(Boolean)`)
-rather than leaving a hole:
+### WR-02: Save button shows a spinner ("submitting") whenever the form is merely invalid, not just while a write is in flight
+
+**File:** `apps/mobile/app/exercises/new.tsx:192`, `apps/mobile/app/exercises/edit/[id].tsx:289`
+**Issue:** Both screens pass a single combined value into `PrimaryButton`'s `submitting` prop:
+
+```tsx
+<PrimaryButton label="Save Exercise" onPress={onSubmit} submitting={submitting || !isSaveEnabled(draft)} />
+```
+
+`PrimaryButton` (`apps/mobile/components/PrimaryButton.tsx`) renders an `ActivityIndicator` and sets
+`accessibilityState={{ busy: submitting, disabled: submitting }}` whenever `submitting` is truthy.
+Because `!isSaveEnabled(draft)` is folded into the same prop, the button shows a spinning
+"in-progress" indicator on page load — before the user has typed a name or picked a tracking type —
+and continues showing it for the entire time the form is incomplete, not only during the actual
+async write. This misrepresents "form invalid, please fill it in" as "working, please wait," which
+is a real UX/correctness defect distinguishable from the button's own intended semantics
+(`submitting` = "a write is in flight").
+**Fix:** Give `PrimaryButton` a separate `disabled` prop (distinct from `submitting`), or gate the
+spinner on the actual in-flight boolean only:
+```tsx
+<PrimaryButton label="Save Exercise" onPress={onSubmit} submitting={submitting} disabled={!isSaveEnabled(draft)} />
+```
+
+### WR-03: A partially-failed image download can poison the generated image-require map with a `null` path
+
+**File:** `scripts/vendor-catalog-images.cjs:69-70`, `scripts/generate-catalog-image-map.cjs:34-39`
+**Issue:** `vendor-catalog-images.cjs` only writes a manifest entry for a job that succeeds:
 ```js
-// vendor-catalog-images.cjs
 if (result.ok) {
   if (!manifest[job.id]) manifest[job.id] = [];
   manifest[job.id][job.index] = `images/${job.id}/${job.index}.jpg`;
-}
-// ...after the loop:
-for (const id of Object.keys(manifest)) {
-  manifest[id] = manifest[id].filter(Boolean);
+} else {
+  failedCount += 1;
+  failures.push({ id: job.id, index: job.index, url: job.url, error: result.error });
 }
 ```
+If image index 0 for an exercise fails (even after all 4 retry attempts) while index 1 for the same
+exercise succeeds, `manifest[job.id]` becomes a sparse array whose index 0 is a hole. `JSON.stringify`
+serializes an array hole as the literal `null`, so the written `image-manifest.json` contains
+`[null, "images/<id>/1.jpg"]` for that exercise. `generate-catalog-image-map.cjs` then does:
 ```js
-// generate-catalog-image-map.cjs
-const requireCalls = paths.filter(Boolean).map((path) => { ... });
+const requireCalls = paths.map((path) => `require(${JSON.stringify(`${RELATIVE_ASSET_PREFIX}/${path}`)})`);
 ```
-
-### WR-02: `MuscleMappingPicker` and `MultilineField` are duplicated verbatim between `new.tsx` and `edit/[id].tsx`
-
-**File:** `apps/mobile/app/exercises/new.tsx:23-71,73-104`, `apps/mobile/app/exercises/edit/[id].tsx:29-78,80-104`
-
-**Issue:** Both route files define byte-identical `MuscleMappingPicker` (~48 lines) and
-`MultilineField` (~24 lines) components. The in-file comments acknowledge this is deliberate
-("duplicated rather than imported cross-route... each stays a self-contained module") and explain
-why `TextField.tsx` wasn't extended, but that doesn't justify duplicating the components between
-two files in the *same* module (`lib/catalog` or `components/`) rather than one shared file. As
-written, a future fix to the muscle-mapping cycle behavior or the multiline field's max-height must
-be applied in two places, and nothing enforces that they stay in sync — exactly the drift risk this
-review's cross-file-consistency priority calls out for a phase built by parallel agents.
-
-**Fix:** Extract both into `apps/mobile/components/MuscleMappingPicker.tsx` and
-`apps/mobile/components/MultilineField.tsx` (or a shared module under `app/exercises/`) and import
-from both route files.
+`paths.map` runs over every element including the `null` one (once parsed back from JSON it is a
+real array element, not a hole), producing `require("../../assets/catalog/null")` — a `require()`
+call for a file that does not exist. This breaks Metro bundling for the whole app the next time the
+image map is regenerated after a partial-failure vendoring run, and the failure surfaces far from its
+cause (a bundler resolution error, not a vendoring-script error message naming the offending id).
+**Fix:** In `vendor-catalog-images.cjs`, filter out `null`/holes before writing the manifest, e.g.
+`manifest[job.id] = manifest[job.id].filter(Boolean)` per exercise before `JSON.stringify`, or push
+into a plain array in completion order instead of assigning by `job.index`.
 
 ## Info
 
-### IN-01: Some new component tests assert against `Component.toString()` source text rather than rendered behavior
+### IN-01: `isCatalogSnapshot` only validates `load_type` on each exercise, not the rest of the required shape
 
-**File:** `apps/mobile/app/exercises/__tests__/exercise-detail-screen.test.ts:58-81`
-
-**Issue:** The "structural invariants" test block asserts facts like `source.toContain('Target Muscles')` and `source).not.toMatch(/numberOfLines/)` against the stringified function body of
-`ExerciseDetailScreen`. This is explicitly justified in the file's own comment (no
-`@testing-library/react-native`/`react-test-renderer` available in this worktree) and is a
-reasonable stopgap, but it is a fragile pattern: a behavior-preserving refactor (renaming a local
-variable, reordering an unrelated prop, or moving a string constant) can flip these tests red or
-green without any real regression, and conversely a genuine behavioral bug that doesn't touch the
-literal substring being matched would not be caught. Worth revisiting once
-`@testing-library/react-native` is added to the workspace.
-
-**Fix:** No action required now given the documented tooling constraint; track adding real
-component-rendering tests once the testing-library dependency gate is lifted.
+**File:** `packages/api-contracts/src/catalog.ts:143-161`
+**Issue:** The function is the sole gate both `seedCatalog` (server) and `loadCatalogSnapshot`/
+`applyCatalogSnapshot` (client) rely on to fail closed before opening a write transaction — several
+call sites' own comments describe this as "a shape failure never reaches a write." In practice the
+check only verifies: `catalog_version` is a non-empty string, `muscle_groups`/`exercises`/`mappings`
+are arrays, and each exercise object has a `load_type` drawn from `LOAD_TYPES`. It does not check
+that `id`/`name` are present/non-empty on exercises, that `muscle_groups` entries have a valid `id`,
+or that `mappings` entries reference a real `exercise_id`/`muscle_group_id`/`weight_factor`. A
+malformed artifact missing, say, `exercises[i].id` would pass `isCatalogSnapshot` and only fail much
+later — as a raw SQL NOT NULL violation in `seedCatalog`'s chunked insert, or a garbled row in
+`applyCatalogSnapshot`'s upsert (e.g. `id: undefined` used as a Drizzle primary key) — rather than
+the deliberate, named `isCatalogSnapshot` rejection the design intends. This is not exploitable
+today (only two producers exist: the committed normalize-catalog output and the API's own delivery
+of that same file), but it weakens the documented fail-closed guarantee for the one function the
+project bothers to name specifically for that purpose.
+**Fix:** Extend the loop to check `typeof id === 'string' && id.length > 0` and
+`typeof name === 'string'` per exercise, and add light shape checks for `muscle_groups`/`mappings`
+elements (at minimum that `id`/`exercise_id`/`muscle_group_id`/`weight_factor` are non-empty
+strings).
 
 ---
 
-_Reviewed: 2026-08-18T00:00:00Z_
+_Reviewed: 2026-08-19T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
