@@ -157,7 +157,7 @@ Plans:
   3. Archiving an exercise removes it from pickers while leaving its past logged sets intact and correctly attributed
   4. Every exercise carries an explicit load type, so bodyweight, assisted, time-based, and distance-based movements are all representable before any logging UI exists
 
-**Plans**: 12 plans (11 executed, 1 gap closure outstanding)
+**Plans**: 12/12 plans executed (11 executed, 1 gap closure outstanding)
 
 Plans:
 **Wave 1**
@@ -197,7 +197,7 @@ Plans:
 
 **Wave 9** *(gap closure — blocked on Wave 8 completion)*
 
-- [ ] 03-12-PLAN.md — Close G-03-2: a catalog write path a PowerSync view accepts, proven against a real engine in a real browser
+- [x] 03-12-PLAN.md — Close G-03-2: a catalog write path a PowerSync view accepts, proven against a real engine in a real browser
 
 ### Phase 4: Program Builder
 
@@ -402,7 +402,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
-| 3. Exercise Catalog | 11/11 | In Progress|  |
+| 3. Exercise Catalog | 12/12 | In Progress|  |
 | 4. Program Builder | 0/TBD | Not started | - |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
