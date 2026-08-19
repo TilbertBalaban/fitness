@@ -59,7 +59,6 @@ test('the production catalog loader accepts every statement it issues against a 
     DURABILITY_HARNESS_GLOBAL,
   );
   const firstLoadMs = Date.now() - firstLoadStart;
-  // eslint-disable-next-line no-console
   console.log(`catalog-load.spec.ts: first fresh catalog load took ${firstLoadMs}ms`);
 
   expect(firstResult.status).toBe('loaded');

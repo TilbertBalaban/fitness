@@ -99,6 +99,20 @@ describe('refreshCatalog — control flow (applyCatalogSnapshot mocked)', () => 
     expect(applyCatalogSnapshotSpy).not.toHaveBeenCalled();
   });
 
+  it('resolves to write-failed rather than rejecting when the local write throws', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    readCatalogVersionSpy.mockResolvedValue('v1');
+    apiFetchMock
+      .mockResolvedValueOnce({ response: jsonResponse({ catalog_version: 'v2' }), outcome: 'ok' })
+      .mockResolvedValueOnce({ response: jsonResponse(NEWER_SNAPSHOT), outcome: 'ok' });
+    applyCatalogSnapshotSpy.mockRejectedValue(new Error('cannot UPSERT a view'));
+
+    const result = await refreshCatalog(FAKE_DB);
+
+    expect(result satisfies RefreshOutcome).toEqual({ status: 'write-failed' });
+    consoleErrorSpy.mockRestore();
+  });
+
   afterAll(() => {
     readCatalogVersionSpy.mockRestore();
     applyCatalogSnapshotSpy.mockRestore();
