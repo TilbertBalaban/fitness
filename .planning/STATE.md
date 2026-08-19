@@ -8,7 +8,7 @@ status: executing
 stopped_at: Phase 3 UI-SPEC approved
 last_updated: "2026-08-19T08:26:18.386Z"
 last_activity: 2026-08-19
-last_activity_desc: Phase 03 execution resumed (wave continue)
+last_activity_desc: "Quick 260819-wpp: fixed WR-01 image tile recycling defect"
 progress:
   total_phases: 3
   completed_phases: 2
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 Phase: 03 (exercise-catalog) — EXECUTING
 Plan: 1 of 10
 Status: Executing Phase 03
-Last activity: 2026-08-19 — Phase 03 execution resumed (wave continue)
+Last activity: 2026-08-19 — Completed quick task 260819-wpp: fixed WR-01 (image tile failure leaked across FlashList recycling)
 
 Progress: [██████████] 100%
 
@@ -98,6 +98,12 @@ None yet.
 - 01-06: three <human-check> blocks and three long-text backstops unrun — no simulator/device, no Playwright browsers, Mailpit port 1025 unreachable. Filed in .planning/WINDOWS.md as unrun-verify.
 - iOS and Android were never run for plan 01-07: no simulator or device is reachable from the execution worktree, so every native-specific claim in 01-07 rests on typecheck plus correct API usage. Three unrun-verify entries are recorded in .planning/WINDOWS.md.
 - Phase 01 CI workflow (.github/workflows/ci.yml) has never been executed by GitHub Actions — first push must confirm both jobs go green and that a broken assertion turns the run red (WINDOWS.md 12)
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260819-wpp | Fix WR-01 ExerciseImageTile failure state leaks across FlashList recycling | 2026-08-19 | b4ae1c3 | [260819-wpp-fix-wr-01-exerciseimagetile-failure-stat](./quick/260819-wpp-fix-wr-01-exerciseimagetile-failure-stat/) |
 
 ## Deferred Items
 

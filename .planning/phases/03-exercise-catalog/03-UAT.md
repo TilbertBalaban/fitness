@@ -30,7 +30,7 @@ why_human: G-03-3's fix (resolveTileBox, absolute-inset fill, shared width contr
 expected: Each row's thumbnail reflects that row's own exercise; a load failure in one list slot does not persist onto a different exercise later recycled into the same slot.
 result: skipped
 reason: "User skipped remaining UAT tests"
-why_human: Code-confirmed defect WR-01 (03-REVIEW.md), NOT fixed by 03-13 and outside its scope. ExerciseImageTile's `failed` state has no reset keyed on `source`, and ExerciseListRow renders inside a recycling FlashList (@shopify/flash-list 2.0.2). Detail hero and SwapSuggestionList use plain .map and are unaffected. A state-across-recycling defect cannot be caught by typecheck or single-render unit tests. Reproduce by throttling/blocking one image request, then scrolling past that slot. Fix: reset `failed` in a useEffect keyed on the effective source.
+why_human: Code-confirmed defect WR-01 (03-REVIEW.md). FIXED 2026-08-19 by quick task 260819-wpp (commit b4ae1c3): ExerciseImageTile now stores which source failed (`failedKey`) rather than a bare boolean, derived during render rather than reset in an effect. 20 regression cases added; 3 of them were verified to fail against the pre-fix boolean semantics, so they genuinely discriminate. STILL SKIPPED because the fix is proven at the logic level only — a state-across-recycling defect cannot be fully caught by unit tests, and no pixel has been observed. Reproduce by throttling/blocking one image request, then scrolling past that slot.
 
 ### 4. Back control on the detail route, including direct URL load and refresh
 
