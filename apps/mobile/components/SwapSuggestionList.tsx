@@ -1,6 +1,6 @@
 import { Link } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
-import { ExerciseImageTile } from '@/components/ExerciseImageTile';
+import { EXERCISE_THUMBNAIL_WIDTH, ExerciseImageTile } from '@/components/ExerciseImageTile';
 import { getLocalCatalogImage } from '@/lib/catalog/catalog-image-map.generated';
 import { SWAP_RESULT_CAP, type ScoredCandidate } from '@/lib/catalog/smart-swap';
 
@@ -54,9 +54,7 @@ export function SwapSuggestionList({ candidates }: SwapSuggestionListProps) {
               className="flex-row items-center gap-sm rounded-md bg-surface px-md py-sm"
               style={{ minHeight: 48 }}
             >
-              <View style={{ width: 56 }}>
-                <ExerciseImageTile localSource={getLocalCatalogImage(candidate.id)} />
-              </View>
+              <ExerciseImageTile localSource={getLocalCatalogImage(candidate.id)} width={EXERCISE_THUMBNAIL_WIDTH} />
               <View className="flex-1 gap-xs">
                 <Text className="text-body font-normal text-foreground" numberOfLines={1}>
                   {candidate.name}

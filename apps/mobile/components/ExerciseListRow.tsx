@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, Text, View } from 'react-native';
-import { ExerciseImageTile } from '@/components/ExerciseImageTile';
+import { Pressable, Text, View, type ImageSourcePropType } from 'react-native';
+import { EXERCISE_THUMBNAIL_WIDTH, ExerciseImageTile } from '@/components/ExerciseImageTile';
 import { collapseTags } from '@/lib/catalog/catalog-filter';
 import { useThemeColors } from '@/lib/theme-colors';
 
@@ -11,10 +11,10 @@ const MAX_VISIBLE_ROW_TAGS = 3;
 export interface ExerciseListRowProps {
   name: string;
   imageUri: string | null;
-  // A vendored-bundle asset id for a seeded exercise. Takes precedence over imageUri inside
+  // A vendored-bundle asset source for a seeded exercise. Takes precedence over imageUri inside
   // ExerciseImageTile, which is what keeps the list offline-capable; imageUri remains the
   // fallback for custom exercises, which have no entry in the vendored image map.
-  localSource?: number | null;
+  localSource?: ImageSourcePropType | null;
   tags: string[];
   onPress: () => void;
 }
@@ -36,9 +36,7 @@ export function ExerciseListRow({ name, imageUri, localSource, tags, onPress }: 
       className="flex-row items-center gap-sm rounded-md bg-surface px-md py-sm"
       style={{ minHeight: 48 }}
     >
-      <View style={{ width: 56 }}>
-        <ExerciseImageTile uri={imageUri} localSource={localSource} />
-      </View>
+      <ExerciseImageTile uri={imageUri} localSource={localSource} width={EXERCISE_THUMBNAIL_WIDTH} />
 
       <View className="flex-1 gap-xs">
         <Text className="text-body font-normal text-foreground" numberOfLines={1}>
