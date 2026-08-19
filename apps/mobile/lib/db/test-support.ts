@@ -3,6 +3,15 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import type { PowerSyncBackendConnector } from '@powersync/common';
 import { PowerSyncDatabase } from '@powersync/web';
 import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver';
+// Explicit '.web' import, not a bare './powersync' — this test-support module is imported both
+// by app/__durability.web.tsx (bundled for the web target by Metro, where platform-extension
+// resolution would pick this file anyway) AND directly by e2e spec files, which run under
+// Playwright's Node process. Node's ESM resolver has no platform-extension awareness and would
+// instead resolve a bare './powersync' to the native powersync.ts, whose @powersync/react-native
+// import chain fails there (its dist re-exports omit file extensions, invalid under strict Node
+// ESM). powersync.web.ts's AppSchema is the exact object getPowerSync() uses on web — importing
+// it explicitly is correct for this durability harness regardless of platform resolution.
+import { AppSchema } from './powersync.web';
 import {
   bodyMetric,
   drizzleSchema,
@@ -87,7 +96,7 @@ let dbFilename: string | null = null;
 
 export interface OpenTestPowerSyncOptions {
   dbFilename?: string;
-  variant?: 'v1' | 'v2';
+  variant?: 'v1' | 'v2' | 'app';
 }
 
 // The same real @powersync/web configuration apps/mobile/lib/db/powersync.web.ts uses in
@@ -108,6 +117,14 @@ export function openTestPowerSync(options: OpenTestPowerSyncOptions = {}): TestW
       sync: { worker: WORKER_PATH },
     });
     return wrapPowerSyncWithDrizzle(rawDb, { schema: drizzleSchemaV2 }) as unknown as TestWriteDb;
+  }
+  if (options.variant === 'app') {
+    rawDb = new PowerSyncDatabase({
+      schema: AppSchema,
+      database: { dbFilename, worker: WORKER_PATH },
+      sync: { worker: WORKER_PATH },
+    });
+    return wrapPowerSyncWithDrizzle(rawDb, { schema: drizzleSchema });
   }
   rawDb = new PowerSyncDatabase({
     schema: TestAppSchema,
@@ -130,7 +147,7 @@ export async function closeTestPowerSync(): Promise<void> {
 // same JS object, which would make every durability assertion in this file's callers vacuous.
 // An omitted variant defaults to 'v1' (openTestPowerSync's own default), preserving 02-09's
 // original zero-arg call signature exactly.
-export function reopenTestPowerSync(options: { variant?: 'v1' | 'v2' } = {}): TestWriteDb {
+export function reopenTestPowerSync(options: { variant?: 'v1' | 'v2' | 'app' } = {}): TestWriteDb {
   if (dbFilename === null) {
     throw new Error('reopenTestPowerSync() called before openTestPowerSync()');
   }
@@ -155,6 +172,54 @@ export async function pendingCrudCount(): Promise<number> {
   }
   const stats = await rawDb.getUploadQueueStats();
   return stats.count;
+}
+
+export interface CatalogTableCounts {
+  muscleGroup: number;
+  seededExercise: number;
+  exerciseMuscleMapping: number;
+  catalogMeta: number;
+}
+
+// Raw SQL against the views (this file's established precedent for a read path that does not
+// depend on a typed drizzle table object matching whichever schema variant is currently open) —
+// used by the catalog-load e2e case to assert row counts against the real engine.
+export async function readCatalogTableCounts(): Promise<CatalogTableCounts> {
+  if (!rawDb) {
+    throw new Error('readCatalogTableCounts() called before openTestPowerSync()');
+  }
+  const [muscleGroup, seededExercise, exerciseMuscleMapping, catalogMeta] = await Promise.all([
+    rawDb.getAll<{ count: number }>('SELECT COUNT(*) as count FROM muscle_group'),
+    rawDb.getAll<{ count: number }>('SELECT COUNT(*) as count FROM seeded_exercise'),
+    rawDb.getAll<{ count: number }>('SELECT COUNT(*) as count FROM exercise_muscle_mapping'),
+    rawDb.getAll<{ count: number }>('SELECT COUNT(*) as count FROM catalog_meta'),
+  ]);
+  return {
+    muscleGroup: muscleGroup[0].count,
+    seededExercise: seededExercise[0].count,
+    exerciseMuscleMapping: exerciseMuscleMapping[0].count,
+    catalogMeta: catalogMeta[0].count,
+  };
+}
+
+export async function readCatalogVersionRaw(): Promise<string | null> {
+  if (!rawDb) {
+    throw new Error('readCatalogVersionRaw() called before openTestPowerSync()');
+  }
+  const rows = await rawDb.getAll<{ catalog_version: string }>(
+    "SELECT catalog_version FROM catalog_meta WHERE id = 'singleton'",
+  );
+  return rows[0]?.catalog_version ?? null;
+}
+
+// Overwrites the stored catalog_version with a sentinel so loadCatalogSnapshot's version-equality
+// short circuit can be defeated without deleting the row — driving this UPDATE through the view is
+// itself part of what e2e/catalog-load.spec.ts's second phase proves.
+export async function writeCatalogVersionSentinel(sentinel: string): Promise<void> {
+  if (!rawDb) {
+    throw new Error('writeCatalogVersionSentinel() called before openTestPowerSync()');
+  }
+  await rawDb.execute("UPDATE catalog_meta SET catalog_version = ? WHERE id = 'singleton'", [sentinel]);
 }
 
 // Structural proof that a schema redefinition actually changed the view PowerSync exposes,

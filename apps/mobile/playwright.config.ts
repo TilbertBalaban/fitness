@@ -16,7 +16,7 @@ export default defineConfig({
     {
       // Needs only a browser — no PowerSync Service, no API, no Postgres. Safe to run in CI.
       name: 'durability',
-      testMatch: ['durability.spec.ts', 'schema-redefinition.spec.ts'],
+      testMatch: ['durability.spec.ts', 'schema-redefinition.spec.ts', 'catalog-load.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {

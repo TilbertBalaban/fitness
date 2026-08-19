@@ -16,12 +16,16 @@ import {
   openTestPowerSync,
   pendingCrudCount,
   readAllLoggedSetsRaw,
+  readCatalogTableCounts,
+  readCatalogVersionRaw,
   readLoggedSets,
   readLoggedSetsRaw,
   readRawColumns,
   reopenTestPowerSync,
+  writeCatalogVersionSentinel,
   type TestWriteDb,
 } from '../lib/db/test-support';
+import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
 
 // A Playwright page drives this route through window[DURABILITY_HARNESS_GLOBAL] — see
 // e2e/durability.spec.ts. Every write goes through the real lib/db/log-set.ts helpers; this route
@@ -130,6 +134,28 @@ export default function DurabilityHarnessScreen() {
       },
       async disconnectCurrent() {
         await disconnectTestPowerSync();
+      },
+      // Opens the same production AppSchema getPowerSync() builds — not TestAppSchema, which
+      // carries no localOnly overrides and would make a zero-upload-queue assertion vacuous. Sets
+      // usingProductionDb = false so crudCount() above routes to pendingCrudCount(), reading this
+      // isolated instance's own queue rather than the production singleton's.
+      async openCatalogDb() {
+        currentDb = openTestPowerSync({ variant: 'app' });
+        usingProductionDb = false;
+      },
+      // Calls the real, unmodified loadCatalogSnapshot and lets a rejection propagate — swallowing
+      // it here would recreate the exact defect e2e/catalog-load.spec.ts exists to catch.
+      async loadCatalog() {
+        return loadCatalogSnapshot(requireOpenDb());
+      },
+      async readCatalogTableCounts() {
+        return readCatalogTableCounts();
+      },
+      async readCatalogVersionRaw() {
+        return readCatalogVersionRaw();
+      },
+      async writeCatalogVersionSentinel(sentinel: string) {
+        await writeCatalogVersionSentinel(sentinel);
       },
     };
 
