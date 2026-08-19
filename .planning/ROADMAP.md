@@ -157,7 +157,7 @@ Plans:
   3. Archiving an exercise removes it from pickers while leaving its past logged sets intact and correctly attributed
   4. Every exercise carries an explicit load type, so bodyweight, assisted, time-based, and distance-based movements are all representable before any logging UI exists
 
-**Plans**: 10/10 plans executed
+**Plans**: 11 plans (10 executed, 1 gap closure outstanding)
 
 Plans:
 **Wave 1**
@@ -190,6 +190,10 @@ Plans:
 **Wave 7** *(blocked on Wave 6 completion)*
 
 - [x] 03-10-PLAN.md — Smart swap: deterministic alternatives with a plain-language why
+
+**Wave 8** *(gap closure — blocked on Wave 7 completion)*
+
+- [ ] 03-11-PLAN.md — Close G-03-1: framework-level CORS with a shared WEB_ORIGINS allowlist, so credentialed web requests reach the API
 
 ### Phase 4: Program Builder
 
