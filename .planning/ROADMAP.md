@@ -157,7 +157,7 @@ Plans:
   3. Archiving an exercise removes it from pickers while leaving its past logged sets intact and correctly attributed
   4. Every exercise carries an explicit load type, so bodyweight, assisted, time-based, and distance-based movements are all representable before any logging UI exists
 
-**Plans**: 12/12 plans executed (11 executed, 1 gap closure outstanding)
+**Plans**: 14 plans (12 executed, 2 gap closure outstanding)
 
 Plans:
 **Wave 1**
@@ -198,6 +198,14 @@ Plans:
 **Wave 9** *(gap closure — blocked on Wave 8 completion)*
 
 - [x] 03-12-PLAN.md — Close G-03-2: a catalog write path a PowerSync view accepts, proven against a real engine in a real browser
+
+**Wave 10** *(gap closure — blocked on Wave 9 completion)*
+
+- [ ] 03-13-PLAN.md — Close G-03-3: an image tile whose box cannot collapse, applied to all three call sites, with the first tests that assert an image element exists
+
+**Wave 11** *(gap closure — blocked on Wave 10 completion)*
+
+- [ ] 03-14-PLAN.md — Close G-03-4: an exercises segment layout with back navigation and native swipe, and an Edit control that is always reachable
 
 ### Phase 4: Program Builder
 
