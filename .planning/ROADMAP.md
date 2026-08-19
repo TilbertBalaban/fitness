@@ -157,7 +157,7 @@ Plans:
   3. Archiving an exercise removes it from pickers while leaving its past logged sets intact and correctly attributed
   4. Every exercise carries an explicit load type, so bodyweight, assisted, time-based, and distance-based movements are all representable before any logging UI exists
 
-**Plans**: 11/11 plans executed (10 executed, 1 gap closure outstanding)
+**Plans**: 12 plans (11 executed, 1 gap closure outstanding)
 
 Plans:
 **Wave 1**
@@ -194,6 +194,10 @@ Plans:
 **Wave 8** *(gap closure — blocked on Wave 7 completion)*
 
 - [x] 03-11-PLAN.md — Close G-03-1: framework-level CORS with a shared WEB_ORIGINS allowlist, so credentialed web requests reach the API
+
+**Wave 9** *(gap closure — blocked on Wave 8 completion)*
+
+- [ ] 03-12-PLAN.md — Close G-03-2: a catalog write path a PowerSync view accepts, proven against a real engine in a real browser
 
 ### Phase 4: Program Builder
 
