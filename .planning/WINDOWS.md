@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 35
+open_count: 40
 waived_count: 0
 fixed_count: 10
-total_count: 45
-last_updated: 2026-08-19T10:02:13.586Z
+total_count: 50
+last_updated: 2026-08-19T15:34:33.185Z
 ---
 
 # Broken Windows Ledger
@@ -60,6 +60,11 @@ last_updated: 2026-08-19T10:02:13.586Z
 | 46 | 03 | unrun-verify | apps/mobile/components/SwapSuggestionList.tsx |  | Smart-swap suggestion rows (thumbnail, name, why string, empty state, Browse Catalog link) were never observed in a real browser, simulator or device -- no simulator/device on this machine, and CLAUDE.md forbids launching a browser unless explicitly asked. Verified instead: 20 scorer unit tests, 7 direct-invocation component tests, typecheck, and expo export --platform web bundling the route cleanly. | open |  | 2026-08-18T20:24:39.731Z |  |
 | 47 | 03 | unrun-verify | apps/api |  | This plan's phase-level <verification> block names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite was not re-run in this session (no server files in this plan's scope; api/.env is permission-restricted from this worktree's sandbox). Confidence it is unaffected rests on file-scope reasoning (zero server files touched: smart-swap.ts, SwapSuggestionList.tsx and the [id].tsx edit are all client-only), not a fresh green run. | fixed |  | 2026-08-18T20:24:50.324Z | 2026-08-18T20:42:11.576Z |
 | 48 | 03 | unrun-verify | apps/api/test/cors.e2e-spec.ts |  | Plan 03-11's cors.e2e-spec.ts (Task 1 RED/GREEN proof and Task 3's full behavior suite) was not run in this session. pnpm test:e2e runs drizzle-kit push first, which needs DATABASE_URL from apps/api/.env or the workspace-root .env -- neither exists in this worktree (.env is gitignored and not copied into git worktrees) and both read and write access to any .env path is blocked by a hard sandbox deny-rule, confirmed by drizzle-kit push failing with 'Either connection url or host, database are required for PostgreSQL database connection' after injecting 0 vars from .env,../../.env. This is the same class of block recorded at WINDOWS #47. Verified instead: pnpm --filter api typecheck (clean, src/), npx tsc --noEmit -p test/tsconfig.json (clean, test/ including cors.e2e-spec.ts), grep -rl 'env.WEB_ORIGINS' apps/api/src prints exactly one path (web-origins.ts), and no package.json changed across the plan's 3 commits. The RED-before-GREEN failure and the Task 3 ordering check (moving enableCors after minClientVersionMiddleware turning the 426 case red) rest on the diagnosis_already_done block's verified facts about cors@2.8.6 and enableCors's registration-order semantics, not a live observation. | fixed |  | 2026-08-19T08:38:20.587Z | 2026-08-19T08:50:18.338Z |
+| 49 | 03 | unrun-verify | apps/mobile/app/exercises/_layout.tsx |  | R4: the segment header, its title and the back control actually painting on /exercises/seed_90_90_Hamstring is unobserved; gates prove the layout file exists, declares the anchor, supplies a function-valued headerLeft, and bundles, not pixels | open |  | 2026-08-19T15:34:15.740Z |  |
+| 50 | 03 | unrun-verify | apps/mobile/lib/navigation/back.ts |  | R5: goBackOrReplace's no-previous-entry branch is proven against a fake router in back.test.ts, not against react-navigation's real canGoBack predicate on a refreshed detail URL | open |  | 2026-08-19T15:34:20.470Z |  |
+| 51 | 03 | unrun-verify | apps/mobile/app/exercises/_layout.tsx |  | R6 (security-relevant): that exercises/[id], exercises/new and exercises/edit/[id] no longer mount signed-out follows deterministically from expo-router's hoisting and screen-matching rules once the segment layout exists, but this has not been observed in a browser. Must be verified before Phase 03 sign-off. | open |  | 2026-08-19T15:34:24.022Z |  |
+| 52 | 03 | unrun-verify | apps/mobile/app/exercises/_layout.tsx |  | R7: native swipe-back on iOS/Android unverified — no Xcode or Android SDK on this machine; per project convention native verification is swept once at ROADMAP Phase 999.1 | open |  | 2026-08-19T15:34:27.450Z |  |
+| 53 | 03 | deviation | apps/mobile/app/exercises/_layout.tsx |  | Security fix (T-03-58): app/exercises/_layout.tsx collapses the four hoisted exercises routes into one guarded segment route, so the root layout's existing signed-in Stack.Protected guard on Stack.Screen name=exercises now covers exercises/[id], exercises/new and exercises/edit/[id] as well as the list — previously only the list route was in the protected-screen set and the other three mounted regardless of session state | open |  | 2026-08-19T15:34:33.185Z |  |
 
 ````json
 [
@@ -602,6 +607,66 @@ last_updated: 2026-08-19T10:02:13.586Z
     "reason": "",
     "recorded_at": "2026-08-19T08:38:20.587Z",
     "resolved_at": "2026-08-19T08:50:18.338Z"
+  },
+  {
+    "id": 49,
+    "kind": "unrun-verify",
+    "phase": "03",
+    "file": "apps/mobile/app/exercises/_layout.tsx",
+    "line": null,
+    "description": "R4: the segment header, its title and the back control actually painting on /exercises/seed_90_90_Hamstring is unobserved; gates prove the layout file exists, declares the anchor, supplies a function-valued headerLeft, and bundles, not pixels",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-19T15:34:15.740Z",
+    "resolved_at": null
+  },
+  {
+    "id": 50,
+    "kind": "unrun-verify",
+    "phase": "03",
+    "file": "apps/mobile/lib/navigation/back.ts",
+    "line": null,
+    "description": "R5: goBackOrReplace's no-previous-entry branch is proven against a fake router in back.test.ts, not against react-navigation's real canGoBack predicate on a refreshed detail URL",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-19T15:34:20.470Z",
+    "resolved_at": null
+  },
+  {
+    "id": 51,
+    "kind": "unrun-verify",
+    "phase": "03",
+    "file": "apps/mobile/app/exercises/_layout.tsx",
+    "line": null,
+    "description": "R6 (security-relevant): that exercises/[id], exercises/new and exercises/edit/[id] no longer mount signed-out follows deterministically from expo-router's hoisting and screen-matching rules once the segment layout exists, but this has not been observed in a browser. Must be verified before Phase 03 sign-off.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-19T15:34:24.022Z",
+    "resolved_at": null
+  },
+  {
+    "id": 52,
+    "kind": "unrun-verify",
+    "phase": "03",
+    "file": "apps/mobile/app/exercises/_layout.tsx",
+    "line": null,
+    "description": "R7: native swipe-back on iOS/Android unverified — no Xcode or Android SDK on this machine; per project convention native verification is swept once at ROADMAP Phase 999.1",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-19T15:34:27.450Z",
+    "resolved_at": null
+  },
+  {
+    "id": 53,
+    "kind": "deviation",
+    "phase": "03",
+    "file": "apps/mobile/app/exercises/_layout.tsx",
+    "line": null,
+    "description": "Security fix (T-03-58): app/exercises/_layout.tsx collapses the four hoisted exercises routes into one guarded segment route, so the root layout's existing signed-in Stack.Protected guard on Stack.Screen name=exercises now covers exercises/[id], exercises/new and exercises/edit/[id] as well as the list — previously only the list route was in the protected-screen set and the other three mounted regardless of session state",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-19T15:34:33.185Z",
+    "resolved_at": null
   }
 ]
 ````
