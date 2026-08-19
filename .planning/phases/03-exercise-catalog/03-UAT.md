@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 03-exercise-catalog
 source: [03-VERIFICATION.md]
 started: 2026-08-18T20:50:00Z
-updated: "2026-08-19T13:15:00Z"
+updated: "2026-08-19T13:55:00Z"
 ---
 
 ## Current Test
@@ -75,10 +75,27 @@ blocked: 0
   reason: "User reported: I don't see thumbnail in \"5 suggested alternatives\""
   severity: major
   test: 3
-  artifacts: []
-  missing: []
-  root_cause: ""
-  debug_session: ""
+  root_cause: "Not a SwapSuggestionList defect. The fault is in the shared ExerciseImageTile: its container gets height only from style={{aspectRatio: 4/3}} on a percentage-width (className=\"w-full\") box, and the <Image> inside asks for width:100%/height:100% of it. On react-native-web an <Image> paints via a position:absolute; inset:0; z-index:-1 background-image layer, so a collapsed box paints nothing — silently: the asset resolves (showImage true, so the \"No image available\" fallback never renders), onError never fires, and RNW's real <img> is opacity:0 so no broken-image icon appears. The tile's bg-surface matches the row's own bg-surface, making the empty tile indistinguishable from the row background. All three call sites are equally affected — this is the first human observation of any image in the app, not a regression (03-07-SUMMARY D5 and 03-10-SUMMARY line 99 both carry verification: [] — WINDOWS #37)."
+  artifacts:
+    - path: "apps/mobile/components/ExerciseImageTile.tsx"
+      issue: "The defect. No pixel dimension anywhere; <Image> sized only by width/height 100% of an aspectRatio-derived box. showImage = !!source && !failed means a resolvable-but-unpainted image never degrades to the placeholder."
+    - path: "apps/mobile/components/SwapSuggestionList.tsx"
+      issue: "Reporting surface only (line 58) — do NOT patch here."
+    - path: "apps/mobile/components/ExerciseListRow.tsx"
+      issue: "Second call site (line 40), equally blank."
+    - path: "apps/mobile/app/exercises/[id].tsx"
+      issue: "Third call site, the detail hero (line 309), equally blank."
+    - path: "apps/mobile/components/__tests__/SwapSuggestionList.test.tsx"
+      issue: "Blind spot: text-only assertions, zero image coverage — why 20+7 green tests, typecheck and a clean bundle all passed over this."
+  missing:
+    - "Give the tile a box that cannot collapse — explicit pixel width/height via a size prop, or keep aspectRatio on the container and fill it with StyleSheet.absoluteFill instead of percentage height."
+    - "Fix must cover all three call sites (SwapSuggestionList, ExerciseListRow, exercises/[id] hero), not just the alternatives row."
+    - "Stop the silent failure: render the placeholder behind the image rather than instead of it, so 'source resolved but nothing painted' still shows something."
+    - "Stop the colour collision: the tile must not use the same bg-surface as the row it sits in."
+    - "Add a test asserting an <Image> is produced with a non-null source for a known seeded id."
+    - "Latent, not causal, worth fixing in-file: getLocalCatalogImage is typed number | null but returns {uri,width,height} on web; onError={() => setFailed(true)} is a fresh closure each render inside RNW's Image effect deps."
+  residual_uncertainty: "One browser check would settle the CSS mechanism — inspect the computed height of the RNW Image root div carrying inline width:100%;height:100%. Non-zero height with a background-image URL would falsify the sizing hypothesis and point to the ranked-second cause (dev-server asset URL 404 -> onError -> visible 'No image available' text). NOT run: browser testing was not authorized this session."
+  debug_session: ".planning/debug/alternatives-thumbnail-missing.md"
 
 - gap_id: G-03-4
   truth: "From an exercise detail route the user can reach the Edit form and navigate back to the catalog list."
@@ -86,7 +103,25 @@ blocked: 0
   reason: "User reported: I don't see edit form. I don't know how to go back from http://localhost:8081/exercises/seed_90_90_Hamstring . add back-arrow button + support swipes"
   severity: major
   test: 4
-  artifacts: []
-  missing: []
-  root_cause: ""
-  debug_session: ""
+  root_cause: "Two independent deterministic defects, neither a logic regression. (A) No Edit: the Edit link exists at app/exercises/[id].tsx:296 but renders only under actions.showEdit, which lib/catalog/preferences.ts:140-142 defines as owned === true. Every seeded exercise resolves to ownerId: null, so Edit is hidden BY DESIGN — pinned by preferences.test.ts:271-275. The intended path is the always-visible Duplicate button, which router.replaces to an owned copy, but nothing on screen communicates that. Worse, the not-permitted screen written for exactly this case (edit/[id].tsx:188-200) is dead UI: the only href to /exercises/edit/[id] is itself gated behind showEdit, so a non-owner can only reach it by typing the URL. UAT test 2 required that state and passed on 33 unit tests that structurally could not detect its unreachability. (B) No back: app/_layout.tsx:109 sets <Stack screenOptions={{headerShown: false}}> and there is no app/exercises/_layout.tsx, so per expo-router hoisting all four exercises routes are siblings in the root stack with no override point; a repo-wide grep for headerShown|headerLeft|router.back|goBack|canGoBack|gestureEnabled returns exactly two hits, both headerShown: false. No back control was ever written. Compounding it, no unstable_settings/initialRouteName anchor exists, so loading the reported URL directly (or refreshing) yields a single-entry stack -> canGoBack === false, meaning flipping headerShown: true alone would render a back-LESS header."
+  artifacts:
+    - path: "apps/mobile/app/_layout.tsx"
+      issue: "Line 109 global headerShown: false. <Stack.Screen name=\"exercises\" /> at line 112 only matches exercises/index (useScreens.js:77 matches name === route || name+'/index' === route), leaving the other three routes both unconfigured and unguarded."
+    - path: "apps/mobile/app/exercises/_layout.tsx"
+      issue: "MISSING. This single absence causes the hoisting, the header gap, and the auth-guard gap at once."
+    - path: "apps/mobile/app/exercises/[id].tsx"
+      issue: "Lines 284-305: no back control; Edit gated on showEdit; the Duplicate label does not convey that it is the route to editability."
+    - path: "apps/mobile/lib/catalog/preferences.ts"
+      issue: "resolveDetailActions at lines 135-146 — source of showEdit: false for seeded exercises."
+    - path: "apps/mobile/lib/catalog/__tests__/preferences.test.ts"
+      issue: "Lines 270-282 pin the hidden-Edit-for-seeded contract; must be updated if that contract changes."
+    - path: "apps/mobile/app/exercises/edit/[id].tsx"
+      issue: "Lines 188-200: unreachable not-permitted branch (dead UI)."
+  missing:
+    - "Add apps/mobile/app/exercises/_layout.tsx with its own <Stack> — one file fixes the header, makes <Stack.Screen name=\"exercises\" /> cover the whole segment, and gives a place for per-screen title/headerBackTitle."
+    - "Supply an explicit headerLeft (or in-screen control) using router.canGoBack() ? router.back() : router.replace('/exercises') so a direct URL load or refresh still has a way back. Same treatment on new and edit/[id]. Do NOT rely on headerShown: true alone."
+    - "Native swipe: set gestureEnabled: true (consider fullScreenGestureEnabled) on the segment."
+    - "Web swipe is NOT achievable: expo-router's web NativeStackView contains zero gesture code (gestureEnabled exists only in the native fork). Browser history is the only web back gesture, and Expo Router does drive it. Restate the UAT criterion rather than promising a web pan gesture."
+    - "Edit discoverability — pick one and update preferences.test.ts + 03-UI-SPEC.md accordingly: (a) always render an Edit control routing to /exercises/edit/[id] and let the existing not-permitted screen explain, which resurrects already-written already-tested UI and satisfies UAT test 2 by navigation; or (b) keep it hidden and relabel/annotate Duplicate as the path to an editable copy. Option (a) is the smaller change."
+  secondary_finding: "OUT OF SCOPE for this gap, worth a WINDOWS entry: because <Stack.Screen name=\"exercises\" /> only matches exercises/index, and useScreens.js:117 does ordered.push(...entries), the routes exercises/[id], exercises/new and exercises/edit/[id] never enter protectedScreens — they mount regardless of signedIn. Only /exercises is auth-guarded at the router level."
+  debug_session: ".planning/debug/detail-screen-no-back-nav-no-edit.md"
