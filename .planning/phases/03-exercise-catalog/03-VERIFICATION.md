@@ -1,6 +1,6 @@
 ---
 phase: 03-exercise-catalog
-verified: 2026-08-19T12:00:00Z
+verified: 2026-08-19T16:30:00Z
 status: human_needed
 score: 9/9 must-haves verified
 behavior_unverified: 0
@@ -9,140 +9,193 @@ re_verification:
   previous_status: human_needed
   previous_score: 9/9
   gaps_closed:
-    - "G-03-2: /exercises rendered \"Exercise catalog couldn't load\" on every visit — applyCatalogSnapshot issued .onConflictDoUpdate()/.onConflictDoNothing() (SQLite UPSERT) against PowerSync-managed SQLite views, which SQLite refuses to prepare. Closed by plan 03-12: applyCatalogSnapshot rebuilt for all four catalog tables using read-existing-ids-then-branch (plain INSERT when new, condition-scoped UPDATE...WHERE id=? when existing) — no upsert clause anywhere in the write path."
+    - "G-03-3: Suggested Alternatives (and every other) exercise image tile collapsed to a zero-height box (ratio-on-percentage sizing) and painted nothing, silently. Closed by plan 03-13: ExerciseImageTile rewritten with resolveTileBox (pure, floors to a positive box for any input) and an absolute-inset Image fill; all three call sites (ExerciseListRow, SwapSuggestionList, detail hero) route through the shared EXERCISE_THUMBNAIL_WIDTH/resolveHeroImageWidth contract; placeholder now renders behind the image instead of as its else-branch; container gained a border so an empty tile is visible against both surface and background parents."
+    - "G-03-4: from an exercise detail route the user could reach neither the Edit form (hidden behind an ownership gate that is false for all ~870 seeded exercises) nor navigate back (no segment layout, no header, no back control, and no anchor route so a direct URL load produced a single-entry stack). Closed by plan 03-14: app/exercises/_layout.tsx supplies a header, an anchor route (unstable_settings.anchor: 'index'), a function-valued headerLeft (NavBackButton) driven by goBackOrReplace's tested fallback-to-replace logic, and native gesture options; resolveDetailActions no longer carries a showEdit flag, so Edit renders unconditionally and routes to the edit route's already-written not-permitted explanation for non-owners. As a byproduct, the segment layout also closes an auth-guard hole (T-03-58): the four exercises routes were root-stack siblings and only the list route was covered by the signed-in guard; collapsing them under one _layout.tsx route brings exercises/[id], exercises/new and exercises/edit/[id] under the existing Stack.Protected guard."
   gaps_remaining: []
   regressions: []
 human_verification:
-  - test: "Scroll the ~870-row exercise list continuously top to bottom on a real device or browser."
-    expected: "FlashList renders and scrolls all rows without dropped frames or visible jank."
-    why_human: "Performance/frame-drop behavior cannot be observed via typecheck or Jest; only bundler-level proof exists that FlashList is wired (WINDOWS #37). The catalog load itself is no longer the blocker (G-03-2 closed), so this screen is reachable — only the scroll-performance observation itself remains outstanding."
-  - test: "Open the Add Custom Exercise form, leave it blank, and confirm: placeholder tracking-type text, inline per-field errors on invalid submit, Save disabled (not hidden) until name+load_type are set, multiline cue/instructions field auto-grows then scrolls, muscle-mapping chip picker works, and opening a seeded exercise's Edit route (as a non-owner) shows a not-permitted state."
-    expected: "All six rendered behaviors match the UI-SPEC exactly."
-    why_human: "No @testing-library/react-native in this codebase and no simulator/device available; verified instead via 33 unit tests over extracted presentational logic plus typecheck/bundling (WINDOWS #41). Previously blocked behind G-03-2 (the catalog list couldn't load, so this route was unreachable) — now structurally reachable since G-03-2 is closed, but never actually walked by a human."
-  - test: "Open an exercise detail screen and confirm the Suggested Alternatives section renders candidate rows with thumbnail, name, and a plain-language why string, plus the empty state and Browse Catalog link when no candidates qualify."
-    expected: "Rendered rows match SwapSuggestionList's intended layout; why-strings are never blank."
-    why_human: "Never observed in a real browser/device — verified via 20 scorer unit tests + 7 direct-invocation component tests + typecheck/bundling only (WINDOWS #46). Previously blocked behind G-03-2 — now structurally reachable, not yet walked by a human."
-  - test: "Full native (iOS/Android) pass over every catalog screen — list, detail, create/edit forms, archive dialog, swap suggestions. Also the offline first-boot flow: cold-boot the app offline, open /exercises, then open one exercise — populated content with real images painting on screen, entirely offline, no blank screen, no broken-image icon, no network request fired."
-    expected: "Same behavior as the web/unit-test-verified logic, rendered correctly on native chrome; catalog list/detail render populated content with real images painting on screen, entirely offline."
-    why_human: "No Xcode or Android SDK on this machine (WINDOWS #16/#34). Consistent with every prior phase's native gap; per project convention this is swept once at ROADMAP Phase 999.1 rather than per-phase. The browser half of this item is now unblocked by both G-03-1 (CORS/sign-up) and G-03-2 (catalog load) closures — only the native-device half is still environment-blocked."
+  - test: "Open an exercise detail screen and the Suggested Alternatives section; confirm every image tile (list row thumbnails, alternatives-row thumbnails, detail hero) actually paints a picture, not an empty/placeholder tile."
+    expected: "Real vendored images render at a visible, non-collapsed size on all three call sites."
+    why_human: "G-03-3's fix (resolveTileBox, absolute-inset fill, shared width contract) is proven by 16+4 new unit tests, a clean typecheck and a clean web bundle, but the actual pixels painting in a browser/device were never observed (WINDOWS #36/#37/#39/#46). No browser was launched this verification round per CLAUDE.md's global rule."
+  - test: "Scroll the ~870-row exercise list continuously, including past any row whose image fails to load (e.g. throttle/block one image request), and confirm subsequently-scrolled-in rows still show their own correct image rather than the previous failed row's blank tile."
+    expected: "Each row's thumbnail reflects that row's own exercise; a load failure in one FlashList slot does not persist onto a different exercise recycled into the same slot."
+    why_human: "Code-confirmed defect (WR-01 in 03-REVIEW.md, not fixed by 03-13): ExerciseImageTile's `failed` state has no dependency on `source`, and @shopify/flash-list@2.0.2 documents view recycling for ExerciseListRow. Once any image fails in a given list slot, every subsequent exercise recycled into that slot renders as broken/blank regardless of its own image validity. Detail hero and SwapSuggestionList (plain .map, not recycled) are unaffected. Not caught by any test — a state-across-recycling defect cannot be observed via typecheck or a single-render unit test. Recommend filing as a new WINDOWS entry and a follow-up fix (reset `failed` in a `useEffect` keyed on the effective source) before relying on the list at scale."
+  - test: "From /exercises/seed_90_90_Hamstring (or any exercise detail route), confirm a back control renders in the header, pressing it returns to the list, and reloading/refreshing that exact URL directly still shows a working back control that replaces to /exercises rather than rendering a dead or missing control."
+    expected: "Back control present and functional both when navigated-to from the list and when the URL is loaded directly / refreshed."
+    why_human: "app/exercises/_layout.tsx and goBackOrReplace are structurally verified (file exists, declares the anchor, supplies a function-valued headerLeft, both branches pass against a fake router in back.test.ts) but the header, its title and the control's real rendering, plus react-navigation's real canGoBack predicate on a refreshed detail URL, have not been observed in a browser (WINDOWS #49/#50, R4/R5)."
+  - test: "SECURITY-RELEVANT — while signed out, attempt to load /exercises/seed_90_90_Hamstring, /exercises/new and /exercises/edit/seed_90_90_Hamstring directly by URL; confirm all three redirect to sign-in / do not mount, matching the existing behavior of /exercises."
+    expected: "None of the three routes render their protected content while signed out — the segment layout's existence should bring them under the root layout's Stack.Protected(signedIn) guard the same way it already covers /exercises."
+    why_human: "This is a security-relevant claim (T-03-58, WINDOWS #51/R6) that follows deterministically from expo-router's documented route-hoisting and screen-matching behavior (confirmed by direct reading of node_modules/expo-router's getRoutesCore.js and useScreens.js during 03-14's diagnosis, and re-confirmed this round by reading app/_layout.tsx's Stack.Protected(signedIn) wrapping <Stack.Screen name=\"exercises\" />), but it has zero automated regression coverage (WR-03 in 03-REVIEW.md) and has never been observed in a running app. Must be verified before Phase 03 sign-off per the plan's own verification section."
+  - test: "Full native (iOS/Android) pass over every catalog screen — list, detail, create/edit forms, archive dialog, back navigation (including native swipe-back), and swap suggestions."
+    expected: "Same behavior as the web/unit-test-verified logic, rendered correctly on native chrome."
+    why_human: "No Xcode or Android SDK on this machine (WINDOWS #16/#34/#52, R7). Per project convention (MEMORY.md: native testing deferred to final phase) this is swept once at ROADMAP Phase 999.1 rather than per-phase."
 ---
 
 # Phase 3: Exercise Catalog Verification Report
 
 **Phase Goal:** The user can find any exercise they train, and the catalog carries the muscle and load metadata everything downstream depends on.
-**Verified:** 2026-08-19T12:00:00Z
+**Verified:** 2026-08-19T16:30:00Z
 **Status:** human_needed
-**Re-verification:** Yes — after gap closure (G-03-2, plan 03-12; this round also independently re-confirms G-03-1/plan 03-11's prior closure since the previous VERIFICATION.md predates 03-12)
+**Re-verification:** Yes — after gap closure (G-03-3, plan 03-13; G-03-4, plan 03-14)
 
 ## Goal Achievement
 
-### G-03-2 Gap Closure — Verified Genuinely Closed
+### G-03-3 Gap Closure — Verified Genuinely Closed at the Code Level
 
-The prior UAT round (03-UAT.md, `status: diagnosed`) recorded a blocker: opening `http://localhost:8081/exercises`
-showed "Exercise catalog couldn't load / Restart the app to try again," on every reload, forever. Root cause
-(documented in `.planning/debug/exercise-catalog-load-failure.md`): every PowerSync-managed table — `localOnly`
-ones included — is a SQLite VIEW with `INSTEAD OF` triggers, and SQLite refuses to prepare an UPSERT statement
-against a view. `applyCatalogSnapshot`'s four `.onConflictDoUpdate()` call sites threw at the first statement
-(`muscle_group`), the transaction rolled back before `catalog_meta` was stamped, so `currentVersion` stayed
-`null` forever and every reload re-entered the identical doomed path. A bare `catch {}` in
-`app/exercises/index.tsx` discarded the thrown error, which is why the prior UAT round captured no diagnostic.
+03-UAT.md (`status: diagnosed`) recorded: "I don't see thumbnail in '5 suggested alternatives'" — root cause
+documented in `.planning/debug/alternatives-thumbnail-missing.md`: `ExerciseImageTile`'s container had no
+pixel dimension anywhere in its chain (a ratio style on a percentage-width box), so the `<Image>` inside asked
+for a percentage of a height that never resolved, and react-native-web painted nothing, silently. Verified
+below against actual current source, not the SUMMARY's narrative:
 
-Plan 03-12 closed this. Verified below against actual current source, not the SUMMARY's narrative:
-
-| Must-have (03-12 PLAN frontmatter) | Verified against | Status |
+| Must-have (03-13 PLAN frontmatter) | Verified against | Status |
 |---|---|---|
-| No statement `applyCatalogSnapshot` issues is rejected at prepare time by a real `@powersync/web` engine | `apps/mobile/lib/catalog/load-snapshot.ts:47-153` — every write is now a plain `.insert()` or a condition-scoped `.update().where(eq(table.id, id))`; direct grep confirms zero `.onConflictDoUpdate`/`.onConflictDoNothing` calls remain in `load-snapshot.ts` or `refresh-catalog.ts` (the two production write-path files) | ✓ VERIFIED |
-| Real-engine load produces 19 muscle groups / 870 exercises / 3134 mappings / 1 catalog_meta row, catalog_version `fb701c18b7999d47` | `apps/mobile/e2e/catalog-load.spec.ts:30-77` asserts exactly these counts and version against a real `@powersync/web` engine in a real browser via the `__durability` harness | ✓ VERIFIED (per execution-state: durability project 6/6 pass, includes this spec) |
-| Real-engine load leaves the PowerSync upload queue at zero entries | `catalog-load.spec.ts:73-77` — `crudCount()` asserted `toBe(0)` after the fresh load | ✓ VERIFIED |
-| Re-applying the same snapshot over an already-populated DB is accepted, changes no row count | `catalog-load.spec.ts:79-105` — phase two writes a version sentinel to defeat the short-circuit, reloads, and asserts identical counts and zero queue depth; this is also the only real-engine coverage of the 43 duplicate mapping ids in the artifact | ✓ VERIFIED |
-| A caught catalog-load failure is logged, not discarded | `apps/mobile/app/exercises/index.tsx:147-151` — `catch (error) { console.error('catalog snapshot load failed', error); ... }`, confirmed by direct read (previously a bare `catch {}`) | ✓ VERIFIED |
-| `refreshCatalog` resolves to an outcome for every failure mode (no unhandled rejection at its fire-and-forget call site) | `apps/mobile/lib/catalog/refresh-catalog.ts:31-82` — the entire function body (not just the transaction) is wrapped in try/catch; a new `'write-failed'` outcome is returned from the catch clause | ✓ VERIFIED |
-| Reintroducing upsert grammar turns the Jest suite red without a browser | 03-12 SUMMARY documents a revert check: temporarily restoring one `.onConflictDoUpdate()` call made `load-snapshot.test.ts` fail immediately (4 tests) with the engine's own refusal text (`cannot UPSERT a view`), then reverted; `load-snapshot.test.ts:90-103,193-214` shows the fake DB's conflict-clause methods now reject with that exact text rather than silently succeeding | ✓ VERIFIED |
+| Every tile renders inside a box whose width/height are finite positive numbers for any input, including 0/negative/NaN/Infinity | `apps/mobile/components/ExerciseImageTile.tsx:33-36` `resolveTileBox` — floors to `MIN_TILE_WIDTH` (24) for any non-finite or ≤-floor input; direct read confirms the guard | ✓ VERIFIED |
+| The image fills the box by absolute inset, not by percentage of an unresolved height | `ExerciseImageTile.tsx:67` — `style={StyleSheet.absoluteFill}`; `grep -q "aspectRatio:"` and `grep -q "'100%'"` both return no matches in the file (confirmed) | ✓ VERIFIED |
+| Placeholder renders behind the image, not as its else-branch | `ExerciseImageTile.tsx:66-67` — the `Text` label and the `Image` are sibling children, not an if/else pair | ✓ VERIFIED |
+| Empty tile delineated by its own border against both a `surface` and a `background` parent | `ExerciseImageTile.tsx:63` — `className` includes `border border-foreground-muted` unconditionally | ✓ VERIFIED |
+| All three call sites (list row, alternatives row, detail hero) size their tile through one shared width contract | `ExerciseListRow.tsx:40` and `SwapSuggestionList.tsx:57` both pass `width={EXERCISE_THUMBNAIL_WIDTH}`; `app/exercises/[id].tsx:306` passes `width={resolveHeroImageWidth(windowWidth)}` — confirmed by direct read of all three files | ✓ VERIFIED |
+| `getLocalCatalogImage`'s declared type matches the bundler-emitted value on web | `catalog-image-map.generated.ts` — regenerated, `grep -q "number | null"` finds no match; 870 entries confirmed (`grep -c '": \[require('` → 870) | ✓ VERIFIED |
+| New tests assert a real `Image` element with a non-null source in a positive-size box | `ExerciseImageTile.test.tsx` (16 tests) + `SwapSuggestionList.test.tsx` (4 new tests) — both re-run this round, all pass | ✓ VERIFIED |
 
-**Behavioral evidence, not just static checks:** Per the orchestrator's session state, the mobile e2e `durability`
-project (`durability.spec.ts`, `schema-redefinition.spec.ts`, `catalog-load.spec.ts`) ran 6/6 passing this
-session — a real browser, a real `@powersync/web` engine, real IndexedDB/Worker. This is corroborated by:
-- WINDOWS #33 (recorded when only a faithful Jest mock of PowerSync's trigger behavior existed, not a real
-  engine) is now `status: fixed`, `resolved_at: 2026-08-19T10:02:13Z`.
-- Commits `95f938f` (RED on the real engine), `895ff7f` (rebuild write path), `de0a2c2` (never-throws +
-  error logging), `45d5b52` (plan completion) exist in the git log.
-- `apps/mobile/playwright.config.ts:19` registers `catalog-load.spec.ts` in the `durability` project's
-  `testMatch` array — confirmed by direct read; a spec missing from this array would silently never run and
-  would read as a pass, so this was checked explicitly, not assumed.
-- Direct grep confirms `.onConflictDoUpdate`/`.onConflictDoNothing` are gone from both production write-path
-  files; the only remaining occurrences of those method names are inside test fakes that now assert the
-  engine's refusal, and inside code comments documenting why they're avoided.
+**Behavioral evidence, re-run independently this round (not taken from the SUMMARY):**
+`pnpm --filter mobile exec jest components/__tests__/ExerciseImageTile.test.tsx lib/navigation/__tests__/back.test.ts lib/catalog/__tests__/preferences.test.ts app/exercises/__tests__/exercise-detail-screen.test.ts components/__tests__/SwapSuggestionList.test.tsx`
+→ 5 suites, 54 tests, all pass. Full `pnpm --filter mobile test` → 22 suites / 311 tests, all pass.
+`pnpm --filter mobile typecheck` → clean.
 
-**Conclusion: G-03-2 is genuinely closed** — the fix is structurally present (read-then-branch INSERT/UPDATE,
-no upsert grammar anywhere in the write path), and proven against a real engine in a real browser via a
-purpose-built Playwright case, not merely a Jest mock. The prior verification round's already-established G-03-1
-closure (CORS/sign-up, plan 03-11) was independently re-confirmed unchanged: `apps/api/src/main.ts:17` still
-calls `app.enableCors(...)` as the first line of `bootstrap()`, and `apps/api/test/cors.e2e-spec.ts` remains in
-the passing 18-suite/135-test API e2e run per this session's execution state.
+**New defect found by this round's own code review (03-REVIEW.md WR-01), not fixed by 03-13:**
+`ExerciseImageTile`'s `failed` state (`ExerciseImageTile.tsx:75`) has no dependency on the tile's effective
+`source` — confirmed by direct read: `const [failed, setFailed] = useState(false);` with no `useEffect`
+resetting it when `source`/`uri`/`localSource` changes. `ExerciseListRow` renders inside
+`@shopify/flash-list@2.0.2` (`app/exercises/index.tsx`), which recycles view instances rather than destroying
+them. Once any image fails to load in a given list slot, every subsequent exercise recycled into that same
+slot renders as broken/blank forever, regardless of its own image's validity — a state-leak, not the
+box-collapse defect G-03-3 targeted. `SwapSuggestionList` (a plain, non-recycled `.map()`) and the detail hero
+(one instance per screen mount) are unaffected. This is real, code-confirmed (not a hypothesis), scoped to the
+FlashList-backed catalog list, and was not in 03-13's stated must-haves. Not severe enough on its own to block
+the phase goal (search/filter/detail viewing all work; this affects only already-failed thumbnails re-used by
+a later row), but it directly bears on truth 1's "images" clause and is carried into human_verification below
+rather than silently accepted.
 
-### Observable Truths (9 phase-level truths, all previously verified, re-confirmed this round)
+**Conclusion: G-03-3 is closed at the code level** — the collapsing-box mechanism is fixed and independently
+re-confirmed by direct source read and a fresh test run, not the SUMMARY's narrative. Whether pixels actually
+paint on a real screen remains unobserved (WINDOWS #36/#37/#39/#46, carried into human_verification), and a
+related-but-distinct recycling defect (WR-01) was found and is also carried into human_verification rather
+than closed.
 
-None of the 9 truths established in the initial verification round changed shape this session — 03-12 touched
-only the catalog write-path's *implementation* (which statement grammar the four writes use), not the
-observable behaviors those writes support. Re-confirmed by direct source read this round, not merely carried
-forward from claims:
+### G-03-4 Gap Closure — Verified Genuinely Closed at the Code Level
+
+03-UAT.md recorded: "I don't see edit form. I don't know how to go back... add back-arrow button + support
+swipes" — root cause documented in `.planning/debug/detail-screen-no-back-nav-no-edit.md`: no
+`app/exercises/_layout.tsx` existed, so all four exercises routes were hoisted into the root stack with
+`headerShown: false` and no back affordance anywhere; Edit was hidden behind an ownership flag that is false
+for every seeded exercise. Verified below against actual current source:
+
+| Must-have (03-14 PLAN frontmatter) | Verified against | Status |
+|---|---|---|
+| Every route in the segment renders a header with a back control, present with or without a stack entry beneath it | `app/exercises/_layout.tsx:18-32` — `headerShown: true`, `headerLeft: () => <NavBackButton fallbackHref="/exercises" />` (function-valued, not the default) | ✓ VERIFIED |
+| Pressing back returns to the previous screen when one exists, otherwise replaces with the catalog list | `lib/navigation/back.ts:14-20` `goBackOrReplace` — `back.test.ts` re-run this round, both branches pass; forwards the fallback href verbatim | ✓ VERIFIED |
+| The segment declares an anchor route so a deep link resolves against a stack with the list beneath it | `app/exercises/_layout.tsx:8` — `export const unstable_settings = { anchor: 'index' };` | ✓ VERIFIED |
+| Native swipe-back enabled despite the custom back control | `app/exercises/_layout.tsx:30-31` — `gestureEnabled: true, fullScreenGestureEnabled: true` | ✓ VERIFIED |
+| No web pan-gesture back claimed anywhere | `03-UI-SPEC.md` `## Navigation Contract` section (confirmed present via `grep -q "Navigation Contract"`) states web has no pan-gesture back; plan's own verification section restates the same | ✓ VERIFIED |
+| Edit control renders unconditionally, routes to the edit route | `app/exercises/[id].tsx:294-302` — `Link` no longer wrapped in an `actions.showEdit` conditional (confirmed by direct read and `! grep -q "showEdit"` over both `preferences.ts` and `[id].tsx`) | ✓ VERIFIED |
+| Opening edit for a seeded (non-owned) exercise renders the not-permitted explanation + Duplicate action | `lib/catalog/custom-exercise.ts:368-371` `resolveEditAccess` returns `'not-permitted'` unless `ownerUserId === currentUserId` (seeded rows have `ownerUserId: null`, never matches); `edit/[id].tsx:188-200` renders that branch — both confirmed by direct read | ✓ VERIFIED |
+| `resolveDetailActions` carries no ownership-gated edit-visibility field | `preferences.ts:121-139` — `DetailActionVisibility` has only `showDuplicate`/`archiveLabel`; `preferences.test.ts:273` asserts `.not.toHaveProperty('showEdit')`, re-run this round, passes | ✓ VERIFIED |
+| The exercises segment is one guarded route beneath the root's signed-in guard | `app/_layout.tsx:110-113` — `<Stack.Protected guard={signedIn}><Stack.Screen name="exercises" /></Stack.Protected>` (confirmed by direct read this round); with `_layout.tsx` now present, expo-router's hoisting collapses all four routes under this one screen name | ✓ VERIFIED (structural; not browser-observed, see below) |
+| Catalog list shows exactly one "Exercises" title | `app/exercises/index.tsx` — `! grep -q ">Exercises<"` passes (in-list heading removed); title now supplied once by `_layout.tsx`'s `Stack.Screen name="index" options={{ title: 'Exercises' }}` | ✓ VERIFIED |
+
+**Behavioral evidence, re-run independently this round:** the same 5-suite/54-test run above includes
+`back.test.ts` and `preferences.test.ts`. Full suite (22/22 suites, 311/311 tests) and typecheck both re-run
+clean this round, not merely cited from the SUMMARY.
+
+**New defect found by this round's own code review (03-REVIEW.md WR-02), not blocking but real:**
+`_layout.tsx` now shows a native header with `title: 'Add Custom Exercise'` / `title: 'Edit Exercise'` on the
+`new` and `edit/[id]` screens, but those screens still render their own identical in-body heading text
+(`new.tsx:145`, `edit/[id].tsx:239`) — confirmed by direct read of both files, both headings still present.
+The same diff removed the equivalent duplicate from `index.tsx` but missed these two. Cosmetic (duplicate
+title text), not a functional blocker; carried forward as a non-blocking warning, not gated.
+
+**Security-relevant claim re-confirmed structurally, not yet browser-observed:** T-03-58's claim that the
+segment layout brings `exercises/[id]`, `exercises/new` and `exercises/edit/[id]` under the existing
+`Stack.Protected(signedIn)` guard was re-verified this round by direct read of `app/_layout.tsx` (confirms the
+guard wraps `<Stack.Screen name="exercises" />`) and is corroborated by 03-REVIEW.md's independent read of
+`expo-router`'s own `getRoutesCore.js` route-hoisting source. `03-REVIEW.md` (WR-03) separately notes this has
+**zero automated regression test** — nothing in CI would catch a future edit that reopens this hole. Per the
+plan's own verification section, this must be observed in a browser before Phase 03 sign-off (WINDOWS #51/R6)
+— carried into human_verification as the highest-priority remaining item.
+
+**Conclusion: G-03-4 is closed at the code level** — independently re-confirmed by direct source read and a
+fresh test run. The security-relevant auth-guard consequence is structurally sound and correctly reasoned
+from expo-router's documented behavior, but is untested and unobserved, and must be verified before ship.
+
+### Observable Truths (9 phase-level truths)
+
+None of the 9 truths established in earlier rounds changed shape at the requirement level — 03-13 and 03-14
+touched the image-rendering and navigation/authorization mechanics beneath truths 1, 3, 4, 5 and 9, not the
+requirements themselves. Re-confirmed by direct source read and fresh test runs this round:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | User can search ~870 exercises by name (and alias), Unicode/diacritic-insensitive, empty query → full catalog | ✓ VERIFIED | `search-index.ts` (98 lines, present, substantive), wired into `app/exercises/index.tsx` |
-| 2 | User can filter by muscle group, equipment, movement pattern, AND/OR combinable | ✓ VERIFIED | `catalog-filter.ts` (219 lines, present, substantive), 21 unit tests |
-| 3 | User can open an exercise and see target muscles, equipment, setup, cues, static images | ✓ VERIFIED | `exercise-detail.ts`, `app/exercises/[id].tsx` (334 lines), `MuscleTargetList.tsx` |
-| 4 | User can create a custom exercise with name/muscles/equipment/load-type, client-validated | ✓ VERIFIED | `custom-exercise.ts::createCustomExercise` (425 lines), `app/exercises/new.tsx` (196 lines) |
-| 5 | User can edit/duplicate a custom exercise; edit ownership-gated, duplicate leaves source untouched | ✓ VERIFIED | `custom-exercise.ts`, `app/exercises/edit/[id].tsx` (294 lines), server-side ownership enforced in `exercise-sync.e2e-spec.ts` |
-| 6 | Archiving removes from pickers/search, past logged sets stay attributed, per-user and idempotent | ✓ VERIFIED | `preferences.ts::setArchived` (146 lines), `catalog-filter.ts::buildArchivedSet`, cross-user isolation e2e test |
-| 7 | User can mark never-suggest independent of archive | ✓ VERIFIED | `preferences.ts::setNeverSuggest`, `smart-swap.ts::buildNeverSuggestSet` |
-| 8 | Every exercise carries an explicit load type from a fixed 6-member vocabulary, CHECK constraint + app validation + representable pre-logging-UI | ✓ VERIFIED | `apps/api/src/db/schema/catalog.ts` CHECK constraint, `packages/api-contracts/src/catalog.ts` LOAD_TYPES tuple, `new.tsx` picker |
-| 9 | Suggested alternatives are deterministic, explainable, exclude archived/never-suggested/target, never blank | ✓ VERIFIED | `smart-swap.ts::scoreAlternatives` (231 lines), wired via `SwapSuggestionList` |
+| 1 | User can search ~870 exercises by name (and alias), filter by muscle/equipment/pattern, and open one to see target muscles, cues, and images | ✓ VERIFIED (code level) | `search-index.ts`, `catalog-filter.ts`, `exercise-detail.ts`, `[id].tsx` all present, substantive, wired; image-tile collapse defect (G-03-3) fixed and re-tested. Caveats: pixels-on-screen unobserved (see human_verification), and WR-01's recycling state-leak is a real, unaddressed, code-confirmed limitation on the list view specifically |
+| 2 | User can create and edit their own exercises, and request suggested alternatives for any exercise | ✓ VERIFIED | `custom-exercise.ts` (create/update/duplicate), `smart-swap.ts`; Edit is now unconditionally reachable (G-03-4) instead of hidden by an ownership flag |
+| 3 | Archiving removes from pickers/search, past logged sets stay attributed, per-user and idempotent | ✓ VERIFIED | `preferences.ts::setArchived`, `catalog-filter.ts::buildArchivedSet`, cross-user isolation e2e test (unchanged by this round's plans) |
+| 4 | Every exercise carries an explicit load type, bodyweight/assisted/time/distance all representable pre-logging-UI | ✓ VERIFIED | `apps/api/src/db/schema/catalog.ts` CHECK constraint, `packages/api-contracts/src/catalog.ts` LOAD_TYPES tuple, `new.tsx` picker (unchanged by this round's plans) |
 
-**Score:** 9/9 truths verified (0 present-but-behavior-unverified)
+**Score:** 9/9 truths verified at the code level (0 present-but-behavior-unverified in the formal sense — the
+back-navigation state transition is proven by a real behavioral test against a fake router, not merely
+presence; the residual uncertainty is whether react-navigation's real `canGoBack` on a refreshed URL agrees,
+which is filed as human_verification rather than left silently assumed)
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `packages/api-contracts/src/catalog.ts` | LOAD_TYPES/MUSCLE_GROUPS/MOVEMENT_PATTERNS/EQUIPMENT_TYPES tuples + `isCatalogSnapshot` | ✓ VERIFIED | Present (164 lines), exported, used by both API and mobile |
-| `apps/api/src/db/schema/catalog.ts` | exercise/exercise_muscle_mapping/muscle_group/user_exercise_preference + CHECK constraint | ✓ VERIFIED | Present (141 lines), correct FKs, indexes, unique constraint |
-| `apps/mobile/lib/catalog/*.ts` | Pure, unit-tested catalog logic modules | ✓ VERIFIED | All present, substantive, unit-tested |
-| `apps/mobile/app/exercises/{index,[id],new,edit/[id]}.tsx` | List, detail, create, edit screens | ✓ VERIFIED | All present, wired, no debt markers |
-| `apps/api/src/common/web-origins.ts` (plan 03-11) | Sole `WEB_ORIGINS` reader | ✓ VERIFIED | Present, sole reader confirmed by grep, imported by `main.ts` and `auth.ts` |
-| `apps/api/test/cors.e2e-spec.ts` (plan 03-11) | Regression suite for CORS allowlist | ✓ VERIFIED | Present, 7 cases, executed and passing (18/18 API e2e suites) |
-| `apps/mobile/e2e/catalog-load.spec.ts` (plan 03-12, new) | Real-engine Playwright case for the catalog write path | ✓ VERIFIED | Present (107 lines), registered in `playwright.config.ts:19`'s `durability` `testMatch`, executed 6/6 (durability project) |
-| `apps/mobile/lib/catalog/load-snapshot.ts` (plan 03-12, rebuilt) | Write path with no upsert grammar against a view | ✓ VERIFIED | 181 lines, read-existing-ids-then-branch for all four tables, zero `.onConflictDoUpdate`/`.onConflictDoNothing` calls |
-| `apps/mobile/lib/db/test-support.ts` (plan 03-12, extended) | `'app'` schema variant + raw-SQL catalog test helpers | ✓ VERIFIED | Present, imports `AppSchema` from `./powersync.web` (confirmed by direct read of the deviation rationale and the file) |
+| `apps/mobile/components/ExerciseImageTile.tsx` (03-13, rewritten) | Non-collapsing box, absolute-inset image, border, behind-not-instead placeholder | ✓ VERIFIED | 81 lines, re-read this round, matches plan exactly |
+| `apps/mobile/components/__tests__/ExerciseImageTile.test.tsx` (03-13, new) | Geometry/layering/border assertions | ✓ VERIFIED | Present, 16 tests, all pass |
+| `apps/mobile/lib/catalog/catalog-image-map.generated.ts` (03-13, regenerated) | Corrected `ImageSourcePropType` return type, 870 entries | ✓ VERIFIED | 870 entries confirmed by grep, no `number \| null` remains |
+| `scripts/generate-catalog-image-map.cjs` (03-13, modified) | Emits corrected types at generation time | ✓ VERIFIED | Present, confirmed via regenerated output |
+| `apps/mobile/app/exercises/_layout.tsx` (03-14, new) | Header, anchor, back control, gesture options, auth-guard consequence | ✓ VERIFIED | 41 lines, re-read this round, matches plan exactly |
+| `apps/mobile/components/NavBackButton.tsx` (03-14, new) | Accessible, 48x48, theme-tinted back control | ✓ VERIFIED | Present, uses `useThemeColors`, `accessibilityLabel="Back"`, `minWidth/minHeight: 48` |
+| `apps/mobile/lib/navigation/back.ts` (03-14, new) | Pure `goBackOrReplace` over a structural router interface | ✓ VERIFIED | 21 lines, no expo-router import, matches plan |
+| `apps/mobile/lib/navigation/__tests__/back.test.ts` (03-14, new) | Both branches + verbatim href forwarding | ✓ VERIFIED | Present, re-run this round, all pass |
+| `.planning/phases/03-exercise-catalog/03-UI-SPEC.md` (03-14, modified) | Back row + Navigation Contract section | ✓ VERIFIED | `grep -q "Navigation Contract"` confirms present |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `app/exercises/index.tsx` | `lib/catalog/load-snapshot.ts::loadCatalogSnapshot` | mount effect calling `loadCatalogSnapshot`, catching and now logging errors | ✓ WIRED | Confirmed by direct read of `index.tsx:130-151` |
-| `lib/catalog/load-snapshot.ts::applyCatalogSnapshot` | `lib/db/schema.ts` catalog tables | Drizzle `.insert()`/`.update()` against `muscleGroup`/`seededExercise`/`exerciseMuscleMapping`/`catalogMeta` | ✓ WIRED | Confirmed by direct read; matches PowerSync view constraints |
-| `lib/catalog/refresh-catalog.ts::refreshCatalog` | `lib/catalog/load-snapshot.ts::applyCatalogSnapshot` | Shared write function, called inside `db.transaction` | ✓ WIRED | Both `loadCatalogSnapshot` and `refreshCatalog` route through the same rebuilt `applyCatalogSnapshot` — confirmed by direct read of both files' imports |
-| `e2e/catalog-load.spec.ts` | `app/__durability.web.tsx` | `page.evaluate` calling `openCatalogDb`/`loadCatalog`/`readCatalogTableCounts`/`crudCount`/`writeCatalogVersionSentinel` on the flag-guarded harness global | ✓ WIRED | Confirmed by direct read of both files; harness methods sit inside the same `EXPO_PUBLIC_DURABILITY_HARNESS`-guarded branch as pre-existing methods |
-| `apps/api/src/main.ts` | `apps/api/src/common/web-origins.ts` | `app.enableCors({ origin: resolveWebOrigins(), credentials: true })`, first line of `bootstrap()` | ✓ WIRED | Confirmed by direct read (unchanged from 03-11, re-checked this round) |
-| (All other Phase-3 catalog links from prior rounds) | | | ✓ WIRED | Unchanged; 03-12 touched no filter/search/preference/smart-swap files |
+| `ExerciseListRow.tsx` / `SwapSuggestionList.tsx` / `app/exercises/[id].tsx` | `ExerciseImageTile.tsx` | `width={EXERCISE_THUMBNAIL_WIDTH}` / `width={resolveHeroImageWidth(windowWidth)}` | ✓ WIRED | Confirmed by direct read of all three call sites |
+| `app/exercises/_layout.tsx` | `NavBackButton.tsx` | `headerLeft: () => <NavBackButton fallbackHref="/exercises" />` | ✓ WIRED | Confirmed by direct read |
+| `NavBackButton.tsx` | `lib/navigation/back.ts` | `onPress={() => goBackOrReplace(router, fallbackHref)}` | ✓ WIRED | Confirmed by direct read |
+| `app/_layout.tsx` (`Stack.Protected guard={signedIn}`) | `app/exercises/_layout.tsx` (segment) | expo-router route hoisting: `Stack.Screen name="exercises"` now matches the whole segment once `_layout.tsx` exists | ✓ WIRED (structural) | Confirmed by direct read of both files; browser observation still pending (R6) |
+| `app/exercises/[id].tsx` (Edit link) | `app/exercises/edit/[id].tsx` (`resolveEditAccess`) | `<Link href={{ pathname: '/exercises/edit/[id]', ... }} asChild>` unconditional; edit route enforces permission | ✓ WIRED | Confirmed by direct read |
+| (All other Phase-3 catalog links from prior rounds) | | | ✓ WIRED | Unchanged; 03-13/03-14 touched only image-rendering and navigation/auth-guard files |
 
 ### Data-Flow Trace (Level 4)
 
-The catalog list/detail screens render from PowerSync-backed live queries (`db.select()...`) over the
-`seededExercise`/`exercise`/`exercise_muscle_mapping`/`muscle_group` tables, which are now populated by a
-real-engine-verified write path (traced above). No static/hardcoded fallback data found in any of the four
-list/detail/new/edit screens on direct read. Smart-swap candidates are scored from the same live-queried rows
-(`smart-swap.ts::scoreAlternatives`), not a mock dataset. Status: ✓ FLOWING for all traced artifacts.
+Unchanged from the prior round: catalog list/detail render from PowerSync-backed live queries over the
+`seededExercise`/`exercise`/`exercise_muscle_mapping`/`muscle_group` tables. 03-13/03-14 touched only
+presentational sizing (`ExerciseImageTile`) and navigation/routing (`_layout.tsx`, `back.ts`) — no data-source
+wiring changed. Status: ✓ FLOWING, re-confirmed by direct read finding no new hardcoded/static fallback in
+either plan's file scope.
 
 ### Behavioral Spot-Checks
 
-Not run independently this round — the orchestrator's execution_state already supplies actually-executed
-(not merely narrated) results for this session: `npm run build` (4/4 turbo tasks), `npm test` (api 50/50,
-mobile 286/286), API e2e (18 suites/135 tests), and the mobile e2e `durability` project (6/6, including the
-new `catalog-load.spec.ts`). Per the harness instructions, these are treated as given rather than re-run.
-Static evidence above (direct source reads of the write path, the e2e spec, and the wiring) corroborates
-that these pass results are not a stale/mismatched run — file contents match what the passing suite would
-need to exercise.
+Run independently this verification round, not taken from the SUMMARYs' narration:
+
+| Behavior | Command | Result | Status |
+|----------|---------|--------|--------|
+| Gap-closure test files pass in isolation | `pnpm --filter mobile exec jest components/__tests__/ExerciseImageTile.test.tsx lib/navigation/__tests__/back.test.ts lib/catalog/__tests__/preferences.test.ts app/exercises/__tests__/exercise-detail-screen.test.ts components/__tests__/SwapSuggestionList.test.tsx` | 5 suites / 54 tests, all pass | ✓ PASS |
+| Full mobile suite | `pnpm --filter mobile test` | 22 suites / 311 tests, all pass | ✓ PASS |
+| Mobile typecheck | `pnpm --filter mobile typecheck` | clean | ✓ PASS |
+| api-contracts suite | `pnpm --filter @fitness/api-contracts test` | 3 suites / 66 tests, all pass | ✓ PASS |
+| api suite | `pnpm --filter api test` | 3 suites / 50 tests, all pass | ✓ PASS |
+| Image map integrity | `grep -c '": \[require(' catalog-image-map.generated.ts` | 870 | ✓ PASS |
+
+Total: 427 tests (66 + 50 + 311), matching the SUMMARY's claim and independently re-run rather than trusted.
+Browser/device rendering (paint, header, back-control visuals, signed-out route guard) was not run — forbidden
+by CLAUDE.md's global rule against launching a browser unless explicitly asked; these are the items filed
+under Human Verification below.
 
 ### Probe Execution
 
@@ -153,79 +206,76 @@ phase.
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |--------------|-------------|--------------|--------|----------|
-| EXER-01 | 03-01, 03-05, 03-06, 03-11, 03-12 | Search exercise library by name | ✓ Satisfied | `search-index.ts`; catalog write path now real-engine-verified so the list this search runs against actually loads |
-| EXER-02 | 03-01, 03-02, 03-04, 03-05, 03-06, 03-11, 03-12 | Filter by muscle group/equipment/movement pattern | ✓ Satisfied | `catalog-filter.ts`; same real-engine unblock |
-| EXER-03 | 03-01, 03-04, 03-05, 03-07, 03-12 | View exercise detail | ✓ Satisfied | `exercise-detail.ts` + detail screen; same real-engine unblock |
-| EXER-04 | 03-03, 03-08 | Create custom exercise | ✓ Satisfied | `custom-exercise.ts::createCustomExercise` |
-| EXER-05 | 03-03, 03-08 | Edit/duplicate custom exercise | ✓ Satisfied | `custom-exercise.ts::updateCustomExercise/duplicateExercise` |
-| EXER-06 | 03-02, 03-03, 03-09 | Archive exercise, logged sets stay attributed | ✓ Satisfied | `preferences.ts` + e2e cross-user isolation test |
-| EXER-07 | 03-02, 03-03, 03-09 | Never-suggest without deleting | ✓ Satisfied | `preferences.ts::setNeverSuggest` |
-| EXER-08 | 03-01, 03-02, 03-04 | Load-type vocabulary representable pre-logging-UI | ✓ Satisfied | CHECK constraint + LOAD_TYPES tuple + create-form picker |
-| EXER-09 | (schema groundwork only, 03-02/03-04) | Bodyweight contribution accounted for in volume/load | Correctly Pending — out of phase-3 scope | `bodyweightContributionPct` column exists; math deferred to Phase 5, matches REQUIREMENTS.md |
-| EXER-10 | 03-10 | Suggested alternatives (smart swap) | ✓ Satisfied | `smart-swap.ts` |
+| EXER-01 | 03-01, 03-05, 03-06, 03-11, 03-12, 03-13 | Search exercise library by name | ✓ Satisfied | `search-index.ts`; image-tile fix removes a rendering defect on the same screen |
+| EXER-02 | 03-01, 03-02, 03-04, 03-05, 03-06, 03-11, 03-12 | Filter by muscle group/equipment/movement pattern | ✓ Satisfied | `catalog-filter.ts`, unchanged this round |
+| EXER-03 | 03-01, 03-04, 03-05, 03-07, 03-12, 03-13, 03-14 | View exercise detail (incl. images) | ✓ Satisfied | `exercise-detail.ts` + detail screen; hero image sizing and Edit reachability both fixed this round |
+| EXER-04 | 03-03, 03-08, 03-14 | Create custom exercise | ✓ Satisfied | `custom-exercise.ts::createCustomExercise`; unrelated to this round's diff |
+| EXER-05 | 03-03, 03-08, 03-14 | Edit/duplicate custom exercise | ✓ Satisfied | Edit now unconditionally reachable (G-03-4); duplicate unchanged |
+| EXER-06 | 03-02, 03-03, 03-09 | Archive exercise, logged sets stay attributed | ✓ Satisfied | Unchanged this round |
+| EXER-07 | 03-02, 03-03, 03-09 | Never-suggest without deleting | ✓ Satisfied | Unchanged this round |
+| EXER-08 | 03-01, 03-02, 03-04 | Load-type vocabulary representable pre-logging-UI | ✓ Satisfied | Unchanged this round |
+| EXER-09 | (schema groundwork only, 03-02/03-04) | Bodyweight contribution accounted for in volume/load | Correctly Pending — out of phase-3 scope | Matches REQUIREMENTS.md line 34/211 (`Pending`) |
+| EXER-10 | 03-10, 03-13 | Suggested alternatives (smart swap) | ✓ Satisfied | `smart-swap.ts`; alternatives-row thumbnail fix (G-03-3) directly closes the reported defect |
 
-No orphaned requirements: all 10 EXER-* IDs declared in REQUIREMENTS.md's traceability table (lines 203-212)
-appear in at least one plan's `requirements:` frontmatter across all 12 plans (confirmed by direct grep of
-every `03-*-PLAN.md`).
+No orphaned requirements: all 10 EXER-* IDs in REQUIREMENTS.md's traceability table (lines 203-212) appear in
+at least one plan's `requirements:` frontmatter, confirmed by direct grep of every `03-*-PLAN.md` including
+03-13 and 03-14 this round.
 
 ### Anti-Patterns Found
 
-No `TBD`/`FIXME`/`XXX` debt markers in any file listed across all 12 plans' `key-files` sections (confirmed
-by direct grep, empty result). Carried forward from `03-REVIEW.md` (re-reviewed 2026-08-19, this session,
-0 critical / 5 warning / 2 info), none of which are new regressions from 03-12 (03-12's own files —
-`load-snapshot.ts`, `refresh-catalog.ts`, `test-support.ts`, `catalog-load.spec.ts` — were reviewed and found
-clean):
+No `TBD`/`FIXME`/`XXX` debt markers in any file touched by 03-13/03-14 (confirmed by direct grep, empty
+result). Findings from this round's `03-REVIEW.md` (0 critical / 3 warning / 1 info), independently
+re-confirmed by direct source read during this verification:
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `apps/mobile/app/exercises/new.tsx`, `edit/[id].tsx`, `[id].tsx` | 126-140, 147-169, 190-209 | Async write handlers with no try/catch — a thrown error (e.g. `updateCustomExercise`'s ownership-race `Error('not_owner')`) permanently disables Save via a `submitting` flag that never resets | ⚠️ Warning | Pre-existing since 03-08/03-09, not touched by 03-12; robustness gap, not a happy-path defect — EXER-04/05 create/edit succeed under normal conditions per passing unit tests |
-| `apps/mobile/app/exercises/new.tsx:192`, `edit/[id].tsx:289` | — | `PrimaryButton`'s `submitting` prop overloaded to also mean "form invalid" — shows a spinner on an untouched blank form | ⚠️ Warning | Pre-existing, cosmetic/affordance bug, not a functional blocker |
-| `packages/api-contracts/src/catalog.ts:143-161` | — | `isCatalogSnapshot` validates less than its call sites' doc comments claim (only `load_type`, not id/name presence or nested element shape) | ⚠️ Warning | Pre-existing; transaction wrapping limits blast radius on a thrown error, but a non-throwing malformed field could reach storage undetected |
-| `apps/mobile/lib/catalog/smart-swap.ts:140-142,157-158` | — | `humanizeMuscleGroupId` misleadingly named — also used to format `movementPattern` | ⚠️ Warning | Naming-only, functionally correct today |
-| `apps/mobile/lib/db/test-support.ts:229-235` | — | `readRawColumns` interpolates a table name into raw SQL (PRAGMA doesn't support bound identifiers) | ⚠️ Warning | Test-harness-only, hardcoded caller, not reachable from user input |
-| `apps/mobile/lib/api-contracts/normalize-catalog.ts` | — | `groupOriginalsByCanonical` duplicates work `mergeCandidates` already did | ℹ️ Info | Build-time script, not a runtime hot path |
-| `apps/mobile/app/exercises/index.tsx:243` | — | No-op `onPress={() => {}}` on list rows (navigation handled by the wrapping `<Link>`) | ℹ️ Info | Dead code, not a bug |
+| `apps/mobile/components/ExerciseImageTile.tsx:74-81` | — | WR-01: `failed` local state has no dependency on `source`; combined with FlashList view recycling, one failed image can permanently break every exercise later recycled into that list slot | ⚠️ Warning | Real, code-confirmed, user-visible under specific conditions (an image load failure followed by scroll-recycling); scoped to the FlashList catalog list only. Not fixed by 03-13 despite a substantial rewrite of this exact file. Carried into human_verification and recommended as a new WINDOWS entry / follow-up fix |
+| `apps/mobile/app/exercises/_layout.tsx:34-37` cause; `new.tsx:145`, `edit/[id].tsx:239` consequence | — | WR-02: native header title duplicates the in-body heading on the create and edit screens (the same diff fixed this for `index.tsx` but missed these two) | ⚠️ Warning | Cosmetic (duplicate title text), not a functional blocker |
+| `apps/mobile/app/exercises/_layout.tsx:10-15` | — | WR-03: the T-03-58 auth-guard fix (segment layout bringing detail/create/edit under the signed-in guard) has zero automated regression coverage | ⚠️ Warning | Security-relevant claim currently protected only by the file's existence and a code comment; a future edit that restructures the segment could silently reopen the hole with nothing in CI to catch it. Recommend a static route-hoisting assertion test |
+| `apps/mobile/app/exercises/[id].tsx:54-71,152-165` | — | IN-01: `loadOwnerAndVariation`'s `ownerId` is now queried but never consumed after G-03-4 removed its sole call site | ℹ️ Info | Dead computation, not a bug; doc comment is now half-stale |
 
-None of these are new to this round; all were present and disclosed in the 2026-08-19 code review that also
-covered 03-12's file scope directly.
+Carried forward, unchanged from the prior round (03-REVIEW.md's earlier pass, none touched by 03-13/03-14):
+async write handlers with no try/catch on `new.tsx`/`edit/[id].tsx`/`[id].tsx`; `PrimaryButton`'s `submitting`
+prop overloaded for "form invalid"; `isCatalogSnapshot` under-validating; `humanizeMuscleGroupId` misleadingly
+named; `readRawColumns`' raw-SQL table-name interpolation (test-harness only); `groupOriginalsByCanonical`
+duplicate work; a no-op `onPress` on list rows.
 
 ### Human Verification Required
 
-See frontmatter `human_verification` list — 4 items remain (down from 5 in the prior round; WINDOWS #33's
-real-engine catalog-load claim, previously a human-verification item, is now machine-verified by
-`catalog-load.spec.ts` and removed from this list). All 4 remaining items are the standing "verified at
-typecheck/unit-test/bundler level, never observed rendered in a live browser, simulator, or device" class,
-consistent with CLAUDE.md's rule against launching a browser unless explicitly asked and this project's
-convention of sweeping native-platform verification once at ROADMAP Phase 999.1. None indicate a known logic
-or wiring defect — they indicate untested-by-a-human-eye, now structurally reachable since both G-03-1 and
-G-03-2 are closed.
+See frontmatter `human_verification` list — 5 items. Two items from the prior round (FlashList scroll
+performance, create/edit form rendering) were already walked and passed by a human in 03-UAT.md's test 1 and
+test 2 and are not re-listed. The 5 remaining items are: (1) images actually painting post-G-03-3, (2) the
+new WR-01 recycling-state risk this round's code review surfaced, (3) back-navigation actually rendering and
+working post-G-03-4, (4) the security-relevant auth-guard consequence (highest priority — flag before ship),
+and (5) the standing native-platform sweep deferred to Phase 999.1 per project convention.
 
 ### Gaps Summary
 
-No must-have truth, artifact, or key link failed. **G-03-2 (the catalog-load-failure blocker recorded in the
-current UAT round) is verified genuinely closed** — confirmed against actual current source (`load-snapshot.ts`,
-`refresh-catalog.ts`, `index.tsx`, `catalog-load.spec.ts`, `playwright.config.ts`), not merely the SUMMARY's
-narrative, and corroborated by a real-browser/real-engine Playwright case passing at this session's regression
-gate (durability project 6/6). G-03-1 (CORS, closed by 03-11 in the prior round) was independently re-confirmed
-unchanged.
+No must-have truth, artifact, or key link from either 03-13's or 03-14's PLAN frontmatter failed. **Both
+G-03-3 and G-03-4 — the two remaining functional gaps from the current UAT round — are verified closed at the
+code level**, independently re-confirmed against actual current source (not the SUMMARYs' narrative) and a
+freshly re-run test suite (427/427 tests across api-contracts, api and mobile; typecheck clean).
 
-Two categories of pre-existing, non-blocking items carried forward:
-1. **03-REVIEW.md warnings** (5 warning, 2 info, 0 critical) — error-handling gaps on write-handler failure
-   paths, a button-spinner affordance bug, an under-validating snapshot-shape checker, a misleading helper
-   name, and a raw-SQL test-harness interpolation. None block the phase goal (happy paths for every EXER-*
-   requirement are verified working); all are legitimate robustness/quality follow-ups.
-2. **WINDOWS #40** (open, warning): custom exercises' muscle mappings are `localOnly` and don't yet sync
-   cross-device — a known, disclosed limitation, not a regression.
-3. **WINDOWS #35** (open, informational): image-licensing risk on the vendored dataset, explicitly and
-   deliberately left open by a human decision (documented in `docs/catalog-dataset-license.md`) to keep
-   surfacing at `/gsd-ship` rather than being silently waived — not a phase-03 code defect.
+One new, real, code-confirmed defect was found by this round's own code review and independently re-confirmed
+here: **WR-01**, a `FlashList` view-recycling state leak in `ExerciseImageTile` that predates 03-13 but
+survived a substantial rewrite of that exact file. It is scoped to the catalog list's thumbnails only (the
+detail hero and the non-recycled `SwapSuggestionList` are unaffected), requires a real image load failure to
+trigger, and is Warning- not Blocker-severity per the code review's own classification and this phase's
+established pattern of carrying forward non-blocking warnings. It is not treated as a phase-gating failure,
+but it is not silently absorbed either — it is documented explicitly above and carried into
+`human_verification` as its own item, with a recommendation to file it as a new WINDOWS entry and schedule a
+follow-up fix (reset `failed` in a `useEffect` keyed on the effective source).
 
-The overall status is `human_needed` rather than `passed` solely because of the 4 remaining rendering/native-
-platform items, none of which indicate a defect — they indicate untested-by-a-human-eye, consistent with this
-phase's honestly disclosed state throughout. With both G-03-1 and G-03-2 closed, every catalog screen is now
-structurally reachable and ready for the human UAT pass that was previously blocked.
+The overall status is `human_needed`, not `passed`, because five items genuinely require a human/browser
+observation this verification round cannot supply under CLAUDE.md's no-browser-unless-asked rule: whether the
+G-03-3 image fix actually paints, whether the new WR-01 recycling risk manifests in practice, whether the
+G-03-4 back control actually renders and works (including on a direct URL load), whether the
+security-relevant auth-guard consequence (T-03-58) actually holds in a running signed-out session, and the
+standing native-platform sweep. None of the five indicate a known logic defect that blocks the phase goal —
+all four EXER-* requirement groups touched by this round (EXER-01, EXER-03, EXER-04, EXER-05, EXER-10) are
+satisfied at the code level, with the caveats above carried forward honestly rather than claimed as closed.
 
 ---
 
-_Verified: 2026-08-19T12:00:00Z_
+_Verified: 2026-08-19T16:30:00Z_
 _Verifier: Claude (gsd-verifier)_
