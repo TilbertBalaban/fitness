@@ -268,20 +268,18 @@ describe('catalog-filter integration — archiving every exercise leaves the cat
 });
 
 describe('resolveDetailActions', () => {
-  it('a seeded exercise (null owner) shows Duplicate and never Edit', () => {
-    const result = resolveDetailActions('user-a', null, null);
-    expect(result.showEdit).toBe(false);
-    expect(result.showDuplicate).toBe(true);
+  it('returns no ownership-gated edit-visibility key at all — edit visibility is unconditional', () => {
+    const result = resolveDetailActions(null);
+    expect(result).not.toHaveProperty('showEdit');
   });
 
-  it('a user-owned exercise shows both Edit and Duplicate', () => {
-    const result = resolveDetailActions('user-a', 'user-a', null);
-    expect(result.showEdit).toBe(true);
-    expect(result.showDuplicate).toBe(true);
+  it('always shows Duplicate, regardless of archive state', () => {
+    expect(resolveDetailActions(null).showDuplicate).toBe(true);
+    expect(resolveDetailActions('2026-08-18T00:00:00.000Z').showDuplicate).toBe(true);
   });
 
   it('archiveLabel is Archive when archivedAt is null and Unarchive when it is set', () => {
-    expect(resolveDetailActions('user-a', 'user-a', null).archiveLabel).toBe('Archive');
-    expect(resolveDetailActions('user-a', 'user-a', '2026-08-18T00:00:00.000Z').archiveLabel).toBe('Unarchive');
+    expect(resolveDetailActions(null).archiveLabel).toBe('Archive');
+    expect(resolveDetailActions('2026-08-18T00:00:00.000Z').archiveLabel).toBe('Unarchive');
   });
 });
