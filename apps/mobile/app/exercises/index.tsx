@@ -144,7 +144,8 @@ export default function ExercisesScreen() {
         }
         const loaded = await loadCatalogRows(db);
         if (mounted) setCatalog(loaded);
-      } catch {
+      } catch (error) {
+        console.error('catalog snapshot load failed', error);
         if (mounted) setFailed(true);
         return;
       }
