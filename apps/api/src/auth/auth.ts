@@ -4,18 +4,14 @@ import { expo } from '@better-auth/expo';
 import { db } from '../db/drizzle.module';
 import { schema } from '../db/schema';
 import { mailerPort } from '../mailer/mailer.module';
+import { resolveWebOrigins } from '../common/web-origins';
 
 const APP_SCHEME = 'fitness://';
 
-// The web build is a browser client on a real origin, so it needs that origin trusted or Better
-// Auth omits Access-Control-Allow-Credentials and every credentialed request fails CORS preflight.
-// 8081 is the Expo web dev server; any other origin (a static export, a deployed domain) must be
-// listed in WEB_ORIGINS. Native clients do not go through CORS — this is a web-only requirement,
-// and forgetting it breaks exactly one of the three targets.
-const WEB_ORIGINS = (process.env.WEB_ORIGINS ?? 'http://localhost:8081')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
+// trustedOrigins governs Better Auth's own origin/CSRF check and its redirect allowlist — it
+// produces no CORS response header. Framework-level CORS in main.ts is what makes a credentialed
+// browser request work; both lists are fed by resolveWebOrigins() so they cannot drift apart.
+const WEB_ORIGINS = resolveWebOrigins();
 
 // The deployed web build's own origin, where reset-password.web.tsx is served (D-07). Distinct
 // from WEB_ORIGINS (the Expo web dev server) because the client's requestPasswordReset redirectTo
