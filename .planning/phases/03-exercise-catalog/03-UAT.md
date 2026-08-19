@@ -1,5 +1,5 @@
 ---
-status: partial
+status: diagnosed
 phase: 03-exercise-catalog
 source: [03-VERIFICATION.md]
 started: 2026-08-19T16:45:00Z
@@ -8,7 +8,7 @@ updated: "2026-08-19T17:10:00Z"
 
 ## Current Test
 
-[testing paused — 4 items outstanding]
+[testing complete — 3 passed, 1 issue, 1 native-blocked]
 
 ## Tests
 
@@ -21,23 +21,23 @@ why_human: Security-relevant claim (T-03-58, WINDOWS #51/R6). Adding app/exercis
 ### 2. Image tiles actually paint on all three call sites
 
 expected: Real vendored images render at a visible, non-collapsed size on list-row thumbnails, Suggested-Alternatives thumbnails, and the detail hero.
-result: skipped
-reason: "User skipped remaining UAT tests"
-why_human: G-03-3's fix (resolveTileBox, absolute-inset fill, shared width contract) is proven by 20 new unit tests, a clean typecheck and a clean web bundle — but no pixel has ever been observed painting (WINDOWS #36/#37/#39/#46). This exact combination of green checks previously coexisted with a 100%-reproducible "no image ever paints" defect, so tests are weak evidence here.
+result: issue
+reported: "List-row thumbnails render as flat colour blocks, not recognisable exercise images. Observed in Chromium against the live stack 2026-08-19."
+severity: major
+observed: "The tile container is correctly 56x42 with overflow:hidden, but the <img> inside is laid out at the source's INTRINSIC size (750x500, 850x567, 800x533 - measured on 8 consecutive rows, every one), so each thumbnail shows a magnified top-left crop. '3/4 Sit-Up' renders as a solid near-black square. Mechanism: StyleSheet.absoluteFill sets insets but no width/height, so react-native-web substitutes the source's intrinsic dimensions, which win over right:0/bottom:0; resizeMode='cover' also arrives as object-fit:fill rather than cover. The detail hero is NOT affected - it paints the real photograph correctly (measured styleW/styleH 100%). The Suggested-Alternatives call site was not separately observed, but it uses the same EXERCISE_THUMBNAIL_WIDTH=56 tile, so it is likely affected by the same mechanism."
+note: "The 'No image available' string appearing in the detail hero's text content is NOT a defect - ExerciseImageTileView renders that label behind the image whenever width >= EXERCISE_IMAGE_LABEL_MIN_WIDTH, and an existing unit test asserts label and image render together."
 
 ### 3. FlashList recycling does not carry a failed image onto later rows
 
 expected: Each row's thumbnail reflects that row's own exercise; a load failure in one list slot does not persist onto a different exercise later recycled into the same slot.
-result: skipped
-reason: "User skipped remaining UAT tests"
-why_human: Code-confirmed defect WR-01 (03-REVIEW.md). FIXED 2026-08-19 by quick task 260819-wpp (commit b4ae1c3): ExerciseImageTile now stores which source failed (`failedKey`) rather than a bare boolean, derived during render rather than reset in an effect. 20 regression cases added; 3 of them were verified to fail against the pre-fix boolean semantics, so they genuinely discriminate. STILL SKIPPED because the fix is proven at the logic level only — a state-across-recycling defect cannot be fully caught by unit tests, and no pixel has been observed. Reproduce by throttling/blocking one image request, then scrolling past that slot.
+result: pass
+verified: "Observed in Chromium against the live stack 2026-08-19. Aborted every image request for seed_90_90_Hamstring at the network layer (1 request aborted), confirmed that row alone fell back to the empty placeholder tile, then scrolled ~12000px so the list recycled through many slots. Re-inspected the rendered rows: 12 recycled rows, every one showing its own image, and ZERO rows showing a placeholder for an exercise other than the blocked one. The WR-01 fix (commit b4ae1c3, quick task 260819-wpp) holds under real FlashList recycling, not only in unit tests."
 
 ### 4. Back control on the detail route, including direct URL load and refresh
-
 expected: A back control renders in the header; pressing it returns to the list. Reloading /exercises/seed_90_90_Hamstring directly still shows a working back control that replaces to /exercises rather than a dead or missing control.
-result: skipped
-reason: "User skipped remaining UAT tests"
-why_human: app/exercises/_layout.tsx and goBackOrReplace are structurally verified (anchor declared, function-valued headerLeft, both branches pass against a fake router in back.test.ts), but the header, its title, the control's real rendering, and react-navigation's real canGoBack predicate on a refreshed detail URL have never been observed in a browser (WINDOWS #49/#50, R4/R5).
+result: pass
+verified: "Observed in Chromium 2026-08-19. A visible 48x48 control with aria-label='Back' renders at (0,8) in the header on (a) in-app navigation from the list, (b) a cold direct load of /exercises/seed_90_90_Hamstring, and (c) a full page reload of that URL. Clicking it returns to the exercises list in all three cases. react-navigation's canGoBack predicate on a refreshed detail URL therefore resolves correctly and goBackOrReplace takes its replace branch."
+caveat: "Back lands on /exercises?id=seed_90_90_Hamstring, not a clean /exercises. The list renders correctly, so this is cosmetic URL noise rather than a broken control - logged as a follow-up, not a failure of this checkpoint."
 
 ### 5. Full native (iOS/Android) pass over every catalog screen
 
@@ -48,10 +48,52 @@ why_human: No Xcode or Android SDK on this machine (WINDOWS #16/#34/#52, R7). Pe
 ## Summary
 
 total: 5
-passed: 1
-issues: 0
+passed: 3
+issues: 1
 pending: 0
-skipped: 3
+skipped: 0
 blocked: 1
 
 ## Gaps
+
+- gap_id: G-03-2
+  truth: "Real vendored images render at a visible, non-collapsed size on list-row thumbnails, Suggested-Alternatives thumbnails, and the detail hero"
+  status: failed
+  reason: "Observed 2026-08-19 in Chromium: list-row thumbnails lay the <img> out at the source's intrinsic size (750x500, 850x567, 800x533 across 8 consecutive rows) inside a correct 56x42 overflow:hidden tile, so each renders a magnified top-left crop - a flat colour block. The detail hero is unaffected."
+  severity: major
+  test: 2
+  root_cause: "StyleSheet.absoluteFill supplies insets but no width/height. react-native-web then substitutes the image source's intrinsic dimensions, which take precedence over right:0/bottom:0, so the element never shrinks to its 56x42 parent. resizeMode='cover' also lands as object-fit:fill. The detail hero escapes this because its <img> resolves to width/height 100%."
+  artifacts:
+    - path: "apps/mobile/components/ExerciseImageTile.tsx"
+      issue: "ExerciseImageTileView passes style={StyleSheet.absoluteFill} to <Image> with no explicit width/height"
+  missing:
+    - "Give the tile image an explicit width:100%/height:100% (in addition to, or instead of, absoluteFill) so intrinsic dimensions cannot win"
+    - "Confirm resizeMode='cover' reaches the DOM as object-fit:cover"
+    - "Extend coverage to the Suggested-Alternatives call site, which shares EXERCISE_THUMBNAIL_WIDTH and was not separately observed"
+
+- gap_id: G-03-6
+  truth: "A deep link to /exercises/{id} resolves the exercise on a cold load, as a URL-addressable web route should"
+  status: failed
+  reason: "NOT one of the five planned checkpoints - found incidentally while verifying test 4. On a freshly signed-up account, loading /exercises/seed_90_90_Hamstring directly renders 'Exercise not found - This exercise may have been removed.' and STAYS that way: polled at 3, 6, 10, 15, 20, 30 and 40 seconds, unchanged. Visiting /exercises once, then returning to the same URL, renders the exercise correctly, and a hard reload then keeps working."
+  severity: major
+  test: null
+  root_cause: "Not diagnosed. The evidence indicates the catalog snapshot is loaded into local SQLite by the exercises LIST screen, and the detail route does not itself ensure the catalog is populated - so a deep link that never mounts the list finds an empty table. Confirmed not a race: the failure is stable over 40s."
+  artifacts: []
+  missing:
+    - "Diagnose which screen owns the catalog snapshot load and make the detail route resilient to a cold, list-never-mounted start"
+
+## Verification Method
+
+Tests 2, 3 and 4 were driven with Playwright/Chromium on 2026-08-19 against the live stack:
+NestJS API on :4000 (health ok), Postgres with 880 seeded exercises, PowerSync on :8080, and
+`expo start --web` on :8081. Each run signed up a fresh account so local SQLite started empty.
+The scratch harness was removed after the run; nothing was committed to the e2e suite.
+
+Test 3 was exercised adversarially rather than observationally: one exercise's image requests were
+aborted at the network layer so a genuine failure existed to leak, then the list was scrolled far
+enough to recycle slots many times over.
+
+## Follow-Ups
+
+- Back navigation lands on `/exercises?id={id}` rather than a clean `/exercises`. The list renders
+  correctly, so this is URL noise, not a broken control.
