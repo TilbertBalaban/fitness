@@ -247,8 +247,7 @@ export default function ExercisesScreen() {
         )}
         ListHeaderComponent={
           <View className="mt-xl gap-md">
-            <View className="flex-row items-center justify-between gap-sm">
-              <Text className="text-heading font-semibold text-foreground">Exercises</Text>
+            <View className="flex-row items-center justify-end gap-sm">
               <PrimaryButton label="Add Custom Exercise" onPress={() => handleAddCustomExercisePress(router)} />
             </View>
 
