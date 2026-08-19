@@ -1,45 +1,41 @@
 ---
-status: partial
+status: complete
 phase: 01-cross-platform-foundation
 source: [01-VERIFICATION.md]
 started: 2026-08-14T16:10:00Z
-updated: 2026-08-15T07:30:00Z
+updated: 2026-08-19T00:00:00Z
 ---
 
 ## Current Test
 
-[testing paused — 5 items outstanding]
+[testing complete]
 
 ## Tests
 
 ### 1. Sign up, sign in, and reach the same authenticated five-tab home screen on a real iOS simulator/device
 expected: Native tab chrome renders (NativeTabs), the authenticated stack shows on first frame, Home/Programs/Workout/History/Profile all reachable, identical account/session as the browser and Android builds
-result: blocked
-blocked_by: physical-device
-reason: "No iOS toolchain on this machine — xcode-select points at /Library/Developer/CommandLineTools, no Xcode.app installed, so `xcrun simctl` is unavailable and no simulator can be booted. Automated evidence re-run instead: mobile suite 86/86 pass, `tsc --noEmit` exit 0. Neither renders native UI."
+result: skipped
+reason: "Deferred follow-up: user decision 2026-08-19 — all native (iOS + Android) verification is deferred to the final native verification sweep, Phase 999.1. Environment re-checked 2026-08-19 and still has no iOS toolchain (xcode-select → /Library/Developer/CommandLineTools, no Xcode.app, `xcrun simctl` unavailable), so this checkpoint cannot be run on this machine. Automated evidence stands: mobile suite 86/86 pass, `tsc --noEmit` exit 0. Neither renders native UI."
 
 ### 2. Sign up, sign in, and reach the same authenticated five-tab home screen on a real Android emulator/device
 expected: Same as iOS row above, on Android
 result: skipped
-reason: "Deferred follow-up: user decision 2026-08-15 — all Android verification is deferred to the final phase and will be performed in one pass once every phase is built. Tracked as Phase 999.1 in ROADMAP.md Backlog. (Environment state at deferral: no ~/Library/Android/sdk, `adb` not on PATH, no emulator image, no attached device.)"
+reason: "Deferred follow-up: user decision 2026-08-15 — all Android verification is deferred to the final phase and will be performed in one pass once every phase is built. Tracked as Phase 999.1 in ROADMAP.md Backlog. (Environment state re-confirmed 2026-08-19: no ~/Library/Android/sdk, `adb` not on PATH, no emulator image, no attached device.)"
 
 ### 3. Sign in on a device, put it in airplane mode, wait, and cold-start the app after a genuinely elapsed multi-week gap (or at minimum an extended offline period)
 expected: Authenticated UI renders immediately with no network wait and no sign-out, per D-01/D-02
-result: blocked
-blocked_by: physical-device
-reason: "Requires a real device, real OS-level network loss, and genuinely elapsed time — none producible here. session-refresh.test.ts still proves the classification logic in isolation (part of the 86/86 pass), but does not exercise the OS cold-start/network-loss path."
+result: skipped
+reason: "Deferred follow-up: user decision 2026-08-19 — deferred to Phase 999.1. Requires a real device, real OS-level network loss, and genuinely elapsed time — none producible on this machine. session-refresh.test.ts still proves the classification logic in isolation (part of the 86/86 pass), but does not exercise the OS cold-start/network-loss path."
 
 ### 4. On a real iOS or Android build, confirm the attached cookie header is accepted by the running server and the session row is deleted on explicit sign-out
 expected: Same behavior the e2e suite (native-session.e2e-spec.ts) proves over HTTP, now observed on a physical/simulated device
-result: blocked
-blocked_by: physical-device
-reason: "HTTP-level backstop independently re-run and green this session: `pnpm --filter api test:e2e` against live Postgres — 5 suites / 22 tests pass, including native-session.e2e-spec.ts. The device-level half of the checkpoint is unmet: no iOS/Android build can be installed or run here."
+result: skipped
+reason: "Deferred follow-up: user decision 2026-08-19 — the device-level half is deferred to Phase 999.1. The HTTP-level backstop is independently green: `pnpm --filter api test:e2e` against live Postgres — 5 suites / 22 tests pass, including native-session.e2e-spec.ts. Only the on-device observation is outstanding."
 
-### 5. Confirm maximum OS accessibility font scale wrap-and-grow behavior (auth fields, tab bar labels, placeholder body copy) on iOS
+### 5. Confirm maximum OS accessibility font scale wrap-and-grow behavior (auth fields, tab bar labels, placeholder body copy) on iOS and Android
 expected: Long text wraps and containers grow rather than clipping or truncating, per UI-SPEC R1
-result: blocked
-blocked_by: physical-device
-reason: "Narrowed to iOS only — the Android half is deferred to the final phase per user decision 2026-08-15 (Phase 999.1). The iOS half still requires setting OS accessibility text size on a simulator/device and remains blocked while no Xcode toolchain is installed. Web-viewport approximation was already performed in a prior pass (WINDOWS.md #9) and is explicitly not accepted as equivalent by 01-VERIFICATION.md."
+result: skipped
+reason: "Deferred follow-up: user decision 2026-08-19 — both halves now deferred to Phase 999.1 (the Android half was already deferred 2026-08-15). Requires setting OS accessibility text size on a simulator/device; no toolchain installed. Web-viewport approximation was performed in a prior pass (WINDOWS.md #9) and is explicitly not accepted as equivalent by 01-VERIFICATION.md."
 
 ## Summary
 
@@ -47,27 +43,37 @@ total: 5
 passed: 0
 issues: 0
 pending: 0
-skipped: 1
-blocked: 4
+skipped: 5
+blocked: 0
 
 ## Gaps
 
-<!-- No gaps: all outstanding items are prerequisite/environment gates, not code defects. -->
+<!-- No gaps: all outstanding items are prerequisite/environment gates deferred to Phase 999.1, not code defects. -->
 
 ## Deferred Follow-Ups
 
+- test: 1
+  idea: "iOS sign-up/sign-in reaching the authenticated five-tab home screen — deferred to the Phase 999.1 native verification sweep."
+  deferred_at: 2026-08-19
 - test: 2
   idea: "Android verification deferred to the final phase — test the Android app once every phase is built, in a single pass. Tracked as Phase 999.1 in ROADMAP.md Backlog."
   deferred_at: 2026-08-15
+- test: 3
+  idea: "Offline cold-start after a genuinely elapsed multi-week gap on a real device — deferred to Phase 999.1."
+  deferred_at: 2026-08-19
+- test: 4
+  idea: "On-device cookie acceptance and sign-out session-row deletion — deferred to Phase 999.1; HTTP-level e2e backstop already green."
+  deferred_at: 2026-08-19
 - test: 5
-  idea: "Android half of the accessibility font-scale check deferred to the final phase alongside test 2; the iOS half stays in scope for Phase 01."
-  deferred_at: 2026-08-15
+  idea: "Maximum OS accessibility font-scale wrap-and-grow on iOS and Android — deferred to Phase 999.1 (Android half deferred 2026-08-15, iOS half 2026-08-19)."
+  deferred_at: 2026-08-19
 
 ## Web-Target Verification
 
 Driven with Playwright/Chromium against `expo start --web` (localhost:8081) + NestJS API
 (localhost:3000) + live Postgres, 2026-08-14. This is the **web half** of the phase goal only —
-it does NOT close tests 1-5 above, which are native-device by construction and remain blocked.
+it does NOT close tests 1-5 above, which are native-device by construction and are deferred to
+Phase 999.1.
 
 | # | Web check | Result |
 |---|-----------|--------|

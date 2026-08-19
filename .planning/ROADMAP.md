@@ -388,18 +388,21 @@ Plans:
 
 ## Backlog
 
-### Phase 999.1: Android verification sweep (BACKLOG)
+### Phase 999.1: Native verification sweep — iOS + Android (BACKLOG)
 
-**Goal**: Verify the Android build across every phase's UAT criteria in a single pass, once all phases are built
+**Goal**: Verify the iOS and Android builds against every phase's native UAT criteria in a single pass, once all phases are built
 **Source phase**: all (project-wide policy)
-**Deferred at**: 2026-08-15 by user decision during `/gsd-verify-work 01`
-**Policy**: Android-specific UAT items are skipped in every phase and accumulate here. iOS and web verification proceed normally per phase and are NOT deferred.
-**Prerequisites**: Android SDK + JDK 17 + emulator image (none installed as of deferral), Expo dev-client Android build
+**Deferred at**: Android 2026-08-15; iOS 2026-08-19 — both by user decision during `/gsd-verify-work 01`
+**Policy**: Native-only UAT items (iOS and Android) are skipped in every phase and accumulate here. Web verification proceeds normally per phase and is NOT deferred.
+**Prerequisites**: Xcode + iOS simulator (absent as of deferral: `xcode-select` → CommandLineTools, no Xcode.app, `xcrun simctl` unavailable), Android SDK + JDK 17 + emulator image (absent), Expo dev-client builds for both platforms
 **Accumulated items**:
 
+- [ ] Phase 01 test 1: sign up / sign in reaching the authenticated five-tab home screen on iOS
 - [ ] Phase 01 test 2: sign up / sign in reaching the authenticated five-tab home screen on Android
-- [ ] Phase 01 test 5: maximum OS accessibility font-scale wrap-and-grow on Android
-- [ ] (append Android items from phases 02-12 as each phase defers them)
+- [ ] Phase 01 test 3: offline cold-start after a genuinely elapsed multi-week gap renders authenticated UI with no sign-out (D-01/D-02)
+- [ ] Phase 01 test 4: on-device cookie header accepted by the server and session row deleted on explicit sign-out
+- [ ] Phase 01 test 5: maximum OS accessibility font-scale wrap-and-grow on iOS and Android
+- [ ] (append native items from phases 02-12 as each phase defers them)
 
 ## Progress
 
