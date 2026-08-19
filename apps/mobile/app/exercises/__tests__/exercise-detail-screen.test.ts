@@ -78,4 +78,12 @@ describe('exercise detail screen — structural invariants', () => {
   it('never renders the destructive token directly — it is scoped to ArchiveDialog only', () => {
     expect(source).not.toMatch(/destructive/);
   });
+
+  it('never references the removed ownership-gated edit-visibility flag', () => {
+    expect(source).not.toMatch(/showEdit/);
+  });
+
+  it('references the edit route path, proving the Edit control is present rather than merely un-gated', () => {
+    expect(source).toContain('/exercises/edit/[id]');
+  });
 });

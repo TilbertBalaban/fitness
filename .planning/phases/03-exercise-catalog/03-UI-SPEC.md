@@ -90,6 +90,7 @@ Accent reserved for: primary CTA fill, active-filter-chip indicator, focused-inp
 | Error state | **Exercise catalog couldn't load** / "Restart the app to try again. Your saved exercises and history are safe." — scoped to the rare local-seed-failure path (see UI Considerations, `error` row) |
 | Destructive confirmation | **Archive Exercise**: "Archiving removes it from pickers, but any logged sets stay in your history. Archive anyway?" — confirm button label **Archive**, cancel button label **Cancel**, following `SignOutDialog`'s existing two-button confirmation layout exactly |
 | Smart-swap empty state | **No good alternatives found** / "Try browsing the full catalog instead." with a **Browse Catalog** link back to the list |
+| Back | **Back** — present in the header on every route in the exercises segment; returns to the previous screen when one exists, and replaces the route with the catalog list when there is none |
 
 ---
 
@@ -175,6 +176,18 @@ Element key: **E1** exercise list screen · **E2** exercise list row · **E3** e
      ⊘ dismissed  → not applicable to this surface, reason recorded; NOT lifted into must_haves
      ⚠ unresolved → an explicit planner assumption (surfaced, never silently dropped)
      Rows are REPLACED (not appended) on a probe re-run — idempotent. -->
+
+---
+
+## Navigation Contract
+
+The exercises segment (`app/exercises/_layout.tsx`) owns its own stack with `unstable_settings.anchor: 'index'`, so a deep link into the detail, create or edit route resolves against a stack that already has the catalog list beneath it — a direct URL load or a browser refresh of any of those routes still has a way back.
+
+**Back-gesture platform split, stated plainly:**
+- **Native (iOS/Android):** the segment's `gestureEnabled` and `fullScreenGestureEnabled` options deliver swipe-back in addition to the header's Back control.
+- **Web:** there is no pan-gesture back at all. Expo Router's web stack view contains no gesture code whatsoever — a web swipe-back is unsatisfiable and must not be promised anywhere in this contract, the plan or the code. On web the header's Back control and browser history (which Expo Router already drives) are the only back affordances. Any acceptance criterion asking for a web swipe gesture is satisfied by those two affordances instead, not by an actual gesture.
+
+**Edit visibility vs. edit permission.** The Edit control renders unconditionally on the exercise detail screen for every exercise, seeded or custom. Visibility is not permission: the edit route continues to resolve `resolveEditAccess(ownerUserId, currentUserId)` and renders its not-permitted branch — "Seeded exercises can't be edited directly. Duplicate it to make your own editable copy." plus a Duplicate action — for any non-owner, including every seeded exercise. This supersedes the previous ownership-gated `showEdit` visibility flag: that flag hid the control instead of routing to the explanation, leaving the not-permitted branch unreachable except by typing the URL directly.
 
 ---
 

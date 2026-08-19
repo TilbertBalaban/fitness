@@ -134,7 +134,6 @@ export default function ExerciseDetailScreen() {
   const [detail, setDetail] = useState<ExerciseDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [ownerId, setOwnerId] = useState<string | null>(null);
   const [preference, setPreference] = useState<ExercisePreference>(DEFAULT_PREFERENCE);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [swapCandidates, setSwapCandidates] = useState<ScoredCandidate[]>([]);
@@ -156,7 +155,6 @@ export default function ExerciseDetailScreen() {
           loadSwapCandidates(db),
         ]);
         if (!mounted) return;
-        setOwnerId(ownerAndVariation.ownerId);
         setPreference(pref);
 
         const target: SwapExercise = {
@@ -183,7 +181,7 @@ export default function ExerciseDetailScreen() {
     };
   }, [id, userId]);
 
-  const actions = resolveDetailActions(userId, ownerId, preference.archivedAt);
+  const actions = resolveDetailActions(preference.archivedAt);
 
   // Optimistic local-first writes (UI-SPEC E7) — local state updates immediately, no
   // network-dependent spinner and no failure path to render, since the write cannot fail against
@@ -293,17 +291,15 @@ export default function ExerciseDetailScreen() {
           </Pressable>
         ) : null}
 
-        {actions.showEdit ? (
-          <Link href={{ pathname: '/exercises/edit/[id]', params: { id: detail.id } }} asChild>
-            <Pressable
-              accessibilityRole="button"
-              style={{ minWidth: 48, minHeight: 48 }}
-              className="items-center justify-center rounded-md border border-foreground-muted px-md py-sm"
-            >
-              <Text className="text-body font-normal text-foreground">Edit</Text>
-            </Pressable>
-          </Link>
-        ) : null}
+        <Link href={{ pathname: '/exercises/edit/[id]', params: { id: detail.id } }} asChild>
+          <Pressable
+            accessibilityRole="button"
+            style={{ minWidth: 48, minHeight: 48 }}
+            className="items-center justify-center rounded-md border border-foreground-muted px-md py-sm"
+          >
+            <Text className="text-body font-normal text-foreground">Edit</Text>
+          </Pressable>
+        </Link>
       </View>
 
       <View className="mt-md">

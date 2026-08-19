@@ -119,27 +119,20 @@ export async function setNeverSuggest(
 }
 
 export interface DetailActionVisibility {
-  showEdit: boolean;
   showDuplicate: boolean;
   archiveLabel: 'Archive' | 'Unarchive';
 }
 
 // The detail screen's control-visibility predicate, extracted here (rather than inlined in the
-// hook-bearing screen component) so it stays unit-testable without a renderer. `exerciseOwnerId`
-// is null for every seeded exercise (seededExercise carries no owner column at all) and the
-// current user's own id for a custom row the screen loaded from `exercise` — PowerSync's sync
-// rules only ever deliver a user's own rows there, so a non-null, non-matching owner id is not a
-// reachable case in production, but the equality check is written explicitly rather than assumed.
-// Duplicate is offered regardless of ownership (a user may want a second copy of their own
-// exercise too); Edit is offered only when owned — a seeded exercise never renders Edit.
-export function resolveDetailActions(
-  currentUserId: string | null,
-  exerciseOwnerId: string | null,
-  archivedAt: string | null,
-): DetailActionVisibility {
-  const owned = exerciseOwnerId !== null && exerciseOwnerId === currentUserId;
+// hook-bearing screen component) so it stays unit-testable without a renderer. Edit VISIBILITY is
+// unconditional — the control renders for every exercise, seeded or owned — and edit PERMISSION
+// is enforced separately, at the edit route, by resolveEditAccess, which already returns
+// not-permitted for any non-owner. Conflating those two concerns previously hid the Edit control
+// entirely for seeded exercises and made the not-permitted explanation screen unreachable by
+// navigation; keeping them apart is the point of this shape. Duplicate is offered regardless of
+// ownership (a user may want a second copy of their own exercise too).
+export function resolveDetailActions(archivedAt: string | null): DetailActionVisibility {
   return {
-    showEdit: owned,
     showDuplicate: true,
     archiveLabel: archivedAt !== null ? 'Unarchive' : 'Archive',
   };
