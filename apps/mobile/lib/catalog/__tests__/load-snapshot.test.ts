@@ -18,6 +18,12 @@ type DbSchema = typeof import('../../db/schema');
 // regardless of the row's own field values (e.g. a seeded exercise.user_id of null). Passing
 // `localOnlyTables` into the fake is what lets a test assert the true, scoped claim rather than a
 // blanket "the whole queue is zero" claim that the real engine would falsify for `exercise`.
+// engine's own refusal text (verbatim from .planning/debug/exercise-catalog-load-failure.md's
+// real sqlite3 probe) — a fake that merely lacked these methods would fail a reintroduction of
+// the conflict-clause grammar with an unhelpful "not a function" instead of a message that reads
+// like the real defect.
+const UPSERT_AGAINST_VIEW_ERROR = 'cannot UPSERT a view';
+
 function fakeDb(schema: DbSchema, localOnlyTables: unknown[]) {
   const rows = new Map<unknown, Record<string, unknown>[]>([
     [schema.muscleGroup, []],
@@ -29,16 +35,22 @@ function fakeDb(schema: DbSchema, localOnlyTables: unknown[]) {
   const localOnlySet = new Set(localOnlyTables);
   let crudCount = 0;
 
-  function upsert(table: unknown, values: Record<string, unknown>) {
+  // Raises a uniqueness failure when the id is already present, mirroring a real INSERT against a
+  // populated view — this is what makes the 3,134-mapping expectation an actual assertion about
+  // duplicate handling (Trap 1) rather than an accident.
+  function insertRow(table: unknown, values: Record<string, unknown>) {
     const existing = rows.get(table) ?? [];
-    const index = existing.findIndex((row) => row.id === values.id);
-    if (index >= 0) {
-      existing[index] = values;
-    } else {
-      existing.push(values);
-      if (!localOnlySet.has(table)) crudCount += 1;
+    if (existing.some((row) => row.id === values.id)) {
+      throw new Error(`UNIQUE constraint failed: id`);
     }
+    existing.push(values);
     rows.set(table, existing);
+    if (!localOnlySet.has(table)) crudCount += 1;
+  }
+
+  interface InsertValuesResult extends PromiseLike<void> {
+    onConflictDoUpdate: (args: { target?: unknown; set: Record<string, unknown> }) => Promise<void>;
+    onConflictDoNothing: (args?: { target?: unknown }) => Promise<void>;
   }
 
   interface FakeDb {
@@ -49,9 +61,7 @@ function fakeDb(schema: DbSchema, localOnlyTables: unknown[]) {
       };
     };
     insert: (table: unknown) => {
-      values: (values: Record<string, unknown>) => {
-        onConflictDoUpdate: (args: { target?: unknown; set: Record<string, unknown> }) => Promise<void>;
-      };
+      values: (values: Record<string, unknown>) => InsertValuesResult;
     };
     update: (table: unknown) => {
       set: (setValues: Record<string, unknown>) => { where: (condition?: unknown) => Promise<void> };
@@ -75,19 +85,30 @@ function fakeDb(schema: DbSchema, localOnlyTables: unknown[]) {
       },
     }),
     insert: (table: unknown) => ({
-      values: (values: Record<string, unknown>) => ({
-        onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => {
-          upsert(table, { ...values, ...set });
-          return Promise.resolve();
-        },
+      // A thenable, not an eagerly-run insert — the production call no longer chains a conflict
+      // method onto this, so awaiting it directly is what performs the write. Calling
+      // onConflictDoUpdate/onConflictDoNothing instead never runs insertRow at all, matching a
+      // real engine that rejects at prepare time before any row is touched.
+      values: (values: Record<string, unknown>): InsertValuesResult => ({
+        then: (onFulfilled, onRejected) =>
+          new Promise<void>((resolve, reject) => {
+            try {
+              insertRow(table, values);
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          }).then(onFulfilled, onRejected),
+        onConflictDoUpdate: () => Promise.reject(new Error(UPSERT_AGAINST_VIEW_ERROR)),
+        onConflictDoNothing: () => Promise.reject(new Error(UPSERT_AGAINST_VIEW_ERROR)),
       }),
     }),
-    // A real WHERE-clause condition (drizzle-orm's own and()/isNull()/notInArray(), not mocked
-    // here) is opaque to this fake — it applies `setValues` to every row currently in `table`
-    // rather than evaluating the condition. Safe for every assertion in this file (none inspect
-    // archivedAt); a genuinely selective archive-drift assertion needs a real engine or a
-    // purpose-built condition evaluator, neither of which exists in this Jest/Node sandbox
-    // (WINDOWS #22/#33's standing constraint).
+    // A real WHERE-clause condition (drizzle-orm's own eq()/isNull()/inArray(), not mocked here)
+    // is opaque to this fake — it applies `setValues` to every row currently in `table` rather
+    // than evaluating the condition. Safe for every assertion in this file (none inspect
+    // archivedAt, and no table here ever holds more than one pre-existing row a per-id update
+    // needs to distinguish); a genuinely selective per-row update assertion needs a real engine —
+    // that coverage lives in e2e/catalog-load.spec.ts's second phase, not here.
     update: (table: unknown) => ({
       set: (setValues: Record<string, unknown>) => ({
         where: () => {
@@ -161,10 +182,42 @@ describe('loadCatalogSnapshot — happy path (bundled snapshot)', () => {
     expect(rows.get(schema.muscleGroup)?.length).toBe(19);
     // The artifact's raw mapping array carries 43 rows sharing an (exercise_id, muscle_group_id)
     // pair with another row (03-04 upstream data-quality debt, also handled server-side by
-    // seed-catalog.ts's explicit dedup) — this loop's per-row onConflictDoUpdate naturally
-    // deduplicates via last-write-wins on the composite id, unlike a bulk multi-row insert.
+    // seed-catalog.ts's explicit dedup) — this loop's mutate-as-you-go existence Set naturally
+    // deduplicates via last-write-wins on the composite id (Trap 1), unlike a bulk multi-row insert.
     expect(rows.get(schema.exerciseMuscleMapping)?.length).toBe(3134);
     expect(rows.get(schema.catalogMeta)?.length).toBe(1);
+  });
+});
+
+describe('fakeDb — engine-shape assertions (regression gate for the upsert-against-a-view defect)', () => {
+  it('raises the engine\'s own refusal text when onConflictDoUpdate is called on an insert, without a browser', async () => {
+    const schema = loadSchema();
+    const { db } = fakeDb(schema, []);
+
+    await expect(
+      db
+        .insert(schema.muscleGroup)
+        .values({ id: 'chest', name: 'Chest', bodyRegion: 'chest' })
+        .onConflictDoUpdate({ target: schema.muscleGroup.id, set: { name: 'Chest', bodyRegion: 'chest' } }),
+    ).rejects.toThrow('cannot UPSERT a view');
+  });
+
+  it('raises the engine\'s own refusal text when onConflictDoNothing is called on an insert, without a browser', async () => {
+    const schema = loadSchema();
+    const { db } = fakeDb(schema, []);
+
+    await expect(
+      db.insert(schema.muscleGroup).values({ id: 'chest', name: 'Chest', bodyRegion: 'chest' }).onConflictDoNothing(),
+    ).rejects.toThrow('cannot UPSERT a view');
+  });
+
+  it('raises a uniqueness failure when inserting a row whose id is already present', async () => {
+    const schema = loadSchema();
+    const { db } = fakeDb(schema, []);
+
+    await db.insert(schema.muscleGroup).values({ id: 'chest', name: 'Chest', bodyRegion: 'chest' });
+
+    await expect(db.insert(schema.muscleGroup).values({ id: 'chest', name: 'Chest v2', bodyRegion: 'chest' })).rejects.toThrow();
   });
 });
 
@@ -243,25 +296,16 @@ describe('loadCatalogSnapshot — sync-queue visibility of localOnly tables', ()
     // Isolate the localOnly-only claim: write directly to the four localOnly tables without the
     // exercise insert loadCatalogSnapshot also performs, so this assertion is not confounded by
     // the synced exercise table's own crud behavior (covered separately below).
-    await db.insert(schema.muscleGroup).values({ id: 'chest', name: 'Chest', bodyRegion: 'chest' }).onConflictDoUpdate({
-      target: schema.muscleGroup.id,
-      set: { name: 'Chest', bodyRegion: 'chest' },
-    });
+    await db.insert(schema.muscleGroup).values({ id: 'chest', name: 'Chest', bodyRegion: 'chest' });
     await db
       .insert(schema.seededExercise)
-      .values({ id: 'ex-1', name: 'Bench Press', loadType: 'external_weight', unilateral: false, source: 'test' })
-      .onConflictDoUpdate({ target: schema.seededExercise.id, set: { name: 'Bench Press' } });
+      .values({ id: 'ex-1', name: 'Bench Press', loadType: 'external_weight', unilateral: false, source: 'test' });
     await db
       .insert(schema.exerciseMuscleMapping)
-      .values({ id: 'ex-1:chest', exerciseId: 'ex-1', muscleGroupId: 'chest', role: 'primary', weightFactor: '1.00' })
-      .onConflictDoUpdate({
-        target: schema.exerciseMuscleMapping.id,
-        set: { role: 'primary', weightFactor: '1.00' },
-      });
+      .values({ id: 'ex-1:chest', exerciseId: 'ex-1', muscleGroupId: 'chest', role: 'primary', weightFactor: '1.00' });
     await db
       .insert(schema.catalogMeta)
-      .values({ id: 'singleton', catalogVersion: 'test-0001', appliedAt: '2026-01-01T00:00:00.000Z' })
-      .onConflictDoUpdate({ target: schema.catalogMeta.id, set: { catalogVersion: 'test-0001' } });
+      .values({ id: 'singleton', catalogVersion: 'test-0001', appliedAt: '2026-01-01T00:00:00.000Z' });
 
     expect(getCrudCount()).toBe(0);
   });

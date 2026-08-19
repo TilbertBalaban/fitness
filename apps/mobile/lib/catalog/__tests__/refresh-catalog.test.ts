@@ -124,13 +124,17 @@ describe('refreshCatalog — a custom exercise row is byte-identical after a suc
         [{ id: 'custom-1', userId: 'user-1', name: 'My Custom Curl', isCustom: true, source: 'custom', loadType: 'external_weight' }],
       ],
     ]);
-    function upsert(table: unknown, values: Record<string, unknown>) {
+    // Raises a uniqueness failure when the id is already present — mirrors a real INSERT against
+    // a populated view (load-snapshot.test.ts's fakeDb establishes the same shape).
+    function insertRow(table: unknown, values: Record<string, unknown>) {
       const existing = rows.get(table) ?? [];
-      const index = existing.findIndex((row) => row.id === values.id);
-      if (index >= 0) existing[index] = values;
-      else existing.push(values);
+      if (existing.some((row) => row.id === values.id)) {
+        throw new Error('UNIQUE constraint failed: id');
+      }
+      existing.push(values);
       rows.set(table, existing);
     }
+    const UPSERT_AGAINST_VIEW_ERROR = 'cannot UPSERT a view';
     const fakeDb = {
       select: (fields: Record<string, unknown>) => ({
         from: (table: unknown) => {
@@ -147,13 +151,30 @@ describe('refreshCatalog — a custom exercise row is byte-identical after a suc
         },
       }),
       insert: (table: unknown) => ({
+        // A thenable, not an eagerly-run insert — the production call no longer chains a conflict
+        // method onto this. Calling onConflictDoUpdate/onConflictDoNothing instead never runs
+        // insertRow at all, matching a real engine that rejects at prepare time before any row is
+        // touched.
         values: (values: Record<string, unknown>) => ({
-          onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => {
-            upsert(table, { ...values, ...set });
-            return Promise.resolve();
-          },
+          then: (
+            onFulfilled?: ((value: void) => unknown) | null,
+            onRejected?: ((reason: unknown) => unknown) | null,
+          ) =>
+            new Promise<void>((resolve, reject) => {
+              try {
+                insertRow(table, values);
+                resolve();
+              } catch (err) {
+                reject(err);
+              }
+            }).then(onFulfilled ?? undefined, onRejected ?? undefined),
+          onConflictDoUpdate: () => Promise.reject(new Error(UPSERT_AGAINST_VIEW_ERROR)),
+          onConflictDoNothing: () => Promise.reject(new Error(UPSERT_AGAINST_VIEW_ERROR)),
         }),
       }),
+      // A real WHERE-clause condition is opaque to this fake, matching load-snapshot.test.ts's
+      // fakeDb — this test never exercises the per-row update branch (only fresh inserts), so
+      // condition-blindness is safe here.
       update: (table: unknown) => ({
         set: (setValues: Record<string, unknown>) => ({
           where: () => {
