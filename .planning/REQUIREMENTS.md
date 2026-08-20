@@ -31,7 +31,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [x] **EXER-06**: User can archive an exercise, and its past logged sets remain intact and correctly attributed
 - [x] **EXER-07**: User can mark an exercise as never-suggest, without deleting it
 - [x] **EXER-08**: User can log sets against exercises of any load type — external weight, bodyweight, bodyweight plus added load, assisted, time-based, or distance-based
-- [ ] **EXER-09**: User's bodyweight contribution is accounted for on bodyweight-loaded exercises so volume and load stay meaningful as bodyweight changes
+- [x] **EXER-09**: User's bodyweight contribution is accounted for on bodyweight-loaded exercises so volume and load stay meaningful as bodyweight changes
 - [x] **EXER-10**: User can request suggested alternative exercises for any exercise (smart swap)
 
 ### Program Builder
@@ -208,7 +208,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | EXER-06 | Phase 3 — Exercise Catalog | Complete |
 | EXER-07 | Phase 3 — Exercise Catalog | Complete |
 | EXER-08 | Phase 3 — Exercise Catalog | Complete |
-| EXER-09 | Phase 3 — Exercise Catalog | Pending |
+| EXER-09 | Phase 3 — Exercise Catalog | Complete |
 | EXER-10 | Phase 3 — Exercise Catalog | Complete |
 | PROG-01 | Phase 4 — Program Builder | Pending |
 | PROG-02 | Phase 4 — Program Builder | Pending |

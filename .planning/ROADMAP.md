@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Cross-Platform Foundation** - Monorepo, Expo app on iOS/Android/web, NestJS API, accounts
 - [x] **Phase 2: Data Model & Sync Engine** - Domain schema, local SQLite, offline writes, multi-device convergence (completed 2026-08-17)
-- [ ] **Phase 3: Exercise Catalog** - ~900 seeded exercises, muscle taxonomy, load types, custom exercises
+- [x] **Phase 3: Exercise Catalog** - ~900 seeded exercises, muscle taxonomy, load types, custom exercises (completed 2026-08-20)
 - [ ] **Phase 4: Program Builder** - Author routines with days, cycles, and per-exercise targets
 - [ ] **Phase 5: In-Gym Session Logging** - The core loop: log a full offline workout without friction *(dogfooding starts here)*
 - [ ] **Phase 6: Gym Profiles & Plate Math** - Multi-gym equipment config and equipment-aware plate calculation
@@ -209,8 +209,8 @@ Plans:
 
 **Wave 12** *(gap closure — blocked on Wave 11 completion; the three plans below are parallel, with disjoint files)*
 
-- [ ] 03-15-PLAN.md — Close G-03-2: a tile image a source's intrinsic dimensions cannot outgrow, with tests that fail on that defect specifically
-- [ ] 03-16-PLAN.md — Close G-03-6: one catalog-hydration seam for the whole exercises segment, so a cold deep link stops reporting "not found"
+- [x] 03-15-PLAN.md — Close G-03-2: a tile image a source's intrinsic dimensions cannot outgrow, with tests that fail on that defect specifically
+- [x] 03-16-PLAN.md — Close G-03-6: one catalog-hydration seam for the whole exercises segment, so a cold deep link stops reporting "not found"
 - [x] 03-17-PLAN.md — Close WR-03: automated regression coverage for the exercises auth guard — route hoisting plus the guard boundary itself
 
 ### Phase 4: Program Builder
@@ -419,7 +419,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
-| 3. Exercise Catalog | 15/17 | In Progress|  |
+| 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
 | 4. Program Builder | 0/TBD | Not started | - |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
