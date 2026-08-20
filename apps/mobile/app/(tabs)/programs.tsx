@@ -1,12 +1,15 @@
 import { FlashList } from '@shopify/flash-list';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
+import { ExerciseSlotRow } from '@/components/ExerciseSlotRow';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { TextField } from '@/components/TextField';
 import { getPowerSync } from '@/lib/db/powersync';
 import { createRoutine, loadRoutines, type RoutineSummary } from '@/lib/db/programs/create-routine';
-import { addDay, removeDay, removeExercise, renameDay } from '@/lib/db/programs/days';
+import { addDay, addExercisesToDay, removeDay, removeExercise, renameDay } from '@/lib/db/programs/days';
 import { loadExerciseNameMap, loadProgramTree, type ProgramTree } from '@/lib/db/programs/load-program';
+import { setExerciseTargets, type TargetDraft } from '@/lib/db/programs/targets';
 
 const SKELETON_ROW_COUNT = 3;
 
@@ -24,6 +27,12 @@ export function deriveProgramsScreenState({ failed, routines }: ProgramsScreenSt
   if (routines === null) return 'loading';
   if (routines.length === 0) return 'empty';
   return 'populated';
+}
+
+// One expanded row at a time — tapping the open row closes it, tapping a different row switches
+// to it. Pure so ExerciseSlotRow's expand/collapse behavior is asserted without a rendered tree.
+export function nextExpandedSlotId(current: string | null, tapped: string): string | null {
+  return current === tapped ? null : tapped;
 }
 
 export interface SlotTargets {
@@ -96,6 +105,8 @@ export default function ProgramsScreen() {
   const [newDayName, setNewDayName] = useState('');
   const [renamingDayId, setRenamingDayId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [expandedSlotId, setExpandedSlotId] = useState<string | null>(null);
+  const [pickerDayId, setPickerDayId] = useState<string | null>(null);
 
   // Re-runs the same loader after a successful create — never mutates the loaded array in place,
   // so the list always reflects what local SQLite actually holds.
@@ -213,6 +224,33 @@ export default function ProgramsScreen() {
     [activeRoutineId, reloadTree],
   );
 
+  const handleToggleExpanded = useCallback((slotId: string) => {
+    setExpandedSlotId((current) => nextExpandedSlotId(current, slotId));
+  }, []);
+
+  const handleSaveTargets = useCallback(
+    async (routineExerciseId: string, draft: TargetDraft) => {
+      if (!activeRoutineId) return;
+      await setExerciseTargets(routineExerciseId, draft);
+      await reloadTree(activeRoutineId);
+    },
+    [activeRoutineId, reloadTree],
+  );
+
+  const handleAddExercises = useCallback(
+    async (rows: PickerCatalogRow[]) => {
+      if (!activeRoutineId || !pickerDayId) return;
+      try {
+        await addExercisesToDay({ routineDayId: pickerDayId, exerciseIds: rows.map((row) => row.id) });
+        setPickerDayId(null);
+        await reloadTree(activeRoutineId);
+      } catch (error) {
+        console.error('add exercises failed', error);
+      }
+    },
+    [activeRoutineId, pickerDayId, reloadTree],
+  );
+
   const handleStartRename = useCallback((dayId: string, currentName: string) => {
     setRenamingDayId(dayId);
     setRenameValue(currentName);
@@ -239,6 +277,17 @@ export default function ProgramsScreen() {
           Restart the app to try again. Your programs and history are safe.
         </Text>
       </View>
+    );
+  }
+
+  if (pickerDayId) {
+    const pickerDay = tree?.days.find((day) => day.id === pickerDayId) ?? null;
+    return (
+      <ExercisePickerModal
+        dayName={pickerDay?.name ?? 'this day'}
+        onAdd={handleAddExercises}
+        onCancel={() => setPickerDayId(null)}
+      />
     );
   }
 
@@ -297,21 +346,24 @@ export default function ProgramsScreen() {
                   )}
 
                   {day.slots.map((slot) => (
-                    <View key={slot.id} className="flex-row items-center justify-between gap-sm">
-                      <View className="flex-shrink gap-xs">
-                        <Text className="text-body font-normal text-foreground">{slot.exerciseName}</Text>
-                        <Text className="text-label font-normal text-foreground-muted">{formatSlotTargets(slot)}</Text>
-                      </View>
-                      <Pressable
-                        onPress={() => handleRemoveExercise(slot.id)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${slot.exerciseName}`}
-                        style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Text className="text-label font-normal text-destructive">Remove</Text>
-                      </Pressable>
-                    </View>
+                    <ExerciseSlotRow
+                      key={slot.id}
+                      slot={slot}
+                      expanded={expandedSlotId === slot.id}
+                      onToggleExpanded={handleToggleExpanded}
+                      onRemove={handleRemoveExercise}
+                      onSaveTargets={handleSaveTargets}
+                    />
                   ))}
+
+                  <Pressable
+                    onPress={() => setPickerDayId(day.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add exercises to ${day.name}`}
+                    style={{ minHeight: 48, justifyContent: 'center' }}
+                  >
+                    <Text className="text-body font-normal text-accent">Add Exercises</Text>
+                  </Pressable>
                 </View>
               ))}
 
