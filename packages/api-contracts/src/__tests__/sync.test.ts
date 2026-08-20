@@ -18,9 +18,9 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('contains exactly workout_session, session_exercise, logged_set, exercise and user_exercise_preference in PUSH_APPLIED_TABLES', () => {
+  it('contains exactly workout_session, session_exercise, logged_set, exercise, user_exercise_preference and routine in PUSH_APPLIED_TABLES', () => {
     expect([...PUSH_APPLIED_TABLES].sort()).toEqual(
-      ['exercise', 'logged_set', 'session_exercise', 'user_exercise_preference', 'workout_session'].sort(),
+      ['exercise', 'logged_set', 'routine', 'session_exercise', 'user_exercise_preference', 'workout_session'].sort(),
     );
   });
 
@@ -32,7 +32,7 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
 
 describe('isTerminalRejection', () => {
   it('is true for a deferred table\'s unknown_table rejection — retrying cannot cure it', () => {
-    expect(isTerminalRejection('unknown_table', 'routine')).toBe(true);
+    expect(isTerminalRejection('unknown_table', 'routine_day')).toBe(true);
   });
 
   it('is false for an unrecognized table name\'s unknown_table rejection — a later deploy may cure it', () => {

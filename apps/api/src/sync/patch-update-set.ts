@@ -75,6 +75,17 @@ export interface UserExercisePreferenceValues {
   updatedAt: Date;
 }
 
+export interface RoutineValues {
+  id: string;
+  userId: string;
+  name: string;
+  goal: string | null;
+  status: string;
+  source: string;
+  createdFromTemplateId: string | null;
+  archivedAt: Date | null;
+}
+
 // A mapped type over keyof V, so every property of V is a required key here — adding a column to
 // a values interface without classifying it in the matching map is a compile error, not a
 // silently-always-written column. That compile error is the exhaustiveness gate this module
@@ -161,6 +172,20 @@ export const USER_EXERCISE_PREFERENCE_PATCH_FIELDS: PatchFieldMap<UserExercisePr
   archivedAt: 'archived_at',
   neverSuggest: 'never_suggest',
   updatedAt: 'updated_at',
+};
+
+// id/userId are fixed at insert — a routine's identity and ownership never move once created.
+// archivedAt IS client-patchable here, unlike exercise: archiving a routine is a user action that
+// must sync (D-05), whereas exercise's archive state lives in user_exercise_preference instead.
+export const ROUTINE_PATCH_FIELDS: PatchFieldMap<RoutineValues> = {
+  id: null,
+  userId: null,
+  name: 'name',
+  goal: 'goal',
+  status: 'status',
+  source: 'source',
+  createdFromTemplateId: 'created_from_template_id',
+  archivedAt: 'archived_at',
 };
 
 // The values object is keyed by Drizzle property names (camelCase); op.data is keyed by wire

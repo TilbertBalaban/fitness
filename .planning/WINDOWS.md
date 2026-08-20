@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 40
+open_count: 41
 waived_count: 0
 fixed_count: 10
-total_count: 50
-last_updated: 2026-08-19T15:34:33.185Z
+total_count: 51
+last_updated: 2026-08-20T15:38:02.214Z
 ---
 
 # Broken Windows Ledger
@@ -65,6 +65,7 @@ last_updated: 2026-08-19T15:34:33.185Z
 | 51 | 03 | unrun-verify | apps/mobile/app/exercises/_layout.tsx |  | R6 (security-relevant): that exercises/[id], exercises/new and exercises/edit/[id] no longer mount signed-out follows deterministically from expo-router's hoisting and screen-matching rules once the segment layout exists, but this has not been observed in a browser. Must be verified before Phase 03 sign-off. | open |  | 2026-08-19T15:34:24.022Z |  |
 | 52 | 03 | unrun-verify | apps/mobile/app/exercises/_layout.tsx |  | R7: native swipe-back on iOS/Android unverified — no Xcode or Android SDK on this machine; per project convention native verification is swept once at ROADMAP Phase 999.1 | open |  | 2026-08-19T15:34:27.450Z |  |
 | 53 | 03 | deviation | apps/mobile/app/exercises/_layout.tsx |  | Security fix (T-03-58): app/exercises/_layout.tsx collapses the four hoisted exercises routes into one guarded segment route, so the root layout's existing signed-in Stack.Protected guard on Stack.Screen name=exercises now covers exercises/[id], exercises/new and exercises/edit/[id] as well as the list — previously only the list route was in the protected-screen set and the other three mounted regardless of session state | open |  | 2026-08-19T15:34:33.185Z |  |
+| 54 | 4 | unrun-verify | apps/mobile/app/(tabs)/programs.tsx |  | Programs tab (create + list draft programs) has been exercised on neither iOS nor Android — no Xcode, no Android SDK on this machine; native observation deferred to ROADMAP Phase 999.1 | open |  | 2026-08-20T15:38:02.214Z |  |
 
 ````json
 [
@@ -666,6 +667,18 @@ last_updated: 2026-08-19T15:34:33.185Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-19T15:34:33.185Z",
+    "resolved_at": null
+  },
+  {
+    "id": 54,
+    "kind": "unrun-verify",
+    "phase": "4",
+    "file": "apps/mobile/app/(tabs)/programs.tsx",
+    "line": null,
+    "description": "Programs tab (create + list draft programs) has been exercised on neither iOS nor Android — no Xcode, no Android SDK on this machine; native observation deferred to ROADMAP Phase 999.1",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-20T15:38:02.214Z",
     "resolved_at": null
   }
 ]

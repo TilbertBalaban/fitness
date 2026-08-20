@@ -27,16 +27,19 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // The tables SyncService.TABLE_MAP actually applies today (CR-03). Kept as a separate tuple
 // rather than derived from TABLE_MAP so this contract stays importable from the mobile client
 // without pulling in the server's Drizzle schema. 'exercise' and 'user_exercise_preference' are
-// both singleton aggregate roots with no synced children — exercise has no parent to chain
-// through (unlike workout_session's session_exercise/logged_set descendants), and
-// user_exercise_preference is always its own root since it is never referenced by another
-// synced table's op.
+// singleton aggregate roots with no synced children — exercise has no parent to chain through
+// (unlike workout_session's session_exercise/logged_set descendants), and
+// user_exercise_preference is always its own root since it is never referenced by another synced
+// table's op. 'routine' is a third class: an aggregate root that DOES own synced children
+// (routine_day, routine_exercise land in 04-02) — it resolves to itself the same way
+// workout_session does, but is not a singleton.
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
   'logged_set',
   'exercise',
   'user_exercise_preference',
+  'routine',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 
@@ -45,10 +48,9 @@ export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 // when that phase ships. Verified against ROADMAP.md's phase ownership, not guessed: equipment_profile
 // and user_preference are Phase 6 (Gym Profiles & Plate Math — GYM-01/02 own multi-gym config and
 // user_preference.defaultEquipmentProfileId references it), and personal_record is Phase 9
-// (Records & Client Analytics — ANLY-01 owns PR detection), not Phase 5/7 as an earlier draft of
-// this classification assumed.
+// (Records & Client Analytics — ANLY-01 owns PR detection). routine_day and routine_exercise are
+// still Phase 4's outstanding work — 04-02 extends the routine aggregate root this plan lands.
 export const PUSH_DEFERRED_TABLES = [
-  'routine', // Phase 4 — Program Builder
   'routine_day', // Phase 4 — Program Builder
   'routine_exercise', // Phase 4 — Program Builder
   'equipment_profile', // Phase 6 — Gym Profiles & Plate Math
