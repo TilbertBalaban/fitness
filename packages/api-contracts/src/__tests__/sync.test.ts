@@ -18,9 +18,18 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('contains exactly workout_session, session_exercise, logged_set, exercise, user_exercise_preference and routine in PUSH_APPLIED_TABLES', () => {
+  it('contains exactly workout_session, session_exercise, logged_set, exercise, user_exercise_preference, routine, routine_day and routine_exercise in PUSH_APPLIED_TABLES', () => {
     expect([...PUSH_APPLIED_TABLES].sort()).toEqual(
-      ['exercise', 'logged_set', 'routine', 'session_exercise', 'user_exercise_preference', 'workout_session'].sort(),
+      [
+        'exercise',
+        'logged_set',
+        'routine',
+        'routine_day',
+        'routine_exercise',
+        'session_exercise',
+        'user_exercise_preference',
+        'workout_session',
+      ].sort(),
     );
   });
 
@@ -28,11 +37,22 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect((PUSH_APPLIED_TABLES as readonly string[]).includes('exercise')).toBe(true);
     expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('exercise')).toBe(false);
   });
+
+  it('routine_day and routine_exercise are applied, not deferred — 04-02 closes this gap', () => {
+    expect((PUSH_APPLIED_TABLES as readonly string[]).includes('routine_day')).toBe(true);
+    expect((PUSH_APPLIED_TABLES as readonly string[]).includes('routine_exercise')).toBe(true);
+    expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('routine_day')).toBe(false);
+    expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('routine_exercise')).toBe(false);
+  });
 });
 
 describe('isTerminalRejection', () => {
   it('is true for a deferred table\'s unknown_table rejection — retrying cannot cure it', () => {
-    expect(isTerminalRejection('unknown_table', 'routine_day')).toBe(true);
+    expect(isTerminalRejection('unknown_table', 'equipment_profile')).toBe(true);
+  });
+
+  it('is false for routine_day\'s unknown_table rejection — no longer a known permanent gap (04-02)', () => {
+    expect(isTerminalRejection('unknown_table', 'routine_day')).toBe(false);
   });
 
   it('is false for an unrecognized table name\'s unknown_table rejection — a later deploy may cure it', () => {
