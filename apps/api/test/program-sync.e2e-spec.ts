@@ -20,6 +20,7 @@ let baseUrl: string;
 let pg: Client;
 const createdEmails: string[] = [];
 const createdRoutineIds: string[] = [];
+let exerciseId: string;
 
 function freePort(): Promise<number> {
   return new Promise((res, rej) => {
@@ -78,6 +79,14 @@ function routineOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType
   return { op_id: randomUUID(), op, type: 'routine', id, data };
 }
 
+function routineDayOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return { op_id: randomUUID(), op, type: 'routine_day', id, data };
+}
+
+function routineExerciseOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return { op_id: randomUUID(), op, type: 'routine_exercise', id, data };
+}
+
 function workoutSessionOp(id: string, overrides: Partial<SyncCrudOp> = {}): SyncCrudOp {
   return {
     op_id: randomUUID(),
@@ -122,6 +131,63 @@ async function workoutSessionRow(id: string): Promise<{ id: string; user_id: str
   return rows[0];
 }
 
+interface RoutineDayRow {
+  id: string;
+  routine_id: string;
+  order_index: number;
+  name: string;
+  is_rest_day: boolean;
+}
+
+async function routineDayRow(id: string): Promise<RoutineDayRow | undefined> {
+  const { rows } = await pg.query(
+    'SELECT id, routine_id, order_index, name, is_rest_day FROM routine_day WHERE id = $1',
+    [id],
+  );
+  return rows[0];
+}
+
+interface RoutineExerciseRow {
+  id: string;
+  routine_day_id: string;
+  exercise_id: string;
+  order_index: number;
+  target_sets: number | null;
+  target_rep_min: number | null;
+  target_rep_max: number | null;
+  target_rir: number | null;
+  target_rest_seconds: number | null;
+}
+
+async function routineExerciseRow(id: string): Promise<RoutineExerciseRow | undefined> {
+  const { rows } = await pg.query(
+    `SELECT id, routine_day_id, exercise_id, order_index, target_sets, target_rep_min,
+            target_rep_max, target_rir, target_rest_seconds
+     FROM routine_exercise WHERE id = $1`,
+    [id],
+  );
+  return rows[0];
+}
+
+async function tombstoneCount(rowIds: string[]): Promise<number> {
+  const { rows } = await pg.query('SELECT count(*)::int AS n FROM sync_tombstone WHERE row_id = ANY($1::text[])', [rowIds]);
+  return rows[0].n;
+}
+
+// Owned by cookie, ready to hang a routine_exercise off of — the shared parent shape every
+// routine_exercise-focused test needs (T-04-08's two-hop chain starts here).
+async function seedRoutineAndDay(cookie: string, tag: string): Promise<{ routineId: string; dayId: string }> {
+  const routineId = randomUUID();
+  const dayId = randomUUID();
+  createdRoutineIds.push(routineId);
+  const res = await push(cookie, [
+    routineOp(routineId, { name: `Seed ${tag}`, status: 'draft' }),
+    routineDayOp(dayId, { routine_id: routineId, order_index: 0, name: 'Day 1' }),
+  ]);
+  expect((res.body as SyncPushResponse).rejected).toEqual([]);
+  return { routineId, dayId };
+}
+
 beforeAll(async () => {
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
@@ -136,6 +202,13 @@ beforeAll(async () => {
 
   pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
+
+  exerciseId = randomUUID();
+  await pg.query(
+    `INSERT INTO exercise (id, name, load_type, is_custom, unilateral, source)
+     VALUES ($1, 'Barbell Back Squat', 'external_weight', false, false, 'seed')`,
+    [exerciseId],
+  );
 }, 60000);
 
 afterAll(async () => {
@@ -146,6 +219,7 @@ afterAll(async () => {
     if (createdEmails.length > 0) {
       await pg.query('DELETE FROM "user" WHERE email = ANY($1::text[])', [createdEmails]);
     }
+    await pg.query('DELETE FROM exercise WHERE id = $1', [exerciseId]);
     await pg.end();
   }
   if (api && !api.killed) {
@@ -305,5 +379,211 @@ describe('program (routine) sync (e2e)', () => {
     expect(sessionRow).toBeDefined();
     expect(routineRowResult).toBeDefined();
     expect(sessionRow?.user_id).toBe(routineRowResult?.user_id);
+  });
+});
+
+describe('routine_day / routine_exercise sync (e2e)', () => {
+  it('applies a batch of [routine PUT, routine_day PUT, routine_exercise PUT] in that order — day.routine_id and exercise.routine_day_id are correctly set', async () => {
+    const cookie = await signUp('tree-forward');
+    const routineId = randomUUID();
+    const dayId = randomUUID();
+    const exId = randomUUID();
+    createdRoutineIds.push(routineId);
+
+    const batch: SyncCrudOp[] = [
+      routineOp(routineId, { name: 'Tree Forward', status: 'draft' }),
+      routineDayOp(dayId, { routine_id: routineId, order_index: 0, name: 'Day 1' }),
+      routineExerciseOp(exId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 }),
+    ];
+    const res = await push(cookie, batch);
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toEqual([]);
+    expect(body.applied).toHaveLength(3);
+
+    const day = await routineDayRow(dayId);
+    const ex = await routineExerciseRow(exId);
+    expect(day?.routine_id).toBe(routineId);
+    expect(ex?.routine_day_id).toBe(dayId);
+  });
+
+  it('applies the same three ops pushed in reverse order (exercise, day, routine) — AGGREGATE_RANK sorts parents before children', async () => {
+    const cookie = await signUp('tree-reverse');
+    const routineId = randomUUID();
+    const dayId = randomUUID();
+    const exId = randomUUID();
+    createdRoutineIds.push(routineId);
+
+    const batch: SyncCrudOp[] = [
+      routineExerciseOp(exId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 }),
+      routineDayOp(dayId, { routine_id: routineId, order_index: 0, name: 'Day 1' }),
+      routineOp(routineId, { name: 'Tree Reverse', status: 'draft' }),
+    ];
+    const res = await push(cookie, batch);
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toEqual([]);
+    expect(body.applied).toHaveLength(3);
+
+    const day = await routineDayRow(dayId);
+    const ex = await routineExerciseRow(exId);
+    expect(day?.routine_id).toBe(routineId);
+    expect(ex?.routine_day_id).toBe(dayId);
+  });
+
+  it("rejects user B's routine_day PUT naming user A's routine_id with not_owner, and no row is created", async () => {
+    const cookieA = await signUp('day-owner-a');
+    const cookieB = await signUp('day-attacker-b');
+    const routineId = randomUUID();
+    createdRoutineIds.push(routineId);
+    const createRes = await push(cookieA, [routineOp(routineId, { name: "A's Program", status: 'draft' })]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const dayId = randomUUID();
+    const attackOp = routineDayOp(dayId, { routine_id: routineId, order_index: 0, name: 'Hijack Day' });
+    const res = await push(cookieB, [attackOp]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([]);
+    expect(body.rejected).toEqual([{ op_id: attackOp.op_id, reason: 'not_owner' }]);
+    expect(await routineDayRow(dayId)).toBeUndefined();
+  });
+
+  it("rejects user B's routine_exercise PUT naming user A's routine_day_id with not_owner, resolved through day -> routine", async () => {
+    const cookieA = await signUp('ex-owner-a');
+    const cookieB = await signUp('ex-attacker-b');
+    const { dayId } = await seedRoutineAndDay(cookieA, 'ex-owner-a');
+
+    const exId = randomUUID();
+    const attackOp = routineExerciseOp(exId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 });
+    const res = await push(cookieB, [attackOp]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([]);
+    expect(body.rejected).toEqual([{ op_id: attackOp.op_id, reason: 'not_owner' }]);
+    expect(await routineExerciseRow(exId)).toBeUndefined();
+  });
+
+  it('rejects a routine_day PUT naming a routine_id in neither the batch nor the database with missing_parent', async () => {
+    const cookie = await signUp('day-missing-parent');
+    const dayId = randomUUID();
+    const op = routineDayOp(dayId, { routine_id: randomUUID(), order_index: 0, name: 'Orphan Day' });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'missing_parent' }]);
+    expect(await routineDayRow(dayId)).toBeUndefined();
+  });
+
+  it('a routine_exercise created under day D1 cannot be reparented to day D2 by naming a different routine_day_id — stored linkage wins', async () => {
+    const cookie = await signUp('no-reparent');
+    const { routineId, dayId: d1 } = await seedRoutineAndDay(cookie, 'no-reparent');
+    const d2 = randomUUID();
+    const d2Res = await push(cookie, [routineDayOp(d2, { routine_id: routineId, order_index: 1024, name: 'Day 2' })]);
+    expect((d2Res.body as SyncPushResponse).rejected).toEqual([]);
+
+    const exId = randomUUID();
+    const createRes = await push(cookie, [routineExerciseOp(exId, { routine_day_id: d1, exercise_id: exerciseId, order_index: 0 })]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const moveOp = routineExerciseOp(exId, { routine_day_id: d2, exercise_id: exerciseId, order_index: 0 });
+    const moveRes = await push(cookie, [moveOp]);
+    expect((moveRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await routineExerciseRow(exId);
+    expect(row?.routine_day_id).toBe(d1);
+  });
+
+  it('rejects a routine_exercise PUT with an absent or empty exercise_id as invalid_field', async () => {
+    const cookie = await signUp('ex-missing-exercise-id');
+    const { dayId } = await seedRoutineAndDay(cookie, 'ex-missing-exercise-id');
+
+    const absentOp = routineExerciseOp(randomUUID(), { routine_day_id: dayId, order_index: 0 });
+    const absentRes = await push(cookie, [absentOp]);
+    expect((absentRes.body as SyncPushResponse).rejected).toEqual([{ op_id: absentOp.op_id, reason: 'invalid_field' }]);
+
+    const emptyOp = routineExerciseOp(randomUUID(), { routine_day_id: dayId, exercise_id: '', order_index: 0 });
+    const emptyRes = await push(cookie, [emptyOp]);
+    expect((emptyRes.body as SyncPushResponse).rejected).toEqual([{ op_id: emptyOp.op_id, reason: 'invalid_field' }]);
+  });
+
+  it('rejects order_index: -1 as invalid_field; accepts order_index 0 and 1024', async () => {
+    const cookie = await signUp('ex-order-index');
+    const { dayId } = await seedRoutineAndDay(cookie, 'ex-order-index');
+
+    const negOp = routineExerciseOp(randomUUID(), { routine_day_id: dayId, exercise_id: exerciseId, order_index: -1 });
+    const negRes = await push(cookie, [negOp]);
+    expect((negRes.body as SyncPushResponse).rejected).toEqual([{ op_id: negOp.op_id, reason: 'invalid_field' }]);
+
+    const zeroId = randomUUID();
+    const zeroRes = await push(cookie, [routineExerciseOp(zeroId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 })]);
+    expect((zeroRes.body as SyncPushResponse).rejected).toEqual([]);
+    expect((await routineExerciseRow(zeroId))?.order_index).toBe(0);
+
+    const gapId = randomUUID();
+    const gapRes = await push(cookie, [routineExerciseOp(gapId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 1024 })]);
+    expect((gapRes.body as SyncPushResponse).rejected).toEqual([]);
+    expect((await routineExerciseRow(gapId))?.order_index).toBe(1024);
+  });
+
+  it('accepts target_sets: null with every other target_* omitted, and stores five nulls — a blank target is unprescribed, never zero', async () => {
+    const cookie = await signUp('ex-blank-targets');
+    const { dayId } = await seedRoutineAndDay(cookie, 'ex-blank-targets');
+
+    const exId = randomUUID();
+    const op = routineExerciseOp(exId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0, target_sets: null });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await routineExerciseRow(exId);
+    expect(row?.target_sets).toBeNull();
+    expect(row?.target_rep_min).toBeNull();
+    expect(row?.target_rep_max).toBeNull();
+    expect(row?.target_rir).toBeNull();
+    expect(row?.target_rest_seconds).toBeNull();
+  });
+
+  it("rejects a routine_exercise PUT with target_rep_min: 'eight' as invalid_field", async () => {
+    const cookie = await signUp('ex-bad-target-type');
+    const { dayId } = await seedRoutineAndDay(cookie, 'ex-bad-target-type');
+
+    const op = routineExerciseOp(randomUUID(), {
+      routine_day_id: dayId,
+      exercise_id: exerciseId,
+      order_index: 0,
+      target_rep_min: 'eight',
+    });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
+  });
+
+  it('a routine_day PATCH naming only order_index changes order_index and leaves name/is_rest_day untouched', async () => {
+    const cookie = await signUp('day-patch-reorder');
+    const { dayId } = await seedRoutineAndDay(cookie, 'day-patch-reorder');
+
+    const before = await routineDayRow(dayId);
+    expect(before?.order_index).toBe(0);
+    expect(before?.name).toBe('Day 1');
+
+    const patchOp = routineDayOp(dayId, { order_index: 2048 }, 'PATCH');
+    const res = await push(cookie, [patchOp]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    const after = await routineDayRow(dayId);
+    expect(after?.order_index).toBe(2048);
+    expect(after?.name).toBe('Day 1');
+    expect(after?.is_rest_day).toBe(false);
+  });
+
+  it('a DELETE for an owned routine_day is applied, the row (and its cascaded exercise) is gone, tombstones are written, and the routine itself still exists', async () => {
+    const cookie = await signUp('day-delete');
+    const { routineId, dayId } = await seedRoutineAndDay(cookie, 'day-delete');
+    const exId = randomUUID();
+    const exRes = await push(cookie, [routineExerciseOp(exId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 })]);
+    expect((exRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const deleteOp = routineDayOp(dayId, {}, 'DELETE');
+    const res = await push(cookie, [deleteOp]);
+    expect((res.body as SyncPushResponse).applied).toEqual([deleteOp.op_id]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await routineDayRow(dayId)).toBeUndefined();
+    expect(await routineExerciseRow(exId)).toBeUndefined();
+    expect(await routineRow(routineId)).toBeDefined();
+    expect(await tombstoneCount([dayId, exId])).toBe(2);
   });
 });

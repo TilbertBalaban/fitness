@@ -31,8 +31,9 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // (unlike workout_session's session_exercise/logged_set descendants), and
 // user_exercise_preference is always its own root since it is never referenced by another synced
 // table's op. 'routine' is a third class: an aggregate root that DOES own synced children
-// (routine_day, routine_exercise land in 04-02) — it resolves to itself the same way
-// workout_session does, but is not a singleton.
+// (routine_day, routine_exercise) — it resolves to itself the same way workout_session does, but
+// is not a singleton. routine_day and routine_exercise (04-02) chain to 'routine' the same way
+// session_exercise/logged_set chain to workout_session, two hops deep for routine_exercise.
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -40,6 +41,8 @@ export const PUSH_APPLIED_TABLES = [
   'exercise',
   'user_exercise_preference',
   'routine',
+  'routine_day',
+  'routine_exercise',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 
@@ -48,11 +51,9 @@ export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 // when that phase ships. Verified against ROADMAP.md's phase ownership, not guessed: equipment_profile
 // and user_preference are Phase 6 (Gym Profiles & Plate Math — GYM-01/02 own multi-gym config and
 // user_preference.defaultEquipmentProfileId references it), and personal_record is Phase 9
-// (Records & Client Analytics — ANLY-01 owns PR detection). routine_day and routine_exercise are
-// still Phase 4's outstanding work — 04-02 extends the routine aggregate root this plan lands.
+// (Records & Client Analytics — ANLY-01 owns PR detection). routine_day and routine_exercise moved
+// to PUSH_APPLIED_TABLES in 04-02 — Phase 4 no longer owes them here.
 export const PUSH_DEFERRED_TABLES = [
-  'routine_day', // Phase 4 — Program Builder
-  'routine_exercise', // Phase 4 — Program Builder
   'equipment_profile', // Phase 6 — Gym Profiles & Plate Math
   'user_preference', // Phase 6 — Gym Profiles & Plate Math
   'personal_record', // Phase 9 — Records & Client Analytics

@@ -11,19 +11,32 @@ import {
   type SyncRejectionReason,
 } from '@fitness/api-contracts';
 import { DRIZZLE, type Database } from '../db/drizzle.module';
-import { workoutSession, sessionExercise, loggedSet, exercise, userExercisePreference, routine } from '../db/schema';
+import {
+  workoutSession,
+  sessionExercise,
+  loggedSet,
+  exercise,
+  userExercisePreference,
+  routine,
+  routineDay,
+  routineExercise,
+} from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { recordConflict, recordTombstone, isTombstoned } from './conflict-log';
 import {
   EXERCISE_PATCH_FIELDS,
   LOGGED_SET_PATCH_FIELDS,
   patchAwareSet,
+  ROUTINE_DAY_PATCH_FIELDS,
+  ROUTINE_EXERCISE_PATCH_FIELDS,
   ROUTINE_PATCH_FIELDS,
   SESSION_EXERCISE_PATCH_FIELDS,
   USER_EXERCISE_PREFERENCE_PATCH_FIELDS,
   WORKOUT_SESSION_PATCH_FIELDS,
   type ExerciseValues,
   type LoggedSetValues,
+  type RoutineDayValues,
+  type RoutineExerciseValues,
   type RoutineValues,
   type SessionExerciseValues,
   type UserExercisePreferenceValues,
@@ -37,6 +50,8 @@ const TABLE_MAP = {
   exercise: exercise,
   user_exercise_preference: userExercisePreference,
   routine: routine,
+  routine_day: routineDay,
+  routine_exercise: routineExercise,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -78,10 +93,11 @@ const ROOT_TABLE_BY_TYPE = {
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
 // The root type an op chains to — session_exercise/logged_set resolve through workout_session;
-// every self-rooting type (aggregate or singleton) resolves to itself. 04-02 extends this with
-// routine_day/routine_exercise chaining to 'routine'.
+// routine_day/routine_exercise resolve through routine, two hops deep for routine_exercise; every
+// self-rooting type (aggregate or singleton) resolves to itself.
 function rootFamilyOf(type: string): string {
   if (type === 'session_exercise' || type === 'logged_set') return 'workout_session';
+  if (type === 'routine_day' || type === 'routine_exercise') return 'routine';
   return type;
 }
 
@@ -97,6 +113,8 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   exercise: 0,
   user_exercise_preference: 0,
   routine: 0,
+  routine_day: 1,
+  routine_exercise: 2,
 };
 
 const SESSION_STATUSES = new Set(['in_progress', 'completed', 'discarded']);
@@ -179,6 +197,27 @@ interface RoutineOpData {
   source?: string;
   created_from_template_id?: string | null;
   archived_at?: string | null;
+}
+
+interface RoutineDayOpData {
+  routine_id?: string;
+  order_index?: number;
+  name?: string;
+  is_rest_day?: boolean;
+}
+
+interface RoutineExerciseOpData {
+  routine_day_id?: string;
+  exercise_id?: string;
+  order_index?: number;
+  superset_group_id?: string | null;
+  target_sets?: number | null;
+  target_rep_min?: number | null;
+  target_rep_max?: number | null;
+  target_rir?: number | null;
+  target_rest_seconds?: number | null;
+  progression_scheme_id?: string | null;
+  notes?: string | null;
 }
 
 function toWorkoutSessionValues(id: string, userId: string, data: Record<string, unknown> | null | undefined): WorkoutSessionValues {
@@ -320,6 +359,47 @@ function toRoutineValues(id: string, userId: string, data: Record<string, unknow
   };
 }
 
+// routineId always comes from the resolver argument, never from data — a day's parent is the
+// two-hop ownership chain's whole point (T-04-09); resolveRoutineIdForRoutineDay's
+// database-linkage-first precedence is what actually enforces this, and ROUTINE_DAY_PATCH_FIELDS
+// backs it up by never letting a PATCH write routineId. isRestDay falls back to false: D-19 keeps
+// the column present and unused this phase — do not surface it and do not remove it.
+function toRoutineDayValues(id: string, routineId: string, data: Record<string, unknown> | null | undefined): RoutineDayValues {
+  const d = (data ?? {}) as RoutineDayOpData;
+  return {
+    id,
+    routineId,
+    orderIndex: d.order_index ?? 0,
+    name: d.name ?? '',
+    isRestDay: d.is_rest_day ?? false,
+  };
+}
+
+// routineDayId always comes from the resolver argument, never from data — same reparenting
+// guarantee as toRoutineDayValues, one hop deeper. exerciseId falls back to '' as defence in depth
+// behind isInvalidRoutineExercise's empty-string-FK guard, mirroring toSessionExerciseValues.
+function toRoutineExerciseValues(
+  id: string,
+  routineDayId: string,
+  data: Record<string, unknown> | null | undefined,
+): RoutineExerciseValues {
+  const d = (data ?? {}) as RoutineExerciseOpData;
+  return {
+    id,
+    routineDayId,
+    exerciseId: d.exercise_id ?? '',
+    orderIndex: d.order_index ?? 0,
+    supersetGroupId: d.superset_group_id ?? null,
+    targetSets: d.target_sets ?? null,
+    targetRepMin: d.target_rep_min ?? null,
+    targetRepMax: d.target_rep_max ?? null,
+    targetRir: d.target_rir ?? null,
+    targetRestSeconds: d.target_rest_seconds ?? null,
+    progressionSchemeId: d.progression_scheme_id ?? null,
+    notes: d.notes ?? null,
+  };
+}
+
 function isNonNegativeInteger(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
@@ -347,6 +427,33 @@ function isNonNegativeIntegerOrNull(value: unknown): boolean {
 // target_* fields keep the "checked only when present" pattern the other validators use; each
 // target_* column is nullable, so an explicit null is a legitimate "no prescription" value.
 function isInvalidSessionExercise(data: SessionExerciseOpData): boolean {
+  if (typeof data.exercise_id !== 'string' || data.exercise_id.length === 0) return true;
+  if (data.order_index !== undefined && !isNonNegativeInteger(data.order_index)) return true;
+  if (data.target_sets !== undefined && !isNonNegativeIntegerOrNull(data.target_sets)) return true;
+  if (data.target_rep_min !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_min)) return true;
+  if (data.target_rep_max !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_max)) return true;
+  if (data.target_rir !== undefined && !isNonNegativeIntegerOrNull(data.target_rir)) return true;
+  if (data.target_rest_seconds !== undefined && !isNonNegativeIntegerOrNull(data.target_rest_seconds)) return true;
+  return false;
+}
+
+// order_index and name are each checked only when present — a PATCH naming only order_index (the
+// reorder case) must not be rejected for omitting name.
+function isInvalidRoutineDay(data: RoutineDayOpData): boolean {
+  if (data.name !== undefined && !(typeof data.name === 'string' && data.name.trim().length > 0)) return true;
+  if (data.order_index !== undefined && !isNonNegativeInteger(data.order_index)) return true;
+  return false;
+}
+
+// exercise_id absent-is-invalid mirrors isInvalidSessionExercise's precedent exactly: every
+// non-DELETE op (PUT or PATCH) must name a non-empty exercise_id, because toRoutineExerciseValues'
+// `d.exercise_id ?? ''` fallback would otherwise clobber the NOT NULL FK through the unconditional
+// onConflictDoUpdate set. order_index and the five target_* fields are checked only when present —
+// each target_* column is nullable, so an explicit null is a legitimate "no prescription" value.
+// target_rep_min <= target_rep_max is deliberately NOT validated here: invalid_field is terminal
+// and would silently discard a legitimate offline write, so range ordering is the builder's job
+// (client-side, Task 2), and the server validates shape only.
+function isInvalidRoutineExercise(data: RoutineExerciseOpData): boolean {
   if (typeof data.exercise_id !== 'string' || data.exercise_id.length === 0) return true;
   if (data.order_index !== undefined && !isNonNegativeInteger(data.order_index)) return true;
   if (data.target_sets !== undefined && !isNonNegativeIntegerOrNull(data.target_sets)) return true;
@@ -434,6 +541,14 @@ function hasInvalidField(op: SyncCrudOp): boolean {
     // for exercise.
     if (d.name !== undefined && !(typeof d.name === 'string' && d.name.trim().length > 0)) return true;
     return false;
+  }
+
+  if (op.type === 'routine_day') {
+    return isInvalidRoutineDay(data as RoutineDayOpData);
+  }
+
+  if (op.type === 'routine_exercise') {
+    return isInvalidRoutineExercise(data as RoutineExerciseOpData);
   }
 
   return false;
@@ -561,17 +676,72 @@ export class SyncService {
       return dbSessionExerciseIdByLoggedSetId.get(loggedSetOpId) ?? loggedSetSessionExerciseIdFromData.get(loggedSetOpId);
     }
 
+    // Mirrors the session_exercise/logged_set batched-parent-read shape one level deeper — the
+    // routine_exercise -> routine_day -> routine chain is the deepest ownership walk in this
+    // codebase (T-04-08).
+    const routineDayOps = remaining.filter((op) => op.type === 'routine_day');
+    const routineExerciseOps = remaining.filter((op) => op.type === 'routine_exercise');
+    const routineDayRoutineIdFromData = new Map<string, string>();
+    for (const op of routineDayOps) {
+      const routineId = (op.data as RoutineDayOpData | null | undefined)?.routine_id;
+      if (routineId) routineDayRoutineIdFromData.set(op.id, routineId);
+    }
+    const routineExerciseRoutineDayIdFromData = new Map<string, string>();
+    for (const op of routineExerciseOps) {
+      const routineDayId = (op.data as RoutineExerciseOpData | null | undefined)?.routine_day_id;
+      if (routineDayId) routineExerciseRoutineDayIdFromData.set(op.id, routineDayId);
+    }
+
+    const routineExerciseIdsToCheck = new Set(routineExerciseOps.map((op) => op.id));
+    const dbRoutineExercises = routineExerciseIdsToCheck.size
+      ? await this.db
+          .select({ id: routineExercise.id, routineDayId: routineExercise.routineDayId })
+          .from(routineExercise)
+          .where(inArray(routineExercise.id, [...routineExerciseIdsToCheck]))
+      : [];
+    const dbRoutineDayIdByRoutineExerciseId = new Map(dbRoutineExercises.map((row) => [row.id, row.routineDayId]));
+
+    const routineDayIdsToCheck = new Set<string>([
+      ...routineDayOps.map((op) => op.id),
+      ...routineExerciseRoutineDayIdFromData.values(),
+      ...dbRoutineDayIdByRoutineExerciseId.values(),
+    ]);
+    const dbRoutineDays = routineDayIdsToCheck.size
+      ? await this.db
+          .select({ id: routineDay.id, routineId: routineDay.routineId })
+          .from(routineDay)
+          .where(inArray(routineDay.id, [...routineDayIdsToCheck]))
+      : [];
+    const dbRoutineIdByRoutineDayId = new Map(dbRoutineDays.map((row) => [row.id, row.routineId]));
+
+    // Same database-wins-over-client-claimed precedence as resolveSessionIdForSessionExercise —
+    // the anti-reparenting guarantee (T-04-09): a routine_exercise already stored under day D1
+    // cannot be moved to D2 by a push that simply names a different routine_day_id.
+    function resolveRoutineIdForRoutineDay(dayId: string): string | undefined {
+      return dbRoutineIdByRoutineDayId.get(dayId) ?? routineDayRoutineIdFromData.get(dayId);
+    }
+    function resolveRoutineDayIdForRoutineExercise(routineExerciseOpId: string): string | undefined {
+      return dbRoutineDayIdByRoutineExerciseId.get(routineExerciseOpId) ?? routineExerciseRoutineDayIdFromData.get(routineExerciseOpId);
+    }
+
     // Root resolution — null means "could not be determined from the batch or the database".
     // Every AGGREGATE_ROOT_TYPES / SINGLETON_ROOT_TYPES member resolves to itself, never falling
-    // into the else branch below, which assumes every remaining type chains through
-    // session_exercise_id (the Pitfall 2 trap — a routine op landing there would resolve
-    // undefined and reject missing_parent with no signal about the real cause).
+    // into the trailing else branch, which assumes every remaining type chains through
+    // session_exercise_id (the Pitfall 2 trap — a routine-family op landing there would resolve
+    // undefined and reject missing_parent with no signal about the real cause). routine_day
+    // resolves through resolveRoutineIdForRoutineDay directly; routine_exercise walks the full
+    // two-hop chain, returning null when either hop fails rather than falling into the else branch.
     const rootByOpId = new Map<string, string | null>();
     for (const op of remaining) {
       if (AGGREGATE_ROOT_TYPES.has(op.type) || SINGLETON_ROOT_TYPES.has(op.type)) {
         rootByOpId.set(op.op_id, op.id);
       } else if (op.type === 'session_exercise') {
         rootByOpId.set(op.op_id, resolveSessionIdForSessionExercise(op.id) ?? null);
+      } else if (op.type === 'routine_day') {
+        rootByOpId.set(op.op_id, resolveRoutineIdForRoutineDay(op.id) ?? null);
+      } else if (op.type === 'routine_exercise') {
+        const routineDayId = resolveRoutineDayIdForRoutineExercise(op.id);
+        rootByOpId.set(op.op_id, routineDayId ? (resolveRoutineIdForRoutineDay(routineDayId) ?? null) : null);
       } else {
         const sessionExerciseId = resolveSessionExerciseIdForLoggedSet(op.id);
         rootByOpId.set(op.op_id, sessionExerciseId ? (resolveSessionIdForSessionExercise(sessionExerciseId) ?? null) : null);
@@ -616,14 +786,21 @@ export class SyncService {
 
     // Every root type an op in this batch self-roots as (aggregate or singleton) — built once so
     // ownership resolution below and capturedRootSeq know which table to query per root, without
-    // repeating the root-resolution branch logic. A root id resolved via the child-chain fallback
-    // (never present in this map, since only session_exercise/logged_set chain to a root today,
-    // and both resolve exclusively to the workout_session family) defaults to workout_session
-    // wherever this map is read.
+    // repeating the root-resolution branch logic. A root id resolved via the session_exercise/
+    // logged_set child-chain fallback defaults to workout_session wherever this map is read (both
+    // resolve exclusively to that family). routine_day/routine_exercise are the one case that
+    // fallback default would get wrong: a batch containing ONLY a routine_day or routine_exercise
+    // op (no literal 'routine' op) still resolves its root to a real routine id — recorded here
+    // explicitly so existingOwnerByRoot's table split below queries `routine`, not
+    // `workout_session`, for that root (the not_owner cross-user routine_day/routine_exercise
+    // cases depend on this).
     const rootTypeByRootId = new Map<string, RootTableType>();
     for (const op of remaining) {
       if (AGGREGATE_ROOT_TYPES.has(op.type) || SINGLETON_ROOT_TYPES.has(op.type)) {
         rootTypeByRootId.set(op.id, op.type as RootTableType);
+      } else if (op.type === 'routine_day' || op.type === 'routine_exercise') {
+        const resolvedRoot = rootByOpId.get(op.op_id);
+        if (resolvedRoot) rootTypeByRootId.set(resolvedRoot, 'routine');
       }
     }
 
@@ -762,6 +939,7 @@ export class SyncService {
             // nothing left to tombstone.
             let childSessionExercises: { id: string }[] = [];
             let childLoggedSets: { id: string }[] = [];
+            let childRoutineExercises: { id: string }[] = [];
             if (op.type === 'workout_session' && existingRow.length > 0) {
               childSessionExercises = await tx
                 .select({ id: sessionExercise.id })
@@ -774,6 +952,19 @@ export class SyncService {
                     .from(loggedSet)
                     .where(inArray(loggedSet.sessionExerciseId, childSessionExerciseIds))
                 : [];
+            }
+            // routine_day -> routine_exercise cascades at the database level (FK onDelete:
+            // 'cascade', apps/api/src/db/schema/program.ts) the moment the day is deleted, so
+            // these ids must be read first or there is nothing left to tombstone. Neither
+            // workout_session.routine_day_id nor session_exercise.routine_exercise_id carries a
+            // foreign key (apps/api/src/db/schema/session.ts — both are plain text columns), so
+            // deleting a day or its exercises leaves those historical references dangling but
+            // never breaks a logged workout.
+            if (op.type === 'routine_day' && existingRow.length > 0) {
+              childRoutineExercises = await tx
+                .select({ id: routineExercise.id })
+                .from(routineExercise)
+                .where(eq(routineExercise.routineDayId, op.id));
             }
 
             if (existingRow.length > 0) {
@@ -791,6 +982,9 @@ export class SyncService {
             }
             for (const child of childLoggedSets) {
               await recordTombstone(tx, { userId, table: 'logged_set', rowId: child.id, deletedServerSeq: Number(seqValue) });
+            }
+            for (const child of childRoutineExercises) {
+              await recordTombstone(tx, { userId, table: 'routine_exercise', rowId: child.id, deletedServerSeq: Number(seqValue) });
             }
 
             applied.push(op.op_id);
@@ -850,7 +1044,11 @@ export class SyncService {
                     ? toExerciseValues(op.id, userId, op.data)
                     : op.type === 'user_exercise_preference'
                       ? toUserExercisePreferenceValues(op.id, userId, op.data)
-                      : toRoutineValues(op.id, userId, op.data);
+                      : op.type === 'routine'
+                        ? toRoutineValues(op.id, userId, op.data)
+                        : op.type === 'routine_day'
+                          ? toRoutineDayValues(op.id, resolveRoutineIdForRoutineDay(op.id) ?? root, op.data)
+                          : toRoutineExerciseValues(op.id, resolveRoutineDayIdForRoutineExercise(op.id) ?? '', op.data);
 
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
@@ -909,6 +1107,27 @@ export class SyncService {
               .returning({ serverSeq: userExercisePreference.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else if (op.type === 'routine_day') {
+            // No serverSeq: routine_day is a child of the routine aggregate root, never a root
+            // itself (aggregate-root rule, 02-02) — mirrors the session_exercise insert shape.
+            const routineDayValues = values as RoutineDayValues;
+            await tx
+              .insert(routineDay)
+              .values(routineDayValues)
+              .onConflictDoUpdate({
+                target: routineDay.id,
+                set: patchAwareSet(op, routineDayValues, ROUTINE_DAY_PATCH_FIELDS),
+              });
+          } else if (op.type === 'routine_exercise') {
+            // No serverSeq — same rule, one level deeper.
+            const routineExerciseValues = values as RoutineExerciseValues;
+            await tx
+              .insert(routineExercise)
+              .values(routineExerciseValues)
+              .onConflictDoUpdate({
+                target: routineExercise.id,
+                set: patchAwareSet(op, routineExerciseValues, ROUTINE_EXERCISE_PATCH_FIELDS),
+              });
           } else {
             // routine — the aggregate root the tracer proves. Carries server_seq like exercise and
             // user_exercise_preference (it is an aggregate root), unlike session_exercise/logged_set.

@@ -85,6 +85,29 @@ export interface RoutineValues {
   archivedAt: Date | null;
 }
 
+export interface RoutineDayValues {
+  id: string;
+  routineId: string;
+  orderIndex: number;
+  name: string;
+  isRestDay: boolean;
+}
+
+export interface RoutineExerciseValues {
+  id: string;
+  routineDayId: string;
+  exerciseId: string;
+  orderIndex: number;
+  supersetGroupId: string | null;
+  targetSets: number | null;
+  targetRepMin: number | null;
+  targetRepMax: number | null;
+  targetRir: number | null;
+  targetRestSeconds: number | null;
+  progressionSchemeId: string | null;
+  notes: string | null;
+}
+
 // A mapped type over keyof V, so every property of V is a required key here — adding a column to
 // a values interface without classifying it in the matching map is a compile error, not a
 // silently-always-written column. That compile error is the exhaustiveness gate this module
@@ -184,6 +207,35 @@ export const ROUTINE_PATCH_FIELDS: PatchFieldMap<RoutineValues> = {
   source: 'source',
   createdFromTemplateId: 'created_from_template_id',
   archivedAt: 'archived_at',
+};
+
+// id/routineId are fixed at insert — a PATCH must never reparent a day onto a different routine
+// (T-04-09); the anti-reparenting guarantee lives in sync.service.ts's resolver precedence, and
+// this map backs it up structurally by never letting a PATCH write routineId at all.
+export const ROUTINE_DAY_PATCH_FIELDS: PatchFieldMap<RoutineDayValues> = {
+  id: null,
+  routineId: null,
+  orderIndex: 'order_index',
+  name: 'name',
+  isRestDay: 'is_rest_day',
+};
+
+// id/routineDayId are fixed at insert — same anti-reparenting guarantee as ROUTINE_DAY_PATCH_FIELDS,
+// one level deeper (T-04-09). progressionSchemeId is carried through as a plain nullable
+// passthrough: nothing in this phase reads it (D-11), it stays an unowned column here.
+export const ROUTINE_EXERCISE_PATCH_FIELDS: PatchFieldMap<RoutineExerciseValues> = {
+  id: null,
+  routineDayId: null,
+  exerciseId: 'exercise_id',
+  orderIndex: 'order_index',
+  supersetGroupId: 'superset_group_id',
+  targetSets: 'target_sets',
+  targetRepMin: 'target_rep_min',
+  targetRepMax: 'target_rep_max',
+  targetRir: 'target_rir',
+  targetRestSeconds: 'target_rest_seconds',
+  progressionSchemeId: 'progression_scheme_id',
+  notes: 'notes',
 };
 
 // The values object is keyed by Drizzle property names (camelCase); op.data is keyed by wire

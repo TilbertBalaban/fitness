@@ -36,7 +36,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 ### Program Builder
 
-- [ ] **PROG-01**: User can build a program from scratch with named training days
+- [x] **PROG-01**: User can build a program from scratch with named training days
 - [ ] **PROG-02**: User can add, remove, and reorder exercises within a training day
 - [ ] **PROG-03**: User can set per-exercise targets: number of sets, rep range, RIR target, and rest duration
 - [ ] **PROG-04**: User can organize a program into cycles (weeks), each with its own targets
@@ -210,7 +210,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | EXER-08 | Phase 3 — Exercise Catalog | Complete |
 | EXER-09 | Phase 3 — Exercise Catalog | Complete |
 | EXER-10 | Phase 3 — Exercise Catalog | Complete |
-| PROG-01 | Phase 4 — Program Builder | Pending |
+| PROG-01 | Phase 4 — Program Builder | Complete |
 | PROG-02 | Phase 4 — Program Builder | Pending |
 | PROG-03 | Phase 4 — Program Builder | Pending |
 | PROG-04 | Phase 4 — Program Builder | Pending |
