@@ -80,9 +80,18 @@ export interface RoutineValues {
   name: string;
   goal: string | null;
   status: string;
+  progressionFrozen: boolean;
   source: string;
   createdFromTemplateId: string | null;
   archivedAt: Date | null;
+}
+
+export interface UserPreferenceValues {
+  id: string;
+  userId: string;
+  weightUnit: string;
+  defaultEquipmentProfileId: string | null;
+  activeRoutineId: string | null;
 }
 
 export interface RoutineDayValues {
@@ -204,9 +213,22 @@ export const ROUTINE_PATCH_FIELDS: PatchFieldMap<RoutineValues> = {
   name: 'name',
   goal: 'goal',
   status: 'status',
+  progressionFrozen: 'progression_frozen',
   source: 'source',
   createdFromTemplateId: 'created_from_template_id',
   archivedAt: 'archived_at',
+};
+
+// id/userId are fixed at insert — a user_preference row's id and owner never move once created
+// (id === userId, the option-a wire contract). weightUnit/defaultEquipmentProfileId/
+// activeRoutineId are each independently patchable — activating a routine (PATCH naming only
+// active_routine_id) must never touch weight_unit, and vice versa.
+export const USER_PREFERENCE_PATCH_FIELDS: PatchFieldMap<UserPreferenceValues> = {
+  id: null,
+  userId: null,
+  weightUnit: 'weight_unit',
+  defaultEquipmentProfileId: 'default_equipment_profile_id',
+  activeRoutineId: 'active_routine_id',
 };
 
 // id/routineId are fixed at insert — a PATCH must never reparent a day onto a different routine

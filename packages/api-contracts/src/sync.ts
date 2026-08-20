@@ -34,6 +34,10 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // (routine_day, routine_exercise) — it resolves to itself the same way workout_session does, but
 // is not a singleton. routine_day and routine_exercise (04-02) chain to 'routine' the same way
 // session_exercise/logged_set chain to workout_session, two hops deep for routine_exercise.
+// 'user_preference' (04-04) is a fourth singleton root, alongside exercise/user_exercise_preference
+// — built early because PROG-08's active pointer (user_preference.active_routine_id) needs a
+// working push apply path now; Phase 6 extends the same toUserPreferenceValues with
+// default_equipment_profile_id rather than building this path from scratch.
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -43,19 +47,20 @@ export const PUSH_APPLIED_TABLES = [
   'routine',
   'routine_day',
   'routine_exercise',
+  'user_preference',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 
 // No apply path yet. Each table lands here until the phase that owns its validation rules and
 // conflict semantics builds one — moving an entry to PUSH_APPLIED_TABLES is a one-line change
-// when that phase ships. Verified against ROADMAP.md's phase ownership, not guessed: equipment_profile
-// and user_preference are Phase 6 (Gym Profiles & Plate Math — GYM-01/02 own multi-gym config and
-// user_preference.defaultEquipmentProfileId references it), and personal_record is Phase 9
-// (Records & Client Analytics — ANLY-01 owns PR detection). routine_day and routine_exercise moved
-// to PUSH_APPLIED_TABLES in 04-02 — Phase 4 no longer owes them here.
+// when that phase ships. Verified against ROADMAP.md's phase ownership, not guessed:
+// equipment_profile is Phase 6 (Gym Profiles & Plate Math — GYM-01/02 own multi-gym config), and
+// personal_record is Phase 9 (Records & Client Analytics — ANLY-01 owns PR detection).
+// routine_day and routine_exercise moved to PUSH_APPLIED_TABLES in 04-02, and user_preference
+// moved in 04-04 (PROG-08 needed activation to sync before Phase 6 could exist) — Phase 4 no
+// longer owes either here.
 export const PUSH_DEFERRED_TABLES = [
   'equipment_profile', // Phase 6 — Gym Profiles & Plate Math
-  'user_preference', // Phase 6 — Gym Profiles & Plate Math
   'personal_record', // Phase 9 — Records & Client Analytics
   'body_metric', // Phase 12 — Body Metrics & Dashboard
   'progress_photo', // Phase 12 — Body Metrics & Dashboard

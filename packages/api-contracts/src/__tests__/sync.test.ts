@@ -18,7 +18,7 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('contains exactly workout_session, session_exercise, logged_set, exercise, user_exercise_preference, routine, routine_day and routine_exercise in PUSH_APPLIED_TABLES', () => {
+  it('contains exactly workout_session, session_exercise, logged_set, exercise, user_exercise_preference, routine, routine_day, routine_exercise and user_preference in PUSH_APPLIED_TABLES', () => {
     expect([...PUSH_APPLIED_TABLES].sort()).toEqual(
       [
         'exercise',
@@ -28,9 +28,15 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
         'routine_exercise',
         'session_exercise',
         'user_exercise_preference',
+        'user_preference',
         'workout_session',
       ].sort(),
     );
+  });
+
+  it('user_preference is applied, not deferred — 04-04 closes this gap (PROG-08 needed activation to sync)', () => {
+    expect((PUSH_APPLIED_TABLES as readonly string[]).includes('user_preference')).toBe(true);
+    expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('user_preference')).toBe(false);
   });
 
   it('exercise is applied, not deferred — the phase this plan closes', () => {

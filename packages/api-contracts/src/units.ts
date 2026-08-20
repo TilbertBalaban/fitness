@@ -1,4 +1,8 @@
-export type WeightUnit = 'kg' | 'lb';
+// Runtime tuple backing WeightUnit — added so sync.service.ts's user_preference validator can
+// build a Set from the real vocabulary instead of retyping the two literals (04-04's own
+// no-retyped-literals rule, matching LOAD_TYPES/ROUTINE_STATUSES elsewhere in this package).
+export const WEIGHT_UNITS = ['kg', 'lb'] as const;
+export type WeightUnit = (typeof WEIGHT_UNITS)[number];
 
 // Matches logged_set.weight_kg's numeric(8, 3) column exactly (apps/api/src/db/schema/session.ts)
 // — a code scale that disagrees with the column scale is a rounding difference nobody will find.
