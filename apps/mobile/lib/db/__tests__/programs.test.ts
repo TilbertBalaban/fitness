@@ -9,6 +9,7 @@ import {
   removeExercise,
   renameDay,
 } from '../programs/days';
+import { loadProgramTree } from '../programs/load-program';
 import { getPowerSync } from '../powersync';
 import { generateClientId } from '../id';
 import { routine, routineDay, routineExercise } from '../schema';
@@ -494,5 +495,166 @@ describe('renameDay', () => {
 
     expect(updateSetSpy).toHaveBeenCalledWith({ name: 'Pull' });
     await expect(renameDay('d1', '   ', db)).rejects.toThrow('Day name is required');
+  });
+});
+
+interface FakeLoadProgramRows {
+  routineRow?: Record<string, unknown>;
+  dayRows: Record<string, unknown>[];
+  exerciseRows: Record<string, unknown>[];
+}
+
+function fakeLoadProgramDb(rows: FakeLoadProgramRows) {
+  let selectCount = 0;
+  const db = {
+    select: () => {
+      selectCount++;
+      return {
+        from: (table: unknown) => ({
+          where: () => {
+            if (table === routine) return Promise.resolve(rows.routineRow ? [rows.routineRow] : []);
+            if (table === routineDay) return Promise.resolve(rows.dayRows);
+            if (table === routineExercise) return Promise.resolve(rows.exerciseRows);
+            return Promise.resolve([]);
+          },
+        }),
+      };
+    },
+  } as unknown as ReturnType<typeof getPowerSync>;
+  return { db, getSelectCount: () => selectCount };
+}
+
+describe('loadProgramTree', () => {
+  it('issues exactly three selects for a routine with 3 days and 12 exercises, passed a pre-built exercise name map', async () => {
+    const routineRow = { id: 'r1', name: 'Push Pull Legs', goal: null, status: 'draft' };
+    const dayRows = [
+      { id: 'd1', orderIndex: 1024, name: 'Push', isRestDay: false },
+      { id: 'd2', orderIndex: 2048, name: 'Pull', isRestDay: false },
+      { id: 'd3', orderIndex: 3072, name: 'Legs', isRestDay: false },
+    ];
+    const exerciseRows = Array.from({ length: 12 }, (_, i) => ({
+      id: `re-${i}`,
+      routineDayId: dayRows[i % 3].id,
+      orderIndex: (Math.floor(i / 3) + 1) * 1024,
+      exerciseId: `ex-${i}`,
+      targetSets: null,
+      targetRepMin: null,
+      targetRepMax: null,
+      targetRir: null,
+      targetRestSeconds: null,
+    }));
+    const nameMap = new Map(exerciseRows.map((row) => [row.exerciseId, `Exercise ${row.exerciseId}`]));
+
+    const { db, getSelectCount } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows });
+
+    const tree = await loadProgramTree('r1', db, nameMap);
+
+    expect(getSelectCount()).toBe(3);
+    expect(tree?.days).toHaveLength(3);
+    expect(tree?.days.reduce((sum, day) => sum + day.slots.length, 0)).toBe(12);
+  });
+
+  it('sorts days and each day\'s slots with sortByOrderThenId', async () => {
+    const routineRow = { id: 'r1', name: 'Program', goal: null, status: 'draft' };
+    const dayRows = [
+      { id: 'd2', orderIndex: 2048, name: 'Second', isRestDay: false },
+      { id: 'd1', orderIndex: 1024, name: 'First', isRestDay: false },
+    ];
+    const exerciseRows = [
+      { id: 're-b', routineDayId: 'd1', orderIndex: 2048, exerciseId: 'ex-b', targetSets: null, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+      { id: 're-a', routineDayId: 'd1', orderIndex: 1024, exerciseId: 'ex-a', targetSets: null, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+    ];
+    const { db } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows });
+
+    const tree = await loadProgramTree('r1', db, new Map());
+
+    expect(tree?.days.map((day) => day.id)).toEqual(['d1', 'd2']);
+    expect(tree?.days[0].slots.map((slot) => slot.id)).toEqual(['re-a', 're-b']);
+  });
+
+  it('breaks a tied day orderIndex to ascending id', async () => {
+    const routineRow = { id: 'r1', name: 'Program', goal: null, status: 'draft' };
+    const dayRows = [
+      { id: 'd-z', orderIndex: 1024, name: 'Z', isRestDay: false },
+      { id: 'd-a', orderIndex: 1024, name: 'A', isRestDay: false },
+    ];
+    const { db } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows: [] });
+
+    const tree = await loadProgramTree('r1', db, new Map());
+
+    expect(tree?.days.map((day) => day.id)).toEqual(['d-a', 'd-z']);
+  });
+
+  it('returns { ...routine, days: [] } for a routine with zero days, rather than throwing', async () => {
+    const routineRow = { id: 'r1', name: 'Empty Program', goal: null, status: 'draft' };
+    const { db } = fakeLoadProgramDb({ routineRow, dayRows: [], exerciseRows: [] });
+
+    const tree = await loadProgramTree('r1', db, new Map());
+
+    expect(tree).toEqual({ id: 'r1', name: 'Empty Program', goal: null, status: 'draft', days: [] });
+  });
+
+  it('returns null when no routine row matches', async () => {
+    const { db } = fakeLoadProgramDb({ routineRow: undefined, dayRows: [], exerciseRows: [] });
+
+    const tree = await loadProgramTree('missing', db, new Map());
+
+    expect(tree).toBeNull();
+  });
+
+  it('each slot carries exerciseId, the resolved exerciseName, and the five raw target* values unchanged', async () => {
+    const routineRow = { id: 'r1', name: 'Program', goal: null, status: 'draft' };
+    const dayRows = [{ id: 'd1', orderIndex: 1024, name: 'Day 1', isRestDay: false }];
+    const exerciseRows = [
+      {
+        id: 're-1',
+        routineDayId: 'd1',
+        orderIndex: 1024,
+        exerciseId: 'ex-1',
+        targetSets: 3,
+        targetRepMin: 8,
+        targetRepMax: 12,
+        targetRir: 1,
+        targetRestSeconds: 120,
+      },
+    ];
+    const { db } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows });
+
+    const tree = await loadProgramTree('r1', db, new Map([['ex-1', 'Barbell Squat']]));
+
+    expect(tree?.days[0].slots[0]).toEqual({
+      id: 're-1',
+      orderIndex: 1024,
+      exerciseId: 'ex-1',
+      exerciseName: 'Barbell Squat',
+      targetSets: 3,
+      targetRepMin: 8,
+      targetRepMax: 12,
+      targetRir: 1,
+      targetRestSeconds: 120,
+    });
+  });
+
+  it("falls back to 'Unknown exercise' when a slot's exerciseId matches no local exercise row", async () => {
+    const routineRow = { id: 'r1', name: 'Program', goal: null, status: 'draft' };
+    const dayRows = [{ id: 'd1', orderIndex: 1024, name: 'Day 1', isRestDay: false }];
+    const exerciseRows = [
+      {
+        id: 're-1',
+        routineDayId: 'd1',
+        orderIndex: 1024,
+        exerciseId: 'gone',
+        targetSets: null,
+        targetRepMin: null,
+        targetRepMax: null,
+        targetRir: null,
+        targetRestSeconds: null,
+      },
+    ];
+    const { db } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows });
+
+    const tree = await loadProgramTree('r1', db, new Map());
+
+    expect(tree?.days[0].slots[0].exerciseName).toBe('Unknown exercise');
   });
 });
