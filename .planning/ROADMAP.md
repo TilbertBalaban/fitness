@@ -229,16 +229,35 @@ Plans:
 **Plans**: 11 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 04-01-PLAN.md — Tracer: a named program created offline reaches Postgres and shows on the Programs tab
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 04-02-PLAN.md — The routine tree: days and exercises sync, gap-based ordering, three-query builder read
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 04-03-PLAN.md — Build a day: full-screen catalog picker and inline per-exercise targets
 - [ ] 04-04-PLAN.md — Lifecycle data: active pointer, freeze flag, status constraint, `user_preference` apply path
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 04-05-PLAN.md — The swipeable day deck and the always-visible drag handle
 - [ ] 04-06-PLAN.md — Cycles: table, three-kind vocabulary, CHECK constraint, sync apply path
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 04-07-PLAN.md — Per-cycle target overrides: sparse table, shared `resolveTarget`, dual-parent apply path
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 04-08-PLAN.md — The cycle strip: author cycles, deload and time off; resolved targets in the builder
 - [ ] 04-09-PLAN.md — Cycle-aware session snapshot and the editing-never-corrupts-history regression
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 04-10-PLAN.md — Home "next up": position derived from logged history
 - [ ] 04-11-PLAN.md — The program library: duplicate, archive, restore, activate, freeze
 
