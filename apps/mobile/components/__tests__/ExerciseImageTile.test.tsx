@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View, type ImageStyle } from 'react-native';
 import {
   EXERCISE_IMAGE_LABEL_MIN_WIDTH,
   ExerciseImageTileView,
@@ -7,6 +7,7 @@ import {
   resolveHeroImageWidth,
   resolveSourceKey,
   resolveTileBox,
+  resolveTileImageStyle,
   resolveTileSource,
 } from '../ExerciseImageTile';
 
@@ -88,16 +89,12 @@ describe('ExerciseImageTileView', () => {
     expect(images[0].props.source).toBe(SENTINEL_SOURCE);
   });
 
-  it("fills the box by absolute inset, not by percentage", () => {
+  it("gives the Image the exact style resolveTileImageStyle() returns, and resizeMode='cover' as a prop", () => {
     const result = ExerciseImageTileView({ source: SENTINEL_SOURCE, width: 56 });
     const [image] = findByType(result, Image);
-    const flattened = StyleSheet.flatten(image.props.style) as Record<string, unknown>;
 
-    expect(flattened.position).toBe('absolute');
-    expect(flattened.top).toBe(0);
-    expect(flattened.left).toBe(0);
-    expect(flattened.right).toBe(0);
-    expect(flattened.bottom).toBe(0);
+    expect(StyleSheet.flatten(image.props.style)).toEqual(StyleSheet.flatten(resolveTileImageStyle()));
+    expect(image.props.resizeMode).toBe('cover');
   });
 
   it('gives the container a numeric, finite, positive width and height', () => {
@@ -146,6 +143,41 @@ describe('ExerciseImageTileView', () => {
 
     expect(container.props.className as string).toContain('border');
     expect(container.props.className as string).toContain('border-foreground-muted');
+  });
+});
+
+describe("resolveTileImageStyle — a source's intrinsic dimensions cannot win", () => {
+  it.each([
+    [750, 500],
+    [850, 567],
+    [800, 533],
+  ])('overrides a %ix%i intrinsic source to 100%%/100%%, not %ix%i', (width, height) => {
+    const flattened = StyleSheet.flatten([{ width, height } as ImageStyle, resolveTileImageStyle()]) as Record<
+      string,
+      unknown
+    >;
+
+    expect(flattened.width).toBe('100%');
+    expect(flattened.height).toBe('100%');
+  });
+
+  it('flattens to position absolute with all four zero insets, plus percentage width and height', () => {
+    const flattened = StyleSheet.flatten(resolveTileImageStyle()) as Record<string, unknown>;
+
+    expect(flattened.position).toBe('absolute');
+    expect(flattened.top).toBe(0);
+    expect(flattened.left).toBe(0);
+    expect(flattened.right).toBe(0);
+    expect(flattened.bottom).toBe(0);
+    expect(flattened.width).toBe('100%');
+    expect(flattened.height).toBe('100%');
+  });
+
+  it('resolves width and height as strings, never numbers, so a source cannot re-pin the image to its own size', () => {
+    const flattened = StyleSheet.flatten(resolveTileImageStyle()) as Record<string, unknown>;
+
+    expect(typeof flattened.width).toBe('string');
+    expect(typeof flattened.height).toBe('string');
   });
 });
 

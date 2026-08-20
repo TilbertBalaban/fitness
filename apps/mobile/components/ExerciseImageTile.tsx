@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Image, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
+import { Image, StyleSheet, Text, View, type ImageSourcePropType, type ImageStyle } from 'react-native';
 
 export interface ExerciseImageTileProps {
   uri?: string | null;
@@ -50,6 +50,13 @@ export interface ExerciseImageTileViewProps {
   onError?: () => void;
 }
 
+// react-native-web composes the Image's style as [..., resolveAssetDimensions(source), style, ...] --
+// a bundled asset's own intrinsic width/height is applied before this style, so this must set an
+// explicit width/height (not just insets) to be the entry that wins.
+export function resolveTileImageStyle(): ImageStyle {
+  return { ...StyleSheet.absoluteFill, width: '100%', height: '100%' };
+}
+
 // The hook-free half of the tile -- the only half a test in this repo can direct-invoke and
 // inspect a real <Image> element, since @testing-library/react-native and react-test-renderer are
 // both absent from this worktree's lockfile. The single fallback tile for the empty, loading and
@@ -64,7 +71,7 @@ export function ExerciseImageTileView({ source, width, onError }: ExerciseImageT
       style={{ ...box, overflow: 'hidden' }}
     >
       {showLabel ? <Text className="text-label font-normal text-foreground-muted">No image available</Text> : null}
-      {source ? <Image source={source} onError={onError} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
+      {source ? <Image source={source} onError={onError} style={resolveTileImageStyle()} resizeMode="cover" /> : null}
     </View>
   );
 }
