@@ -5,23 +5,26 @@ import {
   LOAD_TYPES as LOAD_TYPE_TUPLE,
   EQUIPMENT_TYPES as EQUIPMENT_TYPE_TUPLE,
   MOVEMENT_PATTERNS as MOVEMENT_PATTERN_TUPLE,
+  ROUTINE_STATUSES as ROUTINE_STATUS_TUPLE,
   type SyncCrudOp,
   type SyncPushResponse,
   type SyncRejectionReason,
 } from '@fitness/api-contracts';
 import { DRIZZLE, type Database } from '../db/drizzle.module';
-import { workoutSession, sessionExercise, loggedSet, exercise, userExercisePreference } from '../db/schema';
+import { workoutSession, sessionExercise, loggedSet, exercise, userExercisePreference, routine } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { recordConflict, recordTombstone, isTombstoned } from './conflict-log';
 import {
   EXERCISE_PATCH_FIELDS,
   LOGGED_SET_PATCH_FIELDS,
   patchAwareSet,
+  ROUTINE_PATCH_FIELDS,
   SESSION_EXERCISE_PATCH_FIELDS,
   USER_EXERCISE_PREFERENCE_PATCH_FIELDS,
   WORKOUT_SESSION_PATCH_FIELDS,
   type ExerciseValues,
   type LoggedSetValues,
+  type RoutineValues,
   type SessionExerciseValues,
   type UserExercisePreferenceValues,
   type WorkoutSessionValues,
@@ -33,6 +36,7 @@ const TABLE_MAP = {
   logged_set: loggedSet,
   exercise: exercise,
   user_exercise_preference: userExercisePreference,
+  routine: routine,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -54,17 +58,45 @@ const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 // two string comparisons (RESEARCH.md Pattern 2).
 const SINGLETON_ROOT_TYPES = new Set<string>(['exercise', 'user_exercise_preference']);
 
+// An aggregate root owns synced children and is looked up in its own table; a singleton root
+// (SINGLETON_ROOT_TYPES) owns none; everything else chains to a root through rootFamilyOf.
+// workout_session and routine are the two aggregate-root families today — routine_day and
+// routine_exercise (04-02) will chain to 'routine' the same way session_exercise/logged_set chain
+// to 'workout_session'. Every later table this phase adds keys off AGGREGATE_ROOT_TYPES /
+// ROOT_TABLE_BY_TYPE / rootFamilyOf rather than adding another hardcoded type comparison.
+const AGGREGATE_ROOT_TYPES = new Set<string>(['workout_session', 'routine']);
+
+// Every self-rooting type's own table, keyed by its op.type string — the single place root
+// resolution, ownership lookup and capturedRootSeq all read from to find "the table this root id
+// lives in" without repeating a type comparison.
+const ROOT_TABLE_BY_TYPE = {
+  workout_session: workoutSession,
+  routine: routine,
+  exercise: exercise,
+  user_exercise_preference: userExercisePreference,
+} as const;
+type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
+
+// The root type an op chains to — session_exercise/logged_set resolve through workout_session;
+// every self-rooting type (aggregate or singleton) resolves to itself. 04-02 extends this with
+// routine_day/routine_exercise chaining to 'routine'.
+function rootFamilyOf(type: string): string {
+  if (type === 'session_exercise' || type === 'logged_set') return 'workout_session';
+  return type;
+}
+
 // Parents apply before children within an aggregate — PowerSync's crud queue can genuinely
 // deliver ops in an order the app did not intend, so this is an explicit sort, not an assumption
-// (PITFALLS §4). exercise/user_exercise_preference never have children to order against, so rank
-// 0 is safe: aggregates are keyed by distinct root id, and a workout_session aggregate never
-// shares a key with an exercise or user_exercise_preference aggregate.
+// (PITFALLS §4). exercise/user_exercise_preference/routine never have children to order against
+// in this plan, so rank 0 is safe: aggregates are keyed by distinct root id, and a workout_session
+// aggregate never shares a key with an exercise, user_exercise_preference or routine aggregate.
 const AGGREGATE_RANK: Record<MappedTable, number> = {
   workout_session: 0,
   session_exercise: 1,
   logged_set: 2,
   exercise: 0,
   user_exercise_preference: 0,
+  routine: 0,
 };
 
 const SESSION_STATUSES = new Set(['in_progress', 'completed', 'discarded']);
@@ -75,6 +107,7 @@ const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const LOAD_TYPES = new Set<string>(LOAD_TYPE_TUPLE);
 const EQUIPMENT_TYPES = new Set<string>(EQUIPMENT_TYPE_TUPLE);
 const MOVEMENT_PATTERNS = new Set<string>(MOVEMENT_PATTERN_TUPLE);
+const ROUTINE_STATUSES = new Set<string>(ROUTINE_STATUS_TUPLE);
 
 interface WorkoutSessionOpData {
   routine_day_id?: string | null;
@@ -136,6 +169,17 @@ interface UserExercisePreferenceOpData {
   archived_at?: string | null;
   never_suggest?: boolean;
   updated_at?: string;
+}
+
+// progression_frozen is deliberately absent — that column arrives in 04-04; adding its field here
+// would be a forward reference to a column that does not exist yet.
+interface RoutineOpData {
+  name?: string;
+  goal?: string | null;
+  status?: string;
+  source?: string;
+  created_from_template_id?: string | null;
+  archived_at?: string | null;
 }
 
 function toWorkoutSessionValues(id: string, userId: string, data: Record<string, unknown> | null | undefined): WorkoutSessionValues {
@@ -258,6 +302,26 @@ function toUserExercisePreferenceValues(
   };
 }
 
+// userId always comes from the authenticated session argument, never from data.user_id — a
+// client can only author its own routines (T-03-02 pattern, mirrored from toWorkoutSessionValues).
+// source is forced to 'user' — the seed script's 'seed' rows are written by direct SQL, never
+// through this path. Unlike exercise, archivedAt IS an accepted client field here — archiving a
+// routine is a user action that must sync (D-05), whereas exercise's archive state lives in
+// user_exercise_preference.
+function toRoutineValues(id: string, userId: string, data: Record<string, unknown> | null | undefined): RoutineValues {
+  const d = (data ?? {}) as RoutineOpData;
+  return {
+    id,
+    userId,
+    name: d.name ?? '',
+    goal: d.goal ?? null,
+    status: d.status ?? 'draft',
+    source: 'user',
+    createdFromTemplateId: d.created_from_template_id ?? null,
+    archivedAt: d.archived_at ? new Date(d.archived_at) : null,
+  };
+}
+
 function isNonNegativeInteger(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
@@ -361,6 +425,17 @@ function hasInvalidField(op: SyncCrudOp): boolean {
     const d = data as UserExercisePreferenceOpData;
     if (typeof d.exercise_id !== 'string' || d.exercise_id.length === 0) return true;
     if (d.never_suggest !== undefined && typeof d.never_suggest !== 'boolean') return true;
+    return false;
+  }
+
+  if (op.type === 'routine') {
+    const d = data as RoutineOpData;
+    if (d.status !== undefined && !(typeof d.status === 'string' && ROUTINE_STATUSES.has(d.status))) {
+      return true;
+    }
+    // source is not validated here — toRoutineValues forces it, exactly as it forces isCustom
+    // for exercise.
+    if (d.name !== undefined && !(typeof d.name === 'string' && d.name.trim().length > 0)) return true;
     return false;
   }
 
@@ -490,14 +565,13 @@ export class SyncService {
     }
 
     // Root resolution — null means "could not be determined from the batch or the database".
-    // exercise/user_exercise_preference are singleton roots (SINGLETON_ROOT_TYPES): they resolve
-    // to themselves exactly like workout_session, never falling into the else branch below, which
-    // assumes every remaining type chains through session_exercise_id (the Pitfall 2 trap — an
-    // exercise op landing there would resolve undefined and reject missing_parent with no signal
-    // about the real cause).
+    // Every AGGREGATE_ROOT_TYPES / SINGLETON_ROOT_TYPES member resolves to itself, never falling
+    // into the else branch below, which assumes every remaining type chains through
+    // session_exercise_id (the Pitfall 2 trap — a routine op landing there would resolve
+    // undefined and reject missing_parent with no signal about the real cause).
     const rootByOpId = new Map<string, string | null>();
     for (const op of remaining) {
-      if (op.type === 'workout_session' || SINGLETON_ROOT_TYPES.has(op.type)) {
+      if (AGGREGATE_ROOT_TYPES.has(op.type) || SINGLETON_ROOT_TYPES.has(op.type)) {
         rootByOpId.set(op.op_id, op.id);
       } else if (op.type === 'session_exercise') {
         rootByOpId.set(op.op_id, resolveSessionIdForSessionExercise(op.id) ?? null);
@@ -507,24 +581,31 @@ export class SyncService {
       }
     }
 
-    // A batch that fails to resolve is healed onto the batch's single other known root, matching
-    // the realistic shape of one offline session pushed as one batch — a genuinely ambiguous or
-    // multi-session batch never merges an orphan into the wrong aggregate. Restricted to roots
-    // contributed by workout_session ops specifically: a batch containing only exercise ops would
-    // otherwise make an exercise id the sole resolved root, and an orphaned logged_set in that
-    // batch would then heal onto it — a singleton root is never a valid heal target (T-03-17).
-    const workoutSessionHealCandidates = new Set(
-      remaining
-        .filter((op) => op.type === 'workout_session')
-        .map((op) => rootByOpId.get(op.op_id))
-        .filter((r): r is string => r !== null && r !== undefined),
-    );
-    const healRoot = workoutSessionHealCandidates.size === 1 ? [...workoutSessionHealCandidates][0] : null;
+    // A batch that fails to resolve is healed onto the batch's single other known root WITHIN THE
+    // SAME AGGREGATE FAMILY, matching the realistic shape of one offline session (or one routine
+    // op) pushed as one batch — a genuinely ambiguous or multi-aggregate batch never merges an
+    // orphan into the wrong family. healRootByFamily is keyed by root family (rootFamilyOf's
+    // output), one entry per AGGREGATE_ROOT_TYPES member, each value being that family's single
+    // resolved root in this batch or null when the batch contributed zero or more than one — so an
+    // orphaned session_exercise can never heal onto a routine root and vice versa. A singleton root
+    // is never a valid heal target (T-03-17), because SINGLETON_ROOT_TYPES members are never keys
+    // of this map.
+    const healRootByFamily = new Map<string, string | null>();
+    for (const familyType of AGGREGATE_ROOT_TYPES) {
+      const candidates = new Set(
+        remaining
+          .filter((op) => op.type === familyType)
+          .map((op) => rootByOpId.get(op.op_id))
+          .filter((r): r is string => r !== null && r !== undefined),
+      );
+      healRootByFamily.set(familyType, candidates.size === 1 ? [...candidates][0] : null);
+    }
 
     const aggregates = new Map<string, Aggregate>();
     let orphanSeq = 0;
     for (const op of remaining) {
       const resolvedRoot = rootByOpId.get(op.op_id) ?? null;
+      const healRoot = healRootByFamily.get(rootFamilyOf(op.type)) ?? null;
       const effectiveRoot = resolvedRoot ?? healRoot;
       const key = effectiveRoot ?? `__orphan_${orphanSeq++}`;
       const existing = aggregates.get(key);
@@ -536,28 +617,34 @@ export class SyncService {
       }
     }
 
-    // Every root that is itself an exercise or user_exercise_preference op in this batch — built
-    // from the self-rooted ops above so ownership resolution below knows which table to query
-    // per root, without repeating the root-resolution branch logic.
-    const singletonRootTypeByRootId = new Map<string, 'exercise' | 'user_exercise_preference'>();
+    // Every root type an op in this batch self-roots as (aggregate or singleton) — built once so
+    // ownership resolution below and capturedRootSeq know which table to query per root, without
+    // repeating the root-resolution branch logic. A root id resolved via the child-chain fallback
+    // (never present in this map, since only session_exercise/logged_set chain to a root today,
+    // and both resolve exclusively to the workout_session family) defaults to workout_session
+    // wherever this map is read.
+    const rootTypeByRootId = new Map<string, RootTableType>();
     for (const op of remaining) {
-      if (op.type === 'exercise' || op.type === 'user_exercise_preference') {
-        singletonRootTypeByRootId.set(op.id, op.type);
+      if (AGGREGATE_ROOT_TYPES.has(op.type) || SINGLETON_ROOT_TYPES.has(op.type)) {
+        rootTypeByRootId.set(op.id, op.type as RootTableType);
       }
     }
 
     // Ownership is resolved once per aggregate, through the root — re-read from the database on
     // every push rather than trusted from a prior op, so an id already accepted once is never
-    // treated as already-owned (T-02-01, T-02-03). One batched query per root type, never a
-    // per-row lookup (T-03-18) — exercise/user_exercise_preference roots are split from
-    // workout_session roots by type, since each lives in its own table.
+    // treated as already-owned (T-02-01, T-02-03). One batched query per root table, never a
+    // per-row lookup (T-03-18) — every ROOT_TABLE_BY_TYPE member is split from the rest by type,
+    // since each lives in its own table.
     const nonPoisonedRoots = [...aggregates.values()]
       .filter((a) => !a.poisoned && a.root !== null)
       .map((a) => a.root as string);
-    const workoutSessionRootIds = nonPoisonedRoots.filter((id) => !singletonRootTypeByRootId.has(id));
-    const exerciseRootIds = nonPoisonedRoots.filter((id) => singletonRootTypeByRootId.get(id) === 'exercise');
+    const workoutSessionRootIds = nonPoisonedRoots.filter(
+      (id) => (rootTypeByRootId.get(id) ?? 'workout_session') === 'workout_session',
+    );
+    const routineRootIds = nonPoisonedRoots.filter((id) => rootTypeByRootId.get(id) === 'routine');
+    const exerciseRootIds = nonPoisonedRoots.filter((id) => rootTypeByRootId.get(id) === 'exercise');
     const userExercisePreferenceRootIds = nonPoisonedRoots.filter(
-      (id) => singletonRootTypeByRootId.get(id) === 'user_exercise_preference',
+      (id) => rootTypeByRootId.get(id) === 'user_exercise_preference',
     );
 
     const existingRoots = workoutSessionRootIds.length
@@ -565,6 +652,9 @@ export class SyncService {
           .select({ id: workoutSession.id, userId: workoutSession.userId })
           .from(workoutSession)
           .where(inArray(workoutSession.id, workoutSessionRootIds))
+      : [];
+    const existingRoutineRoots = routineRootIds.length
+      ? await this.db.select({ id: routine.id, userId: routine.userId }).from(routine).where(inArray(routine.id, routineRootIds))
       : [];
     // exercise.userId is nullable, unlike workoutSession.userId — a seeded row's stored value is
     // NULL, which must be distinguished below from "no such row" (T-03-01, the crux of this plan).
@@ -582,6 +672,7 @@ export class SyncService {
       : [];
     const existingOwnerByRoot = new Map<string, string | null>([
       ...existingRoots.map((row): [string, string | null] => [row.id, row.userId]),
+      ...existingRoutineRoots.map((row): [string, string | null] => [row.id, row.userId]),
       ...existingExerciseRoots.map((row): [string, string | null] => [row.id, row.userId]),
       ...existingUserExercisePreferenceRoots.map((row): [string, string | null] => [row.id, row.userId]),
     ]);
@@ -594,7 +685,7 @@ export class SyncService {
 
       const root = aggregate.root;
       const rootOp = aggregate.ops.find(
-        (op) => op.id === root && (op.type === 'workout_session' || SINGLETON_ROOT_TYPES.has(op.type)),
+        (op) => op.id === root && (AGGREGATE_ROOT_TYPES.has(op.type) || SINGLETON_ROOT_TYPES.has(op.type)),
       );
 
       // The existing row, if any, is always authoritative — a PUT for an id that already exists
@@ -641,11 +732,16 @@ export class SyncService {
         // Merge order resolves through the aggregate root, never a per-child column (02-02's
         // "no server_seq on a child row" decision) — captured once, before any op in this
         // transaction touches it, so a conflict logged later in the same loop always compares
-        // against the value that was true before this push started (T-02-02).
+        // against the value that was true before this push started (T-02-02). Reads whichever
+        // root table this root actually lives in (ROOT_TABLE_BY_TYPE), falling back to
+        // workout_session when the root type is not known — the pre-existing behavior for a root
+        // row that does not exist yet.
+        const rootTableType = rootTypeByRootId.get(root) ?? 'workout_session';
+        const rootTable = ROOT_TABLE_BY_TYPE[rootTableType];
         const [rootBefore] = await tx
-          .select({ serverSeq: workoutSession.serverSeq })
-          .from(workoutSession)
-          .where(eq(workoutSession.id, root));
+          .select({ serverSeq: rootTable.serverSeq })
+          .from(rootTable)
+          .where(eq(rootTable.id, root));
         const capturedRootSeq = rootBefore?.serverSeq ?? 0;
 
         for (const op of orderedOps) {
@@ -755,7 +851,9 @@ export class SyncService {
                   ? toLoggedSetValues(op.id, resolveSessionExerciseIdForLoggedSet(op.id) ?? '', op.data)
                   : op.type === 'exercise'
                     ? toExerciseValues(op.id, userId, op.data)
-                    : toUserExercisePreferenceValues(op.id, userId, op.data);
+                    : op.type === 'user_exercise_preference'
+                      ? toUserExercisePreferenceValues(op.id, userId, op.data)
+                      : toRoutineValues(op.id, userId, op.data);
 
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
@@ -798,7 +896,7 @@ export class SyncService {
               .returning({ serverSeq: exercise.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
-          } else {
+          } else if (op.type === 'user_exercise_preference') {
             const nextSeq = sql`nextval('sync_seq')`;
             const userExercisePreferenceValues = values as UserExercisePreferenceValues;
             const [{ serverSeq }] = await tx
@@ -812,6 +910,21 @@ export class SyncService {
                 },
               })
               .returning({ serverSeq: userExercisePreference.serverSeq });
+            const seqValue = BigInt(serverSeq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else {
+            // routine — the aggregate root the tracer proves. Carries server_seq like exercise and
+            // user_exercise_preference (it is an aggregate root), unlike session_exercise/logged_set.
+            const nextSeq = sql`nextval('sync_seq')`;
+            const routineValues = values as RoutineValues;
+            const [{ serverSeq }] = await tx
+              .insert(routine)
+              .values({ ...routineValues, serverSeq: nextSeq })
+              .onConflictDoUpdate({
+                target: routine.id,
+                set: { ...patchAwareSet(op, routineValues, ROUTINE_PATCH_FIELDS), serverSeq: nextSeq },
+              })
+              .returning({ serverSeq: routine.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           }
