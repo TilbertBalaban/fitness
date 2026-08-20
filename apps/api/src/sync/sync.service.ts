@@ -129,8 +129,7 @@ interface SessionExerciseOpData {
   target_sets?: number | null;
   target_rep_min?: number | null;
   target_rep_max?: number | null;
-  target_rir_min?: number | null;
-  target_rir_max?: number | null;
+  target_rir?: number | null;
   target_rest_seconds?: number | null;
 }
 
@@ -214,8 +213,7 @@ function toSessionExerciseValues(id: string, sessionId: string, data: Record<str
     targetSets: d.target_sets ?? null,
     targetRepMin: d.target_rep_min ?? null,
     targetRepMax: d.target_rep_max ?? null,
-    targetRirMin: d.target_rir_min ?? null,
-    targetRirMax: d.target_rir_max ?? null,
+    targetRir: d.target_rir ?? null,
     targetRestSeconds: d.target_rest_seconds ?? null,
   };
 }
@@ -345,7 +343,7 @@ function isNonNegativeIntegerOrNull(value: unknown): boolean {
 // session_exercise.exercise_id is a NOT NULL foreign key (apps/api/src/db/schema/session.ts) —
 // unlike every other field here, absent is invalid the same as empty, because toSessionExerciseValues'
 // `d.exercise_id ?? ''` fallback would otherwise insert or (via the unconditional onConflictDoUpdate
-// `set`) silently clobber an existing row's FK with an empty string (CR-04). order_index and the six
+// `set`) silently clobber an existing row's FK with an empty string (CR-04). order_index and the five
 // target_* fields keep the "checked only when present" pattern the other validators use; each
 // target_* column is nullable, so an explicit null is a legitimate "no prescription" value.
 function isInvalidSessionExercise(data: SessionExerciseOpData): boolean {
@@ -354,8 +352,7 @@ function isInvalidSessionExercise(data: SessionExerciseOpData): boolean {
   if (data.target_sets !== undefined && !isNonNegativeIntegerOrNull(data.target_sets)) return true;
   if (data.target_rep_min !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_min)) return true;
   if (data.target_rep_max !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_max)) return true;
-  if (data.target_rir_min !== undefined && !isNonNegativeIntegerOrNull(data.target_rir_min)) return true;
-  if (data.target_rir_max !== undefined && !isNonNegativeIntegerOrNull(data.target_rir_max)) return true;
+  if (data.target_rir !== undefined && !isNonNegativeIntegerOrNull(data.target_rir)) return true;
   if (data.target_rest_seconds !== undefined && !isNonNegativeIntegerOrNull(data.target_rest_seconds)) return true;
   return false;
 }

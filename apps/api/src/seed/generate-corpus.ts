@@ -124,8 +124,7 @@ interface DayExerciseSeed {
   targetSets: number;
   targetRepMin: number;
   targetRepMax: number;
-  targetRirMin: number;
-  targetRirMax: number;
+  targetRir: number;
   targetRestSeconds: number;
 }
 interface RoutineDaySeed {
@@ -141,9 +140,9 @@ const ROUTINE_DAYS: RoutineDaySeed[] = [
     name: 'Push',
     orderIndex: 0,
     exercises: [
-      { exerciseId: 'seed-ex-bench-press', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 150 },
-      { exerciseId: 'seed-ex-overhead-press', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 120 },
-      { exerciseId: 'seed-ex-weighted-dip', targetSets: 4, targetRepMin: 8, targetRepMax: 12, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 90 },
+      { exerciseId: 'seed-ex-bench-press', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRir: 3, targetRestSeconds: 150 },
+      { exerciseId: 'seed-ex-overhead-press', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRir: 3, targetRestSeconds: 120 },
+      { exerciseId: 'seed-ex-weighted-dip', targetSets: 4, targetRepMin: 8, targetRepMax: 12, targetRir: 3, targetRestSeconds: 90 },
     ],
   },
   {
@@ -151,10 +150,10 @@ const ROUTINE_DAYS: RoutineDaySeed[] = [
     name: 'Pull',
     orderIndex: 1,
     exercises: [
-      { exerciseId: 'seed-ex-deadlift', targetSets: 4, targetRepMin: 4, targetRepMax: 8, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 180 },
-      { exerciseId: 'seed-ex-pull-up', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 90 },
-      { exerciseId: 'seed-ex-dumbbell-row', targetSets: 4, targetRepMin: 8, targetRepMax: 12, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 75 },
-      { exerciseId: 'seed-ex-assisted-pull-up', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 90 },
+      { exerciseId: 'seed-ex-deadlift', targetSets: 4, targetRepMin: 4, targetRepMax: 8, targetRir: 3, targetRestSeconds: 180 },
+      { exerciseId: 'seed-ex-pull-up', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRir: 3, targetRestSeconds: 90 },
+      { exerciseId: 'seed-ex-dumbbell-row', targetSets: 4, targetRepMin: 8, targetRepMax: 12, targetRir: 3, targetRestSeconds: 75 },
+      { exerciseId: 'seed-ex-assisted-pull-up', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRir: 3, targetRestSeconds: 90 },
     ],
   },
   {
@@ -162,8 +161,8 @@ const ROUTINE_DAYS: RoutineDaySeed[] = [
     name: 'Legs',
     orderIndex: 2,
     exercises: [
-      { exerciseId: 'seed-ex-back-squat', targetSets: 4, targetRepMin: 5, targetRepMax: 8, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 180 },
-      { exerciseId: 'seed-ex-dumbbell-row', targetSets: 4, targetRepMin: 8, targetRepMax: 12, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 75 },
+      { exerciseId: 'seed-ex-back-squat', targetSets: 4, targetRepMin: 5, targetRepMax: 8, targetRir: 3, targetRestSeconds: 180 },
+      { exerciseId: 'seed-ex-dumbbell-row', targetSets: 4, targetRepMin: 8, targetRepMax: 12, targetRir: 3, targetRestSeconds: 75 },
     ],
   },
   {
@@ -171,9 +170,9 @@ const ROUTINE_DAYS: RoutineDaySeed[] = [
     name: 'Full Body',
     orderIndex: 3,
     exercises: [
-      { exerciseId: 'seed-ex-back-squat', targetSets: 4, targetRepMin: 5, targetRepMax: 8, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 180 },
-      { exerciseId: 'seed-ex-bench-press', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 150 },
-      { exerciseId: 'seed-ex-deadlift', targetSets: 4, targetRepMin: 4, targetRepMax: 8, targetRirMin: 1, targetRirMax: 3, targetRestSeconds: 180 },
+      { exerciseId: 'seed-ex-back-squat', targetSets: 4, targetRepMin: 5, targetRepMax: 8, targetRir: 3, targetRestSeconds: 180 },
+      { exerciseId: 'seed-ex-bench-press', targetSets: 4, targetRepMin: 6, targetRepMax: 10, targetRir: 3, targetRestSeconds: 150 },
+      { exerciseId: 'seed-ex-deadlift', targetSets: 4, targetRepMin: 4, targetRepMax: 8, targetRir: 3, targetRestSeconds: 180 },
     ],
   },
 ];
@@ -288,9 +287,9 @@ async function ensureRoutine(userId: string, routineId: string): Promise<void> {
       const rexId = `${dayId}-rex-${index}`;
       await db.execute(sql`
         INSERT INTO routine_exercise
-          (id, routine_day_id, exercise_id, order_index, target_sets, target_rep_min, target_rep_max, target_rir_min, target_rir_max, target_rest_seconds)
+          (id, routine_day_id, exercise_id, order_index, target_sets, target_rep_min, target_rep_max, target_rir, target_rest_seconds)
         VALUES
-          (${rexId}, ${dayId}, ${dayEx.exerciseId}, ${index}, ${dayEx.targetSets}, ${dayEx.targetRepMin}, ${dayEx.targetRepMax}, ${dayEx.targetRirMin}, ${dayEx.targetRirMax}, ${dayEx.targetRestSeconds})
+          (${rexId}, ${dayId}, ${dayEx.exerciseId}, ${index}, ${dayEx.targetSets}, ${dayEx.targetRepMin}, ${dayEx.targetRepMax}, ${dayEx.targetRir}, ${dayEx.targetRestSeconds})
       `);
     }
   }
@@ -356,8 +355,7 @@ function buildSessionOps(
         target_sets: dayEx.targetSets,
         target_rep_min: dayEx.targetRepMin,
         target_rep_max: dayEx.targetRepMax,
-        target_rir_min: dayEx.targetRirMin,
-        target_rir_max: dayEx.targetRirMax,
+        target_rir: dayEx.targetRir,
         target_rest_seconds: dayEx.targetRestSeconds,
       },
     });
@@ -405,7 +403,7 @@ function buildSessionOps(
       else if (repDrift < 0.3) reps = dayEx.targetRepMax + 1 + Math.floor(rng() * 2);
       else reps = dayEx.targetRepMin + Math.floor(rng() * (dayEx.targetRepMax - dayEx.targetRepMin + 1));
 
-      const rir = Math.max(0, Math.min(4, dayEx.targetRirMin + Math.floor(rng() * (dayEx.targetRirMax - dayEx.targetRirMin + 1))));
+      const rir = Math.max(0, Math.min(4, dayEx.targetRir - 1 + Math.floor(rng() * 3)));
       const completed = setType !== 'failure';
 
       if (exerciseDef.unilateral) {

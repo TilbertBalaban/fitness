@@ -30,8 +30,7 @@ export const sessionExercise = sqliteTable('session_exercise', {
   targetSets: integer('target_sets'),
   targetRepMin: integer('target_rep_min'),
   targetRepMax: integer('target_rep_max'),
-  targetRirMin: integer('target_rir_min'),
-  targetRirMax: integer('target_rir_max'),
+  targetRir: integer('target_rir'),
   targetRestSeconds: integer('target_rest_seconds'),
 });
 
@@ -81,8 +80,7 @@ export const routineExercise = sqliteTable('routine_exercise', {
   targetSets: integer('target_sets'),
   targetRepMin: integer('target_rep_min'),
   targetRepMax: integer('target_rep_max'),
-  targetRirMin: integer('target_rir_min'),
-  targetRirMax: integer('target_rir_max'),
+  targetRir: integer('target_rir'),
   targetRestSeconds: integer('target_rest_seconds'),
   progressionSchemeId: text('progression_scheme_id'),
   notes: text('notes'),

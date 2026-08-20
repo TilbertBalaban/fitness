@@ -176,8 +176,7 @@ function fakeSessionExercise(overrides: Partial<Row> = {}): Row {
     targetSets: 3,
     targetRepMin: 8,
     targetRepMax: 12,
-    targetRirMin: 1,
-    targetRirMax: 3,
+    targetRir: 3,
     targetRestSeconds: 90,
     ...overrides,
   };

@@ -27,8 +27,7 @@ export interface SessionExerciseValues {
   targetSets: number | null;
   targetRepMin: number | null;
   targetRepMax: number | null;
-  targetRirMin: number | null;
-  targetRirMax: number | null;
+  targetRir: number | null;
   targetRestSeconds: number | null;
 }
 
@@ -117,8 +116,7 @@ export const SESSION_EXERCISE_PATCH_FIELDS: PatchFieldMap<SessionExerciseValues>
   targetSets: 'target_sets',
   targetRepMin: 'target_rep_min',
   targetRepMax: 'target_rep_max',
-  targetRirMin: 'target_rir_min',
-  targetRirMax: 'target_rir_max',
+  targetRir: 'target_rir',
   targetRestSeconds: 'target_rest_seconds',
 };
 
