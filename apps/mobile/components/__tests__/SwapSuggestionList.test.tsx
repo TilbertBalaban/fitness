@@ -1,6 +1,11 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Text } from 'react-native';
-import { ExerciseImageTile } from '../ExerciseImageTile';
+import { Image, StyleSheet, Text, type ImageStyle } from 'react-native';
+import {
+  EXERCISE_THUMBNAIL_WIDTH,
+  ExerciseImageTile,
+  ExerciseImageTileView,
+  resolveTileImageStyle,
+} from '../ExerciseImageTile';
 import { SwapSuggestionList } from '../SwapSuggestionList';
 import type { ScoredCandidate } from '../../lib/catalog/smart-swap';
 
@@ -162,5 +167,27 @@ describe('SwapSuggestionList', () => {
     expect(text).not.toContain('No Reason');
     expect(text).not.toContain('Whitespace Reason');
     expect(text).toContain('1 suggested alternative');
+  });
+
+  it('the alternatives tile renders at the same EXERCISE_THUMBNAIL_WIDTH as the catalog list row', () => {
+    const result = SwapSuggestionList({
+      candidates: [candidate({ id: 'seed_90_90_Hamstring', name: '90/90 Hamstring', why: 'Same primary muscle: hamstrings' })],
+    });
+    const [tile] = findByType(result, ExerciseImageTile);
+
+    expect(tile.props.width).toBe(EXERCISE_THUMBNAIL_WIDTH);
+  });
+
+  it("the alternatives tile is bounded: a 750x500 intrinsic source composed ahead of the tile's image style still resolves to 100%/100%", () => {
+    const view = ExerciseImageTileView({ source: 7, width: EXERCISE_THUMBNAIL_WIDTH });
+    const [image] = findByType(view, Image);
+    const flattened = StyleSheet.flatten([{ width: 750, height: 500 } as ImageStyle, resolveTileImageStyle()]) as Record<
+      string,
+      unknown
+    >;
+
+    expect(StyleSheet.flatten(image.props.style)).toEqual(StyleSheet.flatten(resolveTileImageStyle()));
+    expect(flattened.width).toBe('100%');
+    expect(flattened.height).toBe('100%');
   });
 });
