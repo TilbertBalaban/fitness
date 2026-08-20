@@ -9,6 +9,7 @@ import { MuscleTargetList } from '@/components/MuscleTargetList';
 import { SwapSuggestionList } from '@/components/SwapSuggestionList';
 import { authClient } from '@/lib/auth-client';
 import { getLocalCatalogImage } from '@/lib/catalog/catalog-image-map.generated';
+import { ensureCatalogLoaded } from '@/lib/catalog/ensure-catalog';
 // 03-08 owns this module (same wave 6, running concurrently) — it does not exist in this worktree
 // yet. The import, the call shape (db, userId, sourceId) => Promise<newId>, and the Duplicate
 // control below are written against 03-08-PLAN.md's own declared signature and are expected to
@@ -18,6 +19,7 @@ import { getLocalCatalogImage } from '@/lib/catalog/catalog-image-map.generated'
 // react-native jest resolver tries to eagerly resolve even for a `{ virtual: true }` mock.
 import { duplicateExercise } from '../../lib/catalog/custom-exercise';
 import { loadExerciseDetail, type ExerciseDetail } from '@/lib/catalog/exercise-detail';
+import type { CatalogLoadResult } from '@/lib/catalog/load-snapshot';
 import {
   readPreference,
   resolveDetailActions,
@@ -32,16 +34,24 @@ import { exercise, exerciseMuscleMapping, seededExercise, userExercisePreference
 export type DetailScreenState =
   | { status: 'found'; detail: ExerciseDetail }
   | { status: 'not-found' }
-  | { status: 'error' };
+  | { status: 'error' }
+  | { status: 'hydrating' };
 
 // Extracted so "an unknown exercise id renders a not-found state rather than throwing or
 // rendering a blank screen" is directly testable without invoking the hook-bearing screen
-// component itself — this is the exact classification the useEffect below drives its three
-// render branches from, not a parallel copy of that logic.
+// component itself — this is the exact classification the useEffect below drives its render
+// branches from, not a parallel copy of that logic. `hydrating` is deliberately excluded from
+// this function's return type: it is the component's pre-resolution state, not a resolution, so
+// a resolved catalog load that never ran the detail loader can only ever be `error`.
 export async function resolveDetailScreenState(
+  ensure: () => Promise<CatalogLoadResult>,
   loader: () => Promise<ExerciseDetail | null>,
-): Promise<DetailScreenState> {
+): Promise<Exclude<DetailScreenState, { status: 'hydrating' }>> {
   try {
+    const ensureResult = await ensure();
+    if (ensureResult.status === 'invalid') {
+      return { status: 'error' };
+    }
     const result = await loader();
     return result ? { status: 'found', detail: result } : { status: 'not-found' };
   } catch {
@@ -131,9 +141,7 @@ export default function ExerciseDetailScreen() {
   const userId = session.data?.user?.id ?? null;
   const { width: windowWidth } = useWindowDimensions();
 
-  const [detail, setDetail] = useState<ExerciseDetail | null>(null);
-  const [notFound, setNotFound] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [screenState, setScreenState] = useState<DetailScreenState>({ status: 'hydrating' });
   const [preference, setPreference] = useState<ExercisePreference>(DEFAULT_PREFERENCE);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [swapCandidates, setSwapCandidates] = useState<ScoredCandidate[]>([]);
@@ -144,11 +152,11 @@ export default function ExerciseDetailScreen() {
 
     (async () => {
       const db = getPowerSync();
-      const state = await resolveDetailScreenState(() => loadExerciseDetail(db, id));
+      const state = await resolveDetailScreenState(() => ensureCatalogLoaded(db), () => loadExerciseDetail(db, id));
       if (!mounted) return;
+      setScreenState(state);
 
       if (state.status === 'found') {
-        setDetail(state.detail);
         const [ownerAndVariation, pref, swapData] = await Promise.all([
           loadOwnerAndVariation(db, id),
           userId ? readPreference(db, userId, id) : Promise.resolve(DEFAULT_PREFERENCE),
@@ -169,10 +177,6 @@ export default function ExerciseDetailScreen() {
         // inventing data this screen has no source for; the omission is this seam left open on
         // purpose, not an oversight.
         setSwapCandidates(scoreAlternatives(target, swapData.candidates, swapData.mappings, swapData.preferences, userId));
-      } else if (state.status === 'not-found') {
-        setNotFound(true);
-      } else {
-        setFailed(true);
       }
     })();
 
@@ -180,6 +184,8 @@ export default function ExerciseDetailScreen() {
       mounted = false;
     };
   }, [id, userId]);
+
+  const detail = screenState.status === 'found' ? screenState.detail : null;
 
   const actions = resolveDetailActions(preference.archivedAt);
 
@@ -207,7 +213,7 @@ export default function ExerciseDetailScreen() {
     router.replace({ pathname: '/exercises/[id]', params: { id: newId } });
   };
 
-  if (failed) {
+  if (screenState.status === 'error') {
     return (
       <ScrollView
         className="flex-1 bg-background"
@@ -225,7 +231,7 @@ export default function ExerciseDetailScreen() {
     );
   }
 
-  if (notFound) {
+  if (screenState.status === 'not-found') {
     return (
       <ScrollView
         className="flex-1 bg-background"
@@ -236,6 +242,18 @@ export default function ExerciseDetailScreen() {
           <Text className="mt-sm text-center text-body font-normal text-foreground-muted">
             This exercise may have been removed. Go back and try another.
           </Text>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (screenState.status === 'hydrating') {
+    return (
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
+        <View className="mt-xl gap-sm">
+          <View className="rounded-md bg-surface" style={{ height: 32 }} />
+          <View className="rounded-md bg-surface" style={{ height: 180 }} />
+          <View className="rounded-md bg-surface" style={{ height: 64 }} />
         </View>
       </ScrollView>
     );

@@ -19,6 +19,7 @@ import {
   type EditAccess,
   type MuscleMappingDraft,
 } from '@/lib/catalog/custom-exercise';
+import { ensureCatalogLoaded } from '@/lib/catalog/ensure-catalog';
 import { loadExerciseDetail } from '@/lib/catalog/exercise-detail';
 import { getPowerSync } from '@/lib/db/powersync';
 
@@ -106,6 +107,7 @@ function MultilineField({ label, value, onChangeText }: MultilineFieldProps) {
 type LoadState =
   | { status: 'loading' }
   | { status: 'not-found' }
+  | { status: 'error' }
   | { status: 'ready'; access: EditAccess; draft: CustomExerciseDraft };
 
 export default function EditExerciseScreen() {
@@ -124,19 +126,29 @@ export default function EditExerciseScreen() {
 
     (async () => {
       const db = getPowerSync();
-      const [detail, ownerUserId] = await Promise.all([loadExerciseDetail(db, id), getExerciseOwnerUserId(db, id)]);
-      if (!mounted) return;
+      try {
+        const ensureResult = await ensureCatalogLoaded(db);
+        if (ensureResult.status === 'invalid') {
+          if (mounted) setState({ status: 'error' });
+          return;
+        }
 
-      if (!detail) {
-        setState({ status: 'not-found' });
-        return;
+        const [detail, ownerUserId] = await Promise.all([loadExerciseDetail(db, id), getExerciseOwnerUserId(db, id)]);
+        if (!mounted) return;
+
+        if (!detail) {
+          setState({ status: 'not-found' });
+          return;
+        }
+
+        setState({
+          status: 'ready',
+          access: resolveEditAccess(ownerUserId, userId),
+          draft: draftFromExerciseDetail(detail),
+        });
+      } catch {
+        if (mounted) setState({ status: 'error' });
       }
-
-      setState({
-        status: 'ready',
-        access: resolveEditAccess(ownerUserId, userId),
-        draft: draftFromExerciseDetail(detail),
-      });
     })();
 
     return () => {
@@ -179,6 +191,21 @@ export default function EditExerciseScreen() {
           <Text className="text-center text-heading font-semibold text-foreground">Exercise not found</Text>
           <Text className="mt-sm text-center text-body font-normal text-foreground-muted">
             This exercise may have been removed. Go back and try another.
+          </Text>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 32 }}>
+        <View className="mt-xl items-center">
+          <Text className="text-center text-heading font-semibold text-foreground">
+            Exercise catalog couldn&apos;t load
+          </Text>
+          <Text className="mt-sm text-center text-body font-normal text-foreground-muted">
+            Restart the app to try again. Your saved exercises and history are safe.
           </Text>
         </View>
       </ScrollView>

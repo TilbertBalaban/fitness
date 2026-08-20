@@ -17,6 +17,7 @@ jest.mock('../../../lib/catalog/custom-exercise', () => ({ duplicateExercise: je
 
 import ExerciseDetailScreen, { resolveDetailScreenState } from '../[id]';
 import type { ExerciseDetail } from '../../../lib/catalog/exercise-detail';
+import type { CatalogLoadResult } from '../../../lib/catalog/load-snapshot';
 
 const SAMPLE_DETAIL: ExerciseDetail = {
   id: 'ex-1',
@@ -33,20 +34,48 @@ const SAMPLE_DETAIL: ExerciseDetail = {
   secondaryMuscles: [],
 };
 
+function ensureWith(result: CatalogLoadResult): () => Promise<CatalogLoadResult> {
+  return () => Promise.resolve(result);
+}
+
+const ensureLoaded = ensureWith({ status: 'loaded', catalogVersion: 'v1' });
+const ensureCurrent = ensureWith({ status: 'current', catalogVersion: 'v1' });
+const ensureInvalid = ensureWith({ status: 'invalid' });
+const ensureRejects = () => Promise.reject(new Error('hydrate failed'));
+
 describe('resolveDetailScreenState', () => {
-  it('resolves to found for a real detail', async () => {
-    const state = await resolveDetailScreenState(() => Promise.resolve(SAMPLE_DETAIL));
+  it('resolves to found for a real detail after a freshly loaded catalog', async () => {
+    const state = await resolveDetailScreenState(ensureLoaded, () => Promise.resolve(SAMPLE_DETAIL));
+    expect(state).toEqual({ status: 'found', detail: SAMPLE_DETAIL });
+  });
+
+  it('resolves to found for a real detail when the catalog was already current', async () => {
+    const state = await resolveDetailScreenState(ensureCurrent, () => Promise.resolve(SAMPLE_DETAIL));
     expect(state).toEqual({ status: 'found', detail: SAMPLE_DETAIL });
   });
 
   it('resolves to not-found rather than throwing or leaving a blank screen for an unknown id', async () => {
-    const state = await resolveDetailScreenState(() => Promise.resolve(null));
+    const state = await resolveDetailScreenState(ensureLoaded, () => Promise.resolve(null));
     expect(state).toEqual({ status: 'not-found' });
   });
 
-  it('resolves to error, never rethrowing, when the loader itself throws', async () => {
-    const state = await resolveDetailScreenState(() => Promise.reject(new Error('db unavailable')));
+  it('resolves to error, never rethrowing, when the detail loader itself throws', async () => {
+    const state = await resolveDetailScreenState(ensureLoaded, () => Promise.reject(new Error('db unavailable')));
     expect(state).toEqual({ status: 'error' });
+  });
+
+  it('resolves to error and never calls the detail loader when the catalog resolved invalid', async () => {
+    const loader = jest.fn(() => Promise.resolve(SAMPLE_DETAIL));
+    const state = await resolveDetailScreenState(ensureInvalid, loader);
+    expect(state).toEqual({ status: 'error' });
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('resolves to error and never calls the detail loader when hydration itself rejects', async () => {
+    const loader = jest.fn(() => Promise.resolve(SAMPLE_DETAIL));
+    const state = await resolveDetailScreenState(ensureRejects, loader);
+    expect(state).toEqual({ status: 'error' });
+    expect(loader).not.toHaveBeenCalled();
   });
 });
 

@@ -22,7 +22,7 @@ import {
   type CatalogPreference,
 } from '@/lib/catalog/catalog-filter';
 import { getLocalCatalogImage } from '@/lib/catalog/catalog-image-map.generated';
-import { loadCatalogSnapshot } from '@/lib/catalog/load-snapshot';
+import { ensureCatalogLoaded } from '@/lib/catalog/ensure-catalog';
 import { refreshCatalog } from '@/lib/catalog/refresh-catalog';
 import { buildSearchIndex, searchCatalog } from '@/lib/catalog/search-index';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
@@ -137,7 +137,7 @@ export default function ExercisesScreen() {
     (async () => {
       const db = getPowerSync();
       try {
-        const loadResult = await loadCatalogSnapshot(db);
+        const loadResult = await ensureCatalogLoaded(db);
         if (loadResult.status === 'invalid') {
           if (mounted) setFailed(true);
           return;
