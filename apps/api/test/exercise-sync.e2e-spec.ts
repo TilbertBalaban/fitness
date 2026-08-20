@@ -87,13 +87,14 @@ interface ExerciseRow {
   user_id: string | null;
   name: string;
   load_type: string;
+  movement_pattern: string | null;
   is_custom: boolean;
   source: string;
 }
 
 async function exerciseRow(id: string): Promise<ExerciseRow | undefined> {
   const { rows } = await pg.query(
-    'SELECT id, user_id, name, load_type, is_custom, source FROM exercise WHERE id = $1',
+    'SELECT id, user_id, name, load_type, movement_pattern, is_custom, source FROM exercise WHERE id = $1',
     [id],
   );
   return rows[0];
@@ -252,6 +253,44 @@ describe('exercise sync (e2e)', () => {
     expect((goodRes.body as SyncPushResponse).applied).toEqual([goodOp.op_id]);
     const row = await exerciseRow(goodId);
     expect(row?.load_type).toBe('assisted');
+  });
+
+  it('rejects a PUT with an out-of-vocabulary movement_pattern as invalid_field; a valid one and an explicit null both apply', async () => {
+    const cookie = await signUp('movement-pattern-validate');
+    const badId = randomUUID();
+    seededExerciseIds.push(badId);
+    const badOp = exerciseOp(badId, {
+      name: 'Bogus Movement Pattern Exercise',
+      load_type: 'external_weight',
+      movement_pattern: 'bogus',
+    });
+    const badRes = await push(cookie, [badOp]);
+    expect((badRes.body as SyncPushResponse).rejected).toEqual([{ op_id: badOp.op_id, reason: 'invalid_field' }]);
+    expect(await exerciseRow(badId)).toBeUndefined();
+
+    const goodId = randomUUID();
+    seededExerciseIds.push(goodId);
+    const goodOp = exerciseOp(goodId, {
+      name: 'Romanian Deadlift',
+      load_type: 'external_weight',
+      movement_pattern: 'hinge',
+    });
+    const goodRes = await push(cookie, [goodOp]);
+    expect((goodRes.body as SyncPushResponse).applied).toEqual([goodOp.op_id]);
+    expect((await exerciseRow(goodId))?.movement_pattern).toBe('hinge');
+
+    // Nullable by design — the column has no CHECK and the client validator skips null too,
+    // so an unset pattern must not be mistaken for an invalid one.
+    const nullId = randomUUID();
+    seededExerciseIds.push(nullId);
+    const nullOp = exerciseOp(nullId, {
+      name: 'Unclassified Machine',
+      load_type: 'external_weight',
+      movement_pattern: null,
+    });
+    const nullRes = await push(cookie, [nullOp]);
+    expect((nullRes.body as SyncPushResponse).applied).toEqual([nullOp.op_id]);
+    expect((await exerciseRow(nullId))?.movement_pattern).toBeNull();
   });
 
   it('rejects a DELETE exercise op with invalid_field and the row survives — D-05 archive-only, never hard-deleted', async () => {

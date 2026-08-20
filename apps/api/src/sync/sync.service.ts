@@ -4,6 +4,7 @@ import {
   SYNCED_TABLES,
   LOAD_TYPES as LOAD_TYPE_TUPLE,
   EQUIPMENT_TYPES as EQUIPMENT_TYPE_TUPLE,
+  MOVEMENT_PATTERNS as MOVEMENT_PATTERN_TUPLE,
   type SyncCrudOp,
   type SyncPushResponse,
   type SyncRejectionReason,
@@ -73,6 +74,7 @@ const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // client-facing invalid_field rejection and the Postgres CHECK constraint can never drift apart.
 const LOAD_TYPES = new Set<string>(LOAD_TYPE_TUPLE);
 const EQUIPMENT_TYPES = new Set<string>(EQUIPMENT_TYPE_TUPLE);
+const MOVEMENT_PATTERNS = new Set<string>(MOVEMENT_PATTERN_TUPLE);
 
 interface WorkoutSessionOpData {
   routine_day_id?: string | null;
@@ -337,6 +339,13 @@ function hasInvalidField(op: SyncCrudOp): boolean {
       d.equipment_required !== undefined &&
       d.equipment_required !== null &&
       !(typeof d.equipment_required === 'string' && EQUIPMENT_TYPES.has(d.equipment_required))
+    ) {
+      return true;
+    }
+    if (
+      d.movement_pattern !== undefined &&
+      d.movement_pattern !== null &&
+      !(typeof d.movement_pattern === 'string' && MOVEMENT_PATTERNS.has(d.movement_pattern))
     ) {
       return true;
     }
