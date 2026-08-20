@@ -29,6 +29,8 @@ created: 2026-08-20
 3. Discarding a draft: **Delete** (real, per D-05's carve-out) vs. **Archive** (per D-05) — resolved by whether any session has ever been logged against the routine — see **Program Library**.
 4. Freeze and Duplicate need no confirmation dialog; Archive and Delete Draft do — see **Confirmations**.
 5. A phase-wide no-truncation rule for every *new* Phase 4 surface (see **Phase-Wide Rules**, R4) — this is a deliberate divergence from Phase 3's `ExerciseListRow`, which truncates exercise names to one line for scan density in a dense search list. That truncation is not overturned — the picker in this phase reuses `ExerciseListRow` verbatim and inherits it unchanged — but every genuinely new Phase 4 row (the slot row, the cycle chip, the library row) wraps and grows instead, because this phase's hard constraint explicitly names "the numeric target inputs on the slot row" as the hardest wrap-and-grow case, and because these are authoring surfaces without a fixed scan-density requirement.
+6. **RIR is a single number, not a range — an amendment to D-25.** D-25's "RIR range" wording was drift introduced at discuss-phase time; REQUIREMENTS.md has always said singular (PROG-03's "RIR target", PROG-09's "rep/RIR targets", PRGR-02's "rep-range midpoint plus RIR target"). The user reviewed this contract directly and overrode D-25's wording. Rep range stays a min/max range; only RIR collapses to a single stepper. See **Exercise Slot Row**.
+7. **The drag handle is hidden below two exercises** — narrows D-23's "always-visible" to "always visible whenever reordering is possible," since an affordance that cannot do anything (zero or one row in a day) is worse than an absent one. See **Day Deck & Drag Handle**.
 
 ---
 
@@ -72,7 +74,7 @@ Declared values (already shipped, inherited unchanged — this phase adds no fif
 - Cycle-strip chip labels, stepper field labels ("Sets", "Reps", "RIR", "Rest"), library row status text → Label.
 - Exercise name in the slot row header, and in the library/picker rows → Body, regular.
 - Numeric stepper readout → Body, regular (grows with OS font scale like any other Body text; see Spacing exceptions above).
-- Next-up card's resolved target line ("3 × 8–12 reps @ 1–3 RIR") → Body, regular.
+- Next-up card's resolved target line ("3 × 8–12 reps @ 2 RIR") → Body, regular.
 - Empty/error state headings → Heading; their body copy → Body, regular, `text-foreground-muted`.
 
 ---
@@ -108,7 +110,7 @@ Declared values (already shipped in `apps/mobile/global.css`, inherited unchange
 Extends Phase 1's R1–R3 (still binding: wrap-and-grow, ~3s web cold-start bound, explicit-submit-may-block/passive-check-may-not). This phase adds:
 
 - **R4 — New Phase 4 surfaces never truncate.** Every component this phase introduces (`CycleStrip`, `DayDeck`, `ExerciseSlotRow`, `ExercisePickerModal`'s own chrome, `NextUpCard`, the library row) wraps and grows at any OS font scale — no `numberOfLines`, no `ellipsizeMode`. This does not retroactively change `ExerciseListRow`, which the picker reuses unmodified and which keeps its Phase-3-approved one-line truncation for scan density in a dense search list; R4 governs only rows this phase adds.
-- **R5 — Structural validity over inline validation.** Wherever a numeric target has a min/max pair (rep range, RIR range), the stepper pair is built so an invalid state (min > max) cannot be entered in the first place — see Exercise Slot Row. No inline validation-error copy exists for these fields because there is nothing to reject.
+- **R5 — Structural validity over inline validation.** Wherever a numeric target has a min/max pair — in this phase, only the rep range, since RIR is a single stepper (see the D-25 amendment in Exercise Slot Row) — the stepper pair is built so an invalid state (min > max) cannot be entered in the first place. No inline validation-error copy exists for this field because there is nothing to reject.
 - **R6 — Local-first surfaces have no loading state for already-seeded data.** Every read this phase performs (routine tree, cycle list, catalog for the picker) is a synchronous local SQLite query, identical in kind to Phase 3's catalog reads. None of these renders a spinner; only the top-level screen's very first paint may show a brief skeleton (reusing the exact 3-row skeleton pattern already shipped in `programs.tsx`).
 
 ---
@@ -126,6 +128,11 @@ Extends Phase 1's R1–R3 (still binding: wrap-and-grow, ~3s web cold-start boun
 | Exercise Slot Row | `apps/mobile/components/ExerciseSlotRow.tsx` | D-25 | 04-03, extended 04-05/04-08 |
 | Exercise Picker Modal | `apps/mobile/components/ExercisePickerModal.tsx` | D-24 | 04-03 |
 | Home "Next Up" card | `apps/mobile/app/(tabs)/index.tsx` | D-27, D-20 | 04-10 |
+
+**Focal points** (Dimension 2 — mirrors Phase 1's precedent of naming a primary visual anchor per screen):
+- **Active Program screen:** the program name (Heading) is the anchor, immediately followed by the cycle strip/day deck — the freeze toggle is deliberately secondary (Label-sized, muted) so it never competes with "what program am I looking at and what's in it today."
+- **Program Library:** each row's program name (Body) is the anchor within the list; at the screen level, the single "Active" badge (accent-filled) is the one thing designed to draw the eye first, since confirming which program is running is the primary reason to open this screen.
+- **Home "Next Up" card:** the day name (Heading) is the anchor, with the resolved per-exercise target lines subordinate (Body) — the card answers "what am I training next" before "what exactly are the numbers," matching how a user actually scans it.
 
 ---
 
@@ -163,30 +170,32 @@ Selection state is drawn identically across all three (accent border + icon tint
 
 ---
 
-## Exercise Slot Row (D-25) — the phase's highest-value contract
+## Exercise Slot Row (D-25, amended) — the phase's highest-value contract
 
-Tapping a collapsed row expands it in place to reveal sets / rep range / RIR range / rest. No modal, no screen change; neighbouring rows stay visible.
+Tapping a collapsed row expands it in place to reveal sets / rep range / RIR / rest. No modal, no screen change; neighbouring rows stay visible.
+
+> **Amendment to D-25.** D-25's "RIR range" wording was drift introduced at discuss-phase time — REQUIREMENTS.md has always said singular: PROG-03 asks for "sets, rep range, RIR target, and rest duration"; PROG-09 asks for "per-cycle rep/RIR targets"; PRGR-02 defines progression as triggering on "rep-range midpoint plus RIR target," not an RIR range. The user reviewed this contract directly and overrode D-25: **RIR is a single number, not a min/max pair. Rep range stays a min/max range.** Every reference below reflects that correction — the row carries **five** target fields, not six: sets, rep range (min/max), RIR (single), rest.
 
 **Collapsed state:** exercise name (Body, R4 — wraps fully, does not truncate, unlike the picker's reused `ExerciseListRow`) plus a single muted summary line (Label, `text-foreground-muted`):
-- All six target fields null → **"No targets set."**
-- Any subset set → **"{sets} sets · {repMin}–{repMax} reps · {rirMin}–{rirMax} RIR · {rest} rest"**, with an em dash (`—`) standing in for any individual null field (e.g. `"3 sets · 8–12 reps · — RIR · 1:30 rest"`). This is the concrete resolution to the open "what does a blank target mean" discretion item: **null means deliberately unprescribed, and always renders as `—`, never coerced to `0` or omitted silently.**
+- All five target fields null → **"No targets set."**
+- Any subset set → **"{sets} sets · {repMin}–{repMax} reps · {rir} RIR · {rest} rest"**, with an em dash (`—`) standing in for any individual null field (e.g. `"3 sets · 8–10 reps · — RIR · 1:30 rest"`, or fully populated: `"3 sets · 8–10 reps · 2 RIR · 1:30 rest"`). This is the concrete resolution to the open "what does a blank target mean" discretion item: **null means deliberately unprescribed, and always renders as `—`, never coerced to `0` or omitted silently.**
 
-**Expanded state — four stepper fields, each a labelled row:**
+**Expanded state — four labelled rows, five stepper fields:**
 
 | Field | Range | Step | Display |
 |---|---|---|---|
 | Sets | 1 and up, no upper bound | 1 | Plain integer |
 | Rep range (min + max steppers, side by side) | 1–50 each | 1 | `{min}–{max}` |
-| RIR range (min + max steppers, side by side) | 0–6 each (6 represents the open-ended "6+" of LOG-06's future scale, kept consistent for Phase 8) | 1 | `{min}–{max}` |
+| RIR (single stepper) | 0–6 (6 represents the open-ended "6+" of LOG-06's future scale, kept consistent for Phase 8) | 1 | Plain integer |
 | Rest | 0:00 and up | 15s | `M:SS` (e.g. `1:30`), never raw seconds |
 
-**R5 in practice — min/max pairs cannot go invalid.** Incrementing a range's min stepper above the current max also increments max to match; decrementing max below the current min also decrements min to match. The pair is always internally consistent by construction — there is no inline "min must be ≤ max" error state anywhere in this row, because that state cannot be reached.
+**R5 in practice — the rep-range min/max pair cannot go invalid.** Incrementing the rep range's min stepper above the current max also increments max to match; decrementing max below the current min also decrements min to match. The pair is always internally consistent by construction — there is no inline "min must be ≤ max" error state anywhere in this row, because that state cannot be reached. RIR, being a single stepper, has no pairing rule to enforce — its only bound is the fixed 0–6 range.
 
 **Stepper anatomy:** `[−]  {value}  [+]`, each `[−]`/`[+]` a 48×48 `Pressable` with an Ionicons glyph (`remove`/`add`), color resolved via `useThemeColors()` exactly like the existing chevron/checkmark pattern — never a hardcoded literal. The `{value}` readout has no fixed width (`min-width: 32px`, `flex-shrink: 1`) so it grows at large OS font scales without clipping; the buttons stay fixed at 48×48 regardless of font scale, since they are glyph-driven, not text-scaled.
 
-**Max-font-scale layout (the hard case named explicitly in this phase's constraints):** the rep-range and RIR-range rows lay out `flex-row flex-wrap`. At default font scale the min-stepper and max-stepper sit side by side on one line; at large accessibility font scales, once the readout text grows enough that the pair would compress the +/- buttons below their 48×48 floor, the pair wraps — the max stepper drops to its own line beneath the min stepper, rather than the row scrolling horizontally or any control shrinking below the touch-target floor. This is the concrete, testable statement of "wrap-and-grow, never truncate" for this row.
+**Max-font-scale layout (the hard case named explicitly in this phase's constraints):** the rep-range row — the only remaining stepper *pair* in this row now that RIR is single — lays out `flex-row flex-wrap`. At default font scale the min-stepper and max-stepper sit side by side on one line; at large accessibility font scales, once the readout text grows enough that the pair would compress the +/- buttons below their 48×48 floor, the pair wraps — the max stepper drops to its own line beneath the min stepper, rather than the row scrolling horizontally or any control shrinking below the touch-target floor. Sets, RIR, and rest are each a single stepper with no pairing concern, so they simply grow their readout width with no wrap logic needed. This is the concrete, testable statement of "wrap-and-grow, never truncate" for this row.
 
-**Saving with no targets at all is allowed.** An exercise can be added and left entirely untargeted (all six fields null) — the collapsed row's "No targets set" summary is a normal, supported state, not an error.
+**Saving with no targets at all is allowed.** An exercise can be added and left entirely untargeted (all five fields null) — the collapsed row's "No targets set" summary is a normal, supported state, not an error.
 
 ---
 
@@ -198,8 +207,9 @@ Tapping a collapsed row expands it in place to reveal sets / rep range / RIR ran
 - **A day with zero exercises:** that page shows an inline "Add exercises to this day" prompt (opens the Exercise Picker Modal) instead of an empty list — distinct from the zero-days case above.
 - Comparing two days is one swipe (D-21's own framing) — no jump-to-day index affordance ships this phase; sequential swipe is the only navigation this phase commits to.
 
-**Drag Handle:** ships as two files per `docs/platform-modules.md`'s `.web.tsx` convention — `DragHandle.tsx` (native: `react-native-gesture-handler` + `react-native-reanimated` pan gesture, pending the spike `04-RESEARCH.md` flags as this phase's largest unbudgeted risk) and `DragHandle.web.tsx` (pointer-events-based drag, the sanctioned web escape hatch if the spike finds gesture-handler's web story has gaps). **Both files must render pixel-identical appearance** — a grip glyph (`reorder-three-outline` or the nearest available Ionicons reorder/grip glyph), 48×48 hit area, trailing edge of the row, color resolved via `useThemeColors()` — so a user moving between native and web perceives the same affordance even though the underlying gesture mechanics differ. The grip's hit region is disambiguated from the row's own tap-to-expand region so pressing the grip never also triggers expand/collapse.
+**Drag Handle (D-23, narrowed):** ships as two files per `docs/platform-modules.md`'s `.web.tsx` convention — `DragHandle.tsx` (native: `react-native-gesture-handler` + `react-native-reanimated` pan gesture, pending the spike `04-RESEARCH.md` flags as this phase's largest unbudgeted risk) and `DragHandle.web.tsx` (pointer-events-based drag, the sanctioned web escape hatch if the spike finds gesture-handler's web story has gaps). **Both files must render pixel-identical appearance** — a grip glyph (`reorder-three-outline` or the nearest available Ionicons reorder/grip glyph), 48×48 hit area, trailing edge of the row, color resolved via `useThemeColors()` — so a user moving between native and web perceives the same affordance even though the underlying gesture mechanics differ. Both files carry `accessibilityLabel="Reorder {exercise name}"` on the grip's `Pressable`/gesture-root — a glyph-only control is otherwise unlabeled to assistive tech. The grip's hit region is disambiguated from the row's own tap-to-expand region so pressing the grip never also triggers expand/collapse.
 
+- **Visibility narrows D-23's "always-visible" to "always visible whenever reordering is possible."** The handle renders only once a day page has two or more exercises — with zero or one exercise there is nothing to reorder, and an affordance that cannot do anything is worse than an absent one. Both platform files share the identical rule (exercise count ≥ 2), computed once by the parent day page and passed down, not duplicated per file.
 - **Interrupted drag** (app backgrounded mid-gesture, or a drop outside a valid target): the row springs back to its last confirmed position. Nothing partially persists — no error banner, this is a gesture affordance detail, not a data-integrity concern (D-01's snapshot-on-use and the `order_index` write only ever happen on a completed, valid drop).
 - **Native drag behavior is unobservable in this environment** — no Xcode, no Android SDK (per this phase's stated environment constraint). The web pointer-based drag in `DragHandle.web.tsx` is the only interaction this phase can actually exercise end to end, and per the environment constraint that must be treated as the meaningful check for D-23 at this phase's gate; the native path rests on typecheck plus correct API usage and is recorded in `.planning/WINDOWS.md`, deferred to ROADMAP Phase 999.1.
 
@@ -223,7 +233,7 @@ Lives on the Home tab (`index.tsx`, a placeholder today). Shows the single next 
 
 **States:**
 - **No active program set:** card reads **"No active program"** / "Build or activate one to see what's next." with a link into the Program Library.
-- **Populated (happy path):** day name (Heading), a row of read-only target-muscle chips (visually identical to `FilterChipRow`'s chip shape but non-interactive — no `accessibilityRole="button"`, no `onToggle`, no selected state), then one line per exercise: **"{exercise name}: {sets} × {repMin}–{repMax} reps @ {rirMin}–{rirMax} RIR"**, with the same em-dash-for-null convention as the slot row's collapsed summary.
+- **Populated (happy path):** day name (Heading), a row of read-only target-muscle chips (visually identical to `FilterChipRow`'s chip shape but non-interactive — no `accessibilityRole="button"`, no `onToggle`, no selected state), then one line per exercise: **"{exercise name}: {sets} × {repMin}–{repMax} reps @ {rir} RIR"**, with the same em-dash-for-null convention as the slot row's collapsed summary.
 - **Currently in a `time_off` cycle:** the card reads **"You're on scheduled time off."** in place of any workout content — muted styling, no target-muscle chips, no exercise lines.
 - **The `04-RESEARCH.md` Pitfall-5 edge case (the most-recently-logged day has since been deleted from the routine):** resolves silently to "first day of the current cycle" per D-20's own fallback rule — this never surfaces as a user-visible error state; the card simply renders that fallback day's resolved targets as if it were the normal next day.
 - **No "Start Workout" action ships this phase.** Starting a session is Phase 5's scope (LOG-01) — the card is read-only informational content in Phase 4.
@@ -237,7 +247,7 @@ Lives on the Home tab (`index.tsx`, a placeholder today). Shows the single next 
 - **Empty (no programs besides — or including — the active one):** "No other programs yet." + a link into the New Program flow.
 - **Loading:** reuses the exact 3-row skeleton already shipped in `programs.tsx`.
 - **Error:** reuses the exact "couldn't load" heading/body pattern already shipped in `programs.tsx`, reworded for programs generically.
-- **Populated row:** program name (R4 — wraps, no truncation), status (Title Case per the Correction Note), an **"Active"** badge (accent-filled, Label role) on at most one row across the whole screen, and a trailing 48×48 **"•••"** action-menu trigger opening a `RoutineActionSheet` with: Activate (hidden on the already-active row), Duplicate, Rename, and either Archive or Restore depending on `archived_at`, or Delete instead of Archive per the rule below.
+- **Populated row:** program name (R4 — wraps, no truncation), status (Title Case per the Correction Note), an **"Active"** badge (accent-filled, Label role) on at most one row across the whole screen, and a trailing 48×48 **"•••"** action-menu trigger (`accessibilityLabel="More actions for {program name}"` — a glyph-only control, otherwise unlabeled to assistive tech) opening a `RoutineActionSheet` with: Activate (hidden on the already-active row), Duplicate, Rename, and either Archive or Restore depending on `archived_at`, or Delete instead of Archive per the rule below.
 - **Archived rows:** visually receded (`opacity-60`, matching the cycle strip's `time_off` treatment for visual-language consistency — "archived" and "off" read the same way: present but not active).
 
 **New Program flow (`new.tsx`, D-28):** two choices, **"Start Blank"** and **"Duplicate Existing."** On a truly empty account (D-28's own language), Duplicate Existing is disabled with inline copy explaining why ("You don't have another program to duplicate yet."), and Start Blank is the only live path. Choosing Duplicate Existing opens a picker of non-archived programs as the source (this sub-picker's own "no eligible source" case collapses to the same disabled-Duplicate treatment). Program name reuses `TextField`'s exact error/submitting contract from the shipped tracer.
@@ -287,8 +297,8 @@ An always-visible switch on the active-program screen only, labelled **"Update P
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-**Probe run:** 10 elements (E1–E10), 61 applicable considerations, 0 unclassified.
-**Resolved:** 47 covered (explicit) · 9 backstop · 5 dismissed · 0 unresolved.
+**Probe run:** 10 elements (E1–E10), 77 applicable considerations, 0 unclassified. (Re-run after the coordinator's probe-engine pass added ten missing (element, category) pairs across E4/E5/E10; this count includes one custom, non-taxonomy row — E5's native/web parity check — carried from the original draft.)
+**Resolved:** 52 covered (explicit) · 5 backstop · 20 dismissed · 0 unresolved.
 
 Element key: **E1** Active Program screen (list-collection of 0-or-1 active program + interactive-control freeze toggle) · **E2** Cycle strip (list-collection) · **E3** Day deck (list-collection + nav) · **E4** Exercise slot row (form + interactive-control) · **E5** Drag handle (interactive-control) · **E6** Exercise picker modal (list-collection + form + nav) · **E7** Home "next up" card (list-collection of 0-or-1 + static-content) · **E8** Program library (list-collection) · **E9** New program flow (form + nav) · **E10** Confirmation dialogs (form).
 
@@ -318,14 +328,21 @@ Element key: **E1** Active Program screen (list-collection of 0-or-1 active prog
 | overflow | E3 Day deck | 🧪 backstop | Many days (10+) remain reachable via sequential swipe only — D-21 deliberately scoped the mechanism to swipe-only comparison, with no jump-to-day index this phase; verified by a held-out interaction test on the web target, not visual inspection. |
 | zero-one-many | E3 Day deck | ✅ covered | One day renders with no adjacent page to swipe to (a no-op, not an error); many days page sequentially. |
 | long-text | E3 Day deck | ✅ covered | Day name wraps fully wherever shown (page header/indicator), per R4. |
-| empty | E4 Exercise slot row | ✅ covered | A newly-added exercise with all six target fields null shows "No targets set" in the collapsed summary — a normal, supported state, not an error. |
+| empty | E4 Exercise slot row | ✅ covered | A newly-added exercise with all five target fields null shows "No targets set" in the collapsed summary — a normal, supported state, not an error. |
 | loading | E4 Exercise slot row | ⊘ dismissed | Optimistic local-first writes (R6) — no async loading state for target entry. |
 | error | E4 Exercise slot row | ⊘ dismissed | R5: min/max stepper pairs are structurally incapable of an invalid state, so there is no validation-error state to design for. |
-| partial | E4 Exercise slot row | ✅ covered | Any subset of the six fields may be set; the collapsed summary renders `—` for each unset field individually rather than omitting the whole line or defaulting to 0. |
-| overflow | E4 Exercise slot row | 🧪 backstop | At maximum OS font scale, the rep-range and RIR-range stepper pairs wrap from side-by-side to stacked rather than compressing the +/- buttons below 48×48 — verified by a held-out layout test at the maximum font-scale multiplier, not visual inspection alone. |
+| populated | E4 Exercise slot row | ✅ covered | A fully-set row shows all five fields populated — sets, rep range, RIR, rest — with no em dashes anywhere in the collapsed summary, and five populated steppers in the expanded state. |
+| partial | E4 Exercise slot row | ✅ covered | Any subset of the five fields may be set; the collapsed summary renders `—` for each unset field individually rather than omitting the whole line or defaulting to 0. |
+| overflow | E4 Exercise slot row | 🧪 backstop | At maximum OS font scale, the rep-range stepper pair wraps from side-by-side to stacked rather than compressing the +/- buttons below 48×48 — verified by a held-out layout test at the maximum font-scale multiplier, not visual inspection alone. |
+| zero-one-many | E4 Exercise slot row | ✅ covered | A rep range whose min equals max (e.g. a fixed rep count) still renders as `{n}–{n}` (e.g. `10–10`), never collapsed to a bare `{n}` — the display format does not special-case equality, keeping the summary line's grammar uniform regardless of whether the user set a true range or a fixed count. |
 | long-text | E4 Exercise slot row | ✅ covered | Exercise name in the row header wraps fully (R4) — this is a new Phase 4 row and does not inherit `ExerciseListRow`'s truncation. |
+| empty | E5 Drag handle | ⊘ dismissed | A glyph-only control holds no data — there is no referent for an empty-content state. |
 | loading | E5 Drag handle | ⊘ dismissed | No async operation; the gesture is purely local and optimistic. |
 | error | E5 Drag handle | ✅ covered | An interrupted drag (backgrounded app, invalid drop) springs the row back to its last confirmed position; nothing partially persists — no error banner needed. |
+| populated | E5 Drag handle | ⊘ dismissed | A glyph-only control holds no data — there is no referent for a populated-content state. |
+| partial | E5 Drag handle | ⊘ dismissed | A glyph-only control holds no data — there is no referent for a partial-content state. |
+| overflow | E5 Drag handle | ⊘ dismissed | A glyph-only control holds no data — there is no referent for a content-overflow state. |
+| zero-one-many | E5 Drag handle | ✅ covered | Zero or one exercise in a day hides the handle entirely; two or more shows it on every row — the concrete rendering of the D-23 visibility narrowing above (see Day Deck & Drag Handle). |
 | long-text | E5 Drag handle | ⊘ dismissed | The control is a glyph only, no text — this category has no referent. |
 | — | E5 Drag handle native/web parity | 🧪 backstop | Both `DragHandle.tsx` and `DragHandle.web.tsx` render pixel-identical appearance (grip glyph, 48×48, trailing edge) regardless of which resolves at build time — verified by a held-out visual-parity assertion on the shared props, plus the explicit note that native gesture behavior itself is unobservable in this environment and deferred to ROADMAP Phase 999.1. |
 | empty | E6 Exercise picker modal | ✅ covered | Zero search/filter results reuse Phase 3's exact "No exercises found" copy verbatim — not a new string. |
@@ -358,8 +375,11 @@ Element key: **E1** Active Program screen (list-collection of 0-or-1 active prog
 | partial | E9 New program flow | ✅ covered | The Duplicate Existing sub-picker's own "no eligible source" case (e.g. every other program archived) collapses to the same disabled-with-explanation treatment as the empty-account case. |
 | overflow | E9 New program flow | ⊘ dismissed | A two-option choice screen plus a short name field has no scrolling content of consequence. |
 | long-text | E9 New program flow | ✅ covered | Program name field wraps normally while typing, reusing `TextField`'s existing behavior unchanged. |
+| empty | E10 Confirmation dialogs | ⊘ dismissed | A fixed two-button confirm/cancel dialog collects no data — there is no referent for an empty-content state. |
 | loading | E10 Confirmation dialogs | ✅ covered | Archive/Delete/Restore confirm buttons show a disabled submitting state while the local write runs, matching `ArchiveDialog`'s existing pattern. |
 | error | E10 Confirmation dialogs | 🧪 backstop | A failed local write (rare — this is a local-first optimistic write) leaves the dialog open with the confirm button re-enabled rather than silently closing on a failure that never actually persisted; verified by a held-out fault-injection test, not a naturally-occurring UAT flow. |
+| partial | E10 Confirmation dialogs | ⊘ dismissed | Dialog copy is a fixed string set at open time (per the action being confirmed) — there is no partially-populated dialog state. |
+| overflow | E10 Confirmation dialogs | ⊘ dismissed | Already answered by this table's own E10 `long-text` row below — body copy wraps within the existing `max-w-[400px]` column; no distinct overflow state exists beyond that wrap behavior. |
 | long-text | E10 Confirmation dialogs | ✅ covered | Dialog body copy wraps to as many lines as needed within the existing `ArchiveDialog` shape's `max-w-[400px]` column, never clipping the confirm/cancel row out of reach. |
 
 <!-- Status vocabulary (locked by probe-core projectTruths):
