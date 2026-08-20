@@ -157,7 +157,7 @@ Plans:
   3. Archiving an exercise removes it from pickers while leaving its past logged sets intact and correctly attributed
   4. Every exercise carries an explicit load type, so bodyweight, assisted, time-based, and distance-based movements are all representable before any logging UI exists
 
-**Plans**: 14/14 plans executed (12 executed, 2 gap closure outstanding)
+**Plans**: 17 plans (14 executed, 3 gap closure outstanding)
 
 Plans:
 **Wave 1**
@@ -206,6 +206,12 @@ Plans:
 **Wave 11** *(gap closure — blocked on Wave 10 completion)*
 
 - [x] 03-14-PLAN.md — Close G-03-4: an exercises segment layout with back navigation and native swipe, and an Edit control that is always reachable
+
+**Wave 12** *(gap closure — blocked on Wave 11 completion; the three plans below are parallel, with disjoint files)*
+
+- [ ] 03-15-PLAN.md — Close G-03-2: a tile image a source's intrinsic dimensions cannot outgrow, with tests that fail on that defect specifically
+- [ ] 03-16-PLAN.md — Close G-03-6: one catalog-hydration seam for the whole exercises segment, so a cold deep link stops reporting "not found"
+- [ ] 03-17-PLAN.md — Close WR-03: automated regression coverage for the exercises auth guard — route hoisting plus the guard boundary itself
 
 ### Phase 4: Program Builder
 
