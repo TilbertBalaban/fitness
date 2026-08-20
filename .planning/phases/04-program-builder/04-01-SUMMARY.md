@@ -177,3 +177,7 @@ None - no external service configuration required.
 ---
 *Phase: 04-program-builder*
 *Completed: 2026-08-20*
+
+## Self-Check: PASSED
+
+All created files verified present on disk (`packages/api-contracts/src/program.ts`, `apps/api/test/program-sync.e2e-spec.ts`, `apps/mobile/lib/db/programs/create-routine.ts`, `apps/mobile/app/(tabs)/programs.tsx`, this SUMMARY). All three commits (`a3f405a`, `dabc251`, `f9a3e42`) verified present in `git log`.
