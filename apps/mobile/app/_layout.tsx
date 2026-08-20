@@ -13,7 +13,6 @@ import '@/lib/db/powersync';
 // than silently skipping it as dead code.
 import '@/lib/export/export-training-data';
 
-import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { apiFetch, setSessionCredentialProvider } from '@/lib/api-client';
@@ -21,6 +20,7 @@ import { authClient, getSessionCookieHeader } from '@/lib/auth-client';
 import { AUTH_ENDPOINT, clearCachedSession } from '@/lib/auth-storage';
 import { SyncConnector } from '@/lib/db/connector';
 import { connectPowerSync, disconnectPowerSync } from '@/lib/db/powersync';
+import { renderRootStack } from '@/lib/navigation/root-stack';
 import { classifySessionProbe, isRevocation, WEB_SESSION_RESOLVE_BUDGET_MS } from '@/lib/session-guard';
 import { applyAppearance, readStoredAppearance } from '@/lib/theme';
 import { WebSessionSkeleton } from '@/components/WebSessionSkeleton';
@@ -105,15 +105,5 @@ export default function RootLayout() {
   // the first frame. `isPending` is deliberately NOT gated on here for native — doing so would
   // reintroduce exactly the blocking cold start this project rejects.
 
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="exercises" />
-      </Stack.Protected>
-      <Stack.Protected guard={!signedIn}>
-        <Stack.Screen name="(auth)" />
-      </Stack.Protected>
-    </Stack>
-  );
+  return renderRootStack(signedIn);
 }
