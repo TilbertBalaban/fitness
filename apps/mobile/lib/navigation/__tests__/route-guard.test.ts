@@ -3,8 +3,11 @@
 // packages, this line only teaches the type checker its shape.
 declare const __dirname: string;
 
+import type { ReactElement, ReactNode } from 'react';
 import { getExactRoutes } from 'expo-router/build/getRoutes';
 import { inMemoryContext, requireContext } from 'expo-router/build/internal/testing';
+import { isProtectedReactElement } from 'expo-router/build/views/Protected';
+import { renderRootStack } from '../root-stack';
 
 const APP_DIR = `${__dirname}/../../../app`;
 
@@ -81,5 +84,54 @@ describe('exercises route hoisting (WR-03 regression)', () => {
     const withoutLayoutSet = new Set(withoutLayoutNode ? withoutLayoutNode.children.map((child) => child.route) : []);
 
     expect(withLayoutSet).not.toEqual(withoutLayoutSet);
+  });
+});
+
+type AnyElement = ReactElement<Record<string, unknown>>;
+type Entry = { element: AnyElement; ancestors: AnyElement[] };
+
+function findWithAncestors(node: ReactNode, ancestors: AnyElement[] = [], found: Entry[] = []): Entry[] {
+  if (node === null || node === undefined || typeof node === 'boolean' || typeof node === 'string' || typeof node === 'number') {
+    return found;
+  }
+  if (Array.isArray(node)) {
+    for (const child of node) findWithAncestors(child, ancestors, found);
+    return found;
+  }
+  const element = node as AnyElement;
+  found.push({ element, ancestors });
+  const children = element.props?.children as ReactNode;
+  if (children !== undefined) findWithAncestors(children, [...ancestors, element], found);
+  return found;
+}
+
+describe('root stack guard boundary (WR-03 regression)', () => {
+  it.each([false, true])('guard=%s: the exercises screen has a protected ancestor whose guard prop matches signedIn', (signedIn) => {
+    const entries = findWithAncestors(renderRootStack(signedIn));
+    const exercisesEntries = entries.filter((entry) => entry.element.props.name === 'exercises');
+
+    expect(exercisesEntries).toHaveLength(1);
+
+    const protectedAncestor = exercisesEntries[0].ancestors.find(isProtectedReactElement);
+    expect(protectedAncestor).toBeDefined();
+    expect((protectedAncestor as ReactElement<{ guard: boolean }>).props.guard).toBe(signedIn);
+  });
+
+  it.each([false, true])('guard=%s: the (tabs) screen shares the exercises screen protected ancestor', (signedIn) => {
+    const entries = findWithAncestors(renderRootStack(signedIn));
+
+    const exercisesAncestor = entries.find((entry) => entry.element.props.name === 'exercises')!.ancestors.find(isProtectedReactElement);
+    const tabsAncestor = entries.find((entry) => entry.element.props.name === '(tabs)')!.ancestors.find(isProtectedReactElement);
+
+    expect(tabsAncestor).toBe(exercisesAncestor);
+  });
+
+  it.each([false, true])('guard=%s: no exercises screen exists outside a protected boundary', (signedIn) => {
+    const entries = findWithAncestors(renderRootStack(signedIn));
+
+    const unprotected = entries.filter(
+      (entry) => entry.element.props.name === 'exercises' && !entry.ancestors.some(isProtectedReactElement),
+    );
+    expect(unprotected).toEqual([]);
   });
 });
