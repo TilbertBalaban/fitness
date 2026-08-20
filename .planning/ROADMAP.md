@@ -226,11 +226,21 @@ Plans:
   3. User can activate, freeze, duplicate, archive, and restore programs, and see the active program's upcoming workouts with its targets
   4. Editing a program never changes what any already-logged workout shows
 
-**Plans**: TBD
+**Plans**: 11 plans
 
 Plans:
 
-- [ ] 04-01: TBD during `/gsd-plan-phase 4`
+- [ ] 04-01-PLAN.md — Tracer: a named program created offline reaches Postgres and shows on the Programs tab
+- [ ] 04-02-PLAN.md — The routine tree: days and exercises sync, gap-based ordering, three-query builder read
+- [ ] 04-03-PLAN.md — Build a day: full-screen catalog picker and inline per-exercise targets
+- [ ] 04-04-PLAN.md — Lifecycle data: active pointer, freeze flag, status constraint, `user_preference` apply path
+- [ ] 04-05-PLAN.md — The swipeable day deck and the always-visible drag handle
+- [ ] 04-06-PLAN.md — Cycles: table, three-kind vocabulary, CHECK constraint, sync apply path
+- [ ] 04-07-PLAN.md — Per-cycle target overrides: sparse table, shared `resolveTarget`, dual-parent apply path
+- [ ] 04-08-PLAN.md — The cycle strip: author cycles, deload and time off; resolved targets in the builder
+- [ ] 04-09-PLAN.md — Cycle-aware session snapshot and the editing-never-corrupts-history regression
+- [ ] 04-10-PLAN.md — Home "next up": position derived from logged history
+- [ ] 04-11-PLAN.md — The program library: duplicate, archive, restore, activate, freeze
 
 ### Phase 5: In-Gym Session Logging
 
