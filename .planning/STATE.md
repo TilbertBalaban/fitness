@@ -6,13 +6,13 @@ current_phase: 03
 current_phase_name: exercise-catalog
 status: executing
 stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-08-19T08:26:18.386Z"
+last_updated: "2026-08-20T08:11:19.000Z"
 last_activity: 2026-08-19
 last_activity_desc: "Quick 260819-wpp: fixed WR-01 image tile recycling defect"
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 35
+  total_plans: 41
   completed_plans: 34
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 
 Phase: 03 (exercise-catalog) — EXECUTING
 Plan: 1 of 10
-Status: Executing Phase 03
+Status: Ready to execute
 Last activity: 2026-08-19 — Completed quick task 260819-wpp: fixed WR-01 (image tile failure leaked across FlashList recycling)
 
 Progress: [██████████] 100%
