@@ -77,9 +77,13 @@ The user delegated every schema-level decision. These are not coin flips: `routi
 
 - **D-23:** **Exercises reorder by an always-visible drag handle.** A grip on every row, press and drag to reposition. See the platform note in `<code_context>` — this is the phase's largest unbudgeted technical risk.
 
+  > **Amended 2026-08-20 (ui-phase).** "Always-visible" narrows to "always visible whenever reordering is possible": the handle renders only once a day page holds two or more exercises. With zero or one exercise there is nothing to reorder, and an affordance that cannot act is worse than an absent one. Contract: `04-UI-SPEC.md` § Day Deck & Drag Handle.
+
 - **D-24:** **Adding exercises opens the Phase 3 catalog full-screen in multi-select mode.** The existing search and filter-chip surface, but selections accumulate and land in the day together on Add. Optimized for building a day from empty.
 
 - **D-25:** **Targets are entered inline on the expanded exercise row.** Tapping an exercise expands it in place to reveal sets / rep range / RIR range / rest. No modal, no screen change — neighbouring exercises stay visible while numbers are set.
+
+  > **Amended 2026-08-20 (ui-phase).** **RIR is a single number, not a range.** The "RIR range" wording above was drift introduced at discuss-phase time; REQUIREMENTS.md has always said singular — PROG-03 ("sets, rep range, RIR target, and rest duration"), PROG-09 ("per-cycle rep/RIR targets"), PRGR-02 (progression triggers on "rep-range midpoint plus RIR target"). The user reviewed the UI contract directly and overrode it. Rep range stays min/max; only RIR collapses. The row therefore carries **five** target fields, not six. Consequence for **D-10**: `routine_exercise_cycle_target` carries five nullable `target_*` columns, not six. Schema effect: `target_rir_min`/`target_rir_max` collapse to a single `target_rir` on both `routine_exercise` and `session_exercise`. Contract: `04-UI-SPEC.md` § Exercise Slot Row.
 
 - **D-26:** **The Programs tab is the active program; a separate library screen holds the rest and the archive.** The everyday screen stays focused on the one program being run. Duplicate, archive, restore and rename live in the library; the freeze toggle is on the active screen (D-16).
 
