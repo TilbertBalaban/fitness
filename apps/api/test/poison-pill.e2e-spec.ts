@@ -96,8 +96,7 @@ interface SessionExerciseFields {
   target_sets?: number | null;
   target_rep_min?: number | null;
   target_rep_max?: number | null;
-  target_rir_min?: number | null;
-  target_rir_max?: number | null;
+  target_rir?: number | null;
   target_rest_seconds?: number | null;
 }
 
@@ -219,8 +218,7 @@ describe('Poison-pill isolation and session_exercise validation (e2e)', () => {
       target_sets: null,
       target_rep_min: null,
       target_rep_max: null,
-      target_rir_min: null,
-      target_rir_max: null,
+      target_rir: null,
       target_rest_seconds: null,
     });
 

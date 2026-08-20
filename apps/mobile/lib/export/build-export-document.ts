@@ -26,8 +26,7 @@ export interface ExportedSessionExercise {
   target_sets: number | null;
   target_rep_min: number | null;
   target_rep_max: number | null;
-  target_rir_min: number | null;
-  target_rir_max: number | null;
+  target_rir: number | null;
   target_rest_seconds: number | null;
   sets: ExportedLoggedSet[];
 }
@@ -137,8 +136,7 @@ export async function buildExportDocument(db: ExportDb): Promise<TrainingExport>
         target_sets: (exercise.targetSets as number | null) ?? null,
         target_rep_min: (exercise.targetRepMin as number | null) ?? null,
         target_rep_max: (exercise.targetRepMax as number | null) ?? null,
-        target_rir_min: (exercise.targetRirMin as number | null) ?? null,
-        target_rir_max: (exercise.targetRirMax as number | null) ?? null,
+        target_rir: (exercise.targetRir as number | null) ?? null,
         target_rest_seconds: (exercise.targetRestSeconds as number | null) ?? null,
         sets: exerciseSets,
       };

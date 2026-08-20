@@ -58,8 +58,7 @@ function sessionExerciseValues(overrides: Partial<SessionExerciseValues> = {}): 
     targetSets: null,
     targetRepMin: null,
     targetRepMax: null,
-    targetRirMin: null,
-    targetRirMax: null,
+    targetRir: null,
     targetRestSeconds: null,
     ...overrides,
   };
@@ -219,8 +218,7 @@ describe('patchAwareSet', () => {
         target_sets: 4,
         target_rep_min: 6,
         target_rep_max: 10,
-        target_rir_min: 1,
-        target_rir_max: 3,
+        target_rir: 3,
         target_rest_seconds: 180,
       },
     });

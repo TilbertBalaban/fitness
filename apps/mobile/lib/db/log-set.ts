@@ -49,8 +49,7 @@ interface Prescription {
   targetSets: number | null;
   targetRepMin: number | null;
   targetRepMax: number | null;
-  targetRirMin: number | null;
-  targetRirMax: number | null;
+  targetRir: number | null;
   targetRestSeconds: number | null;
 }
 
@@ -58,8 +57,7 @@ const EMPTY_PRESCRIPTION: Prescription = {
   targetSets: null,
   targetRepMin: null,
   targetRepMax: null,
-  targetRirMin: null,
-  targetRirMax: null,
+  targetRir: null,
   targetRestSeconds: null,
 };
 
@@ -79,8 +77,7 @@ export async function addSessionExercise(
         targetSets: routineExercise.targetSets,
         targetRepMin: routineExercise.targetRepMin,
         targetRepMax: routineExercise.targetRepMax,
-        targetRirMin: routineExercise.targetRirMin,
-        targetRirMax: routineExercise.targetRirMax,
+        targetRir: routineExercise.targetRir,
         targetRestSeconds: routineExercise.targetRestSeconds,
       })
       .from(routineExercise)

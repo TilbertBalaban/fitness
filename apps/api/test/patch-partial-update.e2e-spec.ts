@@ -119,15 +119,14 @@ interface SessionExerciseRow {
   target_sets: number | null;
   target_rep_min: number | null;
   target_rep_max: number | null;
-  target_rir_min: number | null;
-  target_rir_max: number | null;
+  target_rir: number | null;
   target_rest_seconds: number | null;
 }
 
 async function readSessionExercise(id: string): Promise<SessionExerciseRow> {
   const { rows } = await pg.query(
     `SELECT exercise_id, order_index, superset_group_id, routine_exercise_id, target_sets,
-            target_rep_min, target_rep_max, target_rir_min, target_rir_max, target_rest_seconds
+            target_rep_min, target_rep_max, target_rir, target_rest_seconds
      FROM session_exercise WHERE id = $1`,
     [id],
   );
@@ -267,7 +266,7 @@ describe('PATCH partial-update apply path (e2e)', () => {
     expect(after.local_date).not.toBe(after.started_at.slice(0, 10));
   });
 
-  it('session_exercise reorder PATCH changes only order_index and leaves the other eight columns untouched', async () => {
+  it('session_exercise reorder PATCH changes only order_index and leaves the other seven columns untouched', async () => {
     const cookie = await signUp('se-reorder');
     const { sessionExerciseId } = await seedWorkoutSessionAndExercise(
       cookie,
@@ -279,8 +278,7 @@ describe('PATCH partial-update apply path (e2e)', () => {
         target_sets: 4,
         target_rep_min: 6,
         target_rep_max: 10,
-        target_rir_min: 1,
-        target_rir_max: 3,
+        target_rir: 3,
         target_rest_seconds: 180,
       },
     );
@@ -304,8 +302,7 @@ describe('PATCH partial-update apply path (e2e)', () => {
     expect(after.target_sets).toBe(before.target_sets);
     expect(after.target_rep_min).toBe(before.target_rep_min);
     expect(after.target_rep_max).toBe(before.target_rep_max);
-    expect(after.target_rir_min).toBe(before.target_rir_min);
-    expect(after.target_rir_max).toBe(before.target_rir_max);
+    expect(after.target_rir).toBe(before.target_rir);
     expect(after.target_rest_seconds).toBe(before.target_rest_seconds);
   });
 
