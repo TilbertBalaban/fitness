@@ -42,7 +42,8 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
   workout_session: ['id', 'user_id', 'started_at', 'timezone', 'local_date', 'server_seq'],
   logged_set: ['id', 'session_exercise_id', 'set_index', 'weight_kg', 'reps', 'completed', 'parent_set_id'],
   session_exercise: ['id', 'session_id', 'target_sets', 'target_rep_min', 'target_rep_max', 'superset_group_id'],
-  user_preference: ['user_id', 'weight_unit'],
+  user_preference: ['id', 'user_id', 'weight_unit', 'active_routine_id', 'server_seq'],
+  routine: ['id', 'user_id', 'name', 'status', 'source', 'archived_at', 'progression_frozen', 'server_seq'],
   exercise: [
     'id',
     'user_id',
@@ -181,5 +182,86 @@ describe('Schema parity (e2e)', () => {
       'test',
     ]);
     await pg.query(`DELETE FROM exercise WHERE id = $1`, [validId]);
+  });
+
+  it('rejects a routine row with status outside draft/ready at the database level, and accepts ready', async () => {
+    // Proves routine_status_check has teeth, not merely exists — mirrors the exercise_load_type_check
+    // case above. A direct pg insert bypasses sync.service.ts's validator entirely, which is exactly
+    // the path the seed script and any future direct-DB tooling take.
+    const { rows: users } = await pg.query<{ id: string }>(`SELECT id FROM "user" LIMIT 1`);
+    if (users.length === 0) {
+      throw new Error('schema-parity: no user row exists to attach a test routine to — seed the database first');
+    }
+    const userId = users[0].id;
+
+    const badId = `schema-parity-bogus-status-${Date.now()}`;
+    await expect(
+      pg.query(`INSERT INTO routine (id, user_id, name, status, source) VALUES ($1, $2, $3, $4, $5)`, [
+        badId,
+        userId,
+        'Schema Parity Bogus Status',
+        'active',
+        'test',
+      ]),
+    ).rejects.toThrow();
+
+    const validId = `schema-parity-valid-status-${Date.now()}`;
+    await pg.query(`INSERT INTO routine (id, user_id, name, status, source) VALUES ($1, $2, $3, $4, $5)`, [
+      validId,
+      userId,
+      'Schema Parity Valid Status',
+      'ready',
+      'test',
+    ]);
+    await pg.query(`DELETE FROM routine WHERE id = $1`, [validId]);
+  });
+
+  it('user_preference has a single-column primary key, and a second row for the same user_id is rejected', async () => {
+    const { rows: pkRows } = await pg.query<{ column_name: string }>(
+      `SELECT kcu.column_name
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+       WHERE tc.table_schema = 'public' AND tc.table_name = 'user_preference' AND tc.constraint_type = 'PRIMARY KEY'`,
+    );
+    expect(pkRows.length).toBe(1);
+    expect(pkRows[0].column_name).toBe('id');
+
+    const { rows: users } = await pg.query<{ id: string }>(`SELECT id FROM "user" LIMIT 1`);
+    if (users.length === 0) {
+      throw new Error('schema-parity: no user row exists to attach a test user_preference to — seed the database first');
+    }
+    const userId = users[0].id;
+
+    const { rows: existing } = await pg.query(`SELECT id FROM user_preference WHERE user_id = $1`, [userId]);
+    if (existing.length > 0) {
+      // A real preference row already exists for this user (e.g. the corpus seed) — the uniqueness
+      // assertion below still holds against it, no need to insert a first row ourselves.
+      const dupeId = `schema-parity-dupe-pref-${Date.now()}`;
+      await expect(
+        pg.query(`INSERT INTO user_preference (id, user_id, weight_unit) VALUES ($1, $2, $3)`, [
+          dupeId,
+          userId,
+          'kg',
+        ]),
+      ).rejects.toThrow();
+      return;
+    }
+
+    const firstId = `schema-parity-pref-${Date.now()}`;
+    await pg.query(`INSERT INTO user_preference (id, user_id, weight_unit) VALUES ($1, $2, $3)`, [
+      firstId,
+      userId,
+      'kg',
+    ]);
+    const secondId = `schema-parity-pref-dupe-${Date.now()}`;
+    await expect(
+      pg.query(`INSERT INTO user_preference (id, user_id, weight_unit) VALUES ($1, $2, $3)`, [
+        secondId,
+        userId,
+        'kg',
+      ]),
+    ).rejects.toThrow();
+    await pg.query(`DELETE FROM user_preference WHERE id = $1`, [firstId]);
   });
 });
