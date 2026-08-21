@@ -1,0 +1,1 @@
+{"content":"Tombstone pattern: lightweight deletion marker propagated to replicas/offline clients before physical delete, prevents resurrection; PowerSync's native DELETE crud op serves this role in its bucket/checkpoint protocol.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-08-15T07:57:20.196Z","ttl":86400000,"kind":"web"}

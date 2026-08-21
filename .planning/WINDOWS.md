@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 52
+open_count: 60
 waived_count: 0
 fixed_count: 12
-total_count: 64
-last_updated: 2026-08-21T15:25:47.676Z
+total_count: 72
+last_updated: 2026-08-21T15:49:05.936Z
 ---
 
 # Broken Windows Ledger
@@ -79,6 +79,14 @@ last_updated: 2026-08-21T15:25:47.676Z
 | 65 | 04 | deviation | apps/mobile/babel.config.js |  | The react-native-worklets/plugin Babel plugin's runtime behaviour on a native build (whether the worklet genuinely runs on the UI thread on-device) is unobservable here — presence and correctness confirmed only against a succeeding web export and the package's compatibility metadata. | open |  | 2026-08-21T10:32:24.333Z |  |
 | 66 | 04 | deviation | apps/mobile/package.json |  | react-native-worklets and react-native-pager-view are peerDependencies of reanimated and tab-view respectively but were left TRANSITIVE-ONLY rather than added as direct dependencies, despite the approved package-legitimacy decision covering all five as direct. babel.config.js references react-native-worklets/plugin, which resolves today only via pnpm hoisting; a stricter hoisting setting would break the build. worklets is additionally pinned to 0.10.4 by a pnpm-workspace override because Expo-pinned reanimated 4.5.1 narrows its peer to exactly 0.10.x while transitive resolution gave 0.11.3, which throws at Reanimated module init on every platform. | fixed |  | 2026-08-21T10:32:24.455Z | 2026-08-21T15:25:40.316Z |
 | 67 | 04 | unrun-verify | ops/powersync/sync-rules.yaml |  | PowerSync Service not restarted against the updated sync rules here, so pull-side delivery of routine_exercise_cycle_target rows is asserted only by the query's shape matching the shipped, already-verified routine_exercise/routine_cycle queries (identical JOIN/filter structure and auth.user_id() filter), not by an observed stream. Standing limitation inherited from 04-01/04-02/04-04/04-06. | open |  | 2026-08-21T15:25:47.676Z |  |
+| 68 | 04 | unrun-verify | apps/mobile/components/CycleStrip.tsx |  | The pinned cycle strip and its three chip tones (training / dashed-border deload / reduced-opacity time off) are asserted structurally in Jest but rendered on neither iOS nor Android. No Xcode, no Android SDK on this machine. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-21T15:49:05.323Z |  |
+| 69 | 04 | unrun-verify | apps/mobile/app/(tabs)/programs.tsx |  | 'Switching cycles keeps the day you were on' is verified structurally only (DayDeck owns its page index and receives no index prop). The interaction itself has been observed on no platform — not native (no toolchain) and not in a browser (out of scope per CLAUDE.md). | open |  | 2026-08-21T15:49:05.441Z |  |
+| 70 | 04 | unrun-verify | apps/mobile/components/ExerciseSlotRow.tsx |  | The per-cycle override marker's rendered legibility beside a stepper label at large OS font scales is untested — no renderer, no device. Only its presence, count and per-field identity are asserted. | open |  | 2026-08-21T15:49:05.524Z |  |
+| 71 | 04 | deviation | apps/mobile/lib/db/programs/days.ts |  | computeReorder/SiblingRow promoted from private to exported so moveCycle reuses the reorder arithmetic rather than becoming its third copy. One file beyond 04-08's declared files_modified; two lines changed, no behaviour change. | open |  | 2026-08-21T15:49:05.607Z |  |
+| 72 | 04 | deviation | apps/mobile/components/ExerciseSlotRow.tsx |  | The per-cycle override marker ('· this cycle') and the cycle strip's inline 'Edit Cycle' control are executor design calls on points 04-UI-SPEC.md leaves open. Surfaced to the user post-merge per the standing 'UI/UX decisions always surface' rule. Both bounded and reversible. | open |  | 2026-08-21T15:49:05.690Z |  |
+| 73 | 04 | deviation | packages/api-contracts/package.json |  | A fresh git worktree cannot run the mobile suite until 'pnpm --filter @fitness/api-contracts build' is run, because the package's main points at a gitignored dist/. Every worktree-isolated executor importing this package hits it (14 of 35 mobile suites fail with Cannot find module '@fitness/api-contracts'). Worth a prepare hook or a source-entry exports map. | open |  | 2026-08-21T15:49:05.772Z |  |
+| 74 | 04 | unrun-verify | apps/mobile/lib/db/log-set.ts |  | The cycle-resolved session snapshot was never observed on a real device or in a browser. No UI calls addSessionExercise yet, this machine has neither Xcode nor an Android SDK, and browser testing is forbidden by CLAUDE.md unless explicitly requested. Correctness rests on the 23-case jest suite plus tsc. The api test:e2e suite that IS green is server-side against live Postgres, covering only the Postgres half. | open |  | 2026-08-21T15:49:05.855Z |  |
+| 75 | 04 | unrun-verify | apps/mobile/lib/db/__tests__/log-set.test.ts |  | The PROG-11 client regression runs against a hand-built in-memory store, not PowerSync's real local SQLite. The store mirrors the local schema's routine_day -> routine_exercise -> routine_exercise_cycle_target delete cascade by hand; if PowerSync's local schema ever stops cascading (or diverges from Postgres), the day-delete case would keep passing against a store that no longer matches reality. The Postgres half IS asserted against a live database in apps/api/test/program-sync.e2e-spec.ts. | open |  | 2026-08-21T15:49:05.936Z |  |
 
 ````json
 [
@@ -848,6 +856,102 @@ last_updated: 2026-08-21T15:25:47.676Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-21T15:25:47.676Z",
+    "resolved_at": null
+  },
+  {
+    "id": 68,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/components/CycleStrip.tsx",
+    "line": null,
+    "description": "The pinned cycle strip and its three chip tones (training / dashed-border deload / reduced-opacity time off) are asserted structurally in Jest but rendered on neither iOS nor Android. No Xcode, no Android SDK on this machine. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T15:49:05.323Z",
+    "resolved_at": null
+  },
+  {
+    "id": 69,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/app/(tabs)/programs.tsx",
+    "line": null,
+    "description": "'Switching cycles keeps the day you were on' is verified structurally only (DayDeck owns its page index and receives no index prop). The interaction itself has been observed on no platform — not native (no toolchain) and not in a browser (out of scope per CLAUDE.md).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T15:49:05.441Z",
+    "resolved_at": null
+  },
+  {
+    "id": 70,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/components/ExerciseSlotRow.tsx",
+    "line": null,
+    "description": "The per-cycle override marker's rendered legibility beside a stepper label at large OS font scales is untested — no renderer, no device. Only its presence, count and per-field identity are asserted.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T15:49:05.524Z",
+    "resolved_at": null
+  },
+  {
+    "id": 71,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/db/programs/days.ts",
+    "line": null,
+    "description": "computeReorder/SiblingRow promoted from private to exported so moveCycle reuses the reorder arithmetic rather than becoming its third copy. One file beyond 04-08's declared files_modified; two lines changed, no behaviour change.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T15:49:05.607Z",
+    "resolved_at": null
+  },
+  {
+    "id": 72,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/components/ExerciseSlotRow.tsx",
+    "line": null,
+    "description": "The per-cycle override marker ('· this cycle') and the cycle strip's inline 'Edit Cycle' control are executor design calls on points 04-UI-SPEC.md leaves open. Surfaced to the user post-merge per the standing 'UI/UX decisions always surface' rule. Both bounded and reversible.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T15:49:05.690Z",
+    "resolved_at": null
+  },
+  {
+    "id": 73,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "packages/api-contracts/package.json",
+    "line": null,
+    "description": "A fresh git worktree cannot run the mobile suite until 'pnpm --filter @fitness/api-contracts build' is run, because the package's main points at a gitignored dist/. Every worktree-isolated executor importing this package hits it (14 of 35 mobile suites fail with Cannot find module '@fitness/api-contracts'). Worth a prepare hook or a source-entry exports map.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T15:49:05.772Z",
+    "resolved_at": null
+  },
+  {
+    "id": 74,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/lib/db/log-set.ts",
+    "line": null,
+    "description": "The cycle-resolved session snapshot was never observed on a real device or in a browser. No UI calls addSessionExercise yet, this machine has neither Xcode nor an Android SDK, and browser testing is forbidden by CLAUDE.md unless explicitly requested. Correctness rests on the 23-case jest suite plus tsc. The api test:e2e suite that IS green is server-side against live Postgres, covering only the Postgres half.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T15:49:05.855Z",
+    "resolved_at": null
+  },
+  {
+    "id": 75,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/lib/db/__tests__/log-set.test.ts",
+    "line": null,
+    "description": "The PROG-11 client regression runs against a hand-built in-memory store, not PowerSync's real local SQLite. The store mirrors the local schema's routine_day -> routine_exercise -> routine_exercise_cycle_target delete cascade by hand; if PowerSync's local schema ever stops cascading (or diverges from Postgres), the day-delete case would keep passing against a store that no longer matches reality. The Postgres half IS asserted against a live database in apps/api/test/program-sync.e2e-spec.ts.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T15:49:05.936Z",
     "resolved_at": null
   }
 ]

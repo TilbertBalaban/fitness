@@ -1,0 +1,1 @@
+{"content":"@shopify/flash-list current npm version 2.3.2 (confirmed via npm view). v2 is JS-only (no native module), New-Architecture-only (matches Expo SDK 57's mandatory New Arch), works on React Native Web out of the box with no extra config.","source":"web","provider":"websearch","confidence":"LOW","fetched_at":"2026-08-18T08:03:12.305Z","ttl":86400000,"kind":"web"}

@@ -1,0 +1,1 @@
+{"content":"Store IANA timezone identifier (not offset) plus UTC instant; derive and persist local calendar date once at write time, never re-derive from viewing device's current zone.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-08-15T07:57:20.315Z","ttl":86400000,"kind":"web"}

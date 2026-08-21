@@ -1,0 +1,1 @@
+{"content":"PowerSync Service self-hosted requires wal_level=logical on Postgres source; storage backend can be MongoDB or Postgres.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-08-15T07:57:19.959Z","ttl":86400000,"kind":"web"}

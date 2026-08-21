@@ -1,0 +1,1 @@
+{"content":"Standard SQLite migration pattern: PRAGMA user_version, sequential numbered migrations in a transaction, only relevant if WatermelonDB fallback is taken instead of PowerSync.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-08-15T07:57:20.078Z","ttl":86400000,"kind":"web"}
