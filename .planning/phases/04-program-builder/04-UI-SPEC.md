@@ -168,6 +168,8 @@ Selection state is drawn identically across all three (accent border + icon tint
 
 **Naming:** cycle name is required non-empty at creation, matching `routine`'s own name requirement (Correction Note pattern) — there is no "unnamed cycle" state to design for. New deload/time-off cycles are pre-filled with a sensible default name ("Deload", "Time off") that stays user-editable.
 
+> **Amended 2026-08-21 (04-08).** This section originally gave `CycleStrip` an `onEditCycle` prop without saying how the user reaches it. Resolved by the user directly: **"Edit Cycle" renders inline in the strip as an accent-coloured text button, visible only while a cycle is selected.** It is not a long-press affordance and not a glyph inside the chip — the chip stays a single hit target holding the 48×48 floor, and the action stays discoverable without a hidden gesture. A later plan adding cycle actions beyond editing (rename/kind/delete) should extend this control rather than introduce a competing entry point.
+
 ---
 
 ## Exercise Slot Row (D-25, amended) — the phase's highest-value contract
@@ -196,6 +198,8 @@ Tapping a collapsed row expands it in place to reveal sets / rep range / RIR / r
 **Max-font-scale layout (the hard case named explicitly in this phase's constraints):** the rep-range row — the only remaining stepper *pair* in this row now that RIR is single — lays out `flex-row flex-wrap`. At default font scale the min-stepper and max-stepper sit side by side on one line; at large accessibility font scales, once the readout text grows enough that the pair would compress the +/- buttons below their 48×48 floor, the pair wraps — the max stepper drops to its own line beneath the min stepper, rather than the row scrolling horizontally or any control shrinking below the touch-target floor. Sets, RIR, and rest are each a single stepper with no pairing concern, so they simply grow their readout width with no wrap logic needed. This is the concrete, testable statement of "wrap-and-grow, never truncate" for this row.
 
 **Saving with no targets at all is allowed.** An exercise can be added and left entirely untargeted (all five fields null) — the collapsed row's "No targets set" summary is a normal, supported state, not an error.
+
+**Per-cycle override marking (added 2026-08-21, 04-08; user-confirmed).** When a cycle is selected and a field's value comes from a `routine_exercise_cycle_target` override rather than the base prescription, that field's **label** carries the muted suffix `· this cycle` (`CYCLE_OVERRIDE_MARKER`), and the row shows a single accent-coloured **"Reset to base"** action while at least one field is overridden. The distinction is carried in *text*, not in colour or weight: accent is reserved for selection/CTAs and the second semantic hex for destructive actions, so the palette has no free slot for "overridden," and a text suffix survives every OS font scale and does not depend on colour perception. The base view (no cycle selected) has nothing to mark and nothing to reset to, so it renders neither. Clearing every overridden field deletes the override row outright (`isEmptyOverride`) rather than leaving an all-null row behind.
 
 ---
 

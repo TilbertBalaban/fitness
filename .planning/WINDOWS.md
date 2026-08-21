@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 60
-waived_count: 0
+open_count: 59
+waived_count: 1
 fixed_count: 12
 total_count: 72
-last_updated: 2026-08-21T15:49:05.936Z
+last_updated: 2026-08-21T15:50:48.657Z
 ---
 
 # Broken Windows Ledger
@@ -83,7 +83,7 @@ last_updated: 2026-08-21T15:49:05.936Z
 | 69 | 04 | unrun-verify | apps/mobile/app/(tabs)/programs.tsx |  | 'Switching cycles keeps the day you were on' is verified structurally only (DayDeck owns its page index and receives no index prop). The interaction itself has been observed on no platform — not native (no toolchain) and not in a browser (out of scope per CLAUDE.md). | open |  | 2026-08-21T15:49:05.441Z |  |
 | 70 | 04 | unrun-verify | apps/mobile/components/ExerciseSlotRow.tsx |  | The per-cycle override marker's rendered legibility beside a stepper label at large OS font scales is untested — no renderer, no device. Only its presence, count and per-field identity are asserted. | open |  | 2026-08-21T15:49:05.524Z |  |
 | 71 | 04 | deviation | apps/mobile/lib/db/programs/days.ts |  | computeReorder/SiblingRow promoted from private to exported so moveCycle reuses the reorder arithmetic rather than becoming its third copy. One file beyond 04-08's declared files_modified; two lines changed, no behaviour change. | open |  | 2026-08-21T15:49:05.607Z |  |
-| 72 | 04 | deviation | apps/mobile/components/ExerciseSlotRow.tsx |  | The per-cycle override marker ('· this cycle') and the cycle strip's inline 'Edit Cycle' control are executor design calls on points 04-UI-SPEC.md leaves open. Surfaced to the user post-merge per the standing 'UI/UX decisions always surface' rule. Both bounded and reversible. | open |  | 2026-08-21T15:49:05.690Z |  |
+| 72 | 04 | deviation | apps/mobile/components/ExerciseSlotRow.tsx |  | The per-cycle override marker ('· this cycle') and the cycle strip's inline 'Edit Cycle' control are executor design calls on points 04-UI-SPEC.md leaves open. Surfaced to the user post-merge per the standing 'UI/UX decisions always surface' rule. Both bounded and reversible. | waived | User reviewed both design calls directly on 2026-08-21 and confirmed the shipped treatment for each: the '· this cycle' text suffix beside overridden stepper labels, and the inline 'Edit Cycle' control visible only while a cycle is selected. Both promoted into 04-UI-SPEC.md so later plans inherit them rather than re-deciding. | 2026-08-21T15:49:05.690Z | 2026-08-21T15:50:48.657Z |
 | 73 | 04 | deviation | packages/api-contracts/package.json |  | A fresh git worktree cannot run the mobile suite until 'pnpm --filter @fitness/api-contracts build' is run, because the package's main points at a gitignored dist/. Every worktree-isolated executor importing this package hits it (14 of 35 mobile suites fail with Cannot find module '@fitness/api-contracts'). Worth a prepare hook or a source-entry exports map. | open |  | 2026-08-21T15:49:05.772Z |  |
 | 74 | 04 | unrun-verify | apps/mobile/lib/db/log-set.ts |  | The cycle-resolved session snapshot was never observed on a real device or in a browser. No UI calls addSessionExercise yet, this machine has neither Xcode nor an Android SDK, and browser testing is forbidden by CLAUDE.md unless explicitly requested. Correctness rests on the 23-case jest suite plus tsc. The api test:e2e suite that IS green is server-side against live Postgres, covering only the Postgres half. | open |  | 2026-08-21T15:49:05.855Z |  |
 | 75 | 04 | unrun-verify | apps/mobile/lib/db/__tests__/log-set.test.ts |  | The PROG-11 client regression runs against a hand-built in-memory store, not PowerSync's real local SQLite. The store mirrors the local schema's routine_day -> routine_exercise -> routine_exercise_cycle_target delete cascade by hand; if PowerSync's local schema ever stops cascading (or diverges from Postgres), the day-delete case would keep passing against a store that no longer matches reality. The Postgres half IS asserted against a live database in apps/api/test/program-sync.e2e-spec.ts. | open |  | 2026-08-21T15:49:05.936Z |  |
@@ -913,10 +913,10 @@ last_updated: 2026-08-21T15:49:05.936Z
     "file": "apps/mobile/components/ExerciseSlotRow.tsx",
     "line": null,
     "description": "The per-cycle override marker ('· this cycle') and the cycle strip's inline 'Edit Cycle' control are executor design calls on points 04-UI-SPEC.md leaves open. Surfaced to the user post-merge per the standing 'UI/UX decisions always surface' rule. Both bounded and reversible.",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "User reviewed both design calls directly on 2026-08-21 and confirmed the shipped treatment for each: the '· this cycle' text suffix beside overridden stepper labels, and the inline 'Edit Cycle' control visible only while a cycle is selected. Both promoted into 04-UI-SPEC.md so later plans inherit them rather than re-deciding.",
     "recorded_at": "2026-08-21T15:49:05.690Z",
-    "resolved_at": null
+    "resolved_at": "2026-08-21T15:50:48.657Z"
   },
   {
     "id": 73,
