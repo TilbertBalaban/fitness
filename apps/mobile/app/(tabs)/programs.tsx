@@ -1,14 +1,15 @@
 import { FlashList } from '@shopify/flash-list';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { DayDeck } from '@/components/DayDeck';
 import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
 import { ExerciseSlotRow } from '@/components/ExerciseSlotRow';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { TextField } from '@/components/TextField';
 import { getPowerSync } from '@/lib/db/powersync';
 import { createRoutine, loadRoutines, type RoutineSummary } from '@/lib/db/programs/create-routine';
-import { addDay, addExercisesToDay, removeDay, removeExercise, renameDay } from '@/lib/db/programs/days';
-import { loadExerciseNameMap, loadProgramTree, type ProgramTree } from '@/lib/db/programs/load-program';
+import { addDay, addExercisesToDay, moveExercise, removeDay, removeExercise, renameDay } from '@/lib/db/programs/days';
+import { loadExerciseNameMap, loadProgramTree, type ProgramDay, type ProgramTree } from '@/lib/db/programs/load-program';
 import { setExerciseTargets, type TargetDraft } from '@/lib/db/programs/targets';
 
 const SKELETON_ROW_COUNT = 3;
@@ -181,6 +182,18 @@ export default function ProgramsScreen() {
     [activeRoutineId, reloadTree],
   );
 
+  // The gesture layer (DragHandle) and the Move up/down controls both funnel here — neither reads
+  // or writes order_index itself, they only produce a toIndex/neighbour pair that this callback
+  // hands straight to moveExercise (04-02), the single write path for reordering.
+  const handleReorderExercise = useCallback(
+    async (routineDayId: string, exerciseId: string, beforeId: string | null, afterId: string | null) => {
+      if (!activeRoutineId) return;
+      await moveExercise({ routineDayId, exerciseId, beforeId, afterId });
+      await reloadTree(activeRoutineId);
+    },
+    [activeRoutineId, reloadTree],
+  );
+
   const handleAddExercises = useCallback(
     async (rows: PickerCatalogRow[]) => {
       if (!activeRoutineId || !pickerDayId) return;
@@ -261,55 +274,82 @@ export default function ProgramsScreen() {
             <>
               <Text className="text-heading font-semibold text-foreground">{tree.name}</Text>
 
-              {tree.days.map((day) => (
-                <View key={day.id} className="gap-sm rounded-md bg-surface p-md">
-                  {renamingDayId === day.id ? (
-                    <View className="gap-sm">
-                      <TextField label="Day name" value={renameValue} onChangeText={setRenameValue} />
-                      <PrimaryButton label="Save" onPress={handleSaveRename} />
-                    </View>
-                  ) : (
-                    <View className="flex-row items-center justify-between gap-sm">
+              <View style={{ minHeight: 320 }}>
+                <DayDeck<ProgramDay>
+                  days={tree.days}
+                  renderDay={(day) => (
+                    <View className="gap-sm rounded-md bg-surface p-md">
+                      {renamingDayId === day.id ? (
+                        <View className="gap-sm">
+                          <TextField label="Day name" value={renameValue} onChangeText={setRenameValue} />
+                          <PrimaryButton label="Save" onPress={handleSaveRename} />
+                        </View>
+                      ) : (
+                        <View className="flex-row items-center justify-between gap-sm">
+                          <Pressable
+                            onPress={() => handleStartRename(day.id, day.name)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Rename ${day.name}`}
+                            style={{ minHeight: 48, justifyContent: 'center', flexShrink: 1 }}
+                          >
+                            <Text className="text-body font-semibold text-foreground">{day.name}</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleRemoveDay(day.id)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove ${day.name}`}
+                            style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Text className="text-label font-normal text-destructive">Remove</Text>
+                          </Pressable>
+                        </View>
+                      )}
+
+                      {day.slots.length === 0 ? (
+                        <View className="items-center gap-xs py-lg">
+                          <Text className="text-center text-heading font-semibold text-foreground">
+                            No exercises in this day
+                          </Text>
+                          <Text className="text-center text-body font-normal text-foreground-muted">
+                            Add exercises to get this day started.
+                          </Text>
+                        </View>
+                      ) : (
+                        (() => {
+                          // The exercise-count >= 2 visibility rule (04-UI-SPEC.md's D-23
+                          // amendment) is computed once here, by the day page, and passed down —
+                          // never recomputed per row or per platform file.
+                          const orderedIds = day.slots.map((slot) => slot.id);
+                          const canReorder = orderedIds.length >= 2;
+                          return day.slots.map((slot, index) => (
+                            <ExerciseSlotRow
+                              key={slot.id}
+                              slot={slot}
+                              expanded={expandedSlotId === slot.id}
+                              canReorder={canReorder}
+                              orderedIds={orderedIds}
+                              index={index}
+                              onToggleExpanded={handleToggleExpanded}
+                              onRemove={handleRemoveExercise}
+                              onSaveTargets={handleSaveTargets}
+                              onReorder={(beforeId, afterId) => void handleReorderExercise(day.id, slot.id, beforeId, afterId)}
+                            />
+                          ));
+                        })()
+                      )}
+
                       <Pressable
-                        onPress={() => handleStartRename(day.id, day.name)}
+                        onPress={() => setPickerDayId(day.id)}
                         accessibilityRole="button"
-                        accessibilityLabel={`Rename ${day.name}`}
-                        style={{ minHeight: 48, justifyContent: 'center', flexShrink: 1 }}
+                        accessibilityLabel={`Add exercises to ${day.name}`}
+                        style={{ minHeight: 48, justifyContent: 'center' }}
                       >
-                        <Text className="text-body font-semibold text-foreground">{day.name}</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleRemoveDay(day.id)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${day.name}`}
-                        style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Text className="text-label font-normal text-destructive">Remove</Text>
+                        <Text className="text-body font-normal text-accent">Add Exercises</Text>
                       </Pressable>
                     </View>
                   )}
-
-                  {day.slots.map((slot) => (
-                    <ExerciseSlotRow
-                      key={slot.id}
-                      slot={slot}
-                      expanded={expandedSlotId === slot.id}
-                      onToggleExpanded={handleToggleExpanded}
-                      onRemove={handleRemoveExercise}
-                      onSaveTargets={handleSaveTargets}
-                    />
-                  ))}
-
-                  <Pressable
-                    onPress={() => setPickerDayId(day.id)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Add exercises to ${day.name}`}
-                    style={{ minHeight: 48, justifyContent: 'center' }}
-                  >
-                    <Text className="text-body font-normal text-accent">Add Exercises</Text>
-                  </Pressable>
-                </View>
-              ))}
+                />
+              </View>
 
               <View className="gap-sm">
                 <TextField label="New day name" value={newDayName} onChangeText={setNewDayName} />

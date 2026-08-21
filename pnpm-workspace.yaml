@@ -10,6 +10,15 @@ packages:
 overrides:
   react: 19.2.3
   react-dom: 19.2.3
+  # react-native-reanimated@4.5.1 (Expo-pinned, 04-05) declares a peerDependency of exactly
+  # "0.10.x" on react-native-worklets, but neither pnpm's resolver nor `expo install` enforces
+  # peer ranges on an unlisted transitive package — it silently resolved 0.11.3 (satisfying
+  # expo-modules-core's wider ^0.10.0 range but not reanimated's narrower one), which throws
+  # "Worklets (0.11.3) is not compatible with installed version of Reanimated (4.5.1)" at
+  # reanimated's own module-init time on every platform, not just in Jest. Pinned to the latest
+  # 0.10.x release; react-native-worklets is NOT added to any package.json's own dependencies —
+  # it stays a transitive peer, per this plan's own checkpoint prohibition on promoting one.
+  react-native-worklets: 0.10.4
 allowBuilds:
   esbuild: true
   unrs-resolver: true

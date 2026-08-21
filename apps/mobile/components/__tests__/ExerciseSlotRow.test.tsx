@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Pressable } from 'react-native';
+import { DragHandle } from '../DragHandle';
 import {
   ExerciseSlotRowView,
   formatSlotSummary,
@@ -107,6 +108,60 @@ describe('ExerciseSlotRowView', () => {
 
     (expandedRemove?.props.onPress as () => void)();
     expect(onRemove).toHaveBeenCalledWith('rex-1');
+  });
+});
+
+describe('ExerciseSlotRowView — drag handle and Move up/down (04-05)', () => {
+  it('renders no DragHandle and no Move up/down controls when canReorder is omitted (default false)', () => {
+    const result = ExerciseSlotRowView(baseProps({ expanded: true }));
+
+    expect(findByType(result, DragHandle)).toHaveLength(0);
+    expect(findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Move Bench Press up')).toBeUndefined();
+  });
+
+  it('renders exactly one DragHandle, collapsed or expanded, when canReorder is true', () => {
+    const collapsed = ExerciseSlotRowView(
+      baseProps({ expanded: false, canReorder: true, orderedIds: ['rex-1', 'rex-2'], index: 0, onReorder: jest.fn() }),
+    );
+    const expanded = ExerciseSlotRowView(
+      baseProps({ expanded: true, canReorder: true, orderedIds: ['rex-1', 'rex-2'], index: 0, onReorder: jest.fn() }),
+    );
+
+    expect(findByType(collapsed, DragHandle)).toHaveLength(1);
+    expect(findByType(expanded, DragHandle)).toHaveLength(1);
+  });
+
+  it('Move up is disabled at index 0 and Move down is disabled at the last index, via accessibilityState, not by removing the control', () => {
+    const result = ExerciseSlotRowView(
+      baseProps({ expanded: true, canReorder: true, orderedIds: ['rex-1', 'rex-2'], index: 0, onReorder: jest.fn() }),
+    );
+    const buttons = findByType(result, Pressable);
+    const moveUp = buttons.find((el) => el.props.accessibilityLabel === 'Move Bench Press up');
+    const moveDown = buttons.find((el) => el.props.accessibilityLabel === 'Move Bench Press down');
+
+    expect(moveUp).toBeDefined();
+    expect(moveDown).toBeDefined();
+    expect((moveUp?.props.accessibilityState as { disabled?: boolean })?.disabled).toBe(true);
+    expect((moveDown?.props.accessibilityState as { disabled?: boolean })?.disabled).toBe(false);
+  });
+
+  it('Move down commits the identical write moveExercise expects, via onReorder', () => {
+    const onReorder = jest.fn();
+    const result = ExerciseSlotRowView(
+      baseProps({
+        expanded: true,
+        canReorder: true,
+        orderedIds: ['rex-1', 'rex-2', 'rex-3'],
+        index: 0,
+        onReorder,
+        slot: { id: 'rex-1', exerciseName: 'Bench Press' },
+      }),
+    );
+    const moveDown = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Move Bench Press down');
+
+    (moveDown?.props.onPress as () => void)();
+
+    expect(onReorder).toHaveBeenCalledWith('rex-2', 'rex-3');
   });
 });
 
