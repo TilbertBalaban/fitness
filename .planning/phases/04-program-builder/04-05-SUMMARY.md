@@ -241,3 +241,12 @@ None - no external service configuration required.
 - **kind:** unrun-verify — **file:** `apps/mobile/components/DragHandle.tsx` — **description:** The native drag gesture (Gesture.Pan, direction-locking against the day deck's swipe) has been observed on neither iOS nor Android — verified only via `DragHandle.test.tsx` (3 cases, the hook-free view only), typecheck, and `pnpm --filter mobile build`.
 - **kind:** unrun-verify — **file:** `apps/mobile/components/DragHandle.web.tsx` — **description:** The web pointer-events drag has not been driven in a browser (out of scope for this executor per CLAUDE.md without an explicit request) — verified only via typecheck and `pnpm --filter mobile build`. Additionally, which of `DragHandle.tsx`/`DragHandle.web.tsx` Metro actually resolves into the web bundle at runtime was not independently, conclusively confirmed this session (see Issues Encountered) — the working precedent of the identical convention for `_layout.web.tsx`/`reset-password.web.tsx` elsewhere in this codebase is the strongest available evidence, not a direct verification of this specific pair.
 - **kind:** deviation — **file:** `apps/mobile/babel.config.js` — **description:** The `react-native-worklets/plugin` Babel plugin's actual runtime behavior on a native build (does the worklet genuinely run on the UI thread on-device) is unobservable in this environment — the plugin's presence and correctness were confirmed against `expo export --platform web` succeeding and the installed package's own compatibility metadata, not against a running native app.
+
+## Self-Check: PASSED
+
+All created files verified present on disk (`apps/mobile/components/DayDeck.tsx`,
+`apps/mobile/components/__tests__/DayDeck.test.tsx`, `apps/mobile/components/DragHandle.tsx`,
+`apps/mobile/components/DragHandle.web.tsx`, `apps/mobile/components/__tests__/DragHandle.test.tsx`,
+`apps/mobile/lib/programs/reorder-drag.ts`, `apps/mobile/lib/programs/__tests__/reorder-drag.test.ts`,
+`apps/mobile/jest-setup.js`, this SUMMARY). All four commits (`590ba0d`, `0a9adc0`, `414cf67`,
+`ac0e892`) verified present in `git log --oneline --all`.
