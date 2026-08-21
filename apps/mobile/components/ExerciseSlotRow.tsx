@@ -70,10 +70,8 @@ function formatRestReadout(seconds: number): string {
 }
 
 // The Exercise Slot Row's own collapsed-summary contract (UI-SPEC "Exercise Slot Row" section) —
-// deliberately distinct from programs.tsx's formatSlotTargets (04-02), which collapses an equal
-// rep min/max to one number for its own interim day-list row. This row never collapses the range
-// and always renders the fixed four-segment template, substituting an em dash per null field
-// rather than omitting a segment.
+// never collapses an equal rep min/max to one number; always renders the fixed four-segment
+// template, substituting an em dash per null field rather than omitting a segment.
 export function formatSlotSummary(draft: TargetDraft): string {
   const { targetSets, targetRepMin, targetRepMax, targetRir, targetRestSeconds } = draft;
   const allNull = targetSets === null && targetRepMin === null && targetRepMax === null && targetRir === null && targetRestSeconds === null;
