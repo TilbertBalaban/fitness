@@ -8,7 +8,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { TextField } from '@/components/TextField';
 import { getPowerSync } from '@/lib/db/powersync';
 import { createRoutine, loadRoutines, type RoutineSummary } from '@/lib/db/programs/create-routine';
-import { addDay, addExercisesToDay, removeDay, removeExercise, renameDay } from '@/lib/db/programs/days';
+import { addDay, addExercisesToDay, moveExercise, removeDay, removeExercise, renameDay } from '@/lib/db/programs/days';
 import { loadExerciseNameMap, loadProgramTree, type ProgramDay, type ProgramTree } from '@/lib/db/programs/load-program';
 import { setExerciseTargets, type TargetDraft } from '@/lib/db/programs/targets';
 
@@ -182,6 +182,18 @@ export default function ProgramsScreen() {
     [activeRoutineId, reloadTree],
   );
 
+  // The gesture layer (DragHandle) and the Move up/down controls both funnel here — neither reads
+  // or writes order_index itself, they only produce a toIndex/neighbour pair that this callback
+  // hands straight to moveExercise (04-02), the single write path for reordering.
+  const handleReorderExercise = useCallback(
+    async (routineDayId: string, exerciseId: string, beforeId: string | null, afterId: string | null) => {
+      if (!activeRoutineId) return;
+      await moveExercise({ routineDayId, exerciseId, beforeId, afterId });
+      await reloadTree(activeRoutineId);
+    },
+    [activeRoutineId, reloadTree],
+  );
+
   const handleAddExercises = useCallback(
     async (rows: PickerCatalogRow[]) => {
       if (!activeRoutineId || !pickerDayId) return;
@@ -303,16 +315,27 @@ export default function ProgramsScreen() {
                           </Text>
                         </View>
                       ) : (
-                        day.slots.map((slot) => (
-                          <ExerciseSlotRow
-                            key={slot.id}
-                            slot={slot}
-                            expanded={expandedSlotId === slot.id}
-                            onToggleExpanded={handleToggleExpanded}
-                            onRemove={handleRemoveExercise}
-                            onSaveTargets={handleSaveTargets}
-                          />
-                        ))
+                        (() => {
+                          // The exercise-count >= 2 visibility rule (04-UI-SPEC.md's D-23
+                          // amendment) is computed once here, by the day page, and passed down —
+                          // never recomputed per row or per platform file.
+                          const orderedIds = day.slots.map((slot) => slot.id);
+                          const canReorder = orderedIds.length >= 2;
+                          return day.slots.map((slot, index) => (
+                            <ExerciseSlotRow
+                              key={slot.id}
+                              slot={slot}
+                              expanded={expandedSlotId === slot.id}
+                              canReorder={canReorder}
+                              orderedIds={orderedIds}
+                              index={index}
+                              onToggleExpanded={handleToggleExpanded}
+                              onRemove={handleRemoveExercise}
+                              onSaveTargets={handleSaveTargets}
+                              onReorder={(beforeId, afterId) => void handleReorderExercise(day.id, slot.id, beforeId, afterId)}
+                            />
+                          ));
+                        })()
                       )}
 
                       <Pressable

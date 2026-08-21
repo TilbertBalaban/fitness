@@ -1,5 +1,6 @@
 module.exports = {
   preset: 'jest-expo',
+  setupFilesAfterEnv: ['<rootDir>/jest-setup.js'],
   reporters: ['default', '<rootDir>/../../scripts/jest-suite-integrity.cjs'],
   // Playwright suites live in e2e/ and run via `playwright test` (test:e2e), never via Jest —
   // Playwright's own test runner refuses to execute inside Jest's process.

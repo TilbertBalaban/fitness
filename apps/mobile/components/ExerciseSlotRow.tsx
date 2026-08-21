@@ -1,8 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { DragHandle } from '@/components/DragHandle';
 import type { ProgramSlot } from '@/lib/db/programs/load-program';
 import type { TargetDraft } from '@/lib/db/programs/targets';
+import { neighboursForIndex } from '@/lib/programs/reorder-drag';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 // 04-UI-SPEC.md's Exercise Slot Row resolves D-25's "inline free text vs stepper" open question as
@@ -151,6 +153,13 @@ export interface ExerciseSlotRowViewProps {
   expanded: boolean;
   draft: TargetDraft;
   colors: ThemeColors;
+  // D-23's D-25/D-23 amendment (04-UI-SPEC.md "Day Deck & Drag Handle"): the drag handle — and its
+  // Move up/down non-gesture equivalent — is hidden whenever a day has fewer than two exercises.
+  // The day page computes this once (day.slots.length >= 2) and passes it down; it is never
+  // recomputed per row or per platform file.
+  canReorder?: boolean;
+  orderedIds?: string[];
+  index?: number;
   onToggleExpanded: (id: string) => void;
   onStepSets: (direction: StepDirection) => void;
   onStepRepMin: (direction: StepDirection) => void;
@@ -158,6 +167,7 @@ export interface ExerciseSlotRowViewProps {
   onStepRir: (direction: StepDirection) => void;
   onStepRest: (direction: StepDirection) => void;
   onRemove: (id: string) => void;
+  onReorder?: (beforeId: string | null, afterId: string | null) => void;
 }
 
 // Hook-free — direct-invocable by a test, matching the ExerciseImageTile/SwapSuggestionList split.
@@ -168,6 +178,9 @@ export function ExerciseSlotRowView({
   expanded,
   draft,
   colors,
+  canReorder = false,
+  orderedIds = [],
+  index = 0,
   onToggleExpanded,
   onStepSets,
   onStepRepMin,
@@ -175,20 +188,41 @@ export function ExerciseSlotRowView({
   onStepRir,
   onStepRest,
   onRemove,
+  onReorder,
 }: ExerciseSlotRowViewProps) {
+  const isFirst = index <= 0;
+  const isLast = index >= orderedIds.length - 1;
+
+  const handleMoveUp = () => {
+    if (!onReorder || isFirst) return;
+    const { beforeId, afterId } = neighboursForIndex(orderedIds, slot.id, index - 1);
+    onReorder(beforeId, afterId);
+  };
+
+  const handleMoveDown = () => {
+    if (!onReorder || isLast) return;
+    const { beforeId, afterId } = neighboursForIndex(orderedIds, slot.id, index + 1);
+    onReorder(beforeId, afterId);
+  };
+
   return (
     <View className="gap-sm rounded-md bg-surface p-md">
-      <Pressable
-        onPress={() => onToggleExpanded(slot.id)}
-        accessibilityRole="button"
-        accessibilityLabel={slot.exerciseName}
-        accessibilityState={{ expanded }}
-        className="gap-xs"
-        style={{ minHeight: 48, justifyContent: 'center' }}
-      >
-        <Text className="text-body font-semibold text-foreground">{slot.exerciseName}</Text>
-        <Text className="text-label font-normal text-foreground-muted">{formatSlotSummary(draft)}</Text>
-      </Pressable>
+      <View className="flex-row items-center gap-sm">
+        {canReorder && onReorder ? (
+          <DragHandle exerciseName={slot.exerciseName} exerciseId={slot.id} fromIndex={index} orderedIds={orderedIds} onReorder={onReorder} />
+        ) : null}
+        <Pressable
+          onPress={() => onToggleExpanded(slot.id)}
+          accessibilityRole="button"
+          accessibilityLabel={slot.exerciseName}
+          accessibilityState={{ expanded }}
+          className="flex-1 gap-xs"
+          style={{ minHeight: 48, justifyContent: 'center' }}
+        >
+          <Text className="text-body font-semibold text-foreground">{slot.exerciseName}</Text>
+          <Text className="text-label font-normal text-foreground-muted">{formatSlotSummary(draft)}</Text>
+        </Pressable>
+      </View>
 
       {expanded ? (
         <View className="gap-md">
@@ -243,6 +277,33 @@ export function ExerciseSlotRowView({
             onIncrease: () => onStepRest('inc'),
           })}
 
+          {canReorder && onReorder ? (
+            <View className="flex-row gap-sm">
+              <Pressable
+                onPress={handleMoveUp}
+                disabled={isFirst}
+                accessibilityRole="button"
+                accessibilityLabel={`Move ${slot.exerciseName} up`}
+                accessibilityState={{ disabled: isFirst }}
+                className={isFirst ? 'opacity-60' : undefined}
+                style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text className="text-label font-normal text-foreground-muted">Move up</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleMoveDown}
+                disabled={isLast}
+                accessibilityRole="button"
+                accessibilityLabel={`Move ${slot.exerciseName} down`}
+                accessibilityState={{ disabled: isLast }}
+                className={isLast ? 'opacity-60' : undefined}
+                style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text className="text-label font-normal text-foreground-muted">Move down</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <Pressable
             onPress={() => onRemove(slot.id)}
             accessibilityRole="button"
@@ -270,16 +331,30 @@ function extractDraft(slot: ProgramSlot): TargetDraft {
 export interface ExerciseSlotRowProps {
   slot: ProgramSlot;
   expanded: boolean;
+  canReorder?: boolean;
+  orderedIds?: string[];
+  index?: number;
   onToggleExpanded: (id: string) => void;
   onRemove: (id: string) => void;
   onSaveTargets: (routineExerciseId: string, draft: TargetDraft) => Promise<void>;
+  onReorder?: (beforeId: string | null, afterId: string | null) => void;
 }
 
 // Thin stateful wrapper. Every stepper press writes through immediately (R6 — optimistic
 // local-first write, no explicit Save control) and updates local draft state right away so the
 // readout never waits on the tree-reload round trip; the local draft resyncs whenever the parent
 // reloads the tree with a genuinely different persisted value for this slot.
-export function ExerciseSlotRow({ slot, expanded, onToggleExpanded, onRemove, onSaveTargets }: ExerciseSlotRowProps) {
+export function ExerciseSlotRow({
+  slot,
+  expanded,
+  canReorder,
+  orderedIds,
+  index,
+  onToggleExpanded,
+  onRemove,
+  onSaveTargets,
+  onReorder,
+}: ExerciseSlotRowProps) {
   const colors = useThemeColors();
   const [draft, setDraft] = useState<TargetDraft>(() => extractDraft(slot));
 
@@ -304,6 +379,10 @@ export function ExerciseSlotRow({ slot, expanded, onToggleExpanded, onRemove, on
       expanded={expanded}
       draft={draft}
       colors={colors}
+      canReorder={canReorder}
+      orderedIds={orderedIds}
+      index={index}
+      onReorder={onReorder}
       onToggleExpanded={onToggleExpanded}
       onStepSets={(direction) => applyDraft({ ...draft, targetSets: stepBoundedValue(draft.targetSets, direction, 1, null) })}
       onStepRepMin={(direction) => {
