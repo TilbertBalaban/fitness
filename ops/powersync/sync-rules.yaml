@@ -26,6 +26,7 @@ streams:
       - SELECT * FROM routine WHERE user_id = auth.user_id()
       - SELECT routine_day.* FROM routine_day INNER JOIN routine ON routine_day.routine_id = routine.id WHERE routine.user_id = auth.user_id()
       - SELECT routine_exercise.* FROM routine_exercise INNER JOIN routine_day ON routine_exercise.routine_day_id = routine_day.id INNER JOIN routine ON routine_day.routine_id = routine.id WHERE routine.user_id = auth.user_id()
+      - SELECT routine_cycle.* FROM routine_cycle INNER JOIN routine ON routine_cycle.routine_id = routine.id WHERE routine.user_id = auth.user_id()
       - SELECT * FROM equipment_profile WHERE user_id = auth.user_id()
       - SELECT * FROM exercise WHERE user_id = auth.user_id()
       - SELECT * FROM user_exercise_preference WHERE user_id = auth.user_id()
