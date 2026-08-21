@@ -1,9 +1,10 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as unitsContract from '@fitness/api-contracts';
+import { EMPTY_TARGET, resolveTarget, type ResolvedTarget } from '@fitness/api-contracts';
 import { captureCalendarDay } from '../calendar-day';
 import { generateClientId } from './id';
 import { getPowerSync, type WriteDb } from './powersync';
-import { loggedSet, routineExercise, sessionExercise, workoutSession } from './schema';
+import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from './schema';
 
 export interface StartSessionInput {
   routineDayId?: string | null;
@@ -43,23 +44,56 @@ export interface AddSessionExerciseInput {
   orderIndex: number;
   supersetGroupId?: string | null;
   routineExerciseId?: string | null;
+  // Passed in, never derived here: deriving the session's cycle would mean reading the routine's
+  // cycle list and the user's session history from a write helper, duplicating the position
+  // arithmetic that owns that question.
+  cycleId?: string | null;
 }
 
-interface Prescription {
-  targetSets: number | null;
-  targetRepMin: number | null;
-  targetRepMax: number | null;
-  targetRir: number | null;
-  targetRestSeconds: number | null;
-}
+type Prescription = ResolvedTarget;
 
-const EMPTY_PRESCRIPTION: Prescription = {
-  targetSets: null,
-  targetRepMin: null,
-  targetRepMax: null,
-  targetRir: null,
-  targetRestSeconds: null,
-};
+const EMPTY_PRESCRIPTION: Prescription = EMPTY_TARGET;
+
+// Two selects, never five: one for the base row, one for the cycle's override. The unique
+// (routine_exercise_id, cycle_id) pair means the second select returns at most one row.
+async function resolvePrescriptionForCycle(
+  routineExerciseId: string,
+  cycleId: string | null | undefined,
+  db: WriteDb,
+): Promise<Prescription> {
+  const [base] = await db
+    .select({
+      targetSets: routineExercise.targetSets,
+      targetRepMin: routineExercise.targetRepMin,
+      targetRepMax: routineExercise.targetRepMax,
+      targetRir: routineExercise.targetRir,
+      targetRestSeconds: routineExercise.targetRestSeconds,
+    })
+    .from(routineExercise)
+    .where(eq(routineExercise.id, routineExerciseId));
+
+  if (!cycleId) {
+    return base ?? EMPTY_PRESCRIPTION;
+  }
+
+  const [override] = await db
+    .select({
+      targetSets: routineExerciseCycleTarget.targetSets,
+      targetRepMin: routineExerciseCycleTarget.targetRepMin,
+      targetRepMax: routineExerciseCycleTarget.targetRepMax,
+      targetRir: routineExerciseCycleTarget.targetRir,
+      targetRestSeconds: routineExerciseCycleTarget.targetRestSeconds,
+    })
+    .from(routineExerciseCycleTarget)
+    .where(
+      and(
+        eq(routineExerciseCycleTarget.routineExerciseId, routineExerciseId),
+        eq(routineExerciseCycleTarget.cycleId, cycleId),
+      ),
+    );
+
+  return resolveTarget(base ?? EMPTY_TARGET, override ?? null);
+}
 
 // Copies the prescription onto the row once, here, and stores routine_exercise_id for
 // traceability only — every later read of the prescription reads this snapshot, never
@@ -70,20 +104,9 @@ export async function addSessionExercise(
 ): Promise<string> {
   const id = generateClientId();
 
-  let prescription = EMPTY_PRESCRIPTION;
-  if (input.routineExerciseId) {
-    const [row] = await db
-      .select({
-        targetSets: routineExercise.targetSets,
-        targetRepMin: routineExercise.targetRepMin,
-        targetRepMax: routineExercise.targetRepMax,
-        targetRir: routineExercise.targetRir,
-        targetRestSeconds: routineExercise.targetRestSeconds,
-      })
-      .from(routineExercise)
-      .where(eq(routineExercise.id, input.routineExerciseId));
-    if (row) prescription = row;
-  }
+  const prescription = input.routineExerciseId
+    ? await resolvePrescriptionForCycle(input.routineExerciseId, input.cycleId, db)
+    : EMPTY_PRESCRIPTION;
 
   await db.insert(sessionExercise).values({
     id,
