@@ -27,7 +27,7 @@ export function orderedSelection<T extends RowWithId>(selectedIds: string[], row
 }
 
 export function formatSelectionCount(count: number): string {
-  if (count === 0) return 'Add';
-  if (count === 1) return 'Add 1 exercise';
-  return `Add ${count} exercises`;
+  if (count === 1) return 'Add Exercise';
+  if (count === 0) return 'Add Exercises';
+  return `Add ${count} Exercises`;
 }
