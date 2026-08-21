@@ -226,7 +226,7 @@ Plans:
   3. User can activate, freeze, duplicate, archive, and restore programs, and see the active program's upcoming workouts with its targets
   4. Editing a program never changes what any already-logged workout shows
 
-**Plans**: 6/11 plans executed
+**Plans**: 7/11 plans executed
 
 Plans:
 **Wave 1**
@@ -249,7 +249,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 04-07-PLAN.md — Per-cycle target overrides: sparse table, shared `resolveTarget`, dual-parent apply path
+- [x] 04-07-PLAN.md — Per-cycle target overrides: sparse table, shared `resolveTarget`, dual-parent apply path
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -449,7 +449,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
-| 4. Program Builder | 6/11 | In Progress|  |
+| 4. Program Builder | 7/11 | In Progress|  |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
