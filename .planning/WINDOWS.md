@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 42
+open_count: 46
 waived_count: 0
 fixed_count: 10
-total_count: 52
-last_updated: 2026-08-20T17:03:04.520Z
+total_count: 56
+last_updated: 2026-08-21T07:35:54.898Z
 ---
 
 # Broken Windows Ledger
@@ -67,6 +67,10 @@ last_updated: 2026-08-20T17:03:04.520Z
 | 53 | 03 | deviation | apps/mobile/app/exercises/_layout.tsx |  | Security fix (T-03-58): app/exercises/_layout.tsx collapses the four hoisted exercises routes into one guarded segment route, so the root layout's existing signed-in Stack.Protected guard on Stack.Screen name=exercises now covers exercises/[id], exercises/new and exercises/edit/[id] as well as the list — previously only the list route was in the protected-screen set and the other three mounted regardless of session state | open |  | 2026-08-19T15:34:33.185Z |  |
 | 54 | 4 | unrun-verify | apps/mobile/app/(tabs)/programs.tsx |  | Programs tab (create + list draft programs) has been exercised on neither iOS nor Android — no Xcode, no Android SDK on this machine; native observation deferred to ROADMAP Phase 999.1 | open |  | 2026-08-20T15:38:02.214Z |  |
 | 55 | 04 | deviation | apps/mobile/lib/db/programs/days.ts |  | Two-device offline-reorder convergence for order_index (gap scheme) is reasoned from the gap arithmetic and row-level-LWW model, not observed — one device available, no second runtime in this worktree | open |  | 2026-08-20T17:03:04.520Z |  |
+| 56 | 04 | unrun-verify | apps/mobile/components/ExercisePickerModal.tsx |  | The full-screen exercise picker's presentation, search/filter interaction and multi-select behavior have been observed on neither iOS nor Android (no Xcode/Android SDK on this machine) — verified only via unit tests and the web build. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-21T07:35:54.475Z |  |
+| 57 | 04 | unrun-verify | apps/mobile/components/ExerciseSlotRow.tsx |  | The inline-expand animation and the numeric stepper's tap/hold behaviour (including rep-range pairing at the UI layer) have been observed on neither iOS nor Android — verified only via unit tests and the web build. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-21T07:35:54.608Z |  |
+| 58 | 04 | deviation | apps/api/src/db/schema/preference.ts |  | user_preference's primary key changed from user_id alone to a TEXT id column deterministically equal to user_id (option-a at plan 04-04's opening checkpoint, resolved by the orchestrator after verifying the user_exercise_preference precedent and the shipped conflict-policy.spec.ts assumption). A one-way primary-key migration on a table PowerSync already syncs; the live table was confirmed empty before the push. user_id also carries a unique constraint so the one-row-per-user singleton holds independently of the id contract. | open |  | 2026-08-21T07:35:54.767Z |  |
+| 59 | 04 | unrun-verify | apps/api/src/sync/sync.service.ts |  | Two devices activating different programs while offline converge, once both pushes land, to exactly one active program (T-04-20 backstop). Structurally reasoned from D-14's single-nullable-column LWW shape and partially exercised by the single-device 'second PUT overwrites, exactly one row remains' e2e case; the genuine two-device race is unrun — no second device or runtime available here. | open |  | 2026-08-21T07:35:54.898Z |  |
 
 ````json
 [
@@ -692,6 +696,54 @@ last_updated: 2026-08-20T17:03:04.520Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-20T17:03:04.520Z",
+    "resolved_at": null
+  },
+  {
+    "id": 56,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/components/ExercisePickerModal.tsx",
+    "line": null,
+    "description": "The full-screen exercise picker's presentation, search/filter interaction and multi-select behavior have been observed on neither iOS nor Android (no Xcode/Android SDK on this machine) — verified only via unit tests and the web build. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T07:35:54.475Z",
+    "resolved_at": null
+  },
+  {
+    "id": 57,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/components/ExerciseSlotRow.tsx",
+    "line": null,
+    "description": "The inline-expand animation and the numeric stepper's tap/hold behaviour (including rep-range pairing at the UI layer) have been observed on neither iOS nor Android — verified only via unit tests and the web build. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T07:35:54.608Z",
+    "resolved_at": null
+  },
+  {
+    "id": 58,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/api/src/db/schema/preference.ts",
+    "line": null,
+    "description": "user_preference's primary key changed from user_id alone to a TEXT id column deterministically equal to user_id (option-a at plan 04-04's opening checkpoint, resolved by the orchestrator after verifying the user_exercise_preference precedent and the shipped conflict-policy.spec.ts assumption). A one-way primary-key migration on a table PowerSync already syncs; the live table was confirmed empty before the push. user_id also carries a unique constraint so the one-row-per-user singleton holds independently of the id contract.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T07:35:54.767Z",
+    "resolved_at": null
+  },
+  {
+    "id": 59,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "Two devices activating different programs while offline converge, once both pushes land, to exactly one active program (T-04-20 backstop). Structurally reasoned from D-14's single-nullable-column LWW shape and partially exercised by the single-device 'second PUT overwrites, exactly one row remains' e2e case; the genuine two-device race is unrun — no second device or runtime available here.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T07:35:54.898Z",
     "resolved_at": null
   }
 ]
