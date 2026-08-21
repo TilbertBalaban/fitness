@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 46
+open_count: 53
 waived_count: 0
 fixed_count: 10
-total_count: 56
-last_updated: 2026-08-21T07:35:54.898Z
+total_count: 63
+last_updated: 2026-08-21T10:32:24.455Z
 ---
 
 # Broken Windows Ledger
@@ -71,6 +71,13 @@ last_updated: 2026-08-21T07:35:54.898Z
 | 57 | 04 | unrun-verify | apps/mobile/components/ExerciseSlotRow.tsx |  | The inline-expand animation and the numeric stepper's tap/hold behaviour (including rep-range pairing at the UI layer) have been observed on neither iOS nor Android — verified only via unit tests and the web build. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-21T07:35:54.608Z |  |
 | 58 | 04 | deviation | apps/api/src/db/schema/preference.ts |  | user_preference's primary key changed from user_id alone to a TEXT id column deterministically equal to user_id (option-a at plan 04-04's opening checkpoint, resolved by the orchestrator after verifying the user_exercise_preference precedent and the shipped conflict-policy.spec.ts assumption). A one-way primary-key migration on a table PowerSync already syncs; the live table was confirmed empty before the push. user_id also carries a unique constraint so the one-row-per-user singleton holds independently of the id contract. | open |  | 2026-08-21T07:35:54.767Z |  |
 | 59 | 04 | unrun-verify | apps/api/src/sync/sync.service.ts |  | Two devices activating different programs while offline converge, once both pushes land, to exactly one active program (T-04-20 backstop). Structurally reasoned from D-14's single-nullable-column LWW shape and partially exercised by the single-device 'second PUT overwrites, exactly one row remains' e2e case; the genuine two-device race is unrun — no second device or runtime available here. | open |  | 2026-08-21T07:35:54.898Z |  |
+| 60 | 04 | unrun-verify | ops/powersync/sync-rules.yaml |  | PowerSync Service not restarted against the updated sync rules here, so pull-side delivery of routine_cycle rows is asserted only by the query's shape matching the shipped, already-verified routine_day query, not by an observed stream. Standing limitation inherited from 04-01/04-02/04-04. | open |  | 2026-08-21T10:32:23.609Z |  |
+| 61 | 04 | deviation | apps/api/src/sync/sync.service.ts |  | T-04-32 handoff: a routine_cycle DELETE's future routine_exercise_cycle_target children (table created in 04-07) are not yet covered by child-tombstone gathering. 04-07 MUST extend the routine_day DELETE branch to also tombstone cascaded routine_exercise_cycle_target rows, or a deleted override resurrects on the next pull. | open |  | 2026-08-21T10:32:23.795Z |  |
+| 62 | 04 | unrun-verify | apps/mobile/components/DayDeck.tsx |  | Day-deck horizontal swipe observed on neither iOS nor Android (no Xcode/Android SDK) and not driven in a browser (CLAUDE.md forbids browser testing without an explicit request) — verified only via DayDeck.test.tsx (8 cases) and the web build. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-21T10:32:23.952Z |  |
+| 63 | 04 | unrun-verify | apps/mobile/components/DragHandle.tsx |  | Native drag gesture (Gesture.Pan, direction-locked against the deck swipe) observed on neither iOS nor Android — verified only via DragHandle.test.tsx (hook-free view only), typecheck and the web build. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-21T10:32:24.083Z |  |
+| 64 | 04 | unrun-verify | apps/mobile/components/DragHandle.web.tsx |  | Web pointer-events drag not driven in a browser. Additionally, which of DragHandle.tsx / DragHandle.web.tsx Metro resolves into the web bundle at runtime was NOT conclusively confirmed — the working precedent of the same convention for _layout.web.tsx / reset-password.web.tsx is the strongest available evidence, not direct verification of this pair. | open |  | 2026-08-21T10:32:24.206Z |  |
+| 65 | 04 | deviation | apps/mobile/babel.config.js |  | The react-native-worklets/plugin Babel plugin's runtime behaviour on a native build (whether the worklet genuinely runs on the UI thread on-device) is unobservable here — presence and correctness confirmed only against a succeeding web export and the package's compatibility metadata. | open |  | 2026-08-21T10:32:24.333Z |  |
+| 66 | 04 | deviation | apps/mobile/package.json |  | react-native-worklets and react-native-pager-view are peerDependencies of reanimated and tab-view respectively but were left TRANSITIVE-ONLY rather than added as direct dependencies, despite the approved package-legitimacy decision covering all five as direct. babel.config.js references react-native-worklets/plugin, which resolves today only via pnpm hoisting; a stricter hoisting setting would break the build. worklets is additionally pinned to 0.10.4 by a pnpm-workspace override because Expo-pinned reanimated 4.5.1 narrows its peer to exactly 0.10.x while transitive resolution gave 0.11.3, which throws at Reanimated module init on every platform. | open |  | 2026-08-21T10:32:24.455Z |  |
 
 ````json
 [
@@ -744,6 +751,90 @@ last_updated: 2026-08-21T07:35:54.898Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-21T07:35:54.898Z",
+    "resolved_at": null
+  },
+  {
+    "id": 60,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "ops/powersync/sync-rules.yaml",
+    "line": null,
+    "description": "PowerSync Service not restarted against the updated sync rules here, so pull-side delivery of routine_cycle rows is asserted only by the query's shape matching the shipped, already-verified routine_day query, not by an observed stream. Standing limitation inherited from 04-01/04-02/04-04.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T10:32:23.609Z",
+    "resolved_at": null
+  },
+  {
+    "id": 61,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "T-04-32 handoff: a routine_cycle DELETE's future routine_exercise_cycle_target children (table created in 04-07) are not yet covered by child-tombstone gathering. 04-07 MUST extend the routine_day DELETE branch to also tombstone cascaded routine_exercise_cycle_target rows, or a deleted override resurrects on the next pull.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T10:32:23.795Z",
+    "resolved_at": null
+  },
+  {
+    "id": 62,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/components/DayDeck.tsx",
+    "line": null,
+    "description": "Day-deck horizontal swipe observed on neither iOS nor Android (no Xcode/Android SDK) and not driven in a browser (CLAUDE.md forbids browser testing without an explicit request) — verified only via DayDeck.test.tsx (8 cases) and the web build. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T10:32:23.952Z",
+    "resolved_at": null
+  },
+  {
+    "id": 63,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/components/DragHandle.tsx",
+    "line": null,
+    "description": "Native drag gesture (Gesture.Pan, direction-locked against the deck swipe) observed on neither iOS nor Android — verified only via DragHandle.test.tsx (hook-free view only), typecheck and the web build. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T10:32:24.083Z",
+    "resolved_at": null
+  },
+  {
+    "id": 64,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/components/DragHandle.web.tsx",
+    "line": null,
+    "description": "Web pointer-events drag not driven in a browser. Additionally, which of DragHandle.tsx / DragHandle.web.tsx Metro resolves into the web bundle at runtime was NOT conclusively confirmed — the working precedent of the same convention for _layout.web.tsx / reset-password.web.tsx is the strongest available evidence, not direct verification of this pair.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T10:32:24.206Z",
+    "resolved_at": null
+  },
+  {
+    "id": 65,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/babel.config.js",
+    "line": null,
+    "description": "The react-native-worklets/plugin Babel plugin's runtime behaviour on a native build (whether the worklet genuinely runs on the UI thread on-device) is unobservable here — presence and correctness confirmed only against a succeeding web export and the package's compatibility metadata.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T10:32:24.333Z",
+    "resolved_at": null
+  },
+  {
+    "id": 66,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/package.json",
+    "line": null,
+    "description": "react-native-worklets and react-native-pager-view are peerDependencies of reanimated and tab-view respectively but were left TRANSITIVE-ONLY rather than added as direct dependencies, despite the approved package-legitimacy decision covering all five as direct. babel.config.js references react-native-worklets/plugin, which resolves today only via pnpm hoisting; a stricter hoisting setting would break the build. worklets is additionally pinned to 0.10.4 by a pnpm-workspace override because Expo-pinned reanimated 4.5.1 narrows its peer to exactly 0.10.x while transitive resolution gave 0.11.3, which throws at Reanimated module init on every platform.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-21T10:32:24.455Z",
     "resolved_at": null
   }
 ]

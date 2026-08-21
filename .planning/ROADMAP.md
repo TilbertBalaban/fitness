@@ -226,7 +226,7 @@ Plans:
   3. User can activate, freeze, duplicate, archive, and restore programs, and see the active program's upcoming workouts with its targets
   4. Editing a program never changes what any already-logged workout shows
 
-**Plans**: 4/11 plans executed
+**Plans**: 6/11 plans executed
 
 Plans:
 **Wave 1**
@@ -244,8 +244,8 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 04-05-PLAN.md — The swipeable day deck and the always-visible drag handle
-- [ ] 04-06-PLAN.md — Cycles: table, three-kind vocabulary, CHECK constraint, sync apply path
+- [x] 04-05-PLAN.md — The swipeable day deck and the always-visible drag handle
+- [x] 04-06-PLAN.md — Cycles: table, three-kind vocabulary, CHECK constraint, sync apply path
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -449,7 +449,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Cross-Platform Foundation | 11/11 | In Progress|  |
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
-| 4. Program Builder | 4/11 | In Progress|  |
+| 4. Program Builder | 6/11 | In Progress|  |
 | 5. In-Gym Session Logging | 0/TBD | Not started | - |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
