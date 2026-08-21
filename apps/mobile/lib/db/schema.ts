@@ -87,6 +87,15 @@ export const routineExercise = sqliteTable('routine_exercise', {
   notes: text('notes'),
 });
 
+export const routineCycle = sqliteTable('routine_cycle', {
+  id: text('id').primaryKey(),
+  routineId: text('routine_id').notNull(),
+  orderIndex: integer('order_index').notNull(),
+  name: text('name').notNull(),
+  kind: text('kind').notNull(),
+  durationDays: integer('duration_days'),
+});
+
 export const equipmentProfile = sqliteTable('equipment_profile', {
   id: text('id').primaryKey(),
   userId: text('user_id'),
@@ -246,6 +255,7 @@ export const drizzleSchema = {
   routine,
   routineDay,
   routineExercise,
+  routineCycle,
   equipmentProfile,
   exercise,
   userExercisePreference,

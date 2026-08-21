@@ -38,4 +38,25 @@ racing another device's activation, it just loses (or wins) last-write-wins on o
 
 ## `CYCLE_KINDS`
 
-_Reserved — filled in by 04-06._
+A cycle is a first-class, orderable row on the `routine_cycle` table — a child of `routine`,
+resolved through `routine.user_id` exactly as `routine_day` and `routine_exercise` are, and never
+a per-week copy of the day/exercise tree (D-09). `CYCLE_KINDS = ['training', 'deload', 'time_off']`
+is deliberately closed to exactly these three values, enforced by the `routine_cycle_kind_check`
+Postgres CHECK constraint.
+
+| Value | Meaning | Trained? | `duration_days` applies? |
+|---|---|---|---|
+| `training` | A regular training cycle | Yes | No — length is the routine's own day rotation, not a stored number |
+| `deload` | A lighter week the lifter still trains (PROG-05) | Yes | No — same reason as `training` |
+| `time_off` | Planned time off from training (PROG-06) | No | Yes — the only kind that stores a length, in whole days |
+
+**Position is not a kind.** A deload placed at the start of the program (PROG-05's "Deload First
+Cycle") is a `deload` cycle at `order_index` 0; a deload at the end ("Deload Last Cycle") is the
+same kind at the highest `order_index` in the routine's cycle sequence. There is no `first_deload`
+or `last_deload` value, and no separate position column — `order_index`, the same column every
+other ordered child table in this schema already uses, is where "start or end" lives.
+
+**A cycle owns no children.** `routine_exercise_cycle_target` (04-07) points at a cycle to carry a
+per-cycle override, but `routine_cycle` itself never multiplies the day/exercise tree — a program
+with zero cycles is valid (every exercise resolves to its base prescription), and a program with
+exactly one cycle is valid and offers no previous or next cycle.

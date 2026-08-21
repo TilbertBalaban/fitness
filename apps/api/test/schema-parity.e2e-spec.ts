@@ -24,6 +24,7 @@ const REQUIRED_TABLES = [
   'routine',
   'routine_day',
   'routine_exercise',
+  'routine_cycle',
   'personal_record',
   'body_metric',
   'progress_photo',
@@ -55,6 +56,7 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
     'source',
   ],
   user_exercise_preference: ['id', 'user_id', 'exercise_id', 'archived_at', 'never_suggest', 'updated_at', 'server_seq'],
+  routine_cycle: ['id', 'routine_id', 'order_index', 'name', 'kind', 'duration_days'],
 };
 
 let pg: Client;
@@ -263,5 +265,47 @@ describe('Schema parity (e2e)', () => {
       ]),
     ).rejects.toThrow();
     await pg.query(`DELETE FROM user_preference WHERE id = $1`, [firstId]);
+  });
+
+  it('routine_cycle has no user_id column and no server_seq column in the live database', async () => {
+    // Asserted positively — a child table that grows an ownership column is how the
+    // aggregate-root rule quietly stops being true.
+    const { rows } = await pg.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'routine_cycle'`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    const present = new Set(rows.map((r) => r.column_name));
+    expect(present.has('user_id')).toBe(false);
+    expect(present.has('server_seq')).toBe(false);
+  });
+
+  it('rejects a routine_cycle row with kind outside training/deload/time_off at the database level, and accepts deload', async () => {
+    const { rows: routines } = await pg.query<{ id: string }>(`SELECT id FROM routine LIMIT 1`);
+    if (routines.length === 0) {
+      throw new Error('schema-parity: no routine row exists to attach a test routine_cycle to — seed the database first');
+    }
+    const routineId = routines[0].id;
+
+    const badId = `schema-parity-bogus-kind-${Date.now()}`;
+    await expect(
+      pg.query(`INSERT INTO routine_cycle (id, routine_id, order_index, name, kind) VALUES ($1, $2, $3, $4, $5)`, [
+        badId,
+        routineId,
+        0,
+        'Schema Parity Bogus Kind',
+        'rest',
+      ]),
+    ).rejects.toThrow();
+
+    const validId = `schema-parity-valid-kind-${Date.now()}`;
+    await pg.query(`INSERT INTO routine_cycle (id, routine_id, order_index, name, kind) VALUES ($1, $2, $3, $4, $5)`, [
+      validId,
+      routineId,
+      0,
+      'Schema Parity Valid Kind',
+      'deload',
+    ]);
+    await pg.query(`DELETE FROM routine_cycle WHERE id = $1`, [validId]);
   });
 });

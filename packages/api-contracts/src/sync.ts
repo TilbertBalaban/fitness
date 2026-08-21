@@ -21,6 +21,7 @@ export const SYNCED_TABLES = [
   'progress_photo',
   'user_preference',
   'user_exercise_preference',
+  'routine_cycle',
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -38,6 +39,8 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // — built early because PROG-08's active pointer (user_preference.active_routine_id) needs a
 // working push apply path now; Phase 6 extends the same toUserPreferenceValues with
 // default_equipment_profile_id rather than building this path from scratch.
+// 'routine_cycle' (04-06) is a fourth child of the 'routine' aggregate root, a sibling of
+// routine_day/routine_exercise one level below the root.
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -48,6 +51,7 @@ export const PUSH_APPLIED_TABLES = [
   'routine_day',
   'routine_exercise',
   'user_preference',
+  'routine_cycle',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 

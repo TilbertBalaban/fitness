@@ -7,6 +7,7 @@ import {
   MOVEMENT_PATTERNS as MOVEMENT_PATTERN_TUPLE,
   ROUTINE_STATUSES as ROUTINE_STATUS_TUPLE,
   WEIGHT_UNITS as WEIGHT_UNIT_TUPLE,
+  CYCLE_KINDS as CYCLE_KIND_TUPLE,
   type SyncCrudOp,
   type SyncPushResponse,
   type SyncRejectionReason,
@@ -21,6 +22,7 @@ import {
   routine,
   routineDay,
   routineExercise,
+  routineCycle,
   userPreference,
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
@@ -29,6 +31,7 @@ import {
   EXERCISE_PATCH_FIELDS,
   LOGGED_SET_PATCH_FIELDS,
   patchAwareSet,
+  ROUTINE_CYCLE_PATCH_FIELDS,
   ROUTINE_DAY_PATCH_FIELDS,
   ROUTINE_EXERCISE_PATCH_FIELDS,
   ROUTINE_PATCH_FIELDS,
@@ -38,6 +41,7 @@ import {
   WORKOUT_SESSION_PATCH_FIELDS,
   type ExerciseValues,
   type LoggedSetValues,
+  type RoutineCycleValues,
   type RoutineDayValues,
   type RoutineExerciseValues,
   type RoutineValues,
@@ -57,6 +61,7 @@ const TABLE_MAP = {
   routine_day: routineDay,
   routine_exercise: routineExercise,
   user_preference: userPreference,
+  routine_cycle: routineCycle,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -100,11 +105,11 @@ const ROOT_TABLE_BY_TYPE = {
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
 // The root type an op chains to — session_exercise/logged_set resolve through workout_session;
-// routine_day/routine_exercise resolve through routine, two hops deep for routine_exercise; every
-// self-rooting type (aggregate or singleton) resolves to itself.
+// routine_day/routine_exercise/routine_cycle resolve through routine, two hops deep for
+// routine_exercise; every self-rooting type (aggregate or singleton) resolves to itself.
 function rootFamilyOf(type: string): string {
   if (type === 'session_exercise' || type === 'logged_set') return 'workout_session';
-  if (type === 'routine_day' || type === 'routine_exercise') return 'routine';
+  if (type === 'routine_day' || type === 'routine_exercise' || type === 'routine_cycle') return 'routine';
   return type;
 }
 
@@ -123,6 +128,7 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   routine_day: 1,
   routine_exercise: 2,
   user_preference: 0,
+  routine_cycle: 1,
 };
 
 const SESSION_STATUSES = new Set(['in_progress', 'completed', 'discarded']);
@@ -135,6 +141,7 @@ const EQUIPMENT_TYPES = new Set<string>(EQUIPMENT_TYPE_TUPLE);
 const MOVEMENT_PATTERNS = new Set<string>(MOVEMENT_PATTERN_TUPLE);
 const ROUTINE_STATUSES = new Set<string>(ROUTINE_STATUS_TUPLE);
 const WEIGHT_UNITS = new Set<string>(WEIGHT_UNIT_TUPLE);
+const CYCLE_KINDS = new Set<string>(CYCLE_KIND_TUPLE);
 
 interface WorkoutSessionOpData {
   routine_day_id?: string | null;
@@ -237,6 +244,14 @@ interface RoutineExerciseOpData {
   target_rest_seconds?: number | null;
   progression_scheme_id?: string | null;
   notes?: string | null;
+}
+
+interface RoutineCycleOpData {
+  routine_id?: string;
+  order_index?: number;
+  name?: string;
+  kind?: string;
+  duration_days?: number | null;
 }
 
 function toWorkoutSessionValues(id: string, userId: string, data: Record<string, unknown> | null | undefined): WorkoutSessionValues {
@@ -441,6 +456,23 @@ function toRoutineExerciseValues(
   };
 }
 
+// routineId always comes from the resolver argument, never from data — same reparenting
+// guarantee as toRoutineDayValues, one hop shallower than toRoutineExerciseValues (T-04-31).
+// kind falls back to 'training' and name falls back to '' on insert; both are validated present
+// and in-vocabulary by isInvalidRoutineCycle before this function ever runs on a PUT, so the
+// fallback is defence in depth, matching toRoutineDayValues' own precedent.
+function toRoutineCycleValues(id: string, routineId: string, data: Record<string, unknown> | null | undefined): RoutineCycleValues {
+  const d = (data ?? {}) as RoutineCycleOpData;
+  return {
+    id,
+    routineId,
+    orderIndex: d.order_index ?? 0,
+    name: d.name ?? '',
+    kind: d.kind ?? 'training',
+    durationDays: d.duration_days ?? null,
+  };
+}
+
 function isNonNegativeInteger(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
@@ -502,6 +534,20 @@ function isInvalidRoutineExercise(data: RoutineExerciseOpData): boolean {
   if (data.target_rep_max !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_max)) return true;
   if (data.target_rir !== undefined && !isNonNegativeIntegerOrNull(data.target_rir)) return true;
   if (data.target_rest_seconds !== undefined && !isNonNegativeIntegerOrNull(data.target_rest_seconds)) return true;
+  return false;
+}
+
+// kind is checked only when present, matching the exercise/routine load_type/status precedent —
+// but a PUT's toRoutineCycleValues fallback ('training') means an absent kind on insert is never
+// actually a gap. name is checked the same way isInvalidRoutineDay checks its own name field.
+// duration_days is deliberately NOT required when kind is 'time_off' — that completeness rule is
+// the builder's job (04-08), and a terminal invalid_field rejection here would silently discard a
+// legitimate offline write (T-04-30).
+function isInvalidRoutineCycle(data: RoutineCycleOpData): boolean {
+  if (data.kind !== undefined && !(typeof data.kind === 'string' && CYCLE_KINDS.has(data.kind))) return true;
+  if (data.name !== undefined && !(typeof data.name === 'string' && data.name.trim().length > 0)) return true;
+  if (data.order_index !== undefined && !isNonNegativeInteger(data.order_index)) return true;
+  if (data.duration_days !== undefined && !isNonNegativeIntegerOrNull(data.duration_days)) return true;
   return false;
 }
 
@@ -591,6 +637,10 @@ function hasInvalidField(op: SyncCrudOp): boolean {
 
   if (op.type === 'routine_exercise') {
     return isInvalidRoutineExercise(data as RoutineExerciseOpData);
+  }
+
+  if (op.type === 'routine_cycle') {
+    return isInvalidRoutineCycle(data as RoutineCycleOpData);
   }
 
   if (op.type === 'user_preference') {
@@ -773,9 +823,12 @@ export class SyncService {
 
     // Mirrors the session_exercise/logged_set batched-parent-read shape one level deeper — the
     // routine_exercise -> routine_day -> routine chain is the deepest ownership walk in this
-    // codebase (T-04-08).
+    // codebase (T-04-08). routine_cycle chains to 'routine' the same single hop routine_day does,
+    // kept as its own separate inArray query below rather than folded into routine_day's — they
+    // are different tables.
     const routineDayOps = remaining.filter((op) => op.type === 'routine_day');
     const routineExerciseOps = remaining.filter((op) => op.type === 'routine_exercise');
+    const routineCycleOps = remaining.filter((op) => op.type === 'routine_cycle');
     const routineDayRoutineIdFromData = new Map<string, string>();
     for (const op of routineDayOps) {
       const routineId = (op.data as RoutineDayOpData | null | undefined)?.routine_id;
@@ -785,6 +838,11 @@ export class SyncService {
     for (const op of routineExerciseOps) {
       const routineDayId = (op.data as RoutineExerciseOpData | null | undefined)?.routine_day_id;
       if (routineDayId) routineExerciseRoutineDayIdFromData.set(op.id, routineDayId);
+    }
+    const routineCycleRoutineIdFromData = new Map<string, string>();
+    for (const op of routineCycleOps) {
+      const routineId = (op.data as RoutineCycleOpData | null | undefined)?.routine_id;
+      if (routineId) routineCycleRoutineIdFromData.set(op.id, routineId);
     }
 
     const routineExerciseIdsToCheck = new Set(routineExerciseOps.map((op) => op.id));
@@ -819,6 +877,21 @@ export class SyncService {
       return dbRoutineDayIdByRoutineExerciseId.get(routineExerciseOpId) ?? routineExerciseRoutineDayIdFromData.get(routineExerciseOpId);
     }
 
+    // One hop, the same anti-reparenting guarantee as resolveRoutineIdForRoutineDay (T-04-31): a
+    // routine_cycle already stored under routine R1 cannot be moved to R2 by naming a different
+    // routine_id, because database linkage always wins over the client-claimed value.
+    const routineCycleIdsToCheck = new Set(routineCycleOps.map((op) => op.id));
+    const dbRoutineCycles = routineCycleIdsToCheck.size
+      ? await this.db
+          .select({ id: routineCycle.id, routineId: routineCycle.routineId })
+          .from(routineCycle)
+          .where(inArray(routineCycle.id, [...routineCycleIdsToCheck]))
+      : [];
+    const dbRoutineIdByRoutineCycleId = new Map(dbRoutineCycles.map((row) => [row.id, row.routineId]));
+    function resolveRoutineIdForRoutineCycle(cycleOpId: string): string | undefined {
+      return dbRoutineIdByRoutineCycleId.get(cycleOpId) ?? routineCycleRoutineIdFromData.get(cycleOpId);
+    }
+
     // Root resolution — null means "could not be determined from the batch or the database".
     // Every AGGREGATE_ROOT_TYPES / SINGLETON_ROOT_TYPES member resolves to itself, never falling
     // into the trailing else branch, which assumes every remaining type chains through
@@ -837,6 +910,8 @@ export class SyncService {
       } else if (op.type === 'routine_exercise') {
         const routineDayId = resolveRoutineDayIdForRoutineExercise(op.id);
         rootByOpId.set(op.op_id, routineDayId ? (resolveRoutineIdForRoutineDay(routineDayId) ?? null) : null);
+      } else if (op.type === 'routine_cycle') {
+        rootByOpId.set(op.op_id, resolveRoutineIdForRoutineCycle(op.id) ?? null);
       } else {
         const sessionExerciseId = resolveSessionExerciseIdForLoggedSet(op.id);
         rootByOpId.set(op.op_id, sessionExerciseId ? (resolveSessionIdForSessionExercise(sessionExerciseId) ?? null) : null);
@@ -893,7 +968,7 @@ export class SyncService {
     for (const op of remaining) {
       if (AGGREGATE_ROOT_TYPES.has(op.type) || SINGLETON_ROOT_TYPES.has(op.type)) {
         rootTypeByRootId.set(op.id, op.type as RootTableType);
-      } else if (op.type === 'routine_day' || op.type === 'routine_exercise') {
+      } else if (op.type === 'routine_day' || op.type === 'routine_exercise' || op.type === 'routine_cycle') {
         const resolvedRoot = rootByOpId.get(op.op_id);
         if (resolvedRoot) rootTypeByRootId.set(resolvedRoot, 'routine');
       }
@@ -1150,7 +1225,9 @@ export class SyncService {
                           ? toRoutineDayValues(op.id, resolveRoutineIdForRoutineDay(op.id) ?? root, op.data)
                           : op.type === 'routine_exercise'
                             ? toRoutineExerciseValues(op.id, resolveRoutineDayIdForRoutineExercise(op.id) ?? '', op.data)
-                            : toUserPreferenceValues(op.id, userId, op.data);
+                            : op.type === 'routine_cycle'
+                              ? toRoutineCycleValues(op.id, resolveRoutineIdForRoutineCycle(op.id) ?? root, op.data)
+                              : toUserPreferenceValues(op.id, userId, op.data);
 
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
@@ -1229,6 +1306,17 @@ export class SyncService {
               .onConflictDoUpdate({
                 target: routineExercise.id,
                 set: patchAwareSet(op, routineExerciseValues, ROUTINE_EXERCISE_PATCH_FIELDS),
+              });
+          } else if (op.type === 'routine_cycle') {
+            // No serverSeq — a child of the routine aggregate root, one hop shallower than
+            // routine_exercise, mirroring the routine_day insert shape.
+            const routineCycleValues = values as RoutineCycleValues;
+            await tx
+              .insert(routineCycle)
+              .values(routineCycleValues)
+              .onConflictDoUpdate({
+                target: routineCycle.id,
+                set: patchAwareSet(op, routineCycleValues, ROUTINE_CYCLE_PATCH_FIELDS),
               });
           } else if (op.type === 'routine') {
             // routine — the aggregate root the tracer proves. Carries server_seq like exercise and

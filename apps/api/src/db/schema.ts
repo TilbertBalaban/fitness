@@ -9,7 +9,7 @@ import {
   userExercisePreferenceRelations,
 } from './schema/catalog';
 import { equipmentProfile } from './schema/equipment';
-import { routine, routineDay, routineExercise } from './schema/program';
+import { routine, routineCycle, routineDay, routineExercise } from './schema/program';
 import { personalRecord, bodyMetric, progressPhoto } from './schema/records';
 import { userPreference } from './schema/preference';
 import { syncConflictLog, syncTombstone } from './schema/sync';
@@ -29,6 +29,7 @@ export {
   routine,
   routineDay,
   routineExercise,
+  routineCycle,
   personalRecord,
   bodyMetric,
   progressPhoto,

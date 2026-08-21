@@ -78,9 +78,38 @@ export const routineExercise = pgTable(
   (table) => [index('routine_exercise_routineDayId_idx').on(table.routineDayId)],
 );
 
+// A cycle is a small orderable row, never a per-week copy of the day/exercise tree — cycles are
+// never materialised per-week (D-09). No ownership column: a cycle is a child of its routine,
+// resolved through routine.user_id, exactly as routineDay and routineExercise are.
+export const routineCycle = pgTable(
+  'routine_cycle',
+  {
+    id: text('id').primaryKey(),
+    routineId: text('routine_id')
+      .notNull()
+      .references(() => routine.id, { onDelete: 'cascade' }),
+    orderIndex: integer('order_index').notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull(),
+    // Nullable: a training or deload cycle's length is the number of days in the routine's
+    // rotation, not a stored number — only a time_off cycle needs a duration, which is what makes
+    // PROG-06 expressible without a second column.
+    durationDays: integer('duration_days'),
+  },
+  (table) => [
+    index('routine_cycle_routineId_idx').on(table.routineId),
+    // The seed script and any future direct-DB tooling bypass sync.service.ts's application-level
+    // validator entirely — this constraint is the real backstop, not a formality (mirrors
+    // exercise_load_type_check's and routine_status_check's precedent). Literals must match
+    // CYCLE_KINDS in packages/api-contracts/src/program.ts exactly.
+    check('routine_cycle_kind_check', sql`${table.kind} IN ('training','deload','time_off')`),
+  ],
+);
+
 export const routineRelations = relations(routine, ({ one, many }) => ({
   user: one(user, { fields: [routine.userId], references: [user.id] }),
   days: many(routineDay),
+  cycles: many(routineCycle),
 }));
 
 export const routineDayRelations = relations(routineDay, ({ one, many }) => ({
@@ -91,4 +120,8 @@ export const routineDayRelations = relations(routineDay, ({ one, many }) => ({
 export const routineExerciseRelations = relations(routineExercise, ({ one }) => ({
   routineDay: one(routineDay, { fields: [routineExercise.routineDayId], references: [routineDay.id] }),
   exercise: one(exercise, { fields: [routineExercise.exerciseId], references: [exercise.id] }),
+}));
+
+export const routineCycleRelations = relations(routineCycle, ({ one }) => ({
+  routine: one(routine, { fields: [routineCycle.routineId], references: [routine.id] }),
 }));
