@@ -117,6 +117,15 @@ export interface RoutineExerciseValues {
   notes: string | null;
 }
 
+export interface RoutineCycleValues {
+  id: string;
+  routineId: string;
+  orderIndex: number;
+  name: string;
+  kind: string;
+  durationDays: number | null;
+}
+
 // A mapped type over keyof V, so every property of V is a required key here — adding a column to
 // a values interface without classifying it in the matching map is a compile error, not a
 // silently-always-written column. That compile error is the exhaustiveness gate this module
@@ -258,6 +267,18 @@ export const ROUTINE_EXERCISE_PATCH_FIELDS: PatchFieldMap<RoutineExerciseValues>
   targetRestSeconds: 'target_rest_seconds',
   progressionSchemeId: 'progression_scheme_id',
   notes: 'notes',
+};
+
+// id/routineId are fixed at insert — same anti-reparenting guarantee as ROUTINE_DAY_PATCH_FIELDS
+// (T-04-09/T-04-31); the anti-reparenting guarantee lives in sync.service.ts's resolver
+// precedence, and this map backs it up structurally by never letting a PATCH write routineId.
+export const ROUTINE_CYCLE_PATCH_FIELDS: PatchFieldMap<RoutineCycleValues> = {
+  id: null,
+  routineId: null,
+  orderIndex: 'order_index',
+  name: 'name',
+  kind: 'kind',
+  durationDays: 'duration_days',
 };
 
 // The values object is keyed by Drizzle property names (camelCase); op.data is keyed by wire

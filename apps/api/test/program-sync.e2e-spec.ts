@@ -87,6 +87,10 @@ function routineExerciseOp(id: string, data: Record<string, unknown>, op: SyncCr
   return { op_id: randomUUID(), op, type: 'routine_exercise', id, data };
 }
 
+function routineCycleOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return { op_id: randomUUID(), op, type: 'routine_cycle', id, data };
+}
+
 function workoutSessionOp(id: string, overrides: Partial<SyncCrudOp> = {}): SyncCrudOp {
   return {
     op_id: randomUUID(),
@@ -164,6 +168,23 @@ async function routineExerciseRow(id: string): Promise<RoutineExerciseRow | unde
     `SELECT id, routine_day_id, exercise_id, order_index, target_sets, target_rep_min,
             target_rep_max, target_rir, target_rest_seconds
      FROM routine_exercise WHERE id = $1`,
+    [id],
+  );
+  return rows[0];
+}
+
+interface RoutineCycleRow {
+  id: string;
+  routine_id: string;
+  order_index: number;
+  name: string;
+  kind: string;
+  duration_days: number | null;
+}
+
+async function routineCycleRow(id: string): Promise<RoutineCycleRow | undefined> {
+  const { rows } = await pg.query(
+    'SELECT id, routine_id, order_index, name, kind, duration_days FROM routine_cycle WHERE id = $1',
     [id],
   );
   return rows[0];
@@ -775,5 +796,213 @@ describe('user_preference sync (e2e)', () => {
 
     expect(await routineRow(newRoutineId)).toBeDefined();
     expect((await userPreferenceRow(userId))?.active_routine_id).toBe(activatedRoutineId);
+  });
+});
+
+describe('routine_cycle sync (e2e)', () => {
+  it('applies a batch of [routine PUT, routine_cycle PUT]; SELECT returns one cycle row with the routine id, order_index, name and kind', async () => {
+    const cookie = await signUp('cycle-forward');
+    const routineId = randomUUID();
+    const cycleId = randomUUID();
+    createdRoutineIds.push(routineId);
+
+    const batch: SyncCrudOp[] = [
+      routineOp(routineId, { name: 'Cycle Forward', status: 'draft' }),
+      routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Week 1', kind: 'training' }),
+    ];
+    const res = await push(cookie, batch);
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toEqual([]);
+    expect(body.applied).toHaveLength(2);
+
+    const cycle = await routineCycleRow(cycleId);
+    expect(cycle?.routine_id).toBe(routineId);
+    expect(cycle?.order_index).toBe(0);
+    expect(cycle?.name).toBe('Week 1');
+    expect(cycle?.kind).toBe('training');
+  });
+
+  it('applies the same two ops pushed with the cycle first — AGGREGATE_RANK sorts the parent ahead of it', async () => {
+    const cookie = await signUp('cycle-reverse');
+    const routineId = randomUUID();
+    const cycleId = randomUUID();
+    createdRoutineIds.push(routineId);
+
+    const batch: SyncCrudOp[] = [
+      routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Week 1', kind: 'training' }),
+      routineOp(routineId, { name: 'Cycle Reverse', status: 'draft' }),
+    ];
+    const res = await push(cookie, batch);
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toEqual([]);
+    expect(body.applied).toHaveLength(2);
+
+    const cycle = await routineCycleRow(cycleId);
+    expect(cycle?.routine_id).toBe(routineId);
+  });
+
+  it("rejects user B's routine_cycle PUT naming user A's routine_id with not_owner, and no row is created", async () => {
+    const cookieA = await signUp('cycle-owner-a');
+    const cookieB = await signUp('cycle-attacker-b');
+    const routineId = randomUUID();
+    createdRoutineIds.push(routineId);
+    const createRes = await push(cookieA, [routineOp(routineId, { name: "A's Program", status: 'draft' })]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const cycleId = randomUUID();
+    const attackOp = routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Hijack Cycle', kind: 'training' });
+    const res = await push(cookieB, [attackOp]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([]);
+    expect(body.rejected).toEqual([{ op_id: attackOp.op_id, reason: 'not_owner' }]);
+    expect(await routineCycleRow(cycleId)).toBeUndefined();
+  });
+
+  it('rejects a routine_cycle PUT naming a routine_id in neither the batch nor the database with missing_parent', async () => {
+    const cookie = await signUp('cycle-missing-parent');
+    const cycleId = randomUUID();
+    const op = routineCycleOp(cycleId, { routine_id: randomUUID(), order_index: 0, name: 'Orphan Cycle', kind: 'training' });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'missing_parent' }]);
+    expect(await routineCycleRow(cycleId)).toBeUndefined();
+  });
+
+  it("rejects a routine_cycle PUT with kind:'rest' as invalid_field, and no row exists", async () => {
+    const cookie = await signUp('cycle-bad-kind');
+    const { routineId } = await seedRoutineAndDay(cookie, 'cycle-bad-kind');
+
+    const cycleId = randomUUID();
+    const op = routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Bad Kind', kind: 'rest' });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
+    expect(await routineCycleRow(cycleId)).toBeUndefined();
+  });
+
+  it("accepts each of 'training', 'deload' and 'time_off' as a valid kind — all three, not just one", async () => {
+    const cookie = await signUp('cycle-all-kinds');
+    const { routineId } = await seedRoutineAndDay(cookie, 'cycle-all-kinds');
+
+    for (const kind of ['training', 'deload', 'time_off']) {
+      const cycleId = randomUUID();
+      const op = routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: `Cycle ${kind}`, kind });
+      const res = await push(cookie, [op]);
+      expect((res.body as SyncPushResponse).rejected).toEqual([]);
+      expect((await routineCycleRow(cycleId))?.kind).toBe(kind);
+    }
+  });
+
+  it("stores duration_days: 7 for a time_off cycle, and stores null when duration_days is omitted — the server does not require a duration", async () => {
+    const cookie = await signUp('cycle-duration');
+    const { routineId } = await seedRoutineAndDay(cookie, 'cycle-duration');
+
+    const withDurationId = randomUUID();
+    const withDurationRes = await push(cookie, [
+      routineCycleOp(withDurationId, { routine_id: routineId, order_index: 0, name: 'Time Off', kind: 'time_off', duration_days: 7 }),
+    ]);
+    expect((withDurationRes.body as SyncPushResponse).rejected).toEqual([]);
+    expect((await routineCycleRow(withDurationId))?.duration_days).toBe(7);
+
+    const withoutDurationId = randomUUID();
+    const withoutDurationRes = await push(cookie, [
+      routineCycleOp(withoutDurationId, { routine_id: routineId, order_index: 1, name: 'Time Off 2', kind: 'time_off' }),
+    ]);
+    expect((withoutDurationRes.body as SyncPushResponse).rejected).toEqual([]);
+    expect((await routineCycleRow(withoutDurationId))?.duration_days).toBeNull();
+  });
+
+  it('rejects a routine_cycle PUT with duration_days: -1 as invalid_field', async () => {
+    const cookie = await signUp('cycle-bad-duration');
+    const { routineId } = await seedRoutineAndDay(cookie, 'cycle-bad-duration');
+
+    const cycleId = randomUUID();
+    const op = routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Bad Duration', kind: 'time_off', duration_days: -1 });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
+    expect(await routineCycleRow(cycleId)).toBeUndefined();
+  });
+
+  it('rejects a routine_cycle PUT with an empty name as invalid_field', async () => {
+    const cookie = await signUp('cycle-empty-name');
+    const { routineId } = await seedRoutineAndDay(cookie, 'cycle-empty-name');
+
+    const cycleId = randomUUID();
+    const op = routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: '', kind: 'training' });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
+    expect(await routineCycleRow(cycleId)).toBeUndefined();
+  });
+
+  it('an existing cycle cannot be reparented onto another routine by a PUT naming a different routine_id — stored linkage wins', async () => {
+    const cookie = await signUp('cycle-no-reparent');
+    const { routineId: routineA } = await seedRoutineAndDay(cookie, 'cycle-no-reparent-a');
+    const { routineId: routineB } = await seedRoutineAndDay(cookie, 'cycle-no-reparent-b');
+
+    const cycleId = randomUUID();
+    const createRes = await push(cookie, [
+      routineCycleOp(cycleId, { routine_id: routineA, order_index: 0, name: 'Week 1', kind: 'training' }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const moveOp = routineCycleOp(cycleId, { routine_id: routineB, order_index: 0, name: 'Week 1', kind: 'training' });
+    const moveRes = await push(cookie, [moveOp]);
+    expect((moveRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await routineCycleRow(cycleId);
+    expect(row?.routine_id).toBe(routineA);
+  });
+
+  it('a routine_cycle PATCH naming only order_index changes the index and leaves name/kind untouched', async () => {
+    const cookie = await signUp('cycle-patch-reorder');
+    const { routineId } = await seedRoutineAndDay(cookie, 'cycle-patch-reorder');
+
+    const cycleId = randomUUID();
+    const createRes = await push(cookie, [
+      routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Week 1', kind: 'deload' }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const patchOp = routineCycleOp(cycleId, { order_index: 3072 }, 'PATCH');
+    const res = await push(cookie, [patchOp]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    const after = await routineCycleRow(cycleId);
+    expect(after?.order_index).toBe(3072);
+    expect(after?.name).toBe('Week 1');
+    expect(after?.kind).toBe('deload');
+  });
+
+  it('a DELETE for an owned routine_cycle is applied and the row is gone; the routine and its days survive', async () => {
+    const cookie = await signUp('cycle-delete');
+    const { routineId, dayId } = await seedRoutineAndDay(cookie, 'cycle-delete');
+    const cycleId = randomUUID();
+    const createRes = await push(cookie, [
+      routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Week 1', kind: 'training' }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const deleteOp = routineCycleOp(cycleId, {}, 'DELETE');
+    const res = await push(cookie, [deleteOp]);
+    expect((res.body as SyncPushResponse).applied).toEqual([deleteOp.op_id]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await routineCycleRow(cycleId)).toBeUndefined();
+    expect(await routineRow(routineId)).toBeDefined();
+    expect(await routineDayRow(dayId)).toBeDefined();
+  });
+
+  it('two cycles under one routine with the same order_index both apply — the server imposes no uniqueness', async () => {
+    const cookie = await signUp('cycle-duplicate-order');
+    const { routineId } = await seedRoutineAndDay(cookie, 'cycle-duplicate-order');
+
+    const cycleAId = randomUUID();
+    const cycleBId = randomUUID();
+    const res = await push(cookie, [
+      routineCycleOp(cycleAId, { routine_id: routineId, order_index: 0, name: 'Cycle A', kind: 'training' }),
+      routineCycleOp(cycleBId, { routine_id: routineId, order_index: 0, name: 'Cycle B', kind: 'deload' }),
+    ]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect((await routineCycleRow(cycleAId))?.order_index).toBe(0);
+    expect((await routineCycleRow(cycleBId))?.order_index).toBe(0);
   });
 });
