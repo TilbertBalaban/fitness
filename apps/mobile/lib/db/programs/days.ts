@@ -51,7 +51,7 @@ export async function removeDay(dayId: string, db: WriteDb = getPowerSync()): Pr
   await db.delete(routineDay).where(eq(routineDay.id, dayId));
 }
 
-interface SiblingRow {
+export interface SiblingRow {
   id: string;
   orderIndex: number;
 }
@@ -61,7 +61,7 @@ interface SiblingRow {
 // onto the moved row or renumber the whole sibling order in one pass with the moved row already
 // placed at its target position. Never renumber-then-midpoint (that would be two writes where the
 // gap scheme promises one).
-function computeReorder(
+export function computeReorder(
   siblings: SiblingRow[],
   movedId: string,
   beforeId: string | null,

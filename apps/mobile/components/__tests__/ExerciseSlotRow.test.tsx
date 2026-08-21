@@ -1,7 +1,8 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Pressable } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { DragHandle } from '../DragHandle';
 import {
+  CYCLE_OVERRIDE_MARKER,
   ExerciseSlotRowView,
   formatSlotSummary,
   stepBoundedValue,
@@ -162,6 +163,71 @@ describe('ExerciseSlotRowView — drag handle and Move up/down (04-05)', () => {
     (moveDown?.props.onPress as () => void)();
 
     expect(onReorder).toHaveBeenCalledWith('rex-2', 'rex-3');
+  });
+});
+
+describe('ExerciseSlotRowView — per-cycle override marking and reset (04-08)', () => {
+  function markedFields(result: ReturnType<typeof ExerciseSlotRowView>): string[] {
+    return findByType(result, Text)
+      .filter((el) => /overridden for this cycle$/.test((el.props.accessibilityLabel as string) ?? ''))
+      .map((el) => (el.props.accessibilityLabel as string).replace(' overridden for this cycle', ''));
+  }
+
+  it('marks only the fields the selected cycle actually overrides', () => {
+    const result = ExerciseSlotRowView(
+      baseProps({
+        expanded: true,
+        cycleSelected: true,
+        overriddenFields: ['targetSets'],
+        draft: { targetSets: 5, targetRepMin: 8, targetRepMax: 10, targetRir: 2, targetRestSeconds: 90 },
+      }),
+    );
+
+    expect(markedFields(result)).toEqual(['Sets']);
+  });
+
+  it('marks each overridden field with text, never colour alone', () => {
+    const result = ExerciseSlotRowView(
+      baseProps({
+        expanded: true,
+        cycleSelected: true,
+        overriddenFields: ['targetRir', 'targetRestSeconds'],
+        draft: { targetSets: 3, targetRepMin: 8, targetRepMax: 10, targetRir: 0, targetRestSeconds: 60 },
+      }),
+    );
+    const markers = findByType(result, Text).filter((el) => el.props.children === CYCLE_OVERRIDE_MARKER);
+
+    expect(markedFields(result)).toEqual(['RIR', 'Rest (seconds)']);
+    expect(markers).toHaveLength(2);
+  });
+
+  it('renders a Reset to base control, calling onResetCycleTarget, when a cycle is selected and a field is overridden', () => {
+    const onResetCycleTarget = jest.fn();
+    const result = ExerciseSlotRowView(
+      baseProps({ expanded: true, cycleSelected: true, overriddenFields: ['targetSets'], onResetCycleTarget }),
+    );
+    const reset = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Reset Bench Press to base');
+
+    expect(reset).toBeDefined();
+    expect((reset?.props.style as { minHeight?: number })?.minHeight).toBe(48);
+
+    (reset?.props.onPress as () => void)();
+    expect(onResetCycleTarget).toHaveBeenCalledWith('rex-1');
+  });
+
+  it('renders no Reset to base control when nothing is overridden in the selected cycle', () => {
+    const result = ExerciseSlotRowView(baseProps({ expanded: true, cycleSelected: true, overriddenFields: [] }));
+
+    expect(findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Reset Bench Press to base')).toBeUndefined();
+  });
+
+  it('renders neither markers nor a Reset control with no cycle selected — the base view has nothing to reset to', () => {
+    const result = ExerciseSlotRowView(
+      baseProps({ expanded: true, cycleSelected: false, overriddenFields: ['targetSets'] }),
+    );
+
+    expect(markedFields(result)).toEqual([]);
+    expect(findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Reset Bench Press to base')).toBeUndefined();
   });
 });
 

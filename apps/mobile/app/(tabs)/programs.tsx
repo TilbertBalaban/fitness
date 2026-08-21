@@ -1,6 +1,8 @@
+import { resolveTarget, type CycleKind, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
 import { FlashList } from '@shopify/flash-list';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { CycleStrip } from '@/components/CycleStrip';
 import { DayDeck } from '@/components/DayDeck';
 import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
 import { ExerciseSlotRow } from '@/components/ExerciseSlotRow';
@@ -8,8 +10,25 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { TextField } from '@/components/TextField';
 import { getPowerSync } from '@/lib/db/powersync';
 import { createRoutine, loadRoutines, type RoutineSummary } from '@/lib/db/programs/create-routine';
+import {
+  addCycle,
+  clearCycleTarget,
+  moveCycle,
+  removeCycle,
+  renameCycle,
+  setCycleKind,
+  setCycleTarget,
+  validateCycle,
+} from '@/lib/db/programs/cycles';
 import { addDay, addExercisesToDay, moveExercise, removeDay, removeExercise, renameDay } from '@/lib/db/programs/days';
-import { loadExerciseNameMap, loadProgramTree, type ProgramDay, type ProgramTree } from '@/lib/db/programs/load-program';
+import {
+  loadExerciseNameMap,
+  loadProgramTree,
+  type ProgramCycle,
+  type ProgramDay,
+  type ProgramSlot,
+  type ProgramTree,
+} from '@/lib/db/programs/load-program';
 import { setExerciseTargets, type TargetDraft } from '@/lib/db/programs/targets';
 
 const SKELETON_ROW_COUNT = 3;
@@ -36,6 +55,65 @@ export function nextExpandedSlotId(current: string | null, tapped: string): stri
   return current === tapped ? null : tapped;
 }
 
+const TARGET_FIELDS = [
+  'targetSets',
+  'targetRepMin',
+  'targetRepMax',
+  'targetRir',
+  'targetRestSeconds',
+] as const satisfies readonly (keyof ResolvedTarget)[];
+
+const CYCLE_KIND_OPTIONS: { kind: CycleKind; label: string; defaultName: string }[] = [
+  { kind: 'training', label: 'Training', defaultName: '' },
+  { kind: 'deload', label: 'Deload', defaultName: 'Deload' },
+  { kind: 'time_off', label: 'Time off', defaultName: 'Time off' },
+];
+
+// A stale id — the selected cycle was deleted, or the user switched programs — degrades to the
+// base prescription rather than throwing. Selecting nothing and selecting something gone mean the
+// same thing to everything downstream.
+export function selectedCycleOf(cycles: ProgramCycle[], selectedCycleId: string | null): ProgramCycle | null {
+  if (!selectedCycleId) return null;
+  return cycles.find((cycle) => cycle.id === selectedCycleId) ?? null;
+}
+
+function baseOf(slot: ProgramSlot): ResolvedTarget {
+  return {
+    targetSets: slot.targetSets,
+    targetRepMin: slot.targetRepMin,
+    targetRepMax: slot.targetRepMax,
+    targetRir: slot.targetRir,
+    targetRestSeconds: slot.targetRestSeconds,
+  };
+}
+
+// The only place this screen resolves a target, and it delegates the actual per-field merge to the
+// shared resolver in @fitness/api-contracts — the builder, the Home card and the session snapshot
+// must all agree, which they only can if there is exactly one implementation of `override ?? base`.
+export function resolveSlotTargets(slot: ProgramSlot, selectedCycleId: string | null): ResolvedTarget {
+  const override = selectedCycleId ? (slot.overridesByCycleId[selectedCycleId] ?? null) : null;
+  return resolveTarget(baseOf(slot), override);
+}
+
+// Which numbers on this row are cycle-specific rather than inherited. A zero counts: zero is a
+// value, not an absence.
+export function overriddenFields(slot: ProgramSlot, selectedCycleId: string | null): (keyof ResolvedTarget)[] {
+  const override = selectedCycleId ? slot.overridesByCycleId[selectedCycleId] : undefined;
+  if (!override) return [];
+  return TARGET_FIELDS.filter((field) => (override[field] ?? null) !== null);
+}
+
+// An edit made while a cycle is selected is stored as the difference from the base, never as a
+// five-column copy — a field equal to the base stays null, which is what keeps the override table
+// sparse and what lets isEmptyOverride delete a row that no longer overrides anything.
+export function overrideDelta(base: ResolvedTarget, next: ResolvedTarget): TargetOverride {
+  const delta: TargetOverride = {};
+  for (const field of TARGET_FIELDS) {
+    delta[field] = next[field] === base[field] ? null : next[field];
+  }
+  return delta;
+}
+
 export default function ProgramsScreen() {
   const [routines, setRoutines] = useState<RoutineSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -52,6 +130,16 @@ export default function ProgramsScreen() {
   const [renameValue, setRenameValue] = useState('');
   const [expandedSlotId, setExpandedSlotId] = useState<string | null>(null);
   const [pickerDayId, setPickerDayId] = useState<string | null>(null);
+  // View state, never persisted and never derived from the deck's page index: comparing the same
+  // day across two cycles is the point of the strip, so a chip press must not move the deck.
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+  const [cycleFormOpen, setCycleFormOpen] = useState(false);
+  const [cycleFormName, setCycleFormName] = useState('');
+  const [cycleFormKind, setCycleFormKind] = useState<CycleKind>('training');
+  const [cycleFormDuration, setCycleFormDuration] = useState('');
+  const [cycleFormError, setCycleFormError] = useState<string | null>(null);
+  const [editingCycleId, setEditingCycleId] = useState<string | null>(null);
+  const [cycleRenameValue, setCycleRenameValue] = useState('');
 
   // Re-runs the same loader after a successful create — never mutates the loaded array in place,
   // so the list always reflects what local SQLite actually holds.
@@ -173,14 +261,137 @@ export default function ProgramsScreen() {
     setExpandedSlotId((current) => nextExpandedSlotId(current, slotId));
   }, []);
 
+  // Exactly one branch on the current selection, and each branch calls a different single-purpose
+  // helper: setExerciseTargets can only write the base row, setCycleTarget can only write an
+  // override row. Neither can reach the other's table, so a mis-routed edit is not a runtime risk
+  // (T-04-39).
   const handleSaveTargets = useCallback(
     async (routineExerciseId: string, draft: TargetDraft) => {
       if (!activeRoutineId) return;
-      await setExerciseTargets(routineExerciseId, draft);
+
+      if (selectedCycleId === null) {
+        await setExerciseTargets(routineExerciseId, draft);
+      } else {
+        const slot = tree?.days.flatMap((day) => day.slots).find((candidate) => candidate.id === routineExerciseId);
+        if (!slot) return;
+        await setCycleTarget({
+          routineExerciseId,
+          cycleId: selectedCycleId,
+          override: overrideDelta(baseOf(slot), draft),
+        });
+      }
+
       await reloadTree(activeRoutineId);
     },
-    [activeRoutineId, reloadTree],
+    [activeRoutineId, reloadTree, selectedCycleId, tree],
   );
+
+  const handleResetCycleTarget = useCallback(
+    async (routineExerciseId: string) => {
+      if (!activeRoutineId || !selectedCycleId) return;
+      await clearCycleTarget({ routineExerciseId, cycleId: selectedCycleId });
+      await reloadTree(activeRoutineId);
+    },
+    [activeRoutineId, reloadTree, selectedCycleId],
+  );
+
+  const handleOpenCycleForm = useCallback(() => {
+    setCycleFormOpen(true);
+    setEditingCycleId(null);
+    setCycleFormError(null);
+  }, []);
+
+  const handleCycleFormKind = useCallback((kind: CycleKind) => {
+    setCycleFormKind(kind);
+    setCycleFormError(null);
+    // A new deload or time-off cycle is pre-filled with an editable default name, so the required
+    // non-empty name is never a hurdle the user has to clear before the chip can exist.
+    const preset = CYCLE_KIND_OPTIONS.find((option) => option.kind === kind)?.defaultName ?? '';
+    setCycleFormName((current) => (current.trim().length === 0 ? preset : current));
+  }, []);
+
+  const handleAddCycle = useCallback(async () => {
+    if (!activeRoutineId) return;
+
+    const durationDays = cycleFormDuration.trim().length === 0 ? null : Number(cycleFormDuration.trim());
+    const draft = { name: cycleFormName, kind: cycleFormKind, durationDays };
+    const error = validateCycle(draft);
+    if (error) {
+      setCycleFormError(error);
+      return;
+    }
+
+    try {
+      const id = await addCycle({ routineId: activeRoutineId, ...draft });
+      setCycleFormOpen(false);
+      setCycleFormName('');
+      setCycleFormDuration('');
+      setCycleFormKind('training');
+      setSelectedCycleId(id);
+      await reloadTree(activeRoutineId);
+    } catch (caught) {
+      setCycleFormError(caught instanceof Error ? caught.message : 'name-required');
+    }
+  }, [activeRoutineId, cycleFormDuration, cycleFormKind, cycleFormName, reloadTree]);
+
+  const handleEditCycle = useCallback(
+    (cycleId: string) => {
+      setEditingCycleId(cycleId);
+      setCycleFormOpen(false);
+      setCycleRenameValue(tree?.cycles.find((cycle) => cycle.id === cycleId)?.name ?? '');
+    },
+    [tree],
+  );
+
+  const handleRenameCycle = useCallback(async () => {
+    if (!activeRoutineId || !editingCycleId) return;
+    try {
+      await renameCycle(editingCycleId, cycleRenameValue);
+      setEditingCycleId(null);
+      await reloadTree(activeRoutineId);
+    } catch (error) {
+      console.error('rename cycle failed', error);
+    }
+  }, [activeRoutineId, cycleRenameValue, editingCycleId, reloadTree]);
+
+  const handleSetCycleKind = useCallback(
+    async (kind: CycleKind) => {
+      if (!activeRoutineId || !editingCycleId) return;
+      try {
+        await setCycleKind(editingCycleId, kind);
+        await reloadTree(activeRoutineId);
+      } catch (error) {
+        console.error('set cycle kind failed', error);
+      }
+    },
+    [activeRoutineId, editingCycleId, reloadTree],
+  );
+
+  const handleMoveCycle = useCallback(
+    async (direction: -1 | 1) => {
+      if (!activeRoutineId || !editingCycleId || !tree) return;
+      const ordered = tree.cycles;
+      const from = ordered.findIndex((cycle) => cycle.id === editingCycleId);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to > ordered.length - 1) return;
+
+      const withoutMoved = ordered.filter((cycle) => cycle.id !== editingCycleId);
+      const beforeId = to > 0 ? (withoutMoved[to - 1]?.id ?? null) : null;
+      const afterId = withoutMoved[to]?.id ?? null;
+
+      await moveCycle({ routineId: activeRoutineId, cycleId: editingCycleId, beforeId, afterId });
+      await reloadTree(activeRoutineId);
+    },
+    [activeRoutineId, editingCycleId, reloadTree, tree],
+  );
+
+  const handleRemoveCycle = useCallback(async () => {
+    if (!activeRoutineId || !editingCycleId) return;
+    await removeCycle(editingCycleId);
+    if (selectedCycleId === editingCycleId) setSelectedCycleId(null);
+    setEditingCycleId(null);
+    await reloadTree(activeRoutineId);
+  }, [activeRoutineId, editingCycleId, reloadTree, selectedCycleId]);
 
   // The gesture layer (DragHandle) and the Move up/down controls both funnel here — neither reads
   // or writes order_index itself, they only produce a toIndex/neighbour pair that this callback
@@ -274,6 +485,119 @@ export default function ProgramsScreen() {
             <>
               <Text className="text-heading font-semibold text-foreground">{tree.name}</Text>
 
+              <CycleStrip
+                cycles={tree.cycles}
+                selectedCycleId={selectedCycleId}
+                onSelectCycle={setSelectedCycleId}
+                onAddCycle={handleOpenCycleForm}
+                onEditCycle={handleEditCycle}
+              />
+
+              {tree.cycles.length === 0 ? (
+                <Pressable
+                  onPress={handleOpenCycleForm}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add Cycle"
+                  style={{ minHeight: 48, justifyContent: 'center' }}
+                >
+                  <Text className="text-body font-normal text-accent">Add Cycle</Text>
+                </Pressable>
+              ) : null}
+
+              {cycleFormOpen ? (
+                <View className="gap-sm rounded-md bg-surface p-md">
+                  <TextField
+                    label="Cycle name"
+                    value={cycleFormName}
+                    onChangeText={(value) => {
+                      setCycleFormName(value);
+                      setCycleFormError(null);
+                    }}
+                    error={cycleFormError}
+                  />
+                  <View className="flex-row gap-sm">
+                    {CYCLE_KIND_OPTIONS.map((option) => (
+                      <Pressable
+                        key={option.kind}
+                        onPress={() => handleCycleFormKind(option.kind)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: cycleFormKind === option.kind }}
+                        accessibilityLabel={option.label}
+                        className={`items-center justify-center rounded-md border px-md ${
+                          cycleFormKind === option.kind ? 'border-accent' : 'border-foreground-muted'
+                        }`}
+                        style={{ minWidth: 48, minHeight: 48 }}
+                      >
+                        <Text
+                          className={`text-label font-normal ${
+                            cycleFormKind === option.kind ? 'text-accent' : 'text-foreground-muted'
+                          }`}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {cycleFormKind === 'time_off' ? (
+                    <TextField
+                      label="Days off"
+                      value={cycleFormDuration}
+                      onChangeText={(value) => {
+                        setCycleFormDuration(value);
+                        setCycleFormError(null);
+                      }}
+                      keyboardType="number-pad"
+                    />
+                  ) : null}
+                  <PrimaryButton label="Add Cycle" onPress={handleAddCycle} />
+                </View>
+              ) : null}
+
+              {editingCycleId ? (
+                <View className="gap-sm rounded-md bg-surface p-md">
+                  <TextField label="Cycle name" value={cycleRenameValue} onChangeText={setCycleRenameValue} />
+                  <PrimaryButton label="Save" onPress={handleRenameCycle} />
+                  <View className="flex-row flex-wrap gap-sm">
+                    {CYCLE_KIND_OPTIONS.map((option) => (
+                      <Pressable
+                        key={option.kind}
+                        onPress={() => handleSetCycleKind(option.kind)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Make ${option.label}`}
+                        className="items-center justify-center rounded-md border border-foreground-muted px-md"
+                        style={{ minWidth: 48, minHeight: 48 }}
+                      >
+                        <Text className="text-label font-normal text-foreground-muted">{option.label}</Text>
+                      </Pressable>
+                    ))}
+                    <Pressable
+                      onPress={() => handleMoveCycle(-1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Move cycle earlier"
+                      style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text className="text-label font-normal text-foreground-muted">Earlier</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleMoveCycle(1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Move cycle later"
+                      style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text className="text-label font-normal text-foreground-muted">Later</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleRemoveCycle}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove cycle"
+                      style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text className="text-label font-normal text-destructive">Remove</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
               <View style={{ minHeight: 320 }}>
                 <DayDeck<ProgramDay>
                   days={tree.days}
@@ -329,6 +653,10 @@ export default function ProgramsScreen() {
                               canReorder={canReorder}
                               orderedIds={orderedIds}
                               index={index}
+                              resolved={resolveSlotTargets(slot, selectedCycleId)}
+                              cycleSelected={selectedCycleOf(tree.cycles, selectedCycleId) !== null}
+                              overriddenFields={overriddenFields(slot, selectedCycleId)}
+                              onResetCycleTarget={handleResetCycleTarget}
                               onToggleExpanded={handleToggleExpanded}
                               onRemove={handleRemoveExercise}
                               onSaveTargets={handleSaveTargets}

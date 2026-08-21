@@ -12,7 +12,7 @@ import {
 import { loadProgramTree } from '../programs/load-program';
 import { getPowerSync } from '../powersync';
 import { generateClientId } from '../id';
-import { routine, routineDay, routineExercise } from '../schema';
+import { routine, routineCycle, routineDay, routineExercise, routineExerciseCycleTarget } from '../schema';
 
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../id', () => ({ generateClientId: jest.fn(() => 'fixed-id') }));
@@ -503,6 +503,8 @@ interface FakeLoadProgramRows {
   routineRow?: Record<string, unknown>;
   dayRows: Record<string, unknown>[];
   exerciseRows: Record<string, unknown>[];
+  cycleRows?: Record<string, unknown>[];
+  overrideRows?: Record<string, unknown>[];
 }
 
 function fakeLoadProgramDb(rows: FakeLoadProgramRows) {
@@ -516,6 +518,8 @@ function fakeLoadProgramDb(rows: FakeLoadProgramRows) {
             if (table === routine) return Promise.resolve(rows.routineRow ? [rows.routineRow] : []);
             if (table === routineDay) return Promise.resolve(rows.dayRows);
             if (table === routineExercise) return Promise.resolve(rows.exerciseRows);
+            if (table === routineCycle) return Promise.resolve(rows.cycleRows ?? []);
+            if (table === routineExerciseCycleTarget) return Promise.resolve(rows.overrideRows ?? []);
             return Promise.resolve([]);
           },
         }),
@@ -526,7 +530,7 @@ function fakeLoadProgramDb(rows: FakeLoadProgramRows) {
 }
 
 describe('loadProgramTree', () => {
-  it('issues exactly three selects for a routine with 3 days and 12 exercises, passed a pre-built exercise name map', async () => {
+  it('issues exactly five selects — one per table — for a 3-day, 12-exercise, 4-cycle, 7-override routine', async () => {
     const routineRow = { id: 'r1', name: 'Push Pull Legs', goal: null, status: 'draft' };
     const dayRows = [
       { id: 'd1', orderIndex: 1024, name: 'Push', isRestDay: false },
@@ -546,13 +550,32 @@ describe('loadProgramTree', () => {
     }));
     const nameMap = new Map(exerciseRows.map((row) => [row.exerciseId, `Exercise ${row.exerciseId}`]));
 
-    const { db, getSelectCount } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows });
+    const cycleRows = Array.from({ length: 4 }, (_, i) => ({
+      id: `c-${i}`,
+      name: `Week ${i + 1}`,
+      kind: 'training',
+      orderIndex: (i + 1) * 1024,
+      durationDays: null,
+    }));
+    const overrideRows = Array.from({ length: 7 }, (_, i) => ({
+      id: `ovr-${i}`,
+      routineExerciseId: exerciseRows[i].id,
+      cycleId: cycleRows[i % 4].id,
+      targetSets: 5,
+      targetRepMin: null,
+      targetRepMax: null,
+      targetRir: null,
+      targetRestSeconds: null,
+    }));
+
+    const { db, getSelectCount } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows, cycleRows, overrideRows });
 
     const tree = await loadProgramTree('r1', db, nameMap);
 
-    expect(getSelectCount()).toBe(3);
+    expect(getSelectCount()).toBe(5);
     expect(tree?.days).toHaveLength(3);
     expect(tree?.days.reduce((sum, day) => sum + day.slots.length, 0)).toBe(12);
+    expect(tree?.cycles).toHaveLength(4);
   });
 
   it('sorts days and each day\'s slots with sortByOrderThenId', async () => {
@@ -592,7 +615,7 @@ describe('loadProgramTree', () => {
 
     const tree = await loadProgramTree('r1', db, new Map());
 
-    expect(tree).toEqual({ id: 'r1', name: 'Empty Program', goal: null, status: 'draft', days: [] });
+    expect(tree).toEqual({ id: 'r1', name: 'Empty Program', goal: null, status: 'draft', days: [], cycles: [] });
   });
 
   it('returns null when no routine row matches', async () => {
@@ -633,7 +656,78 @@ describe('loadProgramTree', () => {
       targetRepMax: 12,
       targetRir: 1,
       targetRestSeconds: 120,
+      overridesByCycleId: {},
     });
+  });
+
+  it('sorts cycles with sortByOrderThenId, breaking a tied orderIndex to ascending id', async () => {
+    const routineRow = { id: 'r1', name: 'Program', goal: null, status: 'draft' };
+    const cycleRows = [
+      { id: 'c-z', name: 'Z', kind: 'training', orderIndex: 1024, durationDays: null },
+      { id: 'c-a', name: 'A', kind: 'training', orderIndex: 1024, durationDays: null },
+      { id: 'c-first', name: 'Deload', kind: 'deload', orderIndex: 512, durationDays: null },
+    ];
+    const { db } = fakeLoadProgramDb({ routineRow, dayRows: [], exerciseRows: [], cycleRows });
+
+    const tree = await loadProgramTree('r1', db, new Map());
+
+    expect(tree?.cycles.map((cycle) => cycle.id)).toEqual(['c-first', 'c-a', 'c-z']);
+    expect(tree?.cycles[0].kind).toBe('deload');
+  });
+
+  it("carries each slot's overrides as a map keyed by cycle id, holding only the cycles that actually override it", async () => {
+    const routineRow = { id: 'r1', name: 'Program', goal: null, status: 'draft' };
+    const dayRows = [{ id: 'd1', orderIndex: 1024, name: 'Day 1', isRestDay: false }];
+    const exerciseRows = [
+      { id: 're-1', routineDayId: 'd1', orderIndex: 1024, exerciseId: 'ex-1', targetSets: 3, targetRepMin: 8, targetRepMax: 10, targetRir: 2, targetRestSeconds: 90 },
+      { id: 're-2', routineDayId: 'd1', orderIndex: 2048, exerciseId: 'ex-2', targetSets: 3, targetRepMin: 8, targetRepMax: 10, targetRir: 2, targetRestSeconds: 90 },
+    ];
+    const cycleRows = [
+      { id: 'c1', name: 'Week 1', kind: 'training', orderIndex: 1024, durationDays: null },
+      { id: 'c2', name: 'Week 2', kind: 'training', orderIndex: 2048, durationDays: null },
+    ];
+    const overrideRows = [
+      { id: 'ovr-1', routineExerciseId: 're-1', cycleId: 'c2', targetSets: 5, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+    ];
+    const { db } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows, cycleRows, overrideRows });
+
+    const tree = await loadProgramTree('r1', db, new Map());
+
+    expect(tree?.days[0].slots[0].overridesByCycleId).toEqual({
+      c2: { targetSets: 5, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+    });
+    expect(tree?.days[0].slots[1].overridesByCycleId).toEqual({});
+  });
+
+  it('drops an override naming a cycle that no longer exists rather than producing an unreachable entry', async () => {
+    const routineRow = { id: 'r1', name: 'Program', goal: null, status: 'draft' };
+    const dayRows = [{ id: 'd1', orderIndex: 1024, name: 'Day 1', isRestDay: false }];
+    const exerciseRows = [
+      { id: 're-1', routineDayId: 'd1', orderIndex: 1024, exerciseId: 'ex-1', targetSets: 3, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+    ];
+    const cycleRows = [{ id: 'c1', name: 'Week 1', kind: 'training', orderIndex: 1024, durationDays: null }];
+    const overrideRows = [
+      { id: 'ovr-1', routineExerciseId: 're-1', cycleId: 'deleted-cycle', targetSets: 5, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+    ];
+    const { db } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows, cycleRows, overrideRows });
+
+    const tree = await loadProgramTree('r1', db, new Map());
+
+    expect(tree?.days[0].slots[0].overridesByCycleId).toEqual({});
+  });
+
+  it('returns cycles: [] and an empty override map per slot for a routine with zero cycles', async () => {
+    const routineRow = { id: 'r1', name: 'Program', goal: null, status: 'draft' };
+    const dayRows = [{ id: 'd1', orderIndex: 1024, name: 'Day 1', isRestDay: false }];
+    const exerciseRows = [
+      { id: 're-1', routineDayId: 'd1', orderIndex: 1024, exerciseId: 'ex-1', targetSets: null, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+    ];
+    const { db } = fakeLoadProgramDb({ routineRow, dayRows, exerciseRows, cycleRows: [], overrideRows: [] });
+
+    const tree = await loadProgramTree('r1', db, new Map());
+
+    expect(tree?.cycles).toEqual([]);
+    expect(tree?.days[0].slots[0].overridesByCycleId).toEqual({});
   });
 
   it("falls back to 'Unknown exercise' when a slot's exerciseId matches no local exercise row", async () => {

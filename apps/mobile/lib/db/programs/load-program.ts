@@ -1,6 +1,7 @@
+import type { CycleKind, TargetOverride } from '@fitness/api-contracts';
 import { eq, inArray } from 'drizzle-orm';
 import { getPowerSync, type WriteDb } from '../powersync';
-import { exercise, routine, routineDay, routineExercise, seededExercise } from '../schema';
+import { exercise, routine, routineCycle, routineDay, routineExercise, routineExerciseCycleTarget, seededExercise } from '../schema';
 import { sortByOrderThenId } from './order-index';
 
 const UNKNOWN_EXERCISE_NAME = 'Unknown exercise';
@@ -15,6 +16,18 @@ export interface ProgramSlot {
   targetRepMax: number | null;
   targetRir: number | null;
   targetRestSeconds: number | null;
+  // Only the cycles that actually override this slot appear here — the table is sparse by
+  // construction (setCycleTarget deletes rather than writing an all-null row), and an override
+  // naming a cycle that no longer exists is dropped at load rather than resolved.
+  overridesByCycleId: Record<string, TargetOverride>;
+}
+
+export interface ProgramCycle {
+  id: string;
+  name: string;
+  kind: CycleKind;
+  orderIndex: number;
+  durationDays: number | null;
 }
 
 export interface ProgramDay {
@@ -31,6 +44,7 @@ export interface ProgramTree {
   goal: string | null;
   status: string;
   days: ProgramDay[];
+  cycles: ProgramCycle[];
 }
 
 // seededExercise (localOnly) unioned with the user's own custom exercise rows — mirrors
@@ -88,6 +102,59 @@ export async function loadProgramTree(
         .where(inArray(routineExercise.routineDayId, dayIds))
     : [];
 
+  const cycleRows = await db
+    .select({
+      id: routineCycle.id,
+      name: routineCycle.name,
+      kind: routineCycle.kind,
+      orderIndex: routineCycle.orderIndex,
+      durationDays: routineCycle.durationDays,
+    })
+    .from(routineCycle)
+    .where(eq(routineCycle.routineId, routineId));
+
+  const cycles: ProgramCycle[] = sortByOrderThenId(cycleRows).map((row) => ({
+    id: row.id,
+    name: row.name,
+    kind: row.kind as CycleKind,
+    orderIndex: row.orderIndex,
+    durationDays: row.durationDays,
+  }));
+
+  const slotIds = exerciseRows.map((row) => row.id);
+  const overrideRows = slotIds.length
+    ? await db
+        .select({
+          routineExerciseId: routineExerciseCycleTarget.routineExerciseId,
+          cycleId: routineExerciseCycleTarget.cycleId,
+          targetSets: routineExerciseCycleTarget.targetSets,
+          targetRepMin: routineExerciseCycleTarget.targetRepMin,
+          targetRepMax: routineExerciseCycleTarget.targetRepMax,
+          targetRir: routineExerciseCycleTarget.targetRir,
+          targetRestSeconds: routineExerciseCycleTarget.targetRestSeconds,
+        })
+        .from(routineExerciseCycleTarget)
+        .where(inArray(routineExerciseCycleTarget.routineExerciseId, slotIds))
+    : [];
+
+  const loadedCycleIds = new Set(cycles.map((cycle) => cycle.id));
+  const overridesBySlotId = new Map<string, Record<string, TargetOverride>>();
+  for (const row of overrideRows) {
+    // A dangling override is unreachable from the strip and would otherwise resolve targets for a
+    // cycle the user cannot select.
+    if (!loadedCycleIds.has(row.cycleId)) continue;
+
+    const forSlot = overridesBySlotId.get(row.routineExerciseId) ?? {};
+    forSlot[row.cycleId] = {
+      targetSets: row.targetSets,
+      targetRepMin: row.targetRepMin,
+      targetRepMax: row.targetRepMax,
+      targetRir: row.targetRir,
+      targetRestSeconds: row.targetRestSeconds,
+    };
+    overridesBySlotId.set(row.routineExerciseId, forSlot);
+  }
+
   const names = exerciseNames ?? (await loadExerciseNameMap(db));
 
   const slotsByDayId = new Map<string, ProgramSlot[]>();
@@ -102,6 +169,7 @@ export async function loadProgramTree(
       targetRepMax: row.targetRepMax,
       targetRir: row.targetRir,
       targetRestSeconds: row.targetRestSeconds,
+      overridesByCycleId: overridesBySlotId.get(row.id) ?? {},
     };
     const existing = slotsByDayId.get(row.routineDayId);
     if (existing) existing.push(slot);
@@ -122,5 +190,6 @@ export async function loadProgramTree(
     goal: routineRow.goal,
     status: routineRow.status,
     days,
+    cycles,
   };
 }

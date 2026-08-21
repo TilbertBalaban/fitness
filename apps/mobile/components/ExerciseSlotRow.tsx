@@ -18,6 +18,10 @@ import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 // built so the one condition validateTargets still checks — rep min > rep max — cannot be reached
 // by construction (UI-SPEC R5).
 
+// A cycle-specific number is marked with text, never colour alone (UI-SPEC's accent is reserved
+// for selection and CTAs, and a colour-only marker is invisible to anyone who cannot see it).
+export const CYCLE_OVERRIDE_MARKER = '· this cycle';
+
 export type StepDirection = 'inc' | 'dec';
 
 // Increment: null jumps to the floor, otherwise adds `step`, capped at `ceiling` (no cap when
@@ -90,6 +94,7 @@ interface TargetStepperProps {
   colors: ThemeColors;
   decreaseDisabled: boolean;
   increaseDisabled: boolean;
+  overridden?: boolean;
   onDecrease: () => void;
   onIncrease: () => void;
 }
@@ -103,10 +108,29 @@ interface TargetStepperProps {
 // invocation of ExerciseSlotRowView in a test never does (no renderer in this worktree's
 // lockfile). Calling this function inline embeds its returned Pressables straight into the parent
 // tree, where a children-based findByType traversal can see them.
-function renderTargetStepper({ label, displayValue, colors, decreaseDisabled, increaseDisabled, onDecrease, onIncrease }: TargetStepperProps) {
+function renderTargetStepper({
+  label,
+  displayValue,
+  colors,
+  decreaseDisabled,
+  increaseDisabled,
+  overridden = false,
+  onDecrease,
+  onIncrease,
+}: TargetStepperProps) {
   return (
     <View className="gap-xs">
-      <Text className="text-label font-normal text-foreground-muted">{label}</Text>
+      <View className="flex-row items-center gap-xs">
+        <Text className="text-label font-normal text-foreground-muted">{label}</Text>
+        {overridden ? (
+          <Text
+            accessibilityLabel={`${label} overridden for this cycle`}
+            className="text-label font-normal text-foreground-muted"
+          >
+            {CYCLE_OVERRIDE_MARKER}
+          </Text>
+        ) : null}
+      </View>
       <View className="flex-row items-center gap-sm">
         <Pressable
           onPress={onDecrease}
@@ -160,6 +184,11 @@ export interface ExerciseSlotRowViewProps {
   canReorder?: boolean;
   orderedIds?: string[];
   index?: number;
+  // The selected cycle's own override, resolved by the screen. With no cycle selected both are
+  // inert: the base view has nothing to mark and nothing to reset to.
+  cycleSelected?: boolean;
+  overriddenFields?: string[];
+  onResetCycleTarget?: (id: string) => void;
   onToggleExpanded: (id: string) => void;
   onStepSets: (direction: StepDirection) => void;
   onStepRepMin: (direction: StepDirection) => void;
@@ -181,6 +210,9 @@ export function ExerciseSlotRowView({
   canReorder = false,
   orderedIds = [],
   index = 0,
+  cycleSelected = false,
+  overriddenFields = [],
+  onResetCycleTarget,
   onToggleExpanded,
   onStepSets,
   onStepRepMin,
@@ -192,6 +224,8 @@ export function ExerciseSlotRowView({
 }: ExerciseSlotRowViewProps) {
   const isFirst = index <= 0;
   const isLast = index >= orderedIds.length - 1;
+  const isOverridden = (field: string) => cycleSelected && overriddenFields.includes(field);
+  const canReset = cycleSelected && overriddenFields.length > 0 && onResetCycleTarget !== undefined;
 
   const handleMoveUp = () => {
     if (!onReorder || isFirst) return;
@@ -228,6 +262,7 @@ export function ExerciseSlotRowView({
         <View className="gap-md">
           {renderTargetStepper({
             label: 'Sets',
+            overridden: isOverridden('targetSets'),
             displayValue: displayOrDash(draft.targetSets),
             colors,
             decreaseDisabled: draft.targetSets === null,
@@ -239,6 +274,7 @@ export function ExerciseSlotRowView({
           <View className="flex-row flex-wrap gap-md">
             {renderTargetStepper({
               label: 'Rep min',
+              overridden: isOverridden('targetRepMin'),
               displayValue: displayOrDash(draft.targetRepMin),
               colors,
               decreaseDisabled: draft.targetRepMin === null,
@@ -248,6 +284,7 @@ export function ExerciseSlotRowView({
             })}
             {renderTargetStepper({
               label: 'Rep max',
+              overridden: isOverridden('targetRepMax'),
               displayValue: displayOrDash(draft.targetRepMax),
               colors,
               decreaseDisabled: draft.targetRepMax === null,
@@ -259,6 +296,7 @@ export function ExerciseSlotRowView({
 
           {renderTargetStepper({
             label: 'RIR',
+            overridden: isOverridden('targetRir'),
             displayValue: displayOrDash(draft.targetRir),
             colors,
             decreaseDisabled: draft.targetRir === null,
@@ -269,6 +307,7 @@ export function ExerciseSlotRowView({
 
           {renderTargetStepper({
             label: 'Rest (seconds)',
+            overridden: isOverridden('targetRestSeconds'),
             displayValue: draft.targetRestSeconds === null ? '—' : formatRestReadout(draft.targetRestSeconds),
             colors,
             decreaseDisabled: draft.targetRestSeconds === null,
@@ -304,6 +343,17 @@ export function ExerciseSlotRowView({
             </View>
           ) : null}
 
+          {canReset ? (
+            <Pressable
+              onPress={() => onResetCycleTarget?.(slot.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`Reset ${slot.exerciseName} to base`}
+              style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text className="text-label font-normal text-accent">Reset to base</Text>
+            </Pressable>
+          ) : null}
+
           <Pressable
             onPress={() => onRemove(slot.id)}
             accessibilityRole="button"
@@ -334,6 +384,13 @@ export interface ExerciseSlotRowProps {
   canReorder?: boolean;
   orderedIds?: string[];
   index?: number;
+  // What the row displays and edits: the selected cycle's resolved targets, or the slot's own base
+  // values when no cycle is selected. The screen owns that resolution (it holds the selection);
+  // the row never merges an override itself.
+  resolved?: TargetDraft;
+  cycleSelected?: boolean;
+  overriddenFields?: string[];
+  onResetCycleTarget?: (id: string) => void;
   onToggleExpanded: (id: string) => void;
   onRemove: (id: string) => void;
   onSaveTargets: (routineExerciseId: string, draft: TargetDraft) => Promise<void>;
@@ -350,18 +407,30 @@ export function ExerciseSlotRow({
   canReorder,
   orderedIds,
   index,
+  resolved,
+  cycleSelected,
+  overriddenFields,
+  onResetCycleTarget,
   onToggleExpanded,
   onRemove,
   onSaveTargets,
   onReorder,
 }: ExerciseSlotRowProps) {
   const colors = useThemeColors();
-  const [draft, setDraft] = useState<TargetDraft>(() => extractDraft(slot));
+  const displayed = resolved ?? extractDraft(slot);
+  const [draft, setDraft] = useState<TargetDraft>(() => displayed);
 
   useEffect(() => {
-    setDraft(extractDraft(slot));
+    setDraft(displayed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slot.id, slot.targetSets, slot.targetRepMin, slot.targetRepMax, slot.targetRir, slot.targetRestSeconds]);
+  }, [
+    slot.id,
+    displayed.targetSets,
+    displayed.targetRepMin,
+    displayed.targetRepMax,
+    displayed.targetRir,
+    displayed.targetRestSeconds,
+  ]);
 
   const applyDraft = useCallback(
     (next: TargetDraft) => {
@@ -382,6 +451,9 @@ export function ExerciseSlotRow({
       canReorder={canReorder}
       orderedIds={orderedIds}
       index={index}
+      cycleSelected={cycleSelected}
+      overriddenFields={overriddenFields}
+      onResetCycleTarget={onResetCycleTarget}
       onReorder={onReorder}
       onToggleExpanded={onToggleExpanded}
       onStepSets={(direction) => applyDraft({ ...draft, targetSets: stepBoundedValue(draft.targetSets, direction, 1, null) })}
