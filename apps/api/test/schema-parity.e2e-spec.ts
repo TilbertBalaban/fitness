@@ -25,6 +25,7 @@ const REQUIRED_TABLES = [
   'routine_day',
   'routine_exercise',
   'routine_cycle',
+  'routine_exercise_cycle_target',
   'personal_record',
   'body_metric',
   'progress_photo',
@@ -57,6 +58,16 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
   ],
   user_exercise_preference: ['id', 'user_id', 'exercise_id', 'archived_at', 'never_suggest', 'updated_at', 'server_seq'],
   routine_cycle: ['id', 'routine_id', 'order_index', 'name', 'kind', 'duration_days'],
+  routine_exercise_cycle_target: [
+    'id',
+    'routine_exercise_id',
+    'cycle_id',
+    'target_sets',
+    'target_rep_min',
+    'target_rep_max',
+    'target_rir',
+    'target_rest_seconds',
+  ],
 };
 
 let pg: Client;
@@ -307,5 +318,88 @@ describe('Schema parity (e2e)', () => {
       'deload',
     ]);
     await pg.query(`DELETE FROM routine_cycle WHERE id = $1`, [validId]);
+  });
+
+  it('routine_exercise_cycle_target has no user_id column and no server_seq column in the live database', async () => {
+    // Asserted positively, mirroring routine_cycle's own case above — a dual-parent child table
+    // that grows an ownership column is how the aggregate-root rule quietly stops being true.
+    const { rows } = await pg.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'routine_exercise_cycle_target'`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    const present = new Set(rows.map((r) => r.column_name));
+    expect(present.has('user_id')).toBe(false);
+    expect(present.has('server_seq')).toBe(false);
+  });
+
+  it('rejects a second routine_exercise_cycle_target row for the same (routine_exercise_id, cycle_id) pair, and accepts the same pair with a different exercise', async () => {
+    const { rows: users } = await pg.query<{ id: string }>(`SELECT id FROM "user" LIMIT 1`);
+    if (users.length === 0) {
+      throw new Error('schema-parity: no user row exists to attach a test routine to — seed the database first');
+    }
+    const userId = users[0].id;
+
+    const tag = Date.now();
+    const catalogExerciseId = `schema-parity-cet-catalog-ex-${tag}`;
+    const routineId = `schema-parity-cet-routine-${tag}`;
+    const dayId = `schema-parity-cet-day-${tag}`;
+    const exerciseAId = `schema-parity-cet-ex-a-${tag}`;
+    const exerciseBId = `schema-parity-cet-ex-b-${tag}`;
+    const cycleId = `schema-parity-cet-cycle-${tag}`;
+
+    await pg.query(
+      `INSERT INTO exercise (id, name, load_type, is_custom, unilateral, source) VALUES ($1, $2, $3, false, false, 'test')`,
+      [catalogExerciseId, 'Schema Parity CET Exercise', 'external_weight'],
+    );
+    await pg.query(`INSERT INTO routine (id, user_id, name, status, source) VALUES ($1, $2, $3, $4, $5)`, [
+      routineId,
+      userId,
+      'Schema Parity CET Routine',
+      'draft',
+      'test',
+    ]);
+    await pg.query(`INSERT INTO routine_day (id, routine_id, order_index, name) VALUES ($1, $2, 0, 'Day 1')`, [
+      dayId,
+      routineId,
+    ]);
+    await pg.query(
+      `INSERT INTO routine_exercise (id, routine_day_id, exercise_id, order_index) VALUES ($1, $2, $3, 0)`,
+      [exerciseAId, dayId, catalogExerciseId],
+    );
+    await pg.query(
+      `INSERT INTO routine_exercise (id, routine_day_id, exercise_id, order_index) VALUES ($1, $2, $3, 1)`,
+      [exerciseBId, dayId, catalogExerciseId],
+    );
+    await pg.query(`INSERT INTO routine_cycle (id, routine_id, order_index, name, kind) VALUES ($1, $2, 0, $3, $4)`, [
+      cycleId,
+      routineId,
+      'Week 1',
+      'training',
+    ]);
+
+    const firstId = `schema-parity-cet-first-${tag}`;
+    await pg.query(
+      `INSERT INTO routine_exercise_cycle_target (id, routine_exercise_id, cycle_id, target_sets) VALUES ($1, $2, $3, $4)`,
+      [firstId, exerciseAId, cycleId, 5],
+    );
+
+    const dupeId = `schema-parity-cet-dupe-${tag}`;
+    await expect(
+      pg.query(
+        `INSERT INTO routine_exercise_cycle_target (id, routine_exercise_id, cycle_id, target_sets) VALUES ($1, $2, $3, $4)`,
+        [dupeId, exerciseAId, cycleId, 3],
+      ),
+    ).rejects.toThrow();
+
+    const differentExerciseId = `schema-parity-cet-diff-ex-${tag}`;
+    await pg.query(
+      `INSERT INTO routine_exercise_cycle_target (id, routine_exercise_id, cycle_id, target_sets) VALUES ($1, $2, $3, $4)`,
+      [differentExerciseId, exerciseBId, cycleId, 5],
+    );
+
+    // Deleting the routine cascades away the day/exercise/cycle/target rows created above.
+    await pg.query(`DELETE FROM routine WHERE id = $1`, [routineId]);
+    await pg.query(`DELETE FROM exercise WHERE id = $1`, [catalogExerciseId]);
   });
 });

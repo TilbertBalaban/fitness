@@ -60,3 +60,27 @@ other ordered child table in this schema already uses, is where "start or end" l
 per-cycle override, but `routine_cycle` itself never multiplies the day/exercise tree — a program
 with zero cycles is valid (every exercise resolves to its base prescription), and a program with
 exactly one cycle is valid and offers no previous or next cycle.
+
+## Target resolution
+
+`routine_exercise` keeps its five `target_*` columns as the single mutable base prescription for
+an exercise. `routine_exercise_cycle_target` is a sparse override table: a row exists only where a
+cycle's prescription actually differs from the base, never once per cycle per exercise — building
+a six-week program with one heavier week creates a handful of override rows, not six copies of the
+exercise tree (D-02's ban on per-week duplication). It hangs off **two** parents at once
+(`routine_exercise_id` and `cycle_id`), the only dual-parent chain in this schema; both must
+independently resolve to the same routine before a sync push applies it.
+
+Resolution runs through exactly one exported function, `resolveTarget` in
+`packages/api-contracts/src/program.ts`, imported by the builder's cycle strip, the Home tab's
+next-up card and `log-set.ts`'s session snapshot — never reimplemented at any of those three call
+sites. It resolves per field, not per row: `override.targetSets ?? base.targetSets`, independently
+for each of the five columns. A null override field means **inherit from the base**, never "clear
+the prescription" — clearing a prescription is done on the base row itself. A cycle with no
+override row at all resolves identically to `resolveTarget(base, null)`, which returns the base
+unchanged; there is no special case for "no override."
+
+Phase 8's progression engine writes to future cycle overrides only — never the base row, never a
+past or current cycle — gated by `routine.progression_frozen` (D-17). That contract is fixed now,
+in writing, because it is what gives PROG-10 a concrete meaning; Phase 8 finalises the rule, not
+the target it writes to.

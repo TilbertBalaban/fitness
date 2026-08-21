@@ -22,6 +22,7 @@ export const SYNCED_TABLES = [
   'user_preference',
   'user_exercise_preference',
   'routine_cycle',
+  'routine_exercise_cycle_target',
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -40,7 +41,10 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // working push apply path now; Phase 6 extends the same toUserPreferenceValues with
 // default_equipment_profile_id rather than building this path from scratch.
 // 'routine_cycle' (04-06) is a fourth child of the 'routine' aggregate root, a sibling of
-// routine_day/routine_exercise one level below the root.
+// routine_day/routine_exercise one level below the root. 'routine_exercise_cycle_target' (04-07)
+// hangs off TWO parents at once — routine_exercise and routine_cycle — the deepest, only
+// dual-parent child in this schema; both parent chains must independently resolve to the same
+// routine before it applies (T-04-33).
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -52,6 +56,7 @@ export const PUSH_APPLIED_TABLES = [
   'routine_exercise',
   'user_preference',
   'routine_cycle',
+  'routine_exercise_cycle_target',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 

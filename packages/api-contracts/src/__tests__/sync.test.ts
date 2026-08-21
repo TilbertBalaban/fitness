@@ -18,7 +18,7 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('contains exactly workout_session, session_exercise, logged_set, exercise, user_exercise_preference, routine, routine_day, routine_exercise, user_preference and routine_cycle in PUSH_APPLIED_TABLES', () => {
+  it('contains exactly workout_session, session_exercise, logged_set, exercise, user_exercise_preference, routine, routine_day, routine_exercise, user_preference, routine_cycle and routine_exercise_cycle_target in PUSH_APPLIED_TABLES', () => {
     expect([...PUSH_APPLIED_TABLES].sort()).toEqual(
       [
         'exercise',
@@ -27,6 +27,7 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
         'routine_cycle',
         'routine_day',
         'routine_exercise',
+        'routine_exercise_cycle_target',
         'session_exercise',
         'user_exercise_preference',
         'user_preference',
@@ -56,6 +57,11 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect((PUSH_APPLIED_TABLES as readonly string[]).includes('routine_cycle')).toBe(true);
     expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('routine_cycle')).toBe(false);
   });
+
+  it('routine_exercise_cycle_target is applied, not deferred — 04-07 closes this gap', () => {
+    expect((PUSH_APPLIED_TABLES as readonly string[]).includes('routine_exercise_cycle_target')).toBe(true);
+    expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('routine_exercise_cycle_target')).toBe(false);
+  });
 });
 
 describe('isTerminalRejection', () => {
@@ -77,6 +83,10 @@ describe('isTerminalRejection', () => {
 
   it('is false for routine_cycle\'s unknown_table rejection — no longer a known permanent gap (04-06)', () => {
     expect(isTerminalRejection('unknown_table', 'routine_cycle')).toBe(false);
+  });
+
+  it('is false for routine_exercise_cycle_target\'s unknown_table rejection — no longer a known permanent gap (04-07)', () => {
+    expect(isTerminalRejection('unknown_table', 'routine_exercise_cycle_target')).toBe(false);
   });
 
   it('is true for not_owner, invalid_field and deleted regardless of table', () => {

@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { bigint, boolean, check, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { bigint, boolean, check, index, integer, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core';
 import { user } from '../schema';
 import { exercise } from './catalog';
 
@@ -106,6 +106,42 @@ export const routineCycle = pgTable(
   ],
 );
 
+// A sparse per-cycle override: a row exists only where a target value actually differs from
+// routine_exercise's own five columns, resolved per field as `override ?? base` through the one
+// exported resolveTarget (packages/api-contracts/src/program.ts) — never a per-week copy of the
+// exercise tree (D-02). No ownership column: hangs off TWO parents (routine_exercise AND
+// routine_cycle) that must independently resolve to the same routine before a sync push applies it
+// (T-04-33) — the deepest, only dual-parent chain in this schema.
+export const routineExerciseCycleTarget = pgTable(
+  'routine_exercise_cycle_target',
+  {
+    // Single TEXT PRIMARY KEY, not a composite key on (routineExerciseId, cycleId): applyBatch
+    // resolves every row as eq(table.id, op.id), and PowerSync's local schema gives every managed
+    // table one id column — a composite PK would be unwritable through the sync path, the same
+    // reason user_exercise_preference (catalog.ts) carries one.
+    id: text('id').primaryKey(),
+    routineExerciseId: text('routine_exercise_id')
+      .notNull()
+      .references(() => routineExercise.id, { onDelete: 'cascade' }),
+    cycleId: text('cycle_id')
+      .notNull()
+      .references(() => routineCycle.id, { onDelete: 'cascade' }),
+    targetSets: integer('target_sets'),
+    targetRepMin: integer('target_rep_min'),
+    targetRepMax: integer('target_rep_max'),
+    targetRir: integer('target_rir'),
+    targetRestSeconds: integer('target_rest_seconds'),
+  },
+  (table) => [
+    index('routine_exercise_cycle_target_routineExerciseId_idx').on(table.routineExerciseId),
+    index('routine_exercise_cycle_target_cycleId_idx').on(table.cycleId),
+    // The structural guarantee that "the override for this exercise in this cycle" is singular —
+    // without it, two devices creating an override offline produce two rows with different ids and
+    // resolution becomes order-dependent.
+    unique('routine_exercise_cycle_target_unique').on(table.routineExerciseId, table.cycleId),
+  ],
+);
+
 export const routineRelations = relations(routine, ({ one, many }) => ({
   user: one(user, { fields: [routine.userId], references: [user.id] }),
   days: many(routineDay),
@@ -117,11 +153,24 @@ export const routineDayRelations = relations(routineDay, ({ one, many }) => ({
   exercises: many(routineExercise),
 }));
 
-export const routineExerciseRelations = relations(routineExercise, ({ one }) => ({
+export const routineExerciseRelations = relations(routineExercise, ({ one, many }) => ({
   routineDay: one(routineDay, { fields: [routineExercise.routineDayId], references: [routineDay.id] }),
   exercise: one(exercise, { fields: [routineExercise.exerciseId], references: [exercise.id] }),
+  cycleTargets: many(routineExerciseCycleTarget),
 }));
 
-export const routineCycleRelations = relations(routineCycle, ({ one }) => ({
+export const routineCycleRelations = relations(routineCycle, ({ one, many }) => ({
   routine: one(routine, { fields: [routineCycle.routineId], references: [routine.id] }),
+  cycleTargets: many(routineExerciseCycleTarget),
+}));
+
+export const routineExerciseCycleTargetRelations = relations(routineExerciseCycleTarget, ({ one }) => ({
+  routineExercise: one(routineExercise, {
+    fields: [routineExerciseCycleTarget.routineExerciseId],
+    references: [routineExercise.id],
+  }),
+  routineCycle: one(routineCycle, {
+    fields: [routineExerciseCycleTarget.cycleId],
+    references: [routineCycle.id],
+  }),
 }));
