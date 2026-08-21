@@ -1351,3 +1351,213 @@ describe('routine_exercise_cycle_target sync (e2e)', () => {
     expect(await routineCycleRow(cycleId)).toBeDefined();
   });
 });
+
+const BASE_TARGETS = {
+  target_sets: 3,
+  target_rep_min: 8,
+  target_rep_max: 12,
+  target_rir: 1,
+  target_rest_seconds: 120,
+};
+
+// What the client's own resolveTarget would freeze for a session in this cycle: the override's
+// target_sets over the base's other four.
+const RESOLVED_TARGETS = { ...BASE_TARGETS, target_sets: 5 };
+
+function sessionExerciseOp(id: string, sessionId: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return { op_id: randomUUID(), op, type: 'session_exercise', id, data: { session_id: sessionId, ...data } };
+}
+
+interface SessionExerciseRow {
+  id: string;
+  session_id: string;
+  routine_exercise_id: string | null;
+  target_sets: number | null;
+  target_rep_min: number | null;
+  target_rep_max: number | null;
+  target_rir: number | null;
+  target_rest_seconds: number | null;
+}
+
+async function sessionExerciseRow(id: string): Promise<SessionExerciseRow | undefined> {
+  const { rows } = await pg.query(
+    `SELECT id, session_id, routine_exercise_id, target_sets, target_rep_min, target_rep_max,
+            target_rir, target_rest_seconds
+     FROM session_exercise WHERE id = $1`,
+    [id],
+  );
+  return rows[0];
+}
+
+async function workoutSessionRoutineDayId(id: string): Promise<string | null | undefined> {
+  const { rows } = await pg.query('SELECT routine_day_id FROM workout_session WHERE id = $1', [id]);
+  return rows[0]?.routine_day_id;
+}
+
+function targetsOf(row: SessionExerciseRow | undefined) {
+  return {
+    target_sets: row?.target_sets,
+    target_rep_min: row?.target_rep_min,
+    target_rep_max: row?.target_rep_max,
+    target_rir: row?.target_rir,
+    target_rest_seconds: row?.target_rest_seconds,
+  };
+}
+
+interface SnapshotScenario {
+  routineId: string;
+  dayId: string;
+  routineExerciseId: string;
+  cycleId: string;
+  cetId: string;
+  sessionId: string;
+  sessionExerciseId: string;
+}
+
+// A whole program with one cycle override, plus one workout logged against it — the shared
+// starting point for every PROG-11 case: the session_exercise row carries the RESOLVED targets,
+// already frozen, before any edit happens.
+async function seedSnapshotScenario(cookie: string, tag: string): Promise<SnapshotScenario> {
+  const routineId = randomUUID();
+  const dayId = randomUUID();
+  const routineExerciseId = randomUUID();
+  const cycleId = randomUUID();
+  const cetId = randomUUID();
+  createdRoutineIds.push(routineId);
+
+  const programRes = await push(cookie, [
+    routineOp(routineId, { name: `Snapshot ${tag}`, status: 'draft' }),
+    routineDayOp(dayId, { routine_id: routineId, order_index: 0, name: 'Day 1' }),
+    routineExerciseOp(routineExerciseId, {
+      routine_day_id: dayId,
+      exercise_id: exerciseId,
+      order_index: 0,
+      ...BASE_TARGETS,
+    }),
+    routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Week 1', kind: 'training' }),
+    routineExerciseCycleTargetOp(cetId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 5 }),
+  ]);
+  expect((programRes.body as SyncPushResponse).rejected).toEqual([]);
+
+  const sessionId = randomUUID();
+  const sessionExerciseId = randomUUID();
+  const sessionRes = await push(cookie, [
+    workoutSessionOp(sessionId, {
+      data: {
+        routine_day_id: dayId,
+        started_at: new Date().toISOString(),
+        status: 'in_progress',
+        timezone: 'UTC',
+        local_date: new Date().toISOString().slice(0, 10),
+      },
+    }),
+    sessionExerciseOp(sessionExerciseId, sessionId, {
+      exercise_id: exerciseId,
+      order_index: 0,
+      routine_exercise_id: routineExerciseId,
+      ...RESOLVED_TARGETS,
+    }),
+  ]);
+  expect((sessionRes.body as SyncPushResponse).rejected).toEqual([]);
+
+  return { routineId, dayId, routineExerciseId, cycleId, cetId, sessionId, sessionExerciseId };
+}
+
+describe('PROG-11 — editing a program never corrupts a workout already logged against it (e2e)', () => {
+  it('applies the whole program, its cycle override, and a session_exercise carrying the resolved targets', async () => {
+    const cookie = await signUp('prog11-seed');
+    const { sessionExerciseId, routineExerciseId } = await seedSnapshotScenario(cookie, 'prog11-seed');
+
+    const row = await sessionExerciseRow(sessionExerciseId);
+    expect(targetsOf(row)).toEqual(RESOLVED_TARGETS);
+    expect(row?.routine_exercise_id).toBe(routineExerciseId);
+  });
+
+  it("leaves the snapshot untouched when the routine_exercise's five base targets are all rewritten", async () => {
+    const cookie = await signUp('prog11-base-edit');
+    const { routineExerciseId, sessionExerciseId } = await seedSnapshotScenario(cookie, 'prog11-base-edit');
+
+    const patchOp = routineExerciseOp(
+      routineExerciseId,
+      {
+        exercise_id: exerciseId,
+        target_sets: 8,
+        target_rep_min: 3,
+        target_rep_max: 5,
+        target_rir: 0,
+        target_rest_seconds: 240,
+      },
+      'PATCH',
+    );
+    const res = await push(cookie, [patchOp]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect((await routineExerciseRow(routineExerciseId))?.target_sets).toBe(8);
+    expect(targetsOf(await sessionExerciseRow(sessionExerciseId))).toEqual(RESOLVED_TARGETS);
+  });
+
+  it('leaves the snapshot untouched when the cycle override is edited', async () => {
+    const cookie = await signUp('prog11-override-edit');
+    const { routineExerciseId, cycleId, cetId, sessionExerciseId } = await seedSnapshotScenario(cookie, 'prog11-override-edit');
+
+    const patchOp = routineExerciseCycleTargetOp(
+      cetId,
+      { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 9 },
+      'PATCH',
+    );
+    const res = await push(cookie, [patchOp]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect((await routineExerciseCycleTargetRow(cetId))?.target_sets).toBe(9);
+    expect(targetsOf(await sessionExerciseRow(sessionExerciseId))).toEqual(RESOLVED_TARGETS);
+  });
+
+  it("leaves the snapshot at the override's value — not the base's — when the override is deleted", async () => {
+    const cookie = await signUp('prog11-override-delete');
+    const { cetId, sessionExerciseId } = await seedSnapshotScenario(cookie, 'prog11-override-delete');
+
+    const deleteOp = routineExerciseCycleTargetOp(cetId, {}, 'DELETE');
+    const res = await push(cookie, [deleteOp]);
+    expect((res.body as SyncPushResponse).applied).toEqual([deleteOp.op_id]);
+
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+    const row = await sessionExerciseRow(sessionExerciseId);
+    expect(row).toBeDefined();
+    expect(targetsOf(row)).toEqual(RESOLVED_TARGETS);
+  });
+
+  // The load-bearing case. A real foreign key from session_exercise.routine_exercise_id or from
+  // workout_session.routine_day_id would turn this ordinary program edit into either a cascade
+  // that deletes a logged workout or a constraint violation that blocks the edit. Both columns are
+  // plain text for exactly this reason (apps/api/src/db/schema/session.ts).
+  it('keeps the logged session and its snapshot when the routine_day is deleted, leaving routine_day_id dangling', async () => {
+    const cookie = await signUp('prog11-day-delete');
+    const { dayId, routineExerciseId, sessionId, sessionExerciseId } = await seedSnapshotScenario(cookie, 'prog11-day-delete');
+
+    const deleteOp = routineDayOp(dayId, {}, 'DELETE');
+    const res = await push(cookie, [deleteOp]);
+    expect((res.body as SyncPushResponse).applied).toEqual([deleteOp.op_id]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await routineDayRow(dayId)).toBeUndefined();
+    expect(await routineExerciseRow(routineExerciseId)).toBeUndefined();
+
+    const row = await sessionExerciseRow(sessionExerciseId);
+    expect(targetsOf(row)).toEqual(RESOLVED_TARGETS);
+    expect(row?.routine_exercise_id).toBe(routineExerciseId);
+    expect(await workoutSessionRow(sessionId)).toBeDefined();
+    expect(await workoutSessionRoutineDayId(sessionId)).toBe(dayId);
+  });
+
+  it('leaves the snapshot untouched when the routine is archived', async () => {
+    const cookie = await signUp('prog11-archive');
+    const { routineId, sessionExerciseId } = await seedSnapshotScenario(cookie, 'prog11-archive');
+
+    const patchOp = routineOp(routineId, { archived_at: new Date().toISOString() }, 'PATCH');
+    const res = await push(cookie, [patchOp]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect((await routineRow(routineId))?.archived_at).not.toBeNull();
+    expect(targetsOf(await sessionExerciseRow(sessionExerciseId))).toEqual(RESOLVED_TARGETS);
+  });
+});
