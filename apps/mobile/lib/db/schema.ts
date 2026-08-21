@@ -96,6 +96,20 @@ export const routineCycle = sqliteTable('routine_cycle', {
   durationDays: integer('duration_days'),
 });
 
+// A sparse per-cycle override — mirrors apps/api/src/db/schema/program.ts's routineExerciseCycleTarget
+// exactly. Two parent columns, neither of them user_id: this table hangs off routineExercise AND
+// routineCycle at once, resolved through resolveTarget (packages/api-contracts/src/program.ts).
+export const routineExerciseCycleTarget = sqliteTable('routine_exercise_cycle_target', {
+  id: text('id').primaryKey(),
+  routineExerciseId: text('routine_exercise_id').notNull(),
+  cycleId: text('cycle_id').notNull(),
+  targetSets: integer('target_sets'),
+  targetRepMin: integer('target_rep_min'),
+  targetRepMax: integer('target_rep_max'),
+  targetRir: integer('target_rir'),
+  targetRestSeconds: integer('target_rest_seconds'),
+});
+
 export const equipmentProfile = sqliteTable('equipment_profile', {
   id: text('id').primaryKey(),
   userId: text('user_id'),
@@ -256,6 +270,7 @@ export const drizzleSchema = {
   routineDay,
   routineExercise,
   routineCycle,
+  routineExerciseCycleTarget,
   equipmentProfile,
   exercise,
   userExercisePreference,

@@ -23,6 +23,7 @@ import {
   routineDay,
   routineExercise,
   routineCycle,
+  routineExerciseCycleTarget,
   userPreference,
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
@@ -33,6 +34,7 @@ import {
   patchAwareSet,
   ROUTINE_CYCLE_PATCH_FIELDS,
   ROUTINE_DAY_PATCH_FIELDS,
+  ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS,
   ROUTINE_EXERCISE_PATCH_FIELDS,
   ROUTINE_PATCH_FIELDS,
   SESSION_EXERCISE_PATCH_FIELDS,
@@ -43,6 +45,7 @@ import {
   type LoggedSetValues,
   type RoutineCycleValues,
   type RoutineDayValues,
+  type RoutineExerciseCycleTargetValues,
   type RoutineExerciseValues,
   type RoutineValues,
   type SessionExerciseValues,
@@ -62,6 +65,7 @@ const TABLE_MAP = {
   routine_exercise: routineExercise,
   user_preference: userPreference,
   routine_cycle: routineCycle,
+  routine_exercise_cycle_target: routineExerciseCycleTarget,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -105,11 +109,20 @@ const ROOT_TABLE_BY_TYPE = {
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
 // The root type an op chains to — session_exercise/logged_set resolve through workout_session;
-// routine_day/routine_exercise/routine_cycle resolve through routine, two hops deep for
-// routine_exercise; every self-rooting type (aggregate or singleton) resolves to itself.
+// routine_day/routine_exercise/routine_cycle/routine_exercise_cycle_target resolve through
+// routine, two hops deep for routine_exercise and (via either parent chain) for
+// routine_exercise_cycle_target; every self-rooting type (aggregate or singleton) resolves to
+// itself.
 function rootFamilyOf(type: string): string {
   if (type === 'session_exercise' || type === 'logged_set') return 'workout_session';
-  if (type === 'routine_day' || type === 'routine_exercise' || type === 'routine_cycle') return 'routine';
+  if (
+    type === 'routine_day' ||
+    type === 'routine_exercise' ||
+    type === 'routine_cycle' ||
+    type === 'routine_exercise_cycle_target'
+  ) {
+    return 'routine';
+  }
   return type;
 }
 
@@ -129,6 +142,10 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   routine_exercise: 2,
   user_preference: 0,
   routine_cycle: 1,
+  // One level below both routine_exercise (rank 2) and routine_cycle (rank 1) — the deepest,
+  // dual-parent rank in this schema, so both of its parents apply before it regardless of the
+  // order the crud queue delivered them.
+  routine_exercise_cycle_target: 3,
 };
 
 const SESSION_STATUSES = new Set(['in_progress', 'completed', 'discarded']);
@@ -252,6 +269,16 @@ interface RoutineCycleOpData {
   name?: string;
   kind?: string;
   duration_days?: number | null;
+}
+
+interface RoutineExerciseCycleTargetOpData {
+  routine_exercise_id?: string;
+  cycle_id?: string;
+  target_sets?: number | null;
+  target_rep_min?: number | null;
+  target_rep_max?: number | null;
+  target_rir?: number | null;
+  target_rest_seconds?: number | null;
 }
 
 function toWorkoutSessionValues(id: string, userId: string, data: Record<string, unknown> | null | undefined): WorkoutSessionValues {
@@ -473,6 +500,29 @@ function toRoutineCycleValues(id: string, routineId: string, data: Record<string
   };
 }
 
+// Both routineExerciseId and cycleId always come from the two resolver arguments, never from
+// data — same reparenting guarantee as toRoutineDayValues/toRoutineCycleValues, doubled (T-04-33).
+// Absent target_* fields default to null: an override on an unprescribed exercise still overrides
+// only the fields it names.
+function toRoutineExerciseCycleTargetValues(
+  id: string,
+  routineExerciseId: string,
+  cycleId: string,
+  data: Record<string, unknown> | null | undefined,
+): RoutineExerciseCycleTargetValues {
+  const d = (data ?? {}) as RoutineExerciseCycleTargetOpData;
+  return {
+    id,
+    routineExerciseId,
+    cycleId,
+    targetSets: d.target_sets ?? null,
+    targetRepMin: d.target_rep_min ?? null,
+    targetRepMax: d.target_rep_max ?? null,
+    targetRir: d.target_rir ?? null,
+    targetRestSeconds: d.target_rest_seconds ?? null,
+  };
+}
+
 function isNonNegativeInteger(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
@@ -548,6 +598,24 @@ function isInvalidRoutineCycle(data: RoutineCycleOpData): boolean {
   if (data.name !== undefined && !(typeof data.name === 'string' && data.name.trim().length > 0)) return true;
   if (data.order_index !== undefined && !isNonNegativeInteger(data.order_index)) return true;
   if (data.duration_days !== undefined && !isNonNegativeIntegerOrNull(data.duration_days)) return true;
+  return false;
+}
+
+// Both parent fields are required present on EVERY non-DELETE op, PUT or PATCH — mirroring
+// isInvalidSessionExercise's/isInvalidRoutineExercise's exercise_id guard, not the "checked only
+// when present" pattern the five target_* fields use. A PATCH that only changes a target field
+// still names both parents (ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS maps them to null, so the
+// value actually written is always the resolver's database-linked one, never the client's) — this
+// keeps every op's own parent claims resolvable before the dual-chain root resolver ever runs.
+// Neither falls back to an empty string.
+function isInvalidRoutineExerciseCycleTarget(data: RoutineExerciseCycleTargetOpData): boolean {
+  if (typeof data.routine_exercise_id !== 'string' || data.routine_exercise_id.length === 0) return true;
+  if (typeof data.cycle_id !== 'string' || data.cycle_id.length === 0) return true;
+  if (data.target_sets !== undefined && !isNonNegativeIntegerOrNull(data.target_sets)) return true;
+  if (data.target_rep_min !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_min)) return true;
+  if (data.target_rep_max !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_max)) return true;
+  if (data.target_rir !== undefined && !isNonNegativeIntegerOrNull(data.target_rir)) return true;
+  if (data.target_rest_seconds !== undefined && !isNonNegativeIntegerOrNull(data.target_rest_seconds)) return true;
   return false;
 }
 
@@ -641,6 +709,10 @@ function hasInvalidField(op: SyncCrudOp): boolean {
 
   if (op.type === 'routine_cycle') {
     return isInvalidRoutineCycle(data as RoutineCycleOpData);
+  }
+
+  if (op.type === 'routine_exercise_cycle_target') {
+    return isInvalidRoutineExerciseCycleTarget(data as RoutineExerciseCycleTargetOpData);
   }
 
   if (op.type === 'user_preference') {
@@ -845,7 +917,48 @@ export class SyncService {
       if (routineId) routineCycleRoutineIdFromData.set(op.id, routineId);
     }
 
-    const routineExerciseIdsToCheck = new Set(routineExerciseOps.map((op) => op.id));
+    // routine_exercise_cycle_target's two parent ids, read the same client-claimed-map-plus-batched-
+    // select way every other parent above is — but a cycle-target op very often names an EXISTING
+    // routine_exercise/routine_cycle row from a prior push, never an op in THIS batch, so both
+    // routineExerciseIdsToCheck and routineCycleIdsToCheck below are extended with every id a
+    // cycle-target op references (T-04-33) — the chain resolvers just below would otherwise never
+    // see them.
+    const routineExerciseCycleTargetOps = remaining.filter((op) => op.type === 'routine_exercise_cycle_target');
+    const cetRoutineExerciseIdFromData = new Map<string, string>();
+    const cetCycleIdFromData = new Map<string, string>();
+    for (const op of routineExerciseCycleTargetOps) {
+      const d = op.data as RoutineExerciseCycleTargetOpData | null | undefined;
+      if (d?.routine_exercise_id) cetRoutineExerciseIdFromData.set(op.id, d.routine_exercise_id);
+      if (d?.cycle_id) cetCycleIdFromData.set(op.id, d.cycle_id);
+    }
+    const cetIdsToCheck = new Set(routineExerciseCycleTargetOps.map((op) => op.id));
+    const dbCycleTargets = cetIdsToCheck.size
+      ? await this.db
+          .select({
+            id: routineExerciseCycleTarget.id,
+            routineExerciseId: routineExerciseCycleTarget.routineExerciseId,
+            cycleId: routineExerciseCycleTarget.cycleId,
+          })
+          .from(routineExerciseCycleTarget)
+          .where(inArray(routineExerciseCycleTarget.id, [...cetIdsToCheck]))
+      : [];
+    const dbRoutineExerciseIdByCetId = new Map(dbCycleTargets.map((row) => [row.id, row.routineExerciseId]));
+    const dbCycleIdByCetId = new Map(dbCycleTargets.map((row) => [row.id, row.cycleId]));
+    // Same database-wins-over-client-claimed precedence as every resolver in this file — an
+    // existing override cannot be reparented onto a different exercise or cycle by simply naming a
+    // different id.
+    function resolveRoutineExerciseIdForCycleTarget(cetOpId: string): string | undefined {
+      return dbRoutineExerciseIdByCetId.get(cetOpId) ?? cetRoutineExerciseIdFromData.get(cetOpId);
+    }
+    function resolveCycleIdForCycleTarget(cetOpId: string): string | undefined {
+      return dbCycleIdByCetId.get(cetOpId) ?? cetCycleIdFromData.get(cetOpId);
+    }
+
+    const routineExerciseIdsToCheck = new Set<string>([
+      ...routineExerciseOps.map((op) => op.id),
+      ...cetRoutineExerciseIdFromData.values(),
+      ...dbRoutineExerciseIdByCetId.values(),
+    ]);
     const dbRoutineExercises = routineExerciseIdsToCheck.size
       ? await this.db
           .select({ id: routineExercise.id, routineDayId: routineExercise.routineDayId })
@@ -880,7 +993,11 @@ export class SyncService {
     // One hop, the same anti-reparenting guarantee as resolveRoutineIdForRoutineDay (T-04-31): a
     // routine_cycle already stored under routine R1 cannot be moved to R2 by naming a different
     // routine_id, because database linkage always wins over the client-claimed value.
-    const routineCycleIdsToCheck = new Set(routineCycleOps.map((op) => op.id));
+    const routineCycleIdsToCheck = new Set<string>([
+      ...routineCycleOps.map((op) => op.id),
+      ...cetCycleIdFromData.values(),
+      ...dbCycleIdByCetId.values(),
+    ]);
     const dbRoutineCycles = routineCycleIdsToCheck.size
       ? await this.db
           .select({ id: routineCycle.id, routineId: routineCycle.routineId })
@@ -890,6 +1007,52 @@ export class SyncService {
     const dbRoutineIdByRoutineCycleId = new Map(dbRoutineCycles.map((row) => [row.id, row.routineId]));
     function resolveRoutineIdForRoutineCycle(cycleOpId: string): string | undefined {
       return dbRoutineIdByRoutineCycleId.get(cycleOpId) ?? routineCycleRoutineIdFromData.get(cycleOpId);
+    }
+
+    // The dual-parent root resolver (T-04-33): both the exercise chain
+    // (routine_exercise_id -> routine_day_id -> routine_id, reusing the two-hop resolvers above)
+    // and the cycle chain (cycle_id -> resolveRoutineIdForRoutineCycle) must independently resolve
+    // to the same routine before a cycle-target op is even eligible to apply — the one check a
+    // three-level chain never had to make. Either chain failing to resolve is an ordinary
+    // unresolvable parent (conflict: false, routineId: null — the root-resolution loop below then
+    // treats it exactly like any other missing_parent case). Two DEFINED, DISAGREEING routine ids
+    // is different in kind: it means the op is binding one user's exercise to another user's
+    // cycle, and must not be silently folded into missing_parent.
+    function resolveRoutineIdForCycleTarget(cetOpId: string): { routineId: string | null; conflict: boolean } {
+      const routineExerciseId = resolveRoutineExerciseIdForCycleTarget(cetOpId);
+      const routineDayId = routineExerciseId ? resolveRoutineDayIdForRoutineExercise(routineExerciseId) : undefined;
+      const routineIdViaExercise = routineDayId ? resolveRoutineIdForRoutineDay(routineDayId) : undefined;
+      const cycleId = resolveCycleIdForCycleTarget(cetOpId);
+      const routineIdViaCycle = cycleId ? resolveRoutineIdForRoutineCycle(cycleId) : undefined;
+      if (routineIdViaExercise === undefined || routineIdViaCycle === undefined) {
+        return { routineId: null, conflict: false };
+      }
+      if (routineIdViaExercise !== routineIdViaCycle) {
+        return { routineId: null, conflict: true };
+      }
+      return { routineId: routineIdViaExercise, conflict: false };
+    }
+
+    // A conflicted cycle-target op is rejected explicitly here, before it ever reaches the
+    // aggregate/root-resolution machinery below — the reason chosen is not_owner: a mismatched
+    // pair means the op named a cycle (or exercise) the pusher does not actually control within
+    // this routine, the same boundary every other not_owner rejection in this file enforces.
+    const cetConflictOpIds = new Set<string>();
+    for (const op of routineExerciseCycleTargetOps) {
+      if (resolveRoutineIdForCycleTarget(op.id).conflict) cetConflictOpIds.add(op.op_id);
+    }
+    if (cetConflictOpIds.size > 0) {
+      for (const op of routineExerciseCycleTargetOps) {
+        if (!cetConflictOpIds.has(op.op_id)) continue;
+        rejected.push({ op_id: op.op_id, reason: 'not_owner' });
+        this.logger.warn(
+          `applyBatch: routine_exercise_cycle_target op ${op.op_id} named a routine_exercise_id and cycle_id that resolve to two different routines — rejected not_owner`,
+        );
+      }
+      remaining = remaining.filter((op) => !cetConflictOpIds.has(op.op_id));
+      if (remaining.length === 0) {
+        return { applied, rejected, server_seq: highestServerSeq.toString() };
+      }
     }
 
     // Root resolution — null means "could not be determined from the batch or the database".
@@ -912,6 +1075,8 @@ export class SyncService {
         rootByOpId.set(op.op_id, routineDayId ? (resolveRoutineIdForRoutineDay(routineDayId) ?? null) : null);
       } else if (op.type === 'routine_cycle') {
         rootByOpId.set(op.op_id, resolveRoutineIdForRoutineCycle(op.id) ?? null);
+      } else if (op.type === 'routine_exercise_cycle_target') {
+        rootByOpId.set(op.op_id, resolveRoutineIdForCycleTarget(op.id).routineId);
       } else {
         const sessionExerciseId = resolveSessionExerciseIdForLoggedSet(op.id);
         rootByOpId.set(op.op_id, sessionExerciseId ? (resolveSessionIdForSessionExercise(sessionExerciseId) ?? null) : null);
@@ -968,7 +1133,12 @@ export class SyncService {
     for (const op of remaining) {
       if (AGGREGATE_ROOT_TYPES.has(op.type) || SINGLETON_ROOT_TYPES.has(op.type)) {
         rootTypeByRootId.set(op.id, op.type as RootTableType);
-      } else if (op.type === 'routine_day' || op.type === 'routine_exercise' || op.type === 'routine_cycle') {
+      } else if (
+        op.type === 'routine_day' ||
+        op.type === 'routine_exercise' ||
+        op.type === 'routine_cycle' ||
+        op.type === 'routine_exercise_cycle_target'
+      ) {
         const resolvedRoot = rootByOpId.get(op.op_id);
         if (resolvedRoot) rootTypeByRootId.set(resolvedRoot, 'routine');
       }
@@ -1115,6 +1285,7 @@ export class SyncService {
             let childSessionExercises: { id: string }[] = [];
             let childLoggedSets: { id: string }[] = [];
             let childRoutineExercises: { id: string }[] = [];
+            let childCycleTargets: { id: string }[] = [];
             if (op.type === 'workout_session' && existingRow.length > 0) {
               childSessionExercises = await tx
                 .select({ id: sessionExercise.id })
@@ -1140,6 +1311,33 @@ export class SyncService {
                 .select({ id: routineExercise.id })
                 .from(routineExercise)
                 .where(eq(routineExercise.routineDayId, op.id));
+              // routine_exercise -> routine_exercise_cycle_target cascades one level further, at
+              // the database level, the instant the exercise cascades away above — a day delete is
+              // a THREE-level cascade (day -> exercise -> override), and every override orphaned
+              // this way must be tombstoned too, or it resurrects on the next pull exactly like the
+              // direct routine_exercise-delete and routine_cycle-delete cases just below (T-04-32).
+              const childRoutineExerciseIds = childRoutineExercises.map((row) => row.id);
+              childCycleTargets = childRoutineExerciseIds.length
+                ? await tx
+                    .select({ id: routineExerciseCycleTarget.id })
+                    .from(routineExerciseCycleTarget)
+                    .where(inArray(routineExerciseCycleTarget.routineExerciseId, childRoutineExerciseIds))
+                : [];
+            }
+            // routine_exercise_cycle_target has TWO parents (T-04-32/T-04-33) — an override can be
+            // orphaned from either side, so both a routine_exercise delete and a routine_cycle
+            // delete must independently gather and tombstone their own cascaded override rows.
+            if (op.type === 'routine_exercise' && existingRow.length > 0) {
+              childCycleTargets = await tx
+                .select({ id: routineExerciseCycleTarget.id })
+                .from(routineExerciseCycleTarget)
+                .where(eq(routineExerciseCycleTarget.routineExerciseId, op.id));
+            }
+            if (op.type === 'routine_cycle' && existingRow.length > 0) {
+              childCycleTargets = await tx
+                .select({ id: routineExerciseCycleTarget.id })
+                .from(routineExerciseCycleTarget)
+                .where(eq(routineExerciseCycleTarget.cycleId, op.id));
             }
 
             if (existingRow.length > 0) {
@@ -1160,6 +1358,14 @@ export class SyncService {
             }
             for (const child of childRoutineExercises) {
               await recordTombstone(tx, { userId, table: 'routine_exercise', rowId: child.id, deletedServerSeq: Number(seqValue) });
+            }
+            for (const child of childCycleTargets) {
+              await recordTombstone(tx, {
+                userId,
+                table: 'routine_exercise_cycle_target',
+                rowId: child.id,
+                deletedServerSeq: Number(seqValue),
+              });
             }
 
             applied.push(op.op_id);
@@ -1227,7 +1433,14 @@ export class SyncService {
                             ? toRoutineExerciseValues(op.id, resolveRoutineDayIdForRoutineExercise(op.id) ?? '', op.data)
                             : op.type === 'routine_cycle'
                               ? toRoutineCycleValues(op.id, resolveRoutineIdForRoutineCycle(op.id) ?? root, op.data)
-                              : toUserPreferenceValues(op.id, userId, op.data);
+                              : op.type === 'routine_exercise_cycle_target'
+                                ? toRoutineExerciseCycleTargetValues(
+                                    op.id,
+                                    resolveRoutineExerciseIdForCycleTarget(op.id) ?? '',
+                                    resolveCycleIdForCycleTarget(op.id) ?? '',
+                                    op.data,
+                                  )
+                                : toUserPreferenceValues(op.id, userId, op.data);
 
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
@@ -1317,6 +1530,22 @@ export class SyncService {
               .onConflictDoUpdate({
                 target: routineCycle.id,
                 set: patchAwareSet(op, routineCycleValues, ROUTINE_CYCLE_PATCH_FIELDS),
+              });
+          } else if (op.type === 'routine_exercise_cycle_target') {
+            // No serverSeq — a child of the routine aggregate root hanging off TWO parents at
+            // once (rank 3, one level below both routine_exercise and routine_cycle). The unique
+            // constraint on (routineExerciseId, cycleId) is a SECOND conflict target this single
+            // `target: routineExerciseCycleTarget.id` onConflictDoUpdate does not cover — a
+            // violation therefore throws, the transaction below rolls back, and the existing catch
+            // rejects the whole aggregate invalid_field (the duplicate-pair e2e case asserts this
+            // observed rejection reason).
+            const routineExerciseCycleTargetValues = values as RoutineExerciseCycleTargetValues;
+            await tx
+              .insert(routineExerciseCycleTarget)
+              .values(routineExerciseCycleTargetValues)
+              .onConflictDoUpdate({
+                target: routineExerciseCycleTarget.id,
+                set: patchAwareSet(op, routineExerciseCycleTargetValues, ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS),
               });
           } else if (op.type === 'routine') {
             // routine — the aggregate root the tracer proves. Carries server_seq like exercise and

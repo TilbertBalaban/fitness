@@ -91,6 +91,10 @@ function routineCycleOp(id: string, data: Record<string, unknown>, op: SyncCrudO
   return { op_id: randomUUID(), op, type: 'routine_cycle', id, data };
 }
 
+function routineExerciseCycleTargetOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return { op_id: randomUUID(), op, type: 'routine_exercise_cycle_target', id, data };
+}
+
 function workoutSessionOp(id: string, overrides: Partial<SyncCrudOp> = {}): SyncCrudOp {
   return {
     op_id: randomUUID(),
@@ -190,6 +194,26 @@ async function routineCycleRow(id: string): Promise<RoutineCycleRow | undefined>
   return rows[0];
 }
 
+interface RoutineExerciseCycleTargetRow {
+  id: string;
+  routine_exercise_id: string;
+  cycle_id: string;
+  target_sets: number | null;
+  target_rep_min: number | null;
+  target_rep_max: number | null;
+  target_rir: number | null;
+  target_rest_seconds: number | null;
+}
+
+async function routineExerciseCycleTargetRow(id: string): Promise<RoutineExerciseCycleTargetRow | undefined> {
+  const { rows } = await pg.query(
+    `SELECT id, routine_exercise_id, cycle_id, target_sets, target_rep_min, target_rep_max, target_rir, target_rest_seconds
+     FROM routine_exercise_cycle_target WHERE id = $1`,
+    [id],
+  );
+  return rows[0];
+}
+
 async function tombstoneCount(rowIds: string[]): Promise<number> {
   const { rows } = await pg.query('SELECT count(*)::int AS n FROM sync_tombstone WHERE row_id = ANY($1::text[])', [rowIds]);
   return rows[0].n;
@@ -207,6 +231,24 @@ async function seedRoutineAndDay(cookie: string, tag: string): Promise<{ routine
   ]);
   expect((res.body as SyncPushResponse).rejected).toEqual([]);
   return { routineId, dayId };
+}
+
+// The full four-level chain a routine_exercise_cycle_target op needs: a routine, one day, one
+// routine_exercise on that day, and one routine_cycle — the shared parent shape every
+// cycle-target-focused test needs (T-04-33's dual-parent chain starts here).
+async function seedRoutineDayExerciseCycle(
+  cookie: string,
+  tag: string,
+): Promise<{ routineId: string; dayId: string; routineExerciseId: string; cycleId: string }> {
+  const { routineId, dayId } = await seedRoutineAndDay(cookie, tag);
+  const routineExerciseId = randomUUID();
+  const cycleId = randomUUID();
+  const res = await push(cookie, [
+    routineExerciseOp(routineExerciseId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 }),
+    routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Week 1', kind: 'training' }),
+  ]);
+  expect((res.body as SyncPushResponse).rejected).toEqual([]);
+  return { routineId, dayId, routineExerciseId, cycleId };
 }
 
 // The real user id behind a session cookie — extracted through a workout_session push, mirroring
@@ -1004,5 +1046,308 @@ describe('routine_cycle sync (e2e)', () => {
 
     expect((await routineCycleRow(cycleAId))?.order_index).toBe(0);
     expect((await routineCycleRow(cycleBId))?.order_index).toBe(0);
+  });
+});
+
+describe('routine_exercise_cycle_target sync (e2e)', () => {
+  it('applies a batch of [routine, routine_day, routine_exercise, routine_cycle, routine_exercise_cycle_target] in that order; SELECT returns one override row with the right parents and target values', async () => {
+    const cookie = await signUp('cet-forward');
+    const routineId = randomUUID();
+    const dayId = randomUUID();
+    const exId = randomUUID();
+    const cycleId = randomUUID();
+    const cetId = randomUUID();
+    createdRoutineIds.push(routineId);
+
+    const batch: SyncCrudOp[] = [
+      routineOp(routineId, { name: 'CET Forward', status: 'draft' }),
+      routineDayOp(dayId, { routine_id: routineId, order_index: 0, name: 'Day 1' }),
+      routineExerciseOp(exId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 }),
+      routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Week 1', kind: 'training' }),
+      routineExerciseCycleTargetOp(cetId, { routine_exercise_id: exId, cycle_id: cycleId, target_sets: 5 }),
+    ];
+    const res = await push(cookie, batch);
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toEqual([]);
+    expect(body.applied).toHaveLength(5);
+
+    const row = await routineExerciseCycleTargetRow(cetId);
+    expect(row?.routine_exercise_id).toBe(exId);
+    expect(row?.cycle_id).toBe(cycleId);
+    expect(row?.target_sets).toBe(5);
+  });
+
+  it('applies the same five ops pushed in reverse order — rank 0/1/2/1/3 sorts every parent ahead of the override', async () => {
+    const cookie = await signUp('cet-reverse');
+    const routineId = randomUUID();
+    const dayId = randomUUID();
+    const exId = randomUUID();
+    const cycleId = randomUUID();
+    const cetId = randomUUID();
+    createdRoutineIds.push(routineId);
+
+    const batch: SyncCrudOp[] = [
+      routineExerciseCycleTargetOp(cetId, { routine_exercise_id: exId, cycle_id: cycleId, target_sets: 5 }),
+      routineCycleOp(cycleId, { routine_id: routineId, order_index: 0, name: 'Week 1', kind: 'training' }),
+      routineExerciseOp(exId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 }),
+      routineDayOp(dayId, { routine_id: routineId, order_index: 0, name: 'Day 1' }),
+      routineOp(routineId, { name: 'CET Reverse', status: 'draft' }),
+    ];
+    const res = await push(cookie, batch);
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toEqual([]);
+    expect(body.applied).toHaveLength(5);
+
+    const row = await routineExerciseCycleTargetRow(cetId);
+    expect(row?.routine_exercise_id).toBe(exId);
+    expect(row?.cycle_id).toBe(cycleId);
+  });
+
+  it("rejects user B's override naming user A's routine_exercise_id and A's cycle_id with not_owner, and no row is created", async () => {
+    const cookieA = await signUp('cet-owner-a');
+    const cookieB = await signUp('cet-attacker-b');
+    const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookieA, 'cet-owner-a');
+
+    const cetId = randomUUID();
+    const attackOp = routineExerciseCycleTargetOp(cetId, {
+      routine_exercise_id: routineExerciseId,
+      cycle_id: cycleId,
+      target_sets: 5,
+    });
+    const res = await push(cookieB, [attackOp]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([]);
+    expect(body.rejected).toEqual([{ op_id: attackOp.op_id, reason: 'not_owner' }]);
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+  });
+
+  it("rejects an override naming user A's own routine_exercise_id and user B's cycle_id — the two chains resolve to different routines, and no row is created", async () => {
+    const cookieA = await signUp('cet-mismatch-a');
+    const cookieB = await signUp('cet-mismatch-b');
+    const { routineExerciseId } = await seedRoutineDayExerciseCycle(cookieA, 'cet-mismatch-a');
+    const { cycleId: cycleIdB } = await seedRoutineDayExerciseCycle(cookieB, 'cet-mismatch-b');
+
+    const cetId = randomUUID();
+    const mismatchOp = routineExerciseCycleTargetOp(cetId, {
+      routine_exercise_id: routineExerciseId,
+      cycle_id: cycleIdB,
+      target_sets: 5,
+    });
+    const res = await push(cookieA, [mismatchOp]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([]);
+    // The implementation chooses not_owner: a mismatched dual-parent pair means the pusher named a
+    // cycle it does not own, an ownership-boundary violation rather than an unresolvable parent —
+    // see this plan's SUMMARY for the full reasoning.
+    expect(body.rejected).toEqual([{ op_id: mismatchOp.op_id, reason: 'not_owner' }]);
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+  });
+
+  it('rejects an override naming a routine_exercise_id in neither the batch nor the database with missing_parent, and the same for an unknown cycle_id', async () => {
+    const cookie = await signUp('cet-missing-parent');
+    const { cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-missing-parent-1');
+
+    const orphanExOp = routineExerciseCycleTargetOp(randomUUID(), {
+      routine_exercise_id: randomUUID(),
+      cycle_id: cycleId,
+      target_sets: 5,
+    });
+    const resEx = await push(cookie, [orphanExOp]);
+    expect((resEx.body as SyncPushResponse).rejected).toEqual([{ op_id: orphanExOp.op_id, reason: 'missing_parent' }]);
+
+    const { routineExerciseId } = await seedRoutineDayExerciseCycle(cookie, 'cet-missing-parent-2');
+    const orphanCycleOp = routineExerciseCycleTargetOp(randomUUID(), {
+      routine_exercise_id: routineExerciseId,
+      cycle_id: randomUUID(),
+      target_sets: 5,
+    });
+    const resCycle = await push(cookie, [orphanCycleOp]);
+    expect((resCycle.body as SyncPushResponse).rejected).toEqual([{ op_id: orphanCycleOp.op_id, reason: 'missing_parent' }]);
+  });
+
+  it('rejects an override with an absent or empty routine_exercise_id as invalid_field, and the same for cycle_id', async () => {
+    const cookie = await signUp('cet-invalid-fk');
+    const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-invalid-fk');
+
+    const absentExOp = routineExerciseCycleTargetOp(randomUUID(), { cycle_id: cycleId, target_sets: 5 });
+    const absentExRes = await push(cookie, [absentExOp]);
+    expect((absentExRes.body as SyncPushResponse).rejected).toEqual([{ op_id: absentExOp.op_id, reason: 'invalid_field' }]);
+
+    const emptyExOp = routineExerciseCycleTargetOp(randomUUID(), { routine_exercise_id: '', cycle_id: cycleId, target_sets: 5 });
+    const emptyExRes = await push(cookie, [emptyExOp]);
+    expect((emptyExRes.body as SyncPushResponse).rejected).toEqual([{ op_id: emptyExOp.op_id, reason: 'invalid_field' }]);
+
+    const absentCycleOp = routineExerciseCycleTargetOp(randomUUID(), { routine_exercise_id: routineExerciseId, target_sets: 5 });
+    const absentCycleRes = await push(cookie, [absentCycleOp]);
+    expect((absentCycleRes.body as SyncPushResponse).rejected).toEqual([{ op_id: absentCycleOp.op_id, reason: 'invalid_field' }]);
+
+    const emptyCycleOp = routineExerciseCycleTargetOp(randomUUID(), { routine_exercise_id: routineExerciseId, cycle_id: '', target_sets: 5 });
+    const emptyCycleRes = await push(cookie, [emptyCycleOp]);
+    expect((emptyCycleRes.body as SyncPushResponse).rejected).toEqual([{ op_id: emptyCycleOp.op_id, reason: 'invalid_field' }]);
+  });
+
+  it('accepts target_sets: 5 with every other target_* omitted, and stores 5 plus four nulls', async () => {
+    const cookie = await signUp('cet-blank-others');
+    const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-blank-others');
+
+    const cetId = randomUUID();
+    const op = routineExerciseCycleTargetOp(cetId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 5 });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await routineExerciseCycleTargetRow(cetId);
+    expect(row?.target_sets).toBe(5);
+    expect(row?.target_rep_min).toBeNull();
+    expect(row?.target_rep_max).toBeNull();
+    expect(row?.target_rir).toBeNull();
+    expect(row?.target_rest_seconds).toBeNull();
+  });
+
+  it('rejects an override with target_rep_min: -1 as invalid_field', async () => {
+    const cookie = await signUp('cet-bad-rep-min');
+    const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-bad-rep-min');
+
+    const op = routineExerciseCycleTargetOp(randomUUID(), {
+      routine_exercise_id: routineExerciseId,
+      cycle_id: cycleId,
+      target_rep_min: -1,
+    });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
+  });
+
+  it('a second override for the same (routine_exercise_id, cycle_id) pair with a different id is rejected, the transaction rolls back, and the first row is unchanged', async () => {
+    const cookie = await signUp('cet-duplicate-pair');
+    const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-duplicate-pair');
+
+    const firstId = randomUUID();
+    const firstRes = await push(cookie, [
+      routineExerciseCycleTargetOp(firstId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 5 }),
+    ]);
+    expect((firstRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const dupeId = randomUUID();
+    const dupeOp = routineExerciseCycleTargetOp(dupeId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 3 });
+    const dupeRes = await push(cookie, [dupeOp]);
+    expect((dupeRes.body as SyncPushResponse).rejected).toEqual([{ op_id: dupeOp.op_id, reason: 'invalid_field' }]);
+    expect(await routineExerciseCycleTargetRow(dupeId)).toBeUndefined();
+
+    const first = await routineExerciseCycleTargetRow(firstId);
+    expect(first?.target_sets).toBe(5);
+  });
+
+  it('a PATCH naming target_sets: null (with the identity fields, required present on every op) sets that column to null and leaves the other four untouched', async () => {
+    const cookie = await signUp('cet-patch-clear');
+    const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-patch-clear');
+
+    const cetId = randomUUID();
+    const createRes = await push(cookie, [
+      routineExerciseCycleTargetOp(cetId, {
+        routine_exercise_id: routineExerciseId,
+        cycle_id: cycleId,
+        target_sets: 5,
+        target_rep_min: 8,
+        target_rep_max: 12,
+        target_rir: 2,
+        target_rest_seconds: 120,
+      }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const patchOp = routineExerciseCycleTargetOp(
+      cetId,
+      { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: null },
+      'PATCH',
+    );
+    const patchRes = await push(cookie, [patchOp]);
+    expect((patchRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const after = await routineExerciseCycleTargetRow(cetId);
+    expect(after?.target_sets).toBeNull();
+    expect(after?.target_rep_min).toBe(8);
+    expect(after?.target_rep_max).toBe(12);
+    expect(after?.target_rir).toBe(2);
+    expect(after?.target_rest_seconds).toBe(120);
+  });
+
+  it('an existing override cannot be reparented onto a different cycle by a PUT naming a different cycle_id — stored linkage wins', async () => {
+    const cookie = await signUp('cet-no-reparent');
+    const { routineId, routineExerciseId, cycleId: cycleA } = await seedRoutineDayExerciseCycle(cookie, 'cet-no-reparent');
+    const cycleB = randomUUID();
+    const cycleBRes = await push(cookie, [
+      routineCycleOp(cycleB, { routine_id: routineId, order_index: 1, name: 'Week 2', kind: 'training' }),
+    ]);
+    expect((cycleBRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const cetId = randomUUID();
+    const createRes = await push(cookie, [
+      routineExerciseCycleTargetOp(cetId, { routine_exercise_id: routineExerciseId, cycle_id: cycleA, target_sets: 5 }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const moveOp = routineExerciseCycleTargetOp(cetId, { routine_exercise_id: routineExerciseId, cycle_id: cycleB, target_sets: 5 });
+    const moveRes = await push(cookie, [moveOp]);
+    expect((moveRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await routineExerciseCycleTargetRow(cetId);
+    expect(row?.cycle_id).toBe(cycleA);
+  });
+
+  it('deleting the cycle applies, cascades away the override rows, and writes one sync_tombstone row per cascaded override', async () => {
+    const cookie = await signUp('cet-cycle-delete');
+    const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-cycle-delete');
+
+    const cetId = randomUUID();
+    const createRes = await push(cookie, [
+      routineExerciseCycleTargetOp(cetId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 5 }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const deleteOp = routineCycleOp(cycleId, {}, 'DELETE');
+    const res = await push(cookie, [deleteOp]);
+    expect((res.body as SyncPushResponse).applied).toEqual([deleteOp.op_id]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+    expect(await tombstoneCount([cycleId, cetId])).toBe(2);
+  });
+
+  it('deleting the exercise applies, cascades away its override rows, and writes one sync_tombstone row per cascaded override', async () => {
+    const cookie = await signUp('cet-exercise-delete');
+    const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-exercise-delete');
+
+    const cetId = randomUUID();
+    const createRes = await push(cookie, [
+      routineExerciseCycleTargetOp(cetId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 5 }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const deleteOp = routineExerciseOp(routineExerciseId, {}, 'DELETE');
+    const res = await push(cookie, [deleteOp]);
+    expect((res.body as SyncPushResponse).applied).toEqual([deleteOp.op_id]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+    expect(await tombstoneCount([routineExerciseId, cetId])).toBe(2);
+  });
+
+  it('a DELETE for an owned override applies and the row is gone; the exercise and the cycle both survive', async () => {
+    const cookie = await signUp('cet-direct-delete');
+    const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-direct-delete');
+
+    const cetId = randomUUID();
+    const createRes = await push(cookie, [
+      routineExerciseCycleTargetOp(cetId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 5 }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const deleteOp = routineExerciseCycleTargetOp(cetId, {}, 'DELETE');
+    const res = await push(cookie, [deleteOp]);
+    expect((res.body as SyncPushResponse).applied).toEqual([deleteOp.op_id]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+    expect(await routineExerciseRow(routineExerciseId)).toBeDefined();
+    expect(await routineCycleRow(cycleId)).toBeDefined();
   });
 });
