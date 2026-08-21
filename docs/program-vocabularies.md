@@ -84,3 +84,35 @@ Phase 8's progression engine writes to future cycle overrides only — never the
 past or current cycle — gated by `routine.progression_frozen` (D-17). That contract is fixed now,
 in writing, because it is what gives PROG-10 a concrete meaning; Phase 8 finalises the rule, not
 the target it writes to.
+
+## Snapshot on use (PROG-11)
+
+A logged workout is a record of what happened, not a projection of what the program currently
+says. That is one mechanism, not a feature: `addSessionExercise`
+(`apps/mobile/lib/db/log-set.ts`) resolves the prescription **once**, at the instant an exercise
+is added to a session, and copies the five resolved values onto `session_exercise`'s own
+`target_*` columns. Resolution runs through `resolveTarget` with the session's cycle — base row
+plus that cycle's override, in two selects — so what freezes is exactly what the builder was
+showing. Nothing re-reads `routine_exercise` or `routine_exercise_cycle_target` for a session
+afterwards; every later read of a logged prescription reads the snapshot.
+
+| Frozen | Where | When |
+|---|---|---|
+| `target_sets`, `target_rep_min`, `target_rep_max`, `target_rir`, `target_rest_seconds` | `session_exercise` | Once, at session-exercise creation |
+
+**Two columns deliberately carry no foreign key**, and this is what makes the guarantee hold in
+the database rather than only in the client:
+
+| Column | Points at | Why no FK |
+|---|---|---|
+| `session_exercise.routine_exercise_id` | `routine_exercise.id` | Traceability only. With an FK, deleting an exercise from a program would either cascade a logged session's row away or be blocked outright — a legitimate program edit turned into data loss or a wall. |
+| `workout_session.routine_day_id` | `routine_day.id` | Same. Deleting a day must stay a free edit; the session keeps the now-dangling id rather than losing its own row. |
+
+Both are plain `text` columns in `apps/api/src/db/schema/session.ts`. Adding a real foreign key
+to either one "for referential integrity" would trade an edit users expect to be free for either
+a cascade that destroys history or a constraint violation that blocks the edit. There is no
+routine version tree, revision history or copy-on-edit scheme anywhere in this schema — the
+snapshot is the whole mechanism, and a second one would contradict it. Both halves are asserted:
+`apps/mobile/lib/db/__tests__/log-set.test.ts`'s `PROG-11` block proves the client never
+re-derives a snapshot, and `apps/api/test/program-sync.e2e-spec.ts`'s `PROG-11` block proves
+Postgres never destroys one.
