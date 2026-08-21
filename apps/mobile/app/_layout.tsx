@@ -15,6 +15,7 @@ import '@/lib/export/export-training-data';
 
 import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { apiFetch, setSessionCredentialProvider } from '@/lib/api-client';
 import { authClient, getSessionCookieHeader } from '@/lib/auth-client';
 import { AUTH_ENDPOINT, clearCachedSession } from '@/lib/auth-storage';
@@ -97,7 +98,11 @@ export default function RootLayout() {
   }
 
   if (isWeb && isPending && !webBudgetElapsed) {
-    return <WebSessionSkeleton />;
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <WebSessionSkeleton />
+      </GestureHandlerRootView>
+    );
   }
 
   // D-02: the launch path never waits on the network. On native the Better Auth Expo plugin has
@@ -105,5 +110,5 @@ export default function RootLayout() {
   // the first frame. `isPending` is deliberately NOT gated on here for native — doing so would
   // reintroduce exactly the blocking cold start this project rejects.
 
-  return renderRootStack(signedIn);
+  return <GestureHandlerRootView style={{ flex: 1 }}>{renderRootStack(signedIn)}</GestureHandlerRootView>;
 }
