@@ -16,8 +16,9 @@ overrides:
   # expo-modules-core's wider ^0.10.0 range but not reanimated's narrower one), which throws
   # "Worklets (0.11.3) is not compatible with installed version of Reanimated (4.5.1)" at
   # reanimated's own module-init time on every platform, not just in Jest. Pinned to the latest
-  # 0.10.x release; react-native-worklets is NOT added to any package.json's own dependencies —
-  # it stays a transitive peer, per this plan's own checkpoint prohibition on promoting one.
+  # 0.10.x release; react-native-worklets is also declared as a direct dependency of
+  # apps/mobile at this same version — this override guards every other resolution path
+  # (transitive peers, future installs) from drifting off it.
   react-native-worklets: 0.10.4
 allowBuilds:
   esbuild: true
