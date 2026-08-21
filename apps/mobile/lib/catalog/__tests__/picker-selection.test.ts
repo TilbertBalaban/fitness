@@ -19,16 +19,16 @@ describe('toggleSelection', () => {
 });
 
 describe('formatSelectionCount', () => {
-  it('is "Add" at zero', () => {
-    expect(formatSelectionCount(0)).toBe('Add');
+  it('is "Add Exercises" at zero — the disabled resting state, per 04-UI-SPEC.md\'s Exercise Picker Modal section', () => {
+    expect(formatSelectionCount(0)).toBe('Add Exercises');
   });
 
-  it('is "Add 1 exercise" at one — the singular boundary', () => {
-    expect(formatSelectionCount(1)).toBe('Add 1 exercise');
+  it('is "Add Exercise" at one — the singular boundary, Title Case per 04-UI-SPEC.md', () => {
+    expect(formatSelectionCount(1)).toBe('Add Exercise');
   });
 
-  it('is "Add 4 exercises" at four — one step past the boundary', () => {
-    expect(formatSelectionCount(4)).toBe('Add 4 exercises');
+  it('is "Add 4 Exercises" at four — one step past the boundary', () => {
+    expect(formatSelectionCount(4)).toBe('Add 4 Exercises');
   });
 });
 

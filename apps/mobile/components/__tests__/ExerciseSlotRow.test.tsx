@@ -121,7 +121,7 @@ describe('formatSlotSummary', () => {
     );
   });
 
-  it('never collapses an equal rep min and max — always the {n}–{n} form, unlike the day-list formatSlotTargets', () => {
+  it('never collapses an equal rep min and max — always the {n}–{n} form', () => {
     expect(formatSlotSummary({ targetSets: 3, targetRepMin: 8, targetRepMax: 8, targetRir: null, targetRestSeconds: null })).toBe(
       '3 sets · 8–8 reps · — RIR · — rest',
     );

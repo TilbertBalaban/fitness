@@ -35,62 +35,6 @@ export function nextExpandedSlotId(current: string | null, tapped: string): stri
   return current === tapped ? null : tapped;
 }
 
-export interface SlotTargets {
-  targetSets: number | null;
-  targetRepMin: number | null;
-  targetRepMax: number | null;
-  targetRir: number | null;
-  targetRestSeconds: number | null;
-}
-
-function formatRepComponent(repMin: number | null, repMax: number | null): string | null {
-  if (repMin === null && repMax === null) return null;
-  if (repMin !== null && repMax !== null) {
-    return repMin === repMax ? `${repMin}` : `${repMin}-${repMax}`;
-  }
-  return `${repMin ?? repMax}`;
-}
-
-function formatRestComponent(totalSeconds: number): string {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')} rest`;
-}
-
-// Pure — the "what does a blank target mean" contract made visible: an unset target renders as an
-// em dash, never a silently-omitted line and never a zero. Equal rep min/max collapses to one
-// number ("3 x 8", not "3 x 8-8") — this is the interim list-row summary this task ships; the full
-// Exercise Slot Row (04-03/04-UI-SPEC.md) keeps the range visible even when min equals max, a
-// different, later component with a different contract.
-export function formatSlotTargets(slot: SlotTargets): string {
-  const { targetSets, targetRepMin, targetRepMax, targetRir, targetRestSeconds } = slot;
-
-  if (targetSets === null && targetRepMin === null && targetRepMax === null && targetRir === null && targetRestSeconds === null) {
-    return '—';
-  }
-
-  const repComponent = formatRepComponent(targetRepMin, targetRepMax);
-  const parts: string[] = [];
-
-  if (targetSets !== null && repComponent !== null) {
-    parts.push(`${targetSets} x ${repComponent}`);
-  } else if (targetSets !== null) {
-    parts.push(`${targetSets} sets`);
-  } else if (repComponent !== null) {
-    parts.push(`${repComponent} reps`);
-  }
-
-  if (targetRir !== null) {
-    parts.push(`RIR ${targetRir}`);
-  }
-
-  if (targetRestSeconds !== null) {
-    parts.push(formatRestComponent(targetRestSeconds));
-  }
-
-  return parts.join(' · ');
-}
-
 export default function ProgramsScreen() {
   const [routines, setRoutines] = useState<RoutineSummary[] | null>(null);
   const [failed, setFailed] = useState(false);

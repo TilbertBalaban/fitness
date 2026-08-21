@@ -25,7 +25,7 @@ jest.mock('../../../lib/db/programs/load-program', () => ({
 jest.mock('../../exercises', () => ({ loadCatalogRows: jest.fn() }));
 jest.mock('../../../lib/auth-client', () => ({ authClient: { useSession: () => ({ data: null }) } }));
 
-import { deriveProgramsScreenState, formatSlotTargets, nextExpandedSlotId } from '../programs';
+import { deriveProgramsScreenState, nextExpandedSlotId } from '../programs';
 import type { RoutineSummary } from '../../../lib/db/programs/create-routine';
 
 const oneRoutine: RoutineSummary = { id: 'r-1', name: 'Push Pull Legs', status: 'draft', goal: null };
@@ -46,32 +46,6 @@ describe('deriveProgramsScreenState', () => {
 
   it('is populated when at least one routine loaded', () => {
     expect(deriveProgramsScreenState({ failed: false, routines: [oneRoutine] })).toBe('populated');
-  });
-});
-
-describe('formatSlotTargets', () => {
-  it("is '—' when all five values are null — a blank target is unprescribed, never zero", () => {
-    expect(
-      formatSlotTargets({ targetSets: null, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null }),
-    ).toBe('—');
-  });
-
-  it('joins every present component with a middle dot when fully populated', () => {
-    expect(
-      formatSlotTargets({ targetSets: 3, targetRepMin: 8, targetRepMax: 12, targetRir: 1, targetRestSeconds: 120 }),
-    ).toBe('3 x 8-12 · RIR 1 · 2:00 rest');
-  });
-
-  it('collapses an equal rep min and max to one number — a fixed rep target, not a range', () => {
-    expect(
-      formatSlotTargets({ targetSets: 3, targetRepMin: 8, targetRepMax: 8, targetRir: null, targetRestSeconds: null }),
-    ).toBe('3 x 8');
-  });
-
-  it('renders sets alone as "{n} sets" when no rep target is set', () => {
-    expect(
-      formatSlotTargets({ targetSets: 3, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null }),
-    ).toBe('3 sets');
   });
 });
 

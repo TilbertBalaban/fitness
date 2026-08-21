@@ -88,30 +88,14 @@ export function ExercisePickerModalView({
   return (
     <View className="flex-1 bg-background">
       <View className="mt-xl gap-md px-lg">
-        <View className="flex-row items-center justify-between gap-sm">
-          <Pressable
-            onPress={onCancel}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-            style={{ minHeight: 48, justifyContent: 'center' }}
-          >
-            <Text className="text-body font-normal text-accent">Cancel</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={handleAdd}
-            disabled={addDisabled}
-            accessibilityRole="button"
-            accessibilityLabel="Add exercises to day"
-            accessibilityState={{ disabled: addDisabled }}
-            className={`items-center justify-center rounded-md px-md py-sm ${addDisabled ? 'bg-surface opacity-60' : 'bg-accent'}`}
-            style={{ minHeight: 48 }}
-          >
-            <Text className={`text-body font-semibold ${addDisabled ? 'text-foreground-muted' : 'text-white'}`}>
-              {formatSelectionCount(selectedIds.length)}
-            </Text>
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={onCancel}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
+          style={{ minHeight: 48, justifyContent: 'center', alignSelf: 'flex-start' }}
+        >
+          <Text className="text-body font-normal text-accent">Cancel</Text>
+        </Pressable>
 
         <Text className="text-heading font-semibold text-foreground">{`Add exercises to ${dayName}`}</Text>
 
@@ -137,73 +121,89 @@ export function ExercisePickerModalView({
         />
       </View>
 
-      {screenState === 'error' ? (
-        <View className="mt-xl items-center gap-sm px-lg">
-          <Text className="text-center text-heading font-semibold text-foreground">
-            {"Exercise catalog couldn't load"}
+      <View className="flex-1">
+        {screenState === 'error' ? (
+          <View className="mt-xl items-center gap-sm px-lg">
+            <Text className="text-center text-heading font-semibold text-foreground">
+              {"Exercise catalog couldn't load"}
+            </Text>
+            <Text className="mt-sm text-center text-body font-normal text-foreground-muted">
+              Restart the app to try again. Your saved exercises and history are safe.
+            </Text>
+          </View>
+        ) : screenState === 'loading' ? (
+          <View className="mt-xl gap-sm px-lg">
+            {Array.from({ length: SKELETON_ROW_COUNT }).map((_, index) => (
+              <View key={index} className="rounded-md bg-surface" style={{ height: 64 }} />
+            ))}
+          </View>
+        ) : screenState === 'empty' ? (
+          <View className="mt-xl items-center gap-sm px-lg">
+            <Text className="text-center text-heading font-semibold text-foreground">No exercises found</Text>
+            <Text className="text-center text-body font-normal text-foreground-muted">
+              Try a different search term or clear your filters.
+            </Text>
+            {hasActiveFilters(filters) ? (
+              <Pressable
+                onPress={onClearFilters}
+                accessibilityRole="button"
+                accessibilityLabel="Clear Filters"
+                className="items-center justify-center px-md"
+                style={{ minHeight: 48 }}
+              >
+                <Text className="text-body font-normal text-foreground">Clear Filters</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : (
+          <FlashList
+            data={results}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 32 }}
+            renderItem={({ item }: { item: PickerCatalogRow }) => {
+              const selected = selectedIds.includes(item.id);
+              return (
+                <View className="mb-sm">
+                  <Pressable
+                    onPress={() => onToggle(item.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    className="flex-row items-center gap-sm rounded-md"
+                    style={{ minHeight: 48 }}
+                  >
+                    <View className="flex-1">
+                      <ExerciseListRow
+                        name={item.name}
+                        imageUri={item.imageUri}
+                        localSource={getLocalCatalogImage(item.id)}
+                        tags={tagsByExerciseId.get(item.id) ?? []}
+                        onPress={() => onToggle(item.id)}
+                      />
+                    </View>
+                    {selected ? <Ionicons name="checkmark" size={24} color={colors.accent} /> : null}
+                  </Pressable>
+                </View>
+              );
+            }}
+          />
+        )}
+      </View>
+
+      <View className="border-t border-foreground-muted bg-background px-lg py-md">
+        <Pressable
+          onPress={handleAdd}
+          disabled={addDisabled}
+          accessibilityRole="button"
+          accessibilityLabel="Add exercises to day"
+          accessibilityState={{ disabled: addDisabled }}
+          className={`items-center justify-center rounded-md py-sm ${addDisabled ? 'bg-surface opacity-60' : 'bg-accent'}`}
+          style={{ minHeight: 48 }}
+        >
+          <Text className={`text-body font-semibold ${addDisabled ? 'text-foreground-muted' : 'text-white'}`}>
+            {formatSelectionCount(selectedIds.length)}
           </Text>
-          <Text className="mt-sm text-center text-body font-normal text-foreground-muted">
-            Restart the app to try again. Your saved exercises and history are safe.
-          </Text>
-        </View>
-      ) : screenState === 'loading' ? (
-        <View className="mt-xl gap-sm px-lg">
-          {Array.from({ length: SKELETON_ROW_COUNT }).map((_, index) => (
-            <View key={index} className="rounded-md bg-surface" style={{ height: 64 }} />
-          ))}
-        </View>
-      ) : screenState === 'empty' ? (
-        <View className="mt-xl items-center gap-sm px-lg">
-          <Text className="text-center text-heading font-semibold text-foreground">No exercises found</Text>
-          <Text className="text-center text-body font-normal text-foreground-muted">
-            Try a different search term or clear your filters.
-          </Text>
-          {hasActiveFilters(filters) ? (
-            <Pressable
-              onPress={onClearFilters}
-              accessibilityRole="button"
-              accessibilityLabel="Clear Filters"
-              className="items-center justify-center px-md"
-              style={{ minHeight: 48 }}
-            >
-              <Text className="text-body font-normal text-foreground">Clear Filters</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : (
-        <FlashList
-          data={results}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 32 }}
-          renderItem={({ item }: { item: PickerCatalogRow }) => {
-            const selected = selectedIds.includes(item.id);
-            return (
-              <View className="mb-sm">
-                <Pressable
-                  onPress={() => onToggle(item.id)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  className={`flex-row items-center gap-sm rounded-md border ${
-                    selected ? 'border-accent' : 'border-transparent'
-                  }`}
-                  style={{ minHeight: 48 }}
-                >
-                  <View className="flex-1">
-                    <ExerciseListRow
-                      name={item.name}
-                      imageUri={item.imageUri}
-                      localSource={getLocalCatalogImage(item.id)}
-                      tags={tagsByExerciseId.get(item.id) ?? []}
-                      onPress={() => onToggle(item.id)}
-                    />
-                  </View>
-                  {selected ? <Ionicons name="checkmark-circle" size={24} color={colors.accent} /> : null}
-                </Pressable>
-              </View>
-            );
-          }}
-        />
-      )}
+        </Pressable>
+      </View>
     </View>
   );
 }
