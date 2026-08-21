@@ -9,6 +9,7 @@ jest.mock('../../../lib/db/programs/create-routine', () => ({
 }));
 jest.mock('../../../lib/db/programs/days', () => ({
   addDay: jest.fn(),
+  addExercisesToDay: jest.fn(),
   renameDay: jest.fn(),
   removeDay: jest.fn(),
   removeExercise: jest.fn(),
@@ -17,8 +18,14 @@ jest.mock('../../../lib/db/programs/load-program', () => ({
   loadExerciseNameMap: jest.fn(),
   loadProgramTree: jest.fn(),
 }));
+// programs.tsx now imports ExercisePickerModal, whose top-level imports reach the exercises
+// screen (drizzle-orm/expo-router) and authClient (better-auth/react's ESM dist, which Jest's
+// transform cannot parse) — mocked before importing the screen module, same rationale as the
+// powersync mock above.
+jest.mock('../../exercises', () => ({ loadCatalogRows: jest.fn() }));
+jest.mock('../../../lib/auth-client', () => ({ authClient: { useSession: () => ({ data: null }) } }));
 
-import { deriveProgramsScreenState, formatSlotTargets } from '../programs';
+import { deriveProgramsScreenState, formatSlotTargets, nextExpandedSlotId } from '../programs';
 import type { RoutineSummary } from '../../../lib/db/programs/create-routine';
 
 const oneRoutine: RoutineSummary = { id: 'r-1', name: 'Push Pull Legs', status: 'draft', goal: null };
@@ -65,5 +72,19 @@ describe('formatSlotTargets', () => {
     expect(
       formatSlotTargets({ targetSets: 3, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null }),
     ).toBe('3 sets');
+  });
+});
+
+describe('nextExpandedSlotId', () => {
+  it('closes the open row when tapping the same id', () => {
+    expect(nextExpandedSlotId('a', 'a')).toBeNull();
+  });
+
+  it('switches to the tapped row — only one row expanded at a time', () => {
+    expect(nextExpandedSlotId('a', 'b')).toBe('b');
+  });
+
+  it('opens the tapped row when nothing was expanded', () => {
+    expect(nextExpandedSlotId(null, 'b')).toBe('b');
   });
 });
