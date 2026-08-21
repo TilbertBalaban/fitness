@@ -57,6 +57,7 @@ export const routine = sqliteTable('routine', {
   name: text('name').notNull(),
   goal: text('goal'),
   status: text('status').notNull(),
+  progressionFrozen: integer('progression_frozen', { mode: 'boolean' }).notNull(),
   source: text('source').notNull(),
   createdFromTemplateId: text('created_from_template_id'),
   archivedAt: text('archived_at'),
@@ -226,10 +227,15 @@ export const progressPhoto = sqliteTable('progress_photo', {
   serverSeq: integer('server_seq'),
 });
 
+// id is the primary key (not userId) and is deterministically equal to user_id — mirrors
+// apps/api/src/db/schema/preference.ts's option-a wire contract; applyBatch/PowerSync both key
+// every managed table on a single TEXT id column.
 export const userPreference = sqliteTable('user_preference', {
-  userId: text('user_id').primaryKey(),
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
   weightUnit: text('weight_unit').notNull(),
   defaultEquipmentProfileId: text('default_equipment_profile_id'),
+  activeRoutineId: text('active_routine_id'),
   serverSeq: integer('server_seq'),
 });
 

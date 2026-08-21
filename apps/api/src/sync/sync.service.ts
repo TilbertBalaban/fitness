@@ -6,6 +6,7 @@ import {
   EQUIPMENT_TYPES as EQUIPMENT_TYPE_TUPLE,
   MOVEMENT_PATTERNS as MOVEMENT_PATTERN_TUPLE,
   ROUTINE_STATUSES as ROUTINE_STATUS_TUPLE,
+  WEIGHT_UNITS as WEIGHT_UNIT_TUPLE,
   type SyncCrudOp,
   type SyncPushResponse,
   type SyncRejectionReason,
@@ -20,6 +21,7 @@ import {
   routine,
   routineDay,
   routineExercise,
+  userPreference,
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { recordConflict, recordTombstone, isTombstoned } from './conflict-log';
@@ -32,6 +34,7 @@ import {
   ROUTINE_PATCH_FIELDS,
   SESSION_EXERCISE_PATCH_FIELDS,
   USER_EXERCISE_PREFERENCE_PATCH_FIELDS,
+  USER_PREFERENCE_PATCH_FIELDS,
   WORKOUT_SESSION_PATCH_FIELDS,
   type ExerciseValues,
   type LoggedSetValues,
@@ -40,6 +43,7 @@ import {
   type RoutineValues,
   type SessionExerciseValues,
   type UserExercisePreferenceValues,
+  type UserPreferenceValues,
   type WorkoutSessionValues,
 } from './patch-update-set';
 
@@ -52,6 +56,7 @@ const TABLE_MAP = {
   routine: routine,
   routine_day: routineDay,
   routine_exercise: routineExercise,
+  user_preference: userPreference,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -67,11 +72,12 @@ function isMappedTable(type: string): type is MappedTable {
 // unlike exercise/routine which carry logged history other tables reference by id.
 const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 
-// exercise and user_exercise_preference are singleton aggregate roots: each is exactly one op
-// with no synced children (session_exercise.exercise_id is a foreign-key reference for reads,
-// never a sync-parent relationship). Every branch below keys off this set rather than repeating
-// two string comparisons (RESEARCH.md Pattern 2).
-const SINGLETON_ROOT_TYPES = new Set<string>(['exercise', 'user_exercise_preference']);
+// exercise, user_exercise_preference and user_preference are singleton aggregate roots: each is
+// exactly one op with no synced children (session_exercise.exercise_id is a foreign-key reference
+// for reads, never a sync-parent relationship; user_preference.active_routine_id is a cross-table
+// pointer checked separately below, never a sync-parent relationship either). Every branch below
+// keys off this set rather than repeating three string comparisons (RESEARCH.md Pattern 2).
+const SINGLETON_ROOT_TYPES = new Set<string>(['exercise', 'user_exercise_preference', 'user_preference']);
 
 // An aggregate root owns synced children and is looked up in its own table; a singleton root
 // (SINGLETON_ROOT_TYPES) owns none; everything else chains to a root through rootFamilyOf.
@@ -89,6 +95,7 @@ const ROOT_TABLE_BY_TYPE = {
   routine: routine,
   exercise: exercise,
   user_exercise_preference: userExercisePreference,
+  user_preference: userPreference,
 } as const;
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
@@ -115,6 +122,7 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   routine: 0,
   routine_day: 1,
   routine_exercise: 2,
+  user_preference: 0,
 };
 
 const SESSION_STATUSES = new Set(['in_progress', 'completed', 'discarded']);
@@ -126,6 +134,7 @@ const LOAD_TYPES = new Set<string>(LOAD_TYPE_TUPLE);
 const EQUIPMENT_TYPES = new Set<string>(EQUIPMENT_TYPE_TUPLE);
 const MOVEMENT_PATTERNS = new Set<string>(MOVEMENT_PATTERN_TUPLE);
 const ROUTINE_STATUSES = new Set<string>(ROUTINE_STATUS_TUPLE);
+const WEIGHT_UNITS = new Set<string>(WEIGHT_UNIT_TUPLE);
 
 interface WorkoutSessionOpData {
   routine_day_id?: string | null;
@@ -188,15 +197,25 @@ interface UserExercisePreferenceOpData {
   updated_at?: string;
 }
 
-// progression_frozen is deliberately absent — that column arrives in 04-04; adding its field here
-// would be a forward reference to a column that does not exist yet.
 interface RoutineOpData {
   name?: string;
   goal?: string | null;
   status?: string;
+  // Independent of status and of user_preference.active_routine_id (D-16) — a program that is
+  // both active and frozen must be representable, which a single status enum could not express.
+  progression_frozen?: boolean;
   source?: string;
   created_from_template_id?: string | null;
   archived_at?: string | null;
+}
+
+interface UserPreferenceOpData {
+  weight_unit?: string;
+  default_equipment_profile_id?: string | null;
+  active_routine_id?: string | null;
+  // Never read — accepted only so a present user_id key does not crash the presence check in
+  // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
+  user_id?: unknown;
 }
 
 interface RoutineDayOpData {
@@ -353,9 +372,31 @@ function toRoutineValues(id: string, userId: string, data: Record<string, unknow
     name: d.name ?? '',
     goal: d.goal ?? null,
     status: d.status ?? 'draft',
+    progressionFrozen: d.progression_frozen ?? false,
     source: 'user',
     createdFromTemplateId: d.created_from_template_id ?? null,
     archivedAt: d.archived_at ? new Date(d.archived_at) : null,
+  };
+}
+
+// userId always comes from the authenticated session argument, never from data.user_id — a
+// user_preference row's id IS its owner's id (the option-a wire contract), so ownership is
+// resolved before this function ever runs; this function only shapes the row, it never decides
+// who owns it. weightUnit falls back to 'kg' on insert (matching the schema's own notNull
+// default-less column — a PUT must always name a valid unit, but a PATCH that omits it must not
+// clobber an existing row's unit, which is patchAwareSet's job, not this function's).
+function toUserPreferenceValues(
+  id: string,
+  userId: string,
+  data: Record<string, unknown> | null | undefined,
+): UserPreferenceValues {
+  const d = (data ?? {}) as UserPreferenceOpData;
+  return {
+    id,
+    userId,
+    weightUnit: d.weight_unit ?? 'kg',
+    defaultEquipmentProfileId: d.default_equipment_profile_id ?? null,
+    activeRoutineId: d.active_routine_id ?? null,
   };
 }
 
@@ -540,6 +581,7 @@ function hasInvalidField(op: SyncCrudOp): boolean {
     // source is not validated here — toRoutineValues forces it, exactly as it forces isCustom
     // for exercise.
     if (d.name !== undefined && !(typeof d.name === 'string' && d.name.trim().length > 0)) return true;
+    if (d.progression_frozen !== undefined && typeof d.progression_frozen !== 'boolean') return true;
     return false;
   }
 
@@ -549,6 +591,21 @@ function hasInvalidField(op: SyncCrudOp): boolean {
 
   if (op.type === 'routine_exercise') {
     return isInvalidRoutineExercise(data as RoutineExerciseOpData);
+  }
+
+  if (op.type === 'user_preference') {
+    const d = data as UserPreferenceOpData;
+    if (d.weight_unit !== undefined && !(typeof d.weight_unit === 'string' && WEIGHT_UNITS.has(d.weight_unit))) {
+      return true;
+    }
+    if (
+      d.active_routine_id !== undefined &&
+      d.active_routine_id !== null &&
+      typeof d.active_routine_id !== 'string'
+    ) {
+      return true;
+    }
+    return false;
   }
 
   return false;
@@ -611,7 +668,7 @@ export class SyncService {
         if (results[index]) alreadyTombstonedKeys.add(`${op.type}:${op.id}`);
       });
     }
-    const remaining: SyncCrudOp[] = [];
+    let remaining: SyncCrudOp[] = [];
     for (const op of workable) {
       if (op.op === 'DELETE' && alreadyTombstonedKeys.has(`${op.type}:${op.id}`)) {
         applied.push(op.op_id);
@@ -621,6 +678,44 @@ export class SyncService {
     }
     if (remaining.length === 0) {
       return { applied, rejected, server_seq: highestServerSeq.toString() };
+    }
+
+    // user_preference.active_routine_id is a cross-table pointer, not a sync-parent relationship
+    // (SINGLETON_ROOT_TYPES), so it is never resolved through the aggregate-root machinery below —
+    // checked once here, batched as a single inArray query over every active_routine_id named in
+    // this batch (never one query per op, T-04-18). A pointer to a routine the user does not own
+    // is rejected before the op ever reaches the apply loop: storing it would leak that routine's
+    // existence to the pusher and point the Home tab's query at a row it can never read.
+    const userPreferenceOpsNamingPointer = remaining.filter(
+      (op) => op.type === 'user_preference' && op.op !== 'DELETE',
+    );
+    const activeRoutineIdsToCheck = new Set<string>();
+    for (const op of userPreferenceOpsNamingPointer) {
+      const activeRoutineId = (op.data as UserPreferenceOpData | null | undefined)?.active_routine_id;
+      if (typeof activeRoutineId === 'string') activeRoutineIdsToCheck.add(activeRoutineId);
+    }
+    if (activeRoutineIdsToCheck.size > 0) {
+      const ownerRows = await this.db
+        .select({ id: routine.id, userId: routine.userId })
+        .from(routine)
+        .where(inArray(routine.id, [...activeRoutineIdsToCheck]));
+      const routineOwnerById = new Map(ownerRows.map((row) => [row.id, row.userId]));
+
+      const filteredRemaining: SyncCrudOp[] = [];
+      for (const op of remaining) {
+        if (op.type === 'user_preference' && op.op !== 'DELETE') {
+          const activeRoutineId = (op.data as UserPreferenceOpData | null | undefined)?.active_routine_id;
+          if (typeof activeRoutineId === 'string' && routineOwnerById.get(activeRoutineId) !== userId) {
+            rejected.push({ op_id: op.op_id, reason: 'not_owner' });
+            continue;
+          }
+        }
+        filteredRemaining.push(op);
+      }
+      remaining = filteredRemaining;
+      if (remaining.length === 0) {
+        return { applied, rejected, server_seq: highestServerSeq.toString() };
+      }
     }
 
     const sessionExerciseOps = remaining.filter((op) => op.type === 'session_exercise');
@@ -862,9 +957,14 @@ export class SyncService {
         (op) => op.id === root && (AGGREGATE_ROOT_TYPES.has(op.type) || SINGLETON_ROOT_TYPES.has(op.type)),
       );
 
-      // The existing row, if any, is always authoritative — a PUT for an id that already exists
-      // under another user is a takeover attempt, not a fresh insert, regardless of who pushed it.
-      let owner: string | null | undefined = existingOwnerByRoot.get(root);
+      // A user_preference row's id IS its owner's id (the option-a wire contract) — its owner is
+      // resolved to the root id directly, with no database read, and never routed through
+      // existingOwnerByRoot's "row absent means adoptable" path below, which would let a push
+      // claim another user's preference row before it exists (T-04-17). The existing row, if any,
+      // is otherwise always authoritative — a PUT for an id that already exists under another user
+      // is a takeover attempt, not a fresh insert, regardless of who pushed it.
+      let owner: string | null | undefined =
+        rootTypeByRootId.get(root) === 'user_preference' ? root : existingOwnerByRoot.get(root);
 
       // A stored owner of null (only possible for exercise, whose userId column is nullable) means
       // a shared/seeded row exists and nobody owns it — never adoptable by the pushing user. This
@@ -1048,7 +1148,9 @@ export class SyncService {
                         ? toRoutineValues(op.id, userId, op.data)
                         : op.type === 'routine_day'
                           ? toRoutineDayValues(op.id, resolveRoutineIdForRoutineDay(op.id) ?? root, op.data)
-                          : toRoutineExerciseValues(op.id, resolveRoutineDayIdForRoutineExercise(op.id) ?? '', op.data);
+                          : op.type === 'routine_exercise'
+                            ? toRoutineExerciseValues(op.id, resolveRoutineDayIdForRoutineExercise(op.id) ?? '', op.data)
+                            : toUserPreferenceValues(op.id, userId, op.data);
 
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
@@ -1128,7 +1230,7 @@ export class SyncService {
                 target: routineExercise.id,
                 set: patchAwareSet(op, routineExerciseValues, ROUTINE_EXERCISE_PATCH_FIELDS),
               });
-          } else {
+          } else if (op.type === 'routine') {
             // routine — the aggregate root the tracer proves. Carries server_seq like exercise and
             // user_exercise_preference (it is an aggregate root), unlike session_exercise/logged_set.
             const nextSeq = sql`nextval('sync_seq')`;
@@ -1141,6 +1243,22 @@ export class SyncService {
                 set: { ...patchAwareSet(op, routineValues, ROUTINE_PATCH_FIELDS), serverSeq: nextSeq },
               })
               .returning({ serverSeq: routine.serverSeq });
+            const seqValue = BigInt(serverSeq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else {
+            // user_preference — a fourth singleton root (SINGLETON_ROOT_TYPES), inserted/upserted
+            // the same shape as user_exercise_preference: server_seq on insert and on the conflict
+            // set, since a singleton root carries its own server_seq like any other aggregate root.
+            const nextSeq = sql`nextval('sync_seq')`;
+            const userPreferenceValues = values as UserPreferenceValues;
+            const [{ serverSeq }] = await tx
+              .insert(userPreference)
+              .values({ ...userPreferenceValues, serverSeq: nextSeq })
+              .onConflictDoUpdate({
+                target: userPreference.id,
+                set: { ...patchAwareSet(op, userPreferenceValues, USER_PREFERENCE_PATCH_FIELDS), serverSeq: nextSeq },
+              })
+              .returning({ serverSeq: userPreference.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           }

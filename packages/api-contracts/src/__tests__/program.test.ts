@@ -5,6 +5,15 @@ describe('ROUTINE_STATUSES', () => {
   it('deep-equals [draft, ready] in that exact order', () => {
     expect(ROUTINE_STATUSES).toEqual(['draft', 'ready']);
   });
+
+  // The tripwire on this plan's own prohibitions: active/frozen/archived each live on a different
+  // column (user_preference.active_routine_id, routine.progression_frozen, routine.archived_at)
+  // and must never be reintroduced as a third/fourth status value — see docs/program-vocabularies.md.
+  it('contains neither active, frozen, nor archived', () => {
+    expect((ROUTINE_STATUSES as readonly string[]).includes('active')).toBe(false);
+    expect((ROUTINE_STATUSES as readonly string[]).includes('frozen')).toBe(false);
+    expect((ROUTINE_STATUSES as readonly string[]).includes('archived')).toBe(false);
+  });
 });
 
 describe('routine push classification', () => {

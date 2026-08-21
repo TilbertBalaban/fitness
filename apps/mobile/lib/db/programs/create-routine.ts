@@ -28,6 +28,7 @@ export async function createRoutine(input: CreateRoutineInput, db: WriteDb = get
     name,
     goal: input.goal ?? null,
     status: 'draft',
+    progressionFrozen: false,
     source: 'user',
     createdFromTemplateId: input.createdFromTemplateId ?? null,
     archivedAt: null,

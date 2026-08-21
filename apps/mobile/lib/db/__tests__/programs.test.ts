@@ -44,6 +44,7 @@ describe('createRoutine', () => {
       name: 'Push Pull Legs',
       goal: null,
       status: 'draft',
+      progressionFrozen: false,
       source: 'user',
       createdFromTemplateId: null,
       archivedAt: null,

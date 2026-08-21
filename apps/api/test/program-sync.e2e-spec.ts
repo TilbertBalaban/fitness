@@ -188,6 +188,40 @@ async function seedRoutineAndDay(cookie: string, tag: string): Promise<{ routine
   return { routineId, dayId };
 }
 
+// The real user id behind a session cookie — extracted through a workout_session push, mirroring
+// the existing "a PUT naming a different user's user_id..." test's own pattern, since better-auth
+// never hands the test the raw id directly.
+async function realUserId(cookie: string, tag: string): Promise<string> {
+  const sessionId = randomUUID();
+  await push(cookie, [workoutSessionOp(sessionId)]);
+  return (await workoutSessionRow(sessionId))!.user_id;
+}
+
+function userPreferenceOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return { op_id: randomUUID(), op, type: 'user_preference', id, data };
+}
+
+interface UserPreferenceRow {
+  id: string;
+  user_id: string;
+  weight_unit: string;
+  default_equipment_profile_id: string | null;
+  active_routine_id: string | null;
+}
+
+async function userPreferenceRow(userId: string): Promise<UserPreferenceRow | undefined> {
+  const { rows } = await pg.query(
+    'SELECT id, user_id, weight_unit, default_equipment_profile_id, active_routine_id FROM user_preference WHERE user_id = $1',
+    [userId],
+  );
+  return rows[0];
+}
+
+async function userPreferenceCount(userId: string): Promise<number> {
+  const { rows } = await pg.query('SELECT count(*)::int AS n FROM user_preference WHERE user_id = $1', [userId]);
+  return rows[0].n;
+}
+
 beforeAll(async () => {
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
@@ -585,5 +619,161 @@ describe('routine_day / routine_exercise sync (e2e)', () => {
     expect(await routineExerciseRow(exId)).toBeUndefined();
     expect(await routineRow(routineId)).toBeDefined();
     expect(await tombstoneCount([dayId, exId])).toBe(2);
+  });
+
+  it('a routine PATCH naming only progression_frozen sets the flag and leaves status/archived_at/name untouched, and a following PATCH naming only status leaves progression_frozen true', async () => {
+    const cookie = await signUp('routine-freeze');
+    const routineId = randomUUID();
+    createdRoutineIds.push(routineId);
+    const createRes = await push(cookie, [routineOp(routineId, { name: 'Freeze Me', status: 'draft' })]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const freezeOp = routineOp(routineId, { progression_frozen: true }, 'PATCH');
+    const freezeRes = await push(cookie, [freezeOp]);
+    expect((freezeRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const afterFreeze = await routineRow(routineId);
+    expect(afterFreeze?.status).toBe('draft');
+    expect(afterFreeze?.name).toBe('Freeze Me');
+    expect(afterFreeze?.archived_at).toBeNull();
+    const { rows: frozenRows } = await pg.query('SELECT progression_frozen FROM routine WHERE id = $1', [routineId]);
+    expect(frozenRows[0].progression_frozen).toBe(true);
+
+    const statusOp = routineOp(routineId, { status: 'ready' }, 'PATCH');
+    const statusRes = await push(cookie, [statusOp]);
+    expect((statusRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const afterStatus = await routineRow(routineId);
+    expect(afterStatus?.status).toBe('ready');
+    const { rows: stillFrozenRows } = await pg.query('SELECT progression_frozen FROM routine WHERE id = $1', [routineId]);
+    expect(stillFrozenRows[0].progression_frozen).toBe(true);
+  });
+});
+
+describe('user_preference sync (e2e)', () => {
+  it('applies a PUT with id equal to the pushing user\'s id and an owned active_routine_id, and SELECT returns one row with that user_id and pointer', async () => {
+    const cookie = await signUp('pref-put-insert');
+    const userId = await realUserId(cookie, 'pref-put-insert');
+    const { routineId } = await seedRoutineAndDay(cookie, 'pref-put-insert');
+
+    const op = userPreferenceOp(userId, { weight_unit: 'kg', active_routine_id: routineId });
+    const res = await push(cookie, [op]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([op.op_id]);
+    expect(body.rejected).toEqual([]);
+
+    const row = await userPreferenceRow(userId);
+    expect(row).toBeDefined();
+    expect(row?.id).toBe(userId);
+    expect(row?.user_id).toBe(userId);
+    expect(row?.weight_unit).toBe('kg');
+    expect(row?.active_routine_id).toBe(routineId);
+  });
+
+  it('a second PUT naming a different owned routine leaves exactly one row, now pointing at the second routine', async () => {
+    const cookie = await signUp('pref-reactivate');
+    const userId = await realUserId(cookie, 'pref-reactivate');
+    const { routineId: routineA } = await seedRoutineAndDay(cookie, 'pref-reactivate-a');
+    const { routineId: routineB } = await seedRoutineAndDay(cookie, 'pref-reactivate-b');
+
+    const firstRes = await push(cookie, [userPreferenceOp(userId, { weight_unit: 'kg', active_routine_id: routineA })]);
+    expect((firstRes.body as SyncPushResponse).rejected).toEqual([]);
+    expect((await userPreferenceRow(userId))?.active_routine_id).toBe(routineA);
+
+    const secondRes = await push(cookie, [userPreferenceOp(userId, { weight_unit: 'kg', active_routine_id: routineB })]);
+    expect((secondRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await userPreferenceCount(userId)).toBe(1);
+    expect((await userPreferenceRow(userId))?.active_routine_id).toBe(routineB);
+  });
+
+  it('rejects a PUT whose id is another user\'s id with not_owner, and that user\'s row is unchanged', async () => {
+    const cookieA = await signUp('pref-owner-a');
+    const cookieB = await signUp('pref-attacker-b');
+    const userIdA = await realUserId(cookieA, 'pref-owner-a');
+
+    const seedRes = await push(cookieA, [userPreferenceOp(userIdA, { weight_unit: 'kg' })]);
+    expect((seedRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const attackOp = userPreferenceOp(userIdA, { weight_unit: 'lb' });
+    const res = await push(cookieB, [attackOp]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([]);
+    expect(body.rejected).toEqual([{ op_id: attackOp.op_id, reason: 'not_owner' }]);
+
+    expect((await userPreferenceRow(userIdA))?.weight_unit).toBe('kg');
+  });
+
+  it('a PUT whose data names a different user_id is stored with user_id equal to the pusher', async () => {
+    const pusherCookie = await signUp('pref-pusher');
+    const otherCookie = await signUp('pref-named-other');
+    const pusherUserId = await realUserId(pusherCookie, 'pref-pusher');
+    const otherUserId = await realUserId(otherCookie, 'pref-named-other');
+    expect(otherUserId).not.toBe(pusherUserId);
+
+    const op = userPreferenceOp(pusherUserId, { weight_unit: 'kg', user_id: otherUserId });
+    const res = await push(pusherCookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await userPreferenceRow(pusherUserId);
+    expect(row?.user_id).toBe(pusherUserId);
+  });
+
+  it('rejects a PUT naming active_routine_id of a routine owned by a different user, and stores nothing', async () => {
+    const ownerCookie = await signUp('pref-pointer-owner');
+    const attackerCookie = await signUp('pref-pointer-attacker');
+    const attackerUserId = await realUserId(attackerCookie, 'pref-pointer-attacker');
+    const { routineId: foreignRoutineId } = await seedRoutineAndDay(ownerCookie, 'pref-pointer-owner');
+
+    const op = userPreferenceOp(attackerUserId, { weight_unit: 'kg', active_routine_id: foreignRoutineId });
+    const res = await push(attackerCookie, [op]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([]);
+    // not_owner: the pointer names a routine the pusher does not own — the same reason a direct
+    // ownership takeover attempt is rejected, and terminal (retrying the identical op can never
+    // succeed while the routine belongs to someone else).
+    expect(body.rejected).toEqual([{ op_id: op.op_id, reason: 'not_owner' }]);
+    expect(await userPreferenceRow(attackerUserId)).toBeUndefined();
+  });
+
+  it('a PATCH naming only active_routine_id: null clears the pointer and leaves weight_unit untouched', async () => {
+    const cookie = await signUp('pref-clear-pointer');
+    const userId = await realUserId(cookie, 'pref-clear-pointer');
+    const { routineId } = await seedRoutineAndDay(cookie, 'pref-clear-pointer');
+
+    const createRes = await push(cookie, [userPreferenceOp(userId, { weight_unit: 'lb', active_routine_id: routineId })]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const clearOp = userPreferenceOp(userId, { active_routine_id: null }, 'PATCH');
+    const clearRes = await push(cookie, [clearOp]);
+    expect((clearRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await userPreferenceRow(userId);
+    expect(row?.active_routine_id).toBeNull();
+    expect(row?.weight_unit).toBe('lb');
+  });
+
+  it('applies a batch containing one routine PUT and one user_preference PUT — two independent roots in one batch', async () => {
+    const cookie = await signUp('pref-mixed-batch');
+    const userId = await realUserId(cookie, 'pref-mixed-batch');
+    // Activated pointer targets an already-existing owned routine (seeded via its own push) —
+    // the unowned-pointer check reads the routine table directly, so a routine created in the SAME
+    // batch as the op that activates it is a distinct, not-yet-covered case (Task 3 does not claim
+    // same-batch create-then-activate; this test proves the two-independent-roots claim only).
+    const { routineId: activatedRoutineId } = await seedRoutineAndDay(cookie, 'pref-mixed-batch-active');
+    const newRoutineId = randomUUID();
+    createdRoutineIds.push(newRoutineId);
+
+    const batch: SyncCrudOp[] = [
+      routineOp(newRoutineId, { name: 'Mixed Batch Program', status: 'draft' }),
+      userPreferenceOp(userId, { weight_unit: 'kg', active_routine_id: activatedRoutineId }),
+    ];
+    const res = await push(cookie, batch);
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toEqual([]);
+    expect(body.applied).toHaveLength(2);
+
+    expect(await routineRow(newRoutineId)).toBeDefined();
+    expect((await userPreferenceRow(userId))?.active_routine_id).toBe(activatedRoutineId);
   });
 });

@@ -273,9 +273,12 @@ async function ensureRoutine(userId: string, routineId: string): Promise<void> {
   // Idempotent: clears any prior run's routine scaffolding for this user before recreating it.
   // Cascades to routine_day/routine_exercise at the database level.
   await db.execute(sql`DELETE FROM routine WHERE id = ${routineId}`);
+  // 'ready', not 'active' — routine_status_check rejects 'active' outright (D-15). This corpus's
+  // routine being the one the lifter is running is now expressed through
+  // user_preference.active_routine_id (ensureUserPreference below), never through status.
   await db.execute(sql`
     INSERT INTO routine (id, user_id, name, status, source)
-    VALUES (${routineId}, ${userId}, 'Seeded Training Block', 'active', 'seed')
+    VALUES (${routineId}, ${userId}, 'Seeded Training Block', 'ready', 'seed')
   `);
   for (const day of ROUTINE_DAYS) {
     const dayId = `${routineId}-${day.slug}`;
@@ -293,6 +296,19 @@ async function ensureRoutine(userId: string, routineId: string): Promise<void> {
       `);
     }
   }
+}
+
+// Expresses "this seeded routine is the one being run" through the pointer, matching D-14's
+// structural rule: activation lives on user_preference.active_routine_id, never on routine.status.
+// id is deterministically the user's own id (option-a's wire contract) — upserted on user_id, not
+// inserted blind, since a real account's row (created by any future write path) must never be
+// duplicated by a corpus regeneration.
+async function ensureUserPreference(userId: string, routineId: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO user_preference (id, user_id, weight_unit, active_routine_id)
+    VALUES (${userId}, ${userId}, 'kg', ${routineId})
+    ON CONFLICT (user_id) DO UPDATE SET active_routine_id = EXCLUDED.active_routine_id
+  `);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -521,6 +537,7 @@ export async function generateCorpus(options: GenerateCorpusOptions): Promise<Ge
 
   const routineId = `seed-routine-${userId}`;
   await ensureRoutine(userId, routineId);
+  await ensureUserPreference(userId, routineId);
 
   const rng = mulberry32(seedFor(CORPUS_SHAPE.seed, options.email));
   const generateId = makeIdGenerator(rng);
