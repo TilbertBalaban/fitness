@@ -87,6 +87,51 @@ describe('exercises route hoisting (WR-03 regression)', () => {
   });
 });
 
+describe('programs route hoisting (T-04-52 regression)', () => {
+  it('sanity: the real app directory contains the programs segment layout', () => {
+    expect(realKeys).toContain('./programs/_layout.tsx');
+  });
+
+  describe('Case A: the real app directory', () => {
+    const tree = buildRouteTree(realKeys);
+
+    it('has exactly one root-level child named programs, of type layout', () => {
+      const programsChildren = tree.children.filter((child) => child.route === 'programs');
+      expect(programsChildren).toHaveLength(1);
+      expect(programsChildren[0].type).toBe('layout');
+    });
+
+    it('nests the library and new routes under the programs node', () => {
+      const programsNode = tree.children.find((child) => child.route === 'programs')!;
+      const childRoutes = programsNode.children.map((child) => child.route).sort();
+      expect(childRoutes).toEqual(['library', 'new']);
+    });
+
+    it('has no root-level child whose route starts with programs/', () => {
+      const leaked = tree.children.filter((child) => child.route.startsWith('programs/'));
+      expect(leaked).toEqual([]);
+    });
+  });
+
+  describe('Case B: the same list with the segment layout removed', () => {
+    const bypassKeys = realKeys.filter((key) => key !== './programs/_layout.tsx');
+    const tree = buildRouteTree(bypassKeys);
+
+    it('hoists both programs routes to the root stack as programs/-prefixed siblings', () => {
+      const leakedRoutes = tree.children
+        .filter((child) => child.route.startsWith('programs/'))
+        .map((child) => child.route)
+        .sort();
+      expect(leakedRoutes).toEqual(['programs/library', 'programs/new']);
+    });
+
+    it('has no root-level child named exactly programs — the protected Stack.Screen matches nothing', () => {
+      const programsChildren = tree.children.filter((child) => child.route === 'programs');
+      expect(programsChildren).toHaveLength(0);
+    });
+  });
+});
+
 type AnyElement = ReactElement<Record<string, unknown>>;
 type Entry = { element: AnyElement; ancestors: AnyElement[] };
 
@@ -133,5 +178,61 @@ describe('root stack guard boundary (WR-03 regression)', () => {
       (entry) => entry.element.props.name === 'exercises' && !entry.ancestors.some(isProtectedReactElement),
     );
     expect(unprotected).toEqual([]);
+  });
+});
+
+describe('programs segment guard boundary (T-04-52)', () => {
+  it.each([false, true])('guard=%s: the programs screen has a protected ancestor whose guard prop matches signedIn', (signedIn) => {
+    const entries = findWithAncestors(renderRootStack(signedIn));
+    const programsEntries = entries.filter((entry) => entry.element.props.name === 'programs');
+
+    // Exactly one registration: a second would be a second guard carrying its own condition, which
+    // is the failure mode the single-segment pattern exists to make impossible.
+    expect(programsEntries).toHaveLength(1);
+
+    const protectedAncestor = programsEntries[0].ancestors.find(isProtectedReactElement);
+    expect(protectedAncestor).toBeDefined();
+    expect((protectedAncestor as ReactElement<{ guard: boolean }>).props.guard).toBe(signedIn);
+  });
+
+  it.each([false, true])('guard=%s: programs shares the (tabs) and exercises protected ancestor', (signedIn) => {
+    const entries = findWithAncestors(renderRootStack(signedIn));
+
+    const programsAncestor = entries.find((entry) => entry.element.props.name === 'programs')!.ancestors.find(isProtectedReactElement);
+    const tabsAncestor = entries.find((entry) => entry.element.props.name === '(tabs)')!.ancestors.find(isProtectedReactElement);
+    const exercisesAncestor = entries.find((entry) => entry.element.props.name === 'exercises')!.ancestors.find(isProtectedReactElement);
+
+    expect(programsAncestor).toBe(tabsAncestor);
+    expect(programsAncestor).toBe(exercisesAncestor);
+  });
+
+  it.each([false, true])('guard=%s: no programs screen exists outside a protected boundary', (signedIn) => {
+    const entries = findWithAncestors(renderRootStack(signedIn));
+
+    const unprotected = entries.filter(
+      (entry) => entry.element.props.name === 'programs' && !entry.ancestors.some(isProtectedReactElement),
+    );
+    expect(unprotected).toEqual([]);
+  });
+});
+
+describe('protected set membership', () => {
+  function screenNamesUnderGuard(signedIn: boolean, guardValue: boolean): string[] {
+    const entries = findWithAncestors(renderRootStack(signedIn));
+    return entries
+      .filter((entry) => {
+        const ancestor = entry.ancestors.find(isProtectedReactElement) as ReactElement<{ guard: boolean }> | undefined;
+        return typeof entry.element.props.name === 'string' && ancestor?.props.guard === guardValue;
+      })
+      .map((entry) => entry.element.props.name as string)
+      .sort();
+  }
+
+  it('guards (tabs), exercises and programs behind the signed-in condition', () => {
+    expect(screenNamesUnderGuard(true, true)).toEqual(['(tabs)', 'exercises', 'programs']);
+  });
+
+  it('guards only (auth) behind the signed-out condition', () => {
+    expect(screenNamesUnderGuard(true, false)).toEqual(['(auth)']);
   });
 });

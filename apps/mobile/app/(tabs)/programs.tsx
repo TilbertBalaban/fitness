@@ -1,15 +1,22 @@
 import { resolveTarget, type CycleKind, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
-import { FlashList } from '@shopify/flash-list';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { CycleStrip } from '@/components/CycleStrip';
 import { DayDeck } from '@/components/DayDeck';
 import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
 import { ExerciseSlotRow } from '@/components/ExerciseSlotRow';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { TextField } from '@/components/TextField';
+import { authClient } from '@/lib/auth-client';
 import { getPowerSync } from '@/lib/db/powersync';
-import { createRoutine, loadRoutines, type RoutineSummary } from '@/lib/db/programs/create-routine';
+import {
+  loadActiveRoutineId,
+  loadLibraryRoutines,
+  setProgressionFrozen,
+  type LibraryRoutineRow,
+} from '@/lib/db/programs/lifecycle';
+import { useThemeColors } from '@/lib/theme-colors';
 import {
   addCycle,
   clearCycleTarget,
@@ -33,20 +40,43 @@ import { setExerciseTargets, type TargetDraft } from '@/lib/db/programs/targets'
 
 const SKELETON_ROW_COUNT = 3;
 
-export type ProgramsScreenState = 'error' | 'loading' | 'empty' | 'populated';
+export type ProgramsScreenState = 'error' | 'loading' | 'empty' | 'no-active' | 'populated';
 
 export interface ProgramsScreenStateInput {
   failed: boolean;
-  routines: RoutineSummary[] | null;
+  routines: { id: string }[] | null;
+  activeRoutineId?: string | null;
 }
 
-// Which of the four screen states to render — a load failure always wins, then "still loading"
-// (routines not read yet), then whether any non-archived routine exists.
-export function deriveProgramsScreenState({ failed, routines }: ProgramsScreenStateInput): ProgramsScreenState {
+// A load failure always wins, then "still loading" (routines not read yet), then whether the user
+// owns any program at all, and only then whether one of them is active. `empty` and `no-active` are
+// deliberately separate: "you have nothing" and "you have not chosen" are different problems with
+// different fixes, and collapsing them would send a user with five programs to the create screen.
+//
+// A pointer naming a routine that is not in the list — archived on another device, or deleted —
+// reads as no-active rather than as a program that cannot be rendered.
+export function deriveProgramsScreenState({
+  failed,
+  routines,
+  activeRoutineId = null,
+}: ProgramsScreenStateInput): ProgramsScreenState {
   if (failed) return 'error';
   if (routines === null) return 'loading';
   if (routines.length === 0) return 'empty';
+  if (!activeRoutineId || !routines.some((routine) => routine.id === activeRoutineId)) return 'no-active';
   return 'populated';
+}
+
+export const FREEZE_SWITCH_TITLE = 'Update Program';
+
+// The switch is on when the program is NOT frozen: "Update Program" describes what progression is
+// allowed to do, matching the MacroFactor control this is modeled on (FEATURES.md line 39). Both
+// strings say what progression will and will not do; neither frames a frozen program as failing,
+// because freezing is a deliberate choice and this phase implements no progression at all.
+export function freezeSwitchLabel(frozen: boolean): string {
+  return frozen
+    ? 'Progression will leave these targets exactly as written.'
+    : 'Progression can adjust these targets in future cycles.';
 }
 
 // One expanded row at a time — tapping the open row closes it, tapping a different row switches
@@ -115,13 +145,21 @@ export function overrideDelta(base: ResolvedTarget, next: ResolvedTarget): Targe
 }
 
 export default function ProgramsScreen() {
-  const [routines, setRoutines] = useState<RoutineSummary[] | null>(null);
+  const router = useRouter();
+  const colors = useThemeColors();
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
+  // A program the user was sent to explicitly — the draft a duplicate just produced, which is by
+  // design not the active one. Absent on every ordinary visit, where the active pointer decides.
+  const { routineId: routineIdParam } = useLocalSearchParams<{ routineId?: string }>();
+
+  const [routines, setRoutines] = useState<LibraryRoutineRow[] | null>(null);
   const [failed, setFailed] = useState(false);
-  const [name, setName] = useState('');
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   const [activeRoutineId, setActiveRoutineId] = useState<string | null>(null);
+  // What the builder is pointed at. The active pointer decides by default (D-26); an explicit
+  // routineId param overrides it so a just-created duplicate opens straight into its own tree.
+  const displayedRoutineId = routineIdParam ?? activeRoutineId;
   const [tree, setTree] = useState<ProgramTree | null>(null);
   const [treeFailed, setTreeFailed] = useState(false);
   const [exerciseNames, setExerciseNames] = useState<Map<string, string> | null>(null);
@@ -141,27 +179,36 @@ export default function ProgramsScreen() {
   const [editingCycleId, setEditingCycleId] = useState<string | null>(null);
   const [cycleRenameValue, setCycleRenameValue] = useState('');
 
-  // Re-runs the same loader after a successful create — never mutates the loaded array in place,
-  // so the list always reflects what local SQLite actually holds.
+  // loadLibraryRoutines rather than loadRoutines: this screen needs progression_frozen for the
+  // switch, and it needs archived_at so a pointer left behind on an archived program reads as
+  // no-active instead of rendering a program the library has already put away.
   const reload = useCallback(async () => {
     try {
-      const loaded = await loadRoutines(getPowerSync());
-      setRoutines(loaded);
+      const [loaded, pointer] = await Promise.all([
+        loadLibraryRoutines(getPowerSync()),
+        userId ? loadActiveRoutineId(userId, getPowerSync()) : Promise.resolve(null),
+      ]);
+      setRoutines(loaded.filter((routine) => routine.archivedAt === null));
+      setActiveRoutineId(pointer);
       setFailed(false);
     } catch (error) {
       console.error('routine load failed', error);
       setFailed(true);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     let mounted = true;
 
     (async () => {
       try {
-        const loaded = await loadRoutines(getPowerSync());
+        const [loaded, pointer] = await Promise.all([
+          loadLibraryRoutines(getPowerSync()),
+          userId ? loadActiveRoutineId(userId, getPowerSync()) : Promise.resolve(null),
+        ]);
         if (mounted) {
-          setRoutines(loaded);
+          setRoutines(loaded.filter((routine) => routine.archivedAt === null));
+          setActiveRoutineId(pointer);
           setFailed(false);
         }
       } catch (error) {
@@ -173,7 +220,7 @@ export default function ProgramsScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [userId]);
 
   // Loaded once, here, and passed into every loadProgramTree call rather than re-read per call —
   // the exercise catalog rarely changes mid-session and this screen re-renders the tree on every
@@ -196,65 +243,62 @@ export default function ProgramsScreen() {
   );
 
   useEffect(() => {
-    if (activeRoutineId) {
-      void reloadTree(activeRoutineId);
+    if (displayedRoutineId) {
+      void reloadTree(displayedRoutineId);
     } else {
       setTree(null);
     }
     // reloadTree intentionally excluded: it only changes identity when exerciseNames first loads,
-    // which must not re-trigger a redundant tree reload for the same activeRoutineId.
+    // which must not re-trigger a redundant tree reload for the same displayedRoutineId.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRoutineId]);
+  }, [displayedRoutineId]);
 
-  useEffect(() => {
-    if (!activeRoutineId && routines && routines.length === 1) {
-      setActiveRoutineId(routines[0].id);
-    }
-  }, [routines, activeRoutineId]);
+  const screenState = deriveProgramsScreenState({ failed, routines, activeRoutineId });
 
-  const screenState = deriveProgramsScreenState({ failed, routines });
+  // The freeze switch belongs to the active program only (D-16/D-26). When the screen is showing a
+  // program reached by explicit navigation — a fresh duplicate, which is a draft and by definition
+  // not active — there is nothing for progression to freeze yet, so the control is absent rather
+  // than present-and-inert.
+  const showingActiveProgram = displayedRoutineId !== null && displayedRoutineId === activeRoutineId;
+  const progressionFrozen =
+    routines?.find((routine) => routine.id === displayedRoutineId)?.progressionFrozen ?? false;
 
-  const handleCreate = useCallback(async () => {
-    setNameError(null);
-    setSubmitting(true);
-    try {
-      await createRoutine({ name });
-      setName('');
+  const handleToggleFreeze = useCallback(
+    async (updateEnabled: boolean) => {
+      if (!displayedRoutineId) return;
+      await setProgressionFrozen(displayedRoutineId, !updateEnabled);
       await reload();
-    } catch (error) {
-      setNameError(error instanceof Error ? error.message : 'Program name is required');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [name, reload]);
+    },
+    [displayedRoutineId, reload],
+  );
 
   const handleAddDay = useCallback(async () => {
-    if (!activeRoutineId) return;
+    if (!displayedRoutineId) return;
     try {
-      await addDay({ routineId: activeRoutineId, name: newDayName });
+      await addDay({ routineId: displayedRoutineId, name: newDayName });
       setNewDayName('');
-      await reloadTree(activeRoutineId);
+      await reloadTree(displayedRoutineId);
     } catch (error) {
       console.error('add day failed', error);
     }
-  }, [activeRoutineId, newDayName, reloadTree]);
+  }, [displayedRoutineId, newDayName, reloadTree]);
 
   const handleRemoveDay = useCallback(
     async (dayId: string) => {
-      if (!activeRoutineId) return;
+      if (!displayedRoutineId) return;
       await removeDay(dayId);
-      await reloadTree(activeRoutineId);
+      await reloadTree(displayedRoutineId);
     },
-    [activeRoutineId, reloadTree],
+    [displayedRoutineId, reloadTree],
   );
 
   const handleRemoveExercise = useCallback(
     async (routineExerciseId: string) => {
-      if (!activeRoutineId) return;
+      if (!displayedRoutineId) return;
       await removeExercise(routineExerciseId);
-      await reloadTree(activeRoutineId);
+      await reloadTree(displayedRoutineId);
     },
-    [activeRoutineId, reloadTree],
+    [displayedRoutineId, reloadTree],
   );
 
   const handleToggleExpanded = useCallback((slotId: string) => {
@@ -267,7 +311,7 @@ export default function ProgramsScreen() {
   // (T-04-39).
   const handleSaveTargets = useCallback(
     async (routineExerciseId: string, draft: TargetDraft) => {
-      if (!activeRoutineId) return;
+      if (!displayedRoutineId) return;
 
       if (selectedCycleId === null) {
         await setExerciseTargets(routineExerciseId, draft);
@@ -281,18 +325,18 @@ export default function ProgramsScreen() {
         });
       }
 
-      await reloadTree(activeRoutineId);
+      await reloadTree(displayedRoutineId);
     },
-    [activeRoutineId, reloadTree, selectedCycleId, tree],
+    [displayedRoutineId, reloadTree, selectedCycleId, tree],
   );
 
   const handleResetCycleTarget = useCallback(
     async (routineExerciseId: string) => {
-      if (!activeRoutineId || !selectedCycleId) return;
+      if (!displayedRoutineId || !selectedCycleId) return;
       await clearCycleTarget({ routineExerciseId, cycleId: selectedCycleId });
-      await reloadTree(activeRoutineId);
+      await reloadTree(displayedRoutineId);
     },
-    [activeRoutineId, reloadTree, selectedCycleId],
+    [displayedRoutineId, reloadTree, selectedCycleId],
   );
 
   const handleOpenCycleForm = useCallback(() => {
@@ -311,7 +355,7 @@ export default function ProgramsScreen() {
   }, []);
 
   const handleAddCycle = useCallback(async () => {
-    if (!activeRoutineId) return;
+    if (!displayedRoutineId) return;
 
     const durationDays = cycleFormDuration.trim().length === 0 ? null : Number(cycleFormDuration.trim());
     const draft = { name: cycleFormName, kind: cycleFormKind, durationDays };
@@ -322,17 +366,17 @@ export default function ProgramsScreen() {
     }
 
     try {
-      const id = await addCycle({ routineId: activeRoutineId, ...draft });
+      const id = await addCycle({ routineId: displayedRoutineId, ...draft });
       setCycleFormOpen(false);
       setCycleFormName('');
       setCycleFormDuration('');
       setCycleFormKind('training');
       setSelectedCycleId(id);
-      await reloadTree(activeRoutineId);
+      await reloadTree(displayedRoutineId);
     } catch (caught) {
       setCycleFormError(caught instanceof Error ? caught.message : 'name-required');
     }
-  }, [activeRoutineId, cycleFormDuration, cycleFormKind, cycleFormName, reloadTree]);
+  }, [displayedRoutineId, cycleFormDuration, cycleFormKind, cycleFormName, reloadTree]);
 
   const handleEditCycle = useCallback(
     (cycleId: string) => {
@@ -344,32 +388,32 @@ export default function ProgramsScreen() {
   );
 
   const handleRenameCycle = useCallback(async () => {
-    if (!activeRoutineId || !editingCycleId) return;
+    if (!displayedRoutineId || !editingCycleId) return;
     try {
       await renameCycle(editingCycleId, cycleRenameValue);
       setEditingCycleId(null);
-      await reloadTree(activeRoutineId);
+      await reloadTree(displayedRoutineId);
     } catch (error) {
       console.error('rename cycle failed', error);
     }
-  }, [activeRoutineId, cycleRenameValue, editingCycleId, reloadTree]);
+  }, [displayedRoutineId, cycleRenameValue, editingCycleId, reloadTree]);
 
   const handleSetCycleKind = useCallback(
     async (kind: CycleKind) => {
-      if (!activeRoutineId || !editingCycleId) return;
+      if (!displayedRoutineId || !editingCycleId) return;
       try {
         await setCycleKind(editingCycleId, kind);
-        await reloadTree(activeRoutineId);
+        await reloadTree(displayedRoutineId);
       } catch (error) {
         console.error('set cycle kind failed', error);
       }
     },
-    [activeRoutineId, editingCycleId, reloadTree],
+    [displayedRoutineId, editingCycleId, reloadTree],
   );
 
   const handleMoveCycle = useCallback(
     async (direction: -1 | 1) => {
-      if (!activeRoutineId || !editingCycleId || !tree) return;
+      if (!displayedRoutineId || !editingCycleId || !tree) return;
       const ordered = tree.cycles;
       const from = ordered.findIndex((cycle) => cycle.id === editingCycleId);
       const to = from + direction;
@@ -379,44 +423,44 @@ export default function ProgramsScreen() {
       const beforeId = to > 0 ? (withoutMoved[to - 1]?.id ?? null) : null;
       const afterId = withoutMoved[to]?.id ?? null;
 
-      await moveCycle({ routineId: activeRoutineId, cycleId: editingCycleId, beforeId, afterId });
-      await reloadTree(activeRoutineId);
+      await moveCycle({ routineId: displayedRoutineId, cycleId: editingCycleId, beforeId, afterId });
+      await reloadTree(displayedRoutineId);
     },
-    [activeRoutineId, editingCycleId, reloadTree, tree],
+    [displayedRoutineId, editingCycleId, reloadTree, tree],
   );
 
   const handleRemoveCycle = useCallback(async () => {
-    if (!activeRoutineId || !editingCycleId) return;
+    if (!displayedRoutineId || !editingCycleId) return;
     await removeCycle(editingCycleId);
     if (selectedCycleId === editingCycleId) setSelectedCycleId(null);
     setEditingCycleId(null);
-    await reloadTree(activeRoutineId);
-  }, [activeRoutineId, editingCycleId, reloadTree, selectedCycleId]);
+    await reloadTree(displayedRoutineId);
+  }, [displayedRoutineId, editingCycleId, reloadTree, selectedCycleId]);
 
   // The gesture layer (DragHandle) and the Move up/down controls both funnel here — neither reads
   // or writes order_index itself, they only produce a toIndex/neighbour pair that this callback
   // hands straight to moveExercise (04-02), the single write path for reordering.
   const handleReorderExercise = useCallback(
     async (routineDayId: string, exerciseId: string, beforeId: string | null, afterId: string | null) => {
-      if (!activeRoutineId) return;
+      if (!displayedRoutineId) return;
       await moveExercise({ routineDayId, exerciseId, beforeId, afterId });
-      await reloadTree(activeRoutineId);
+      await reloadTree(displayedRoutineId);
     },
-    [activeRoutineId, reloadTree],
+    [displayedRoutineId, reloadTree],
   );
 
   const handleAddExercises = useCallback(
     async (rows: PickerCatalogRow[]) => {
-      if (!activeRoutineId || !pickerDayId) return;
+      if (!displayedRoutineId || !pickerDayId) return;
       try {
         await addExercisesToDay({ routineDayId: pickerDayId, exerciseIds: rows.map((row) => row.id) });
         setPickerDayId(null);
-        await reloadTree(activeRoutineId);
+        await reloadTree(displayedRoutineId);
       } catch (error) {
         console.error('add exercises failed', error);
       }
     },
-    [activeRoutineId, pickerDayId, reloadTree],
+    [displayedRoutineId, pickerDayId, reloadTree],
   );
 
   const handleStartRename = useCallback((dayId: string, currentName: string) => {
@@ -425,15 +469,15 @@ export default function ProgramsScreen() {
   }, []);
 
   const handleSaveRename = useCallback(async () => {
-    if (!activeRoutineId || !renamingDayId) return;
+    if (!displayedRoutineId || !renamingDayId) return;
     try {
       await renameDay(renamingDayId, renameValue);
       setRenamingDayId(null);
-      await reloadTree(activeRoutineId);
+      await reloadTree(displayedRoutineId);
     } catch (error) {
       console.error('rename day failed', error);
     }
-  }, [activeRoutineId, renamingDayId, renameValue, reloadTree]);
+  }, [displayedRoutineId, renamingDayId, renameValue, reloadTree]);
 
   if (screenState === 'error') {
     return (
@@ -459,18 +503,28 @@ export default function ProgramsScreen() {
     );
   }
 
-  if (activeRoutineId) {
+  if (displayedRoutineId) {
     return (
       <View className="flex-1 bg-background">
         <View className="mt-xl gap-md px-lg pb-2xl">
-          <Pressable
-            onPress={() => setActiveRoutineId(null)}
-            accessibilityRole="button"
-            accessibilityLabel="All Programs"
-            style={{ minHeight: 48, justifyContent: 'center' }}
-          >
-            <Text className="text-body font-normal text-accent">{'< All Programs'}</Text>
-          </Pressable>
+          <View className="flex-row flex-wrap gap-md">
+            <Pressable
+              onPress={() => router.push('/programs/library')}
+              accessibilityRole="button"
+              accessibilityLabel="Program Library"
+              style={{ minHeight: 48, justifyContent: 'center' }}
+            >
+              <Text className="text-body font-normal text-accent">Library</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/programs/new')}
+              accessibilityRole="button"
+              accessibilityLabel="New Program"
+              style={{ minHeight: 48, justifyContent: 'center' }}
+            >
+              <Text className="text-body font-normal text-accent">New Program</Text>
+            </Pressable>
+          </View>
 
           {treeFailed ? (
             <View className="items-center gap-sm">
@@ -484,6 +538,32 @@ export default function ProgramsScreen() {
           ) : tree ? (
             <>
               <Text className="text-heading font-semibold text-foreground">{tree.name}</Text>
+
+              {showingActiveProgram ? (
+                <Pressable
+                  onPress={() => void handleToggleFreeze(progressionFrozen)}
+                  accessibilityRole="switch"
+                  accessibilityLabel={FREEZE_SWITCH_TITLE}
+                  accessibilityState={{ checked: !progressionFrozen }}
+                  accessibilityHint={freezeSwitchLabel(progressionFrozen)}
+                  className="flex-row items-center justify-between gap-md rounded-md bg-surface px-md"
+                  // The Switch's own native hit target already clears both platforms' minimums; this
+                  // row exists so tapping the label toggles it too.
+                  style={{ minHeight: 48 }}
+                >
+                  <View className="flex-1 gap-xs py-sm">
+                    <Text className="text-label font-normal text-foreground-muted">{FREEZE_SWITCH_TITLE}</Text>
+                    <Text className="text-label font-normal text-foreground-muted">
+                      {freezeSwitchLabel(progressionFrozen)}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={!progressionFrozen}
+                    onValueChange={(updateEnabled) => void handleToggleFreeze(updateEnabled)}
+                    trackColor={{ true: colors.accent, false: undefined }}
+                  />
+                </Pressable>
+              ) : null}
 
               <CycleStrip
                 cycles={tree.cycles}
@@ -690,55 +770,48 @@ export default function ProgramsScreen() {
     );
   }
 
+  if (screenState === 'loading') {
+    return (
+      <View className="flex-1 bg-background px-lg">
+        <View className="mt-xl gap-sm">
+          {Array.from({ length: SKELETON_ROW_COUNT }).map((_, index) => (
+            <View key={index} className="rounded-md bg-surface" style={{ height: 64 }} />
+          ))}
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View className="flex-1 bg-background">
-      <FlashList
-        data={routines ?? []}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}
-        renderItem={({ item }) => (
+    <ScrollView className="flex-1 bg-background" contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
+      <View className="mt-xl items-center gap-sm">
+        <Text className="text-center text-heading font-semibold text-foreground">No active program</Text>
+        <Text className="text-center text-body font-normal text-foreground-muted">
+          Build or activate one to see what&apos;s next.
+        </Text>
+
+        {/* A user with programs but none active is sent to the library to choose; a user with no
+            programs at all is sent to the create flow. Same screen state family, different fix. */}
+        {screenState === 'no-active' ? (
           <Pressable
-            onPress={() => setActiveRoutineId(item.id)}
+            onPress={() => router.push('/programs/library')}
             accessibilityRole="button"
-            accessibilityLabel={item.name}
-            className="mb-sm gap-xs rounded-md bg-surface p-md"
-            style={{ minHeight: 48 }}
+            accessibilityLabel="Program Library"
+            style={{ minHeight: 48, justifyContent: 'center' }}
           >
-            <Text className="text-body font-semibold text-foreground">{item.name}</Text>
-            <Text className="text-label font-normal text-foreground-muted">{item.status}</Text>
+            <Text className="text-body font-normal text-accent">Build or activate one</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => router.push('/programs/new')}
+            accessibilityRole="button"
+            accessibilityLabel="New Program"
+            style={{ minHeight: 48, justifyContent: 'center' }}
+          >
+            <Text className="text-body font-normal text-accent">New Program</Text>
           </Pressable>
         )}
-        ListHeaderComponent={
-          <View className="mt-xl gap-md">
-            <TextField
-              label="Program name"
-              value={name}
-              onChangeText={(value) => {
-                setName(value);
-                setNameError(null);
-              }}
-              error={nameError}
-            />
-            <PrimaryButton label="Create Program" onPress={handleCreate} submitting={submitting} />
-          </View>
-        }
-        ListEmptyComponent={
-          screenState === 'empty' ? (
-            <View className="mt-xl items-center gap-sm">
-              <Text className="text-center text-heading font-semibold text-foreground">No programs yet</Text>
-              <Text className="text-center text-body font-normal text-foreground-muted">
-                Create your first program to get started.
-              </Text>
-            </View>
-          ) : screenState === 'loading' ? (
-            <View className="mt-xl gap-sm">
-              {Array.from({ length: SKELETON_ROW_COUNT }).map((_, index) => (
-                <View key={index} className="rounded-md bg-surface" style={{ height: 64 }} />
-              ))}
-            </View>
-          ) : null
-        }
-      />
-    </View>
+      </View>
+    </ScrollView>
   );
 }

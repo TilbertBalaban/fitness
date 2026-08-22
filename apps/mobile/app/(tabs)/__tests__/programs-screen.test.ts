@@ -14,6 +14,11 @@ jest.mock('../../../lib/db/programs/days', () => ({
   removeDay: jest.fn(),
   removeExercise: jest.fn(),
 }));
+jest.mock('../../../lib/db/programs/lifecycle', () => ({
+  loadActiveRoutineId: jest.fn(),
+  loadLibraryRoutines: jest.fn(),
+  setProgressionFrozen: jest.fn(),
+}));
 jest.mock('../../../lib/db/programs/load-program', () => ({
   loadExerciseNameMap: jest.fn(),
   loadProgramTree: jest.fn(),
@@ -37,7 +42,9 @@ jest.mock('../../exercises', () => ({ loadCatalogRows: jest.fn() }));
 jest.mock('../../../lib/auth-client', () => ({ authClient: { useSession: () => ({ data: null }) } }));
 
 import {
+  FREEZE_SWITCH_TITLE,
   deriveProgramsScreenState,
+  freezeSwitchLabel,
   nextExpandedSlotId,
   overrideDelta,
   overriddenFields,
@@ -60,11 +67,54 @@ describe('deriveProgramsScreenState', () => {
   });
 
   it('is empty when the load succeeded with zero routines', () => {
-    expect(deriveProgramsScreenState({ failed: false, routines: [] })).toBe('empty');
+    expect(deriveProgramsScreenState({ failed: false, routines: [], activeRoutineId: null })).toBe('empty');
   });
 
-  it('is populated when at least one routine loaded', () => {
-    expect(deriveProgramsScreenState({ failed: false, routines: [oneRoutine] })).toBe('populated');
+  it('is populated when the pointer names a loaded routine', () => {
+    expect(deriveProgramsScreenState({ failed: false, routines: [oneRoutine], activeRoutineId: 'r-1' })).toBe(
+      'populated',
+    );
+  });
+
+  // A user with programs but none active gets its own state rather than falling into `empty` —
+  // "you have nothing" and "you have not chosen" are different problems with different fixes.
+  it('is no-active when routines exist but no pointer is set', () => {
+    expect(deriveProgramsScreenState({ failed: false, routines: [oneRoutine], activeRoutineId: null })).toBe(
+      'no-active',
+    );
+  });
+
+  it('is no-active when the pointer names a routine that is not in the list', () => {
+    expect(deriveProgramsScreenState({ failed: false, routines: [oneRoutine], activeRoutineId: 'archived-r' })).toBe(
+      'no-active',
+    );
+  });
+
+  it('is empty, not no-active, when the user has no programs at all', () => {
+    expect(deriveProgramsScreenState({ failed: false, routines: [], activeRoutineId: 'stale' })).toBe('empty');
+  });
+});
+
+describe('freezeSwitchLabel', () => {
+  it('says two different things depending on the state', () => {
+    expect(freezeSwitchLabel(false)).not.toBe(freezeSwitchLabel(true));
+  });
+
+  // Freezing is a deliberate choice, and this phase implements no progression at all — any framing
+  // implying the user has fallen behind would be both unkind and untrue.
+  it('never describes a frozen program as failed, stalled or stuck', () => {
+    for (const frozen of [false, true]) {
+      expect(freezeSwitchLabel(frozen)).not.toMatch(/failed|stalled|stuck|behind/i);
+    }
+  });
+
+  it('states what progression will and will not do in each state', () => {
+    expect(freezeSwitchLabel(false)).toMatch(/progression/i);
+    expect(freezeSwitchLabel(true)).toMatch(/progression/i);
+  });
+
+  it('is labelled Update Program, the MacroFactor precedent this control is modeled on', () => {
+    expect(FREEZE_SWITCH_TITLE).toBe('Update Program');
   });
 });
 
