@@ -233,7 +233,7 @@ export default function HomeScreen() {
             <CardHeading>No active program</CardHeading>
             <CardBody>Build or activate one to see what&apos;s next.</CardBody>
             <Pressable
-              onPress={() => router.push('/(tabs)/programs')}
+              onPress={() => router.push('/programs/library')}
               accessibilityRole="button"
               accessibilityLabel="Build or activate one"
               style={{ minHeight: 48, justifyContent: 'center' }}
