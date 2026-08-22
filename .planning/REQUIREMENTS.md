@@ -37,15 +37,15 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 ### Program Builder
 
 - [x] **PROG-01**: User can build a program from scratch with named training days
-- [ ] **PROG-02**: User can add, remove, and reorder exercises within a training day
-- [ ] **PROG-03**: User can set per-exercise targets: number of sets, rep range, RIR target, and rest duration
+- [x] **PROG-02**: User can add, remove, and reorder exercises within a training day
+- [x] **PROG-03**: User can set per-exercise targets: number of sets, rep range, RIR target, and rest duration
 - [x] **PROG-04**: User can organize a program into cycles (weeks), each with its own targets
 - [x] **PROG-05**: User can place a deload at the start or end of a cycle
 - [x] **PROG-06**: User can schedule planned time off within a program
-- [ ] **PROG-07**: User can duplicate, archive, and restore programs and individual workouts
-- [ ] **PROG-08**: User can set which program is active
-- [ ] **PROG-09**: User can view the active program's upcoming workouts with target muscles and per-cycle rep/RIR targets
-- [ ] **PROG-10**: User can freeze a program so progression stops modifying it
+- [x] **PROG-07**: User can duplicate, archive, and restore programs and individual workouts
+- [x] **PROG-08**: User can set which program is active
+- [x] **PROG-09**: User can view the active program's upcoming workouts with target muscles and per-cycle rep/RIR targets
+- [x] **PROG-10**: User can freeze a program so progression stops modifying it
 - [x] **PROG-11**: User can edit a program without corrupting any workout already logged against it
 
 ### Session Logging
@@ -211,15 +211,15 @@ Which phases cover which requirements. Populated during roadmap creation.
 | EXER-09 | Phase 3 — Exercise Catalog | Complete |
 | EXER-10 | Phase 3 — Exercise Catalog | Complete |
 | PROG-01 | Phase 4 — Program Builder | Complete |
-| PROG-02 | Phase 4 — Program Builder | Pending |
-| PROG-03 | Phase 4 — Program Builder | Pending |
+| PROG-02 | Phase 4 — Program Builder | Complete |
+| PROG-03 | Phase 4 — Program Builder | Complete |
 | PROG-04 | Phase 4 — Program Builder | Complete |
 | PROG-05 | Phase 4 — Program Builder | Complete |
 | PROG-06 | Phase 4 — Program Builder | Complete |
-| PROG-07 | Phase 4 — Program Builder | Pending |
-| PROG-08 | Phase 4 — Program Builder | Pending |
-| PROG-09 | Phase 4 — Program Builder | Pending |
-| PROG-10 | Phase 4 — Program Builder | Pending |
+| PROG-07 | Phase 4 — Program Builder | Complete |
+| PROG-08 | Phase 4 — Program Builder | Complete |
+| PROG-09 | Phase 4 — Program Builder | Complete |
+| PROG-10 | Phase 4 — Program Builder | Complete |
 | PROG-11 | Phase 4 — Program Builder | Complete |
 | LOG-01 | Phase 5 — In-Gym Session Logging | Pending |
 | LOG-02 | Phase 5 — In-Gym Session Logging | Pending |

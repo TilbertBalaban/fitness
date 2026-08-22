@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 59
+open_count: 74
 waived_count: 1
 fixed_count: 12
-total_count: 72
-last_updated: 2026-08-21T15:50:48.657Z
+total_count: 87
+last_updated: 2026-08-22T13:45:27.676Z
 ---
 
 # Broken Windows Ledger
@@ -87,6 +87,21 @@ last_updated: 2026-08-21T15:50:48.657Z
 | 73 | 04 | deviation | packages/api-contracts/package.json |  | A fresh git worktree cannot run the mobile suite until 'pnpm --filter @fitness/api-contracts build' is run, because the package's main points at a gitignored dist/. Every worktree-isolated executor importing this package hits it (14 of 35 mobile suites fail with Cannot find module '@fitness/api-contracts'). Worth a prepare hook or a source-entry exports map. | open |  | 2026-08-21T15:49:05.772Z |  |
 | 74 | 04 | unrun-verify | apps/mobile/lib/db/log-set.ts |  | The cycle-resolved session snapshot was never observed on a real device or in a browser. No UI calls addSessionExercise yet, this machine has neither Xcode nor an Android SDK, and browser testing is forbidden by CLAUDE.md unless explicitly requested. Correctness rests on the 23-case jest suite plus tsc. The api test:e2e suite that IS green is server-side against live Postgres, covering only the Postgres half. | open |  | 2026-08-21T15:49:05.855Z |  |
 | 75 | 04 | unrun-verify | apps/mobile/lib/db/__tests__/log-set.test.ts |  | The PROG-11 client regression runs against a hand-built in-memory store, not PowerSync's real local SQLite. The store mirrors the local schema's routine_day -> routine_exercise -> routine_exercise_cycle_target delete cascade by hand; if PowerSync's local schema ever stops cascading (or diverges from Postgres), the day-delete case would keep passing against a store that no longer matches reality. The Postgres half IS asserted against a live database in apps/api/test/program-sync.e2e-spec.ts. | open |  | 2026-08-21T15:49:05.936Z |  |
+| 76 | 04 | unrun-verify | apps/mobile/app/(tabs)/index.tsx |  | The Home Next Up card has been observed on neither iOS nor Android; no Xcode and no Android SDK on this machine. Native rendering of the card, its chip row and its wrap-and-grow behaviour at large OS font scales rests on typecheck plus correct API usage. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-22T13:45:22.936Z |  |
+| 77 | 04 | unrun-verify | apps/mobile/app/(tabs)/index.tsx |  | The Home card has also not been observed in a browser. CLAUDE.md forbids launching a browser or driving the app unless the user explicitly asks, so the web target's actual appearance (chip wrapping, skeleton, opacity-60 time-off treatment) is unverified visually; only the 'expo export --platform web' build is proven. | open |  | 2026-08-22T13:45:23.269Z |  |
+| 78 | 04 | deviation | apps/mobile/lib/programs/next-up.ts |  | Adopted assumption (RESEARCH A5): a deload cycle is trained and consumes a full rotation of days exactly like a training cycle. If a later phase decides a deload pauses rotation tracking, cycleSpan is the single place to change. | open |  | 2026-08-22T13:45:23.570Z |  |
+| 79 | 04 | deviation | apps/mobile/lib/programs/next-up.ts |  | Adopted resolution (RESEARCH Pitfall 5a): a completed session logged against a since-deleted day stops counting toward rotation position, so deleting a day rewinds which cycle the lifter is in. The rejected alternative (keeping it countable) makes the answer depend on which day was deleted. | open |  | 2026-08-22T13:45:23.769Z |  |
+| 80 | 04 | deviation | apps/mobile/lib/programs/next-up.ts |  | 04-UI-SPEC overrides 04-10-PLAN's must-have truth on the deleted-day case: when the most recently logged day has been deleted, the next day resolves silently to the first day of the current cycle, never to a rewound index and never to a visible error. The plan text explicitly rejected this; the user-reviewed UI-SPEC mandates it and takes precedence. | open |  | 2026-08-22T13:45:23.975Z |  |
+| 81 | 04 | deviation | apps/mobile/lib/programs/next-up.ts |  | Consecutive time-off cycles chain (each elapsed cycle consumes its own duration_days from the elapsed count before the next is considered), so a 3-day and a 5-day time-off cycle back to back are 8 days off. Neither CONTEXT.md nor the UI-SPEC specifies this; the alternative (each measuring independently from the last session) makes the pair 5 days. | open |  | 2026-08-22T13:45:24.180Z |  |
+| 82 | 04 | stub | apps/mobile/lib/programs/next-up.ts |  | skippedTimeOffCycleIds is computed and returned but nothing renders it. A time-off cycle synced with a null duration_days is silently walked past. Surfacing it needs a Home-card state the UI-SPEC does not define. | open |  | 2026-08-22T13:45:24.415Z |  |
+| 83 | 04 | todo | apps/mobile/lib/db/programs/next-up-query.ts |  | loadNextUp issues 12 selects; 2 of them are loadExerciseNameMap's seeded/custom reads, which the Home screen could hoist and pass in as a cached name map to bring the count to 10. | open |  | 2026-08-22T13:45:24.660Z |  |
+| 84 | 04 | deviation | apps/mobile/lib/programs/__tests__/next-up.test.ts |  | All three 04-10 tasks were written test-first but committed as single feat commits; no separate RED-phase test(...) commit exists, so the TDD gate sequence is not auditable from git history. | open |  | 2026-08-22T13:45:24.937Z |  |
+| 85 | 04 | unrun-verify | apps/mobile/app/programs/library.tsx |  | The program library, the New Program fork and the freeze switch have been observed on neither iOS nor Android; no Xcode and no Android SDK. Web observation also not performed (CLAUDE.md forbids launching a browser unless explicitly asked). Correctness rests on unit tests, typecheck and a successful web export. | open |  | 2026-08-22T13:45:25.255Z |  |
+| 86 | 04 | deviation | apps/mobile/app/programs/_layout.tsx |  | Security-relevant: authorization for every /programs/* route comes from the root layout's single protected 'programs' registration, not from anything inside the segment. Mirrors the T-03-58 entry recorded for /exercises. Deleting _layout.tsx silently hoists both routes out of the guard — the route-guard suite's Case B is the tripwire. | open |  | 2026-08-22T13:45:25.474Z |  |
+| 87 | 04 | deviation | apps/mobile/app/programs/library.tsx |  | The UI-SPEC's 'Delete Draft' action is NOT shipped. The server's HARD_DELETE_FORBIDDEN (apps/api/src/sync/sync.service.ts) rejects every routine DELETE with no draft/never-logged nuance, so a client delete would emit an op the server rejects and the row would resurrect on next sync. Archive is offered for every program instead. Needs a server-side carve-out (allow routine DELETE when no workout_session.routine_day_id references any of its days) before the UI can offer it. | open |  | 2026-08-22T13:45:25.803Z |  |
+| 88 | 04 | deviation | apps/mobile/lib/db/programs/duplicate-routine.ts |  | duplicateRoutine writes supersetGroupId, progressionSchemeId and notes as null rather than copying them, because loadProgramTree's ProgramSlot does not carry them. Harmless today (all three are always null — addExercisesToDay is their only writer and hardcodes them), but the moment any phase makes one writable this becomes silent data loss on duplication. The fix is to widen ProgramSlot so every tree consumer sees them, not to add a second read here. | open |  | 2026-08-22T13:45:26.811Z |  |
+| 89 | 04 | stub | apps/mobile/lib/db/programs/lifecycle.ts |  | markRoutineReady is implemented and tested but has no UI call site: the UI-SPEC's action sheet enumerates four actions and does not include a draft->ready transition, so nothing in the shipped app can move a routine out of 'draft'. Needs either a UI affordance or an explicit decision that status advances implicitly. | open |  | 2026-08-22T13:45:27.350Z |  |
+| 90 | 04 | deviation | apps/mobile/components/RoutineActionSheet.tsx |  | Three files outside 04-11's declared files_modified were touched, all additively: RoutineActionSheet.tsx created (the UI-SPEC binds the '...' trigger to it and no earlier plan built it), ArchiveDialog.tsx gained an optional subject prop so the program copy lands verbatim (existing call sites and its shipped test untouched and green), and new.tsx landed in Task 2's commit because the route-guard assertion on the segment's children needs the route to exist. | open |  | 2026-08-22T13:45:27.676Z |  |
 
 ````json
 [
@@ -952,6 +967,186 @@ last_updated: 2026-08-21T15:50:48.657Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-21T15:49:05.936Z",
+    "resolved_at": null
+  },
+  {
+    "id": 76,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/app/(tabs)/index.tsx",
+    "line": null,
+    "description": "The Home Next Up card has been observed on neither iOS nor Android; no Xcode and no Android SDK on this machine. Native rendering of the card, its chip row and its wrap-and-grow behaviour at large OS font scales rests on typecheck plus correct API usage. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:22.936Z",
+    "resolved_at": null
+  },
+  {
+    "id": 77,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/app/(tabs)/index.tsx",
+    "line": null,
+    "description": "The Home card has also not been observed in a browser. CLAUDE.md forbids launching a browser or driving the app unless the user explicitly asks, so the web target's actual appearance (chip wrapping, skeleton, opacity-60 time-off treatment) is unverified visually; only the 'expo export --platform web' build is proven.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:23.269Z",
+    "resolved_at": null
+  },
+  {
+    "id": 78,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/programs/next-up.ts",
+    "line": null,
+    "description": "Adopted assumption (RESEARCH A5): a deload cycle is trained and consumes a full rotation of days exactly like a training cycle. If a later phase decides a deload pauses rotation tracking, cycleSpan is the single place to change.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:23.570Z",
+    "resolved_at": null
+  },
+  {
+    "id": 79,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/programs/next-up.ts",
+    "line": null,
+    "description": "Adopted resolution (RESEARCH Pitfall 5a): a completed session logged against a since-deleted day stops counting toward rotation position, so deleting a day rewinds which cycle the lifter is in. The rejected alternative (keeping it countable) makes the answer depend on which day was deleted.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:23.769Z",
+    "resolved_at": null
+  },
+  {
+    "id": 80,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/programs/next-up.ts",
+    "line": null,
+    "description": "04-UI-SPEC overrides 04-10-PLAN's must-have truth on the deleted-day case: when the most recently logged day has been deleted, the next day resolves silently to the first day of the current cycle, never to a rewound index and never to a visible error. The plan text explicitly rejected this; the user-reviewed UI-SPEC mandates it and takes precedence.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:23.975Z",
+    "resolved_at": null
+  },
+  {
+    "id": 81,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/programs/next-up.ts",
+    "line": null,
+    "description": "Consecutive time-off cycles chain (each elapsed cycle consumes its own duration_days from the elapsed count before the next is considered), so a 3-day and a 5-day time-off cycle back to back are 8 days off. Neither CONTEXT.md nor the UI-SPEC specifies this; the alternative (each measuring independently from the last session) makes the pair 5 days.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:24.180Z",
+    "resolved_at": null
+  },
+  {
+    "id": 82,
+    "kind": "stub",
+    "phase": "04",
+    "file": "apps/mobile/lib/programs/next-up.ts",
+    "line": null,
+    "description": "skippedTimeOffCycleIds is computed and returned but nothing renders it. A time-off cycle synced with a null duration_days is silently walked past. Surfacing it needs a Home-card state the UI-SPEC does not define.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:24.415Z",
+    "resolved_at": null
+  },
+  {
+    "id": 83,
+    "kind": "todo",
+    "phase": "04",
+    "file": "apps/mobile/lib/db/programs/next-up-query.ts",
+    "line": null,
+    "description": "loadNextUp issues 12 selects; 2 of them are loadExerciseNameMap's seeded/custom reads, which the Home screen could hoist and pass in as a cached name map to bring the count to 10.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:24.660Z",
+    "resolved_at": null
+  },
+  {
+    "id": 84,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/programs/__tests__/next-up.test.ts",
+    "line": null,
+    "description": "All three 04-10 tasks were written test-first but committed as single feat commits; no separate RED-phase test(...) commit exists, so the TDD gate sequence is not auditable from git history.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:24.937Z",
+    "resolved_at": null
+  },
+  {
+    "id": 85,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/app/programs/library.tsx",
+    "line": null,
+    "description": "The program library, the New Program fork and the freeze switch have been observed on neither iOS nor Android; no Xcode and no Android SDK. Web observation also not performed (CLAUDE.md forbids launching a browser unless explicitly asked). Correctness rests on unit tests, typecheck and a successful web export.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:25.255Z",
+    "resolved_at": null
+  },
+  {
+    "id": 86,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/app/programs/_layout.tsx",
+    "line": null,
+    "description": "Security-relevant: authorization for every /programs/* route comes from the root layout's single protected 'programs' registration, not from anything inside the segment. Mirrors the T-03-58 entry recorded for /exercises. Deleting _layout.tsx silently hoists both routes out of the guard — the route-guard suite's Case B is the tripwire.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:25.474Z",
+    "resolved_at": null
+  },
+  {
+    "id": 87,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/app/programs/library.tsx",
+    "line": null,
+    "description": "The UI-SPEC's 'Delete Draft' action is NOT shipped. The server's HARD_DELETE_FORBIDDEN (apps/api/src/sync/sync.service.ts) rejects every routine DELETE with no draft/never-logged nuance, so a client delete would emit an op the server rejects and the row would resurrect on next sync. Archive is offered for every program instead. Needs a server-side carve-out (allow routine DELETE when no workout_session.routine_day_id references any of its days) before the UI can offer it.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:25.803Z",
+    "resolved_at": null
+  },
+  {
+    "id": 88,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/db/programs/duplicate-routine.ts",
+    "line": null,
+    "description": "duplicateRoutine writes supersetGroupId, progressionSchemeId and notes as null rather than copying them, because loadProgramTree's ProgramSlot does not carry them. Harmless today (all three are always null — addExercisesToDay is their only writer and hardcodes them), but the moment any phase makes one writable this becomes silent data loss on duplication. The fix is to widen ProgramSlot so every tree consumer sees them, not to add a second read here.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:26.811Z",
+    "resolved_at": null
+  },
+  {
+    "id": 89,
+    "kind": "stub",
+    "phase": "04",
+    "file": "apps/mobile/lib/db/programs/lifecycle.ts",
+    "line": null,
+    "description": "markRoutineReady is implemented and tested but has no UI call site: the UI-SPEC's action sheet enumerates four actions and does not include a draft->ready transition, so nothing in the shipped app can move a routine out of 'draft'. Needs either a UI affordance or an explicit decision that status advances implicitly.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:27.350Z",
+    "resolved_at": null
+  },
+  {
+    "id": 90,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/components/RoutineActionSheet.tsx",
+    "line": null,
+    "description": "Three files outside 04-11's declared files_modified were touched, all additively: RoutineActionSheet.tsx created (the UI-SPEC binds the '...' trigger to it and no earlier plan built it), ArchiveDialog.tsx gained an optional subject prop so the program copy lands verbatim (existing call sites and its shipped test untouched and green), and new.tsx landed in Task 2's commit because the route-guard assertion on the segment's children needs the route to exist.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-22T13:45:27.676Z",
     "resolved_at": null
   }
 ]
