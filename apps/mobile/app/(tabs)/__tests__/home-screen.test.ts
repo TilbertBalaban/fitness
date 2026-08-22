@@ -1,0 +1,231 @@
+// getPowerSync's real module chain reaches @powersync/react-native -> @powersync/shared-internals,
+// whose ESM dist Jest cannot parse (WINDOWS #22/#33) — mocked before importing the screen module
+// so its top-level `import { getPowerSync } from '@/lib/db/powersync'` never reaches that chain.
+jest.mock('../../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
+jest.mock('../../../lib/db/programs/next-up-query', () => ({ loadNextUp: jest.fn() }));
+
+import {
+  deriveHomeScreenState,
+  dayTargetMuscles,
+  formatNextUpExerciseLine,
+  formatTimeOffRemaining,
+  nextUpHeading,
+} from '../index';
+
+const WORKOUT_NO_CYCLE = {
+  kind: 'workout' as const,
+  cycle: null,
+  day: { id: 'd1', orderIndex: 1024, name: 'Push', isRestDay: false, slots: [] },
+  skippedTimeOffCycleIds: [],
+};
+
+const WORKOUT_WITH_CYCLE = {
+  ...WORKOUT_NO_CYCLE,
+  cycle: { id: 'c1', name: 'Week 2', kind: 'training' as const, orderIndex: 1024, durationDays: null },
+};
+
+const TIME_OFF = {
+  kind: 'time-off' as const,
+  cycle: { id: 'c2', name: 'Off', kind: 'time_off' as const, orderIndex: 2048, durationDays: 7 },
+  daysRemaining: 3,
+  skippedTimeOffCycleIds: [],
+};
+
+const PROGRAM_COMPLETE = {
+  kind: 'program-complete' as const,
+  lastCycle: null,
+  skippedTimeOffCycleIds: [],
+};
+
+const NO_DAYS = { kind: 'no-days' as const, skippedTimeOffCycleIds: [] };
+
+const NO_ACTIVE_PROGRAM = { kind: 'no-active-program' as const, skippedTimeOffCycleIds: [] };
+
+function slot(id: string, exerciseId: string, exerciseName: string, targets: Record<string, number | null> = {}) {
+  return {
+    id,
+    orderIndex: 1024,
+    exerciseId,
+    exerciseName,
+    targetSets: null,
+    targetRepMin: null,
+    targetRepMax: null,
+    targetRir: null,
+    targetRestSeconds: null,
+    overridesByCycleId: {},
+    ...targets,
+  };
+}
+
+describe('deriveHomeScreenState', () => {
+  it('is error when the load failed', () => {
+    expect(deriveHomeScreenState({ failed: true, data: null })).toBe('error');
+  });
+
+  it('is loading before the local read returns', () => {
+    expect(deriveHomeScreenState({ failed: false, data: null })).toBe('loading');
+  });
+
+  it('is no-program when nothing is active', () => {
+    expect(deriveHomeScreenState({ failed: false, data: { routine: null } })).toBe('no-program');
+  });
+
+  it('is ready once an active program has loaded', () => {
+    expect(deriveHomeScreenState({ failed: false, data: { routine: { id: 'r1', name: 'PPL' } } })).toBe('ready');
+  });
+
+  it('lets a failure win over already-loaded data', () => {
+    expect(deriveHomeScreenState({ failed: true, data: { routine: { id: 'r1', name: 'PPL' } } })).toBe('error');
+  });
+});
+
+describe('formatTimeOffRemaining', () => {
+  it('uses the singular for one day', () => {
+    expect(formatTimeOffRemaining(1)).toBe('1 day left');
+  });
+
+  it('uses the plural for more than one day', () => {
+    expect(formatTimeOffRemaining(4)).toBe('4 days left');
+  });
+
+  it('says when training resumes on the last day', () => {
+    expect(formatTimeOffRemaining(0)).toBe('Back tomorrow');
+  });
+});
+
+describe('nextUpHeading', () => {
+  it('is the day name when no cycle applies', () => {
+    expect(nextUpHeading(WORKOUT_NO_CYCLE)).toBe('Push');
+  });
+
+  it('names the cycle alongside the day', () => {
+    expect(nextUpHeading(WORKOUT_WITH_CYCLE)).toBe('Push · Week 2');
+  });
+
+  it('states scheduled time off as a plain fact', () => {
+    expect(nextUpHeading(TIME_OFF)).toBe("You're on scheduled time off.");
+  });
+
+  it('says the block is complete rather than looping', () => {
+    expect(nextUpHeading(PROGRAM_COMPLETE)).toBe('Block complete');
+  });
+
+  it('has a heading for a program with no days', () => {
+    expect(nextUpHeading(NO_DAYS)).toBe('No days yet');
+  });
+
+  it('has a heading for no active program', () => {
+    expect(nextUpHeading(NO_ACTIVE_PROGRAM)).toBe('No active program');
+  });
+
+  it('never frames a state as a failure the lifter has to justify', () => {
+    const headings = [
+      nextUpHeading(WORKOUT_NO_CYCLE),
+      nextUpHeading(WORKOUT_WITH_CYCLE),
+      nextUpHeading(TIME_OFF),
+      nextUpHeading(PROGRAM_COMPLETE),
+      nextUpHeading(NO_DAYS),
+      nextUpHeading(NO_ACTIVE_PROGRAM),
+      formatTimeOffRemaining(0),
+      formatTimeOffRemaining(1),
+      formatTimeOffRemaining(9),
+    ];
+    for (const heading of headings) {
+      expect(heading).not.toMatch(/missed|skipped|behind|lapsed/i);
+    }
+  });
+});
+
+describe('formatNextUpExerciseLine', () => {
+  it('renders a fully prescribed exercise with the card template', () => {
+    const line = formatNextUpExerciseLine(
+      slot('re1', 'ex1', 'Bench Press', {
+        targetSets: 3,
+        targetRepMin: 8,
+        targetRepMax: 12,
+        targetRir: 2,
+        targetRestSeconds: 90,
+      }),
+      null,
+    );
+    expect(line).toBe('Bench Press: 3 × 8–12 reps @ 2 RIR');
+  });
+
+  it('never collapses an equal rep range to a single number', () => {
+    const line = formatNextUpExerciseLine(
+      slot('re1', 'ex1', 'Bench Press', { targetSets: 3, targetRepMin: 8, targetRepMax: 8, targetRir: 2 }),
+      null,
+    );
+    expect(line).toBe('Bench Press: 3 × 8–8 reps @ 2 RIR');
+  });
+
+  it('renders an unprescribed field as an em dash, never as zero', () => {
+    const line = formatNextUpExerciseLine(
+      slot('re1', 'ex1', 'Bench Press', { targetSets: 3, targetRepMin: 8, targetRepMax: 12 }),
+      null,
+    );
+    expect(line).toBe('Bench Press: 3 × 8–12 reps @ — RIR');
+    expect(line).not.toContain('0 RIR');
+  });
+
+  it('keeps a zero target as a zero — zero is a value, not an absence', () => {
+    const line = formatNextUpExerciseLine(
+      slot('re1', 'ex1', 'Bench Press', { targetSets: 3, targetRepMin: 8, targetRepMax: 12, targetRir: 0 }),
+      null,
+    );
+    expect(line).toBe('Bench Press: 3 × 8–12 reps @ 0 RIR');
+  });
+
+  it('says an entirely untargeted exercise has no targets set', () => {
+    expect(formatNextUpExerciseLine(slot('re1', 'ex1', 'Bench Press'), null)).toBe('Bench Press: No targets set.');
+  });
+
+  it('resolves the selected cycle override over the base prescription', () => {
+    const withOverride = {
+      ...slot('re1', 'ex1', 'Bench Press', {
+        targetSets: 3,
+        targetRepMin: 8,
+        targetRepMax: 12,
+        targetRir: 2,
+      }),
+      overridesByCycleId: { c1: { targetSets: 5, targetRir: 1 } },
+    };
+    expect(formatNextUpExerciseLine(withOverride, 'c1')).toBe('Bench Press: 5 × 8–12 reps @ 1 RIR');
+    expect(formatNextUpExerciseLine(withOverride, null)).toBe('Bench Press: 3 × 8–12 reps @ 2 RIR');
+  });
+
+  it('omits rest — the Home card carries four fields, the slot row carries five', () => {
+    const line = formatNextUpExerciseLine(
+      slot('re1', 'ex1', 'Bench Press', {
+        targetSets: 3,
+        targetRepMin: 8,
+        targetRepMax: 12,
+        targetRir: 2,
+        targetRestSeconds: 90,
+      }),
+      null,
+    );
+    expect(line).not.toContain('rest');
+  });
+});
+
+describe('dayTargetMuscles', () => {
+  const muscles = { ex1: ['Chest', 'Triceps'], ex2: ['Triceps', 'Shoulders'], ex3: [] };
+
+  it('collects every muscle across the day, in first-appearance order, without repeats', () => {
+    const slots = [slot('re1', 'ex1', 'Bench'), slot('re2', 'ex2', 'Dip')];
+    expect(dayTargetMuscles(slots, muscles)).toEqual(['Chest', 'Triceps', 'Shoulders']);
+  });
+
+  it('is empty for a day whose exercises have no mapped muscles', () => {
+    expect(dayTargetMuscles([slot('re3', 'ex3', 'Sled Push')], muscles)).toEqual([]);
+  });
+
+  it('is empty for a day with no exercises', () => {
+    expect(dayTargetMuscles([], muscles)).toEqual([]);
+  });
+
+  it('tolerates an exercise missing from the muscle map', () => {
+    expect(dayTargetMuscles([slot('re9', 'unknown', 'Mystery')], muscles)).toEqual([]);
+  });
+});

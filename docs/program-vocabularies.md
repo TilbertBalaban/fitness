@@ -116,3 +116,52 @@ snapshot is the whole mechanism, and a second one would contradict it. Both halv
 `apps/mobile/lib/db/__tests__/log-set.test.ts`'s `PROG-11` block proves the client never
 re-derives a snapshot, and `apps/api/test/program-sync.e2e-spec.ts`'s `PROG-11` block proves
 Postgres never destroys one.
+
+## Where you are in the program
+
+Position in a program is **derived from logged history at read time and never stored** (D-20).
+There is no cursor column on `routine`, none on `user_preference`, and no local-only "current
+day" row. A stored cursor would be one more mutable synced row for two offline devices to
+disagree about; a derived position cannot conflict, and it self-heals after a skipped or
+duplicated session because the next read simply recounts. `apps/mobile/lib/programs/next-up.ts`
+is the whole derivation, and it is pure — it takes days, cycles, history and `today` as
+arguments, reads no database, and calls no clock.
+
+| Input | Where it comes from | What it decides |
+|---|---|---|
+| Completed sessions with a `routine_day_id` that still exists | `workout_session` | How many rotation positions have been consumed, and therefore which cycle you are in |
+| The most recently completed session's `routine_day_id` | `workout_session` | Which day is next — the one following it in the rotation |
+| The most recently completed session's `local_date` | `workout_session` (stamped at session start, LOG-22) | Where the calendar clock for a `time_off` cycle starts counting |
+
+**A session logged against a deleted day stops counting toward position.** Deleting a day is a
+free edit (`workout_session.routine_day_id` deliberately carries no foreign key — see *Snapshot on
+use*), so the session row survives its day. It no longer consumes a rotation position, which means
+deleting a day rewinds the rotation rather than pushing the lifter forward through a program that
+is now shorter than the history claims.
+
+**When the most recently logged day is the deleted one, the next day falls back silently to the
+first day of the current cycle** (`04-RESEARCH.md` Pitfall 5a, resolved in `04-UI-SPEC.md`). There
+is nothing to be "the day after" any more, and this is never surfaced as an error — the Home card
+renders that fallback day exactly as it renders any ordinary next day. The lifter deleted a day;
+being told about it a second time on the Home tab adds nothing they can act on.
+
+**A deload consumes rotation positions; time off does not.** A deload is a lighter week you still
+train, so `cycleSpan` gives it a full rotation of days exactly like a `training` cycle, and its
+next-up card is an ordinary workout card carrying that cycle's own resolved targets — no warning,
+no special framing. A `time_off` cycle is not trained at all, so it consumes zero positions and
+its length is measured in whole calendar days from `duration_days` instead. This is the only place
+`routine_cycle.duration_days` is interpreted as calendar time.
+
+**Consecutive time-off cycles chain rather than overlap.** The calendar clock starts at the last
+completed session's `local_date`; each elapsed `time_off` cycle consumes its own `duration_days`
+from that elapsed count before the next one is considered, so a 3-day and a 5-day time-off cycle
+back to back are 8 days off, not 5. A `time_off` cycle with a null `duration_days` (which the
+builder refuses to create, but which a sync from another client could deliver) is skipped rather
+than blocking the walk forever, and its id is reported on the result.
+
+**A finished block reports completion; it never loops.** When every cycle's rotation has been
+consumed the answer is "block complete," not cycle one again. Silently restarting would make
+"which cycle am I in" answer differently for the same history depending only on how long ago the
+block ended. A program with **zero** cycles is the one case that does repeat indefinitely — with
+no cycles there is no block to finish, every target resolves to its base, and the day rotation
+simply comes round again.
