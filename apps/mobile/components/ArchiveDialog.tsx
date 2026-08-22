@@ -1,24 +1,43 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+export type ArchiveDialogSubject = 'exercise' | 'program';
+
 export interface ArchiveDialogProps {
   unarchiving?: boolean;
+  subject?: ArchiveDialogSubject;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 // Copy per the UI-SPEC Copywriting Contract's Destructive confirmation row (archive) — the
-// unarchive variant is not in that contract (restoring is not a destructive act), so its copy is
-// written here directly rather than lifted from a fixed table entry.
+// exercise unarchive variant is not in that contract (restoring is not a destructive act), so its
+// copy is written here directly rather than lifted from a fixed table entry. Both program rows
+// are in the contract (04-UI-SPEC.md § Confirmations) and are reproduced verbatim, including
+// "Restore" rather than "Unarchive" as the program verb.
 const COPY = {
-  archive: {
-    heading: 'Archive Exercise',
-    body: 'Archiving removes it from pickers, but any logged sets stay in your history. Archive anyway?',
-    confirmLabel: 'Archive',
+  exercise: {
+    archive: {
+      heading: 'Archive Exercise',
+      body: 'Archiving removes it from pickers, but any logged sets stay in your history. Archive anyway?',
+      confirmLabel: 'Archive',
+    },
+    unarchive: {
+      heading: 'Unarchive Exercise',
+      body: 'This exercise will reappear in pickers and search.',
+      confirmLabel: 'Unarchive',
+    },
   },
-  unarchive: {
-    heading: 'Unarchive Exercise',
-    body: 'This exercise will reappear in pickers and search.',
-    confirmLabel: 'Unarchive',
+  program: {
+    archive: {
+      heading: 'Archive Program',
+      body: 'Archiving removes it from your active list, but any logged workouts stay in your history. Archive anyway?',
+      confirmLabel: 'Archive',
+    },
+    unarchive: {
+      heading: 'Restore Program',
+      body: 'This program will reappear in your library.',
+      confirmLabel: 'Restore',
+    },
   },
 } as const;
 
@@ -27,8 +46,13 @@ const COPY = {
 // an exercise is not a destructive act, so `unarchiving` drops the `destructive` fill entirely
 // rather than reusing `accent` (which the Color contract reserves for CTA fill / active-filter-chip
 // / focused-input border / selected-tab icon, none of which this control is).
-export function ArchiveDialog({ unarchiving = false, onConfirm, onCancel }: ArchiveDialogProps) {
-  const copy = unarchiving ? COPY.unarchive : COPY.archive;
+export function ArchiveDialog({
+  unarchiving = false,
+  subject = 'exercise',
+  onConfirm,
+  onCancel,
+}: ArchiveDialogProps) {
+  const copy = unarchiving ? COPY[subject].unarchive : COPY[subject].archive;
 
   return (
     <View className="flex-1 items-center justify-center bg-background/80 px-lg">

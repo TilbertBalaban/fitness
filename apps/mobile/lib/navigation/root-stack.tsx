@@ -7,6 +7,7 @@ export function renderRootStack(signedIn: boolean): ReactElement {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="exercises" />
+        <Stack.Screen name="programs" />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="(auth)" />
