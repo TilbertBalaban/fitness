@@ -12,6 +12,8 @@ import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-d
 // ESM). powersync.web.ts's AppSchema is the exact object getPowerSync() uses on web — importing
 // it explicitly is correct for this durability harness regardless of platform resolution.
 import { AppSchema } from './powersync.web';
+import { generateClientId } from './id';
+import { startWorkoutFromProgram, type StartWorkoutFromProgramSlot } from './log-set';
 import {
   bodyMetric,
   drizzleSchema,
@@ -34,13 +36,16 @@ export const TestAppSchema = new DrizzleAppSchema(drizzleSchema);
 
 export type TestWriteDb = ReturnType<typeof wrapPowerSyncWithDrizzle>;
 
-// The alternate client schema plan 02-12 redefines against: adds a nullable `notes` column and
-// removes `side` from logged_set. `side` is chosen deliberately — it is already nullable on both
-// the local and server schema, so removing it from the client view exercises PowerSync's view
-// re-derivation without also being a data-model change that would need a server migration.
+// The alternate client schema plan 02-12 redefines against: adds a nullable `harness_probe`
+// column and removes `side` from logged_set. `side` is chosen deliberately — it is already
+// nullable on both the local and server schema, so removing it from the client view exercises
+// PowerSync's view re-derivation without also being a data-model change that would need a server
+// migration. `harness_probe` (not `notes`): plan 05-02 makes `logged_set.notes` a real column,
+// which would silently turn this test's premise into a no-op — the synthetic added column must
+// name something no real migration will ever add.
 export const SCHEMA_VARIANT_DELTA = {
   table: 'logged_set',
-  added: ['notes'],
+  added: ['harness_probe'],
   removed: ['side'],
 } as const;
 
@@ -52,7 +57,7 @@ const loggedSetV2 = sqliteTable('logged_set', {
   weightKg: text('weight_kg'),
   reps: integer('reps').notNull(),
   rir: integer('rir'),
-  notes: text('notes'),
+  harnessProbe: text('harness_probe'),
   completed: integer('completed', { mode: 'boolean' }).notNull(),
   parentSetId: text('parent_set_id'),
   restTakenSeconds: integer('rest_taken_seconds'),
@@ -77,6 +82,89 @@ const drizzleSchemaV2 = {
 };
 
 export const TestAppSchemaV2 = new DrizzleAppSchema(drizzleSchemaV2);
+
+// The `?screen=` query value __durability.web.tsx branches on to mount the workout-screen harness
+// route instead of the original durability-only harness.
+export const WORKOUT_HARNESS_MODE = 'workout';
+
+export interface SeededProgrammedExercise {
+  exerciseId: string;
+  routineExerciseId: string;
+  orderIndex: number;
+}
+
+export interface SeededProgrammedSession {
+  sessionId: string;
+  routineId: string;
+  routineDayId: string;
+  exercises: SeededProgrammedExercise[];
+}
+
+const SEEDED_TARGETS = [
+  { targetSets: 3, targetRepMin: 8, targetRepMax: 12, targetRir: 2, targetRestSeconds: 120 },
+  { targetSets: 3, targetRepMin: 6, targetRepMax: 10, targetRir: 1, targetRestSeconds: 150 },
+] as const;
+
+// Inserts a minimal but real program (one routine, one day, two routine_exercises with real
+// targets) and funnels through the shipped startWorkoutFromProgram — the same single write path a
+// real "Start Workout" tap uses — so the seeded session is never a shortcut around the helper this
+// e2e spec exists to prove. Exercise rows are referenced by id only (not seeded into
+// exercise/seeded_exercise): the workout screen resolves an unrecognised id to "Unknown exercise"
+// rather than throwing, matching durability.spec.ts's own precedent of bare exercise ids.
+export async function seedProgrammedSession(db: TestWriteDb): Promise<SeededProgrammedSession> {
+  const routineId = generateClientId();
+  const routineDayId = generateClientId();
+  const routineExerciseIds = [generateClientId(), generateClientId()];
+  const exerciseIds = ['ex-workout-harness-1', 'ex-workout-harness-2'];
+
+  await db.insert(routine).values({
+    id: routineId,
+    userId: null,
+    name: 'Harness Program',
+    goal: null,
+    status: 'ready',
+    progressionFrozen: false,
+    source: 'user',
+    createdFromTemplateId: null,
+    archivedAt: null,
+  });
+
+  await db.insert(routineDay).values({
+    id: routineDayId,
+    routineId,
+    orderIndex: 1024,
+    name: 'Push',
+    isRestDay: false,
+  });
+
+  for (const [index, routineExerciseId] of routineExerciseIds.entries()) {
+    await db.insert(routineExercise).values({
+      id: routineExerciseId,
+      routineDayId,
+      exerciseId: exerciseIds[index],
+      orderIndex: (index + 1) * 1024,
+      supersetGroupId: null,
+      progressionSchemeId: null,
+      notes: null,
+      ...SEEDED_TARGETS[index],
+    });
+  }
+
+  const slots: StartWorkoutFromProgramSlot[] = routineExerciseIds.map((routineExerciseId, index) => ({
+    routineExerciseId,
+    exerciseId: exerciseIds[index],
+    orderIndex: (index + 1) * 1024,
+  }));
+
+  const sessionId = await startWorkoutFromProgram({ routineDayId, cycleId: null, slots }, db);
+
+  return {
+    sessionId,
+    routineId,
+    routineDayId,
+    exercises: slots,
+  };
+}
 
 const WORKER_PATH = '/@powersync/worker.js';
 

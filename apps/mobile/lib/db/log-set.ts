@@ -139,6 +139,31 @@ export interface LogSetInput {
   now?: Date;
 }
 
+export interface UpdateLoggedSetInput {
+  id: string;
+  weight?: LogSetWeightInput;
+  reps?: number;
+  rir?: number | null;
+  completed?: boolean;
+}
+
+// Patches exactly the columns the caller names — never a blanket rewrite of the row. This is what
+// makes "changing RIR on an already-completed set writes only the rir column" (LOG-06) true by
+// construction rather than by convention: the checkmark toggle passes only `completed`, and a
+// single-field edit passes only that field, so `set_index`, and whichever of weight/reps/rir the
+// caller omitted, are never present in the SQL SET clause at all.
+export async function updateLoggedSet(input: UpdateLoggedSetInput, db: WriteDb = getPowerSync()): Promise<void> {
+  const patch: Partial<{ weightKg: string | null; reps: number; rir: number | null; completed: boolean }> = {};
+  if (input.weight !== undefined) patch.weightKg = unitsContract.toCanonicalKg(input.weight.value, input.weight.unit);
+  if (input.reps !== undefined) patch.reps = input.reps;
+  if (input.rir !== undefined) patch.rir = input.rir;
+  if (input.completed !== undefined) patch.completed = input.completed;
+
+  if (Object.keys(patch).length === 0) return;
+
+  await db.update(loggedSet).set(patch).where(eq(loggedSet.id, input.id));
+}
+
 // Writes the row and returns — no network call, no batching, no deferral to a finish action. A
 // set that only becomes durable when the workout is finished is a set lost to a force-quit.
 export async function logSet(input: LogSetInput, db: WriteDb = getPowerSync()): Promise<string> {
@@ -168,4 +193,45 @@ export async function logSet(input: LogSetInput, db: WriteDb = getPowerSync()): 
   });
 
   return id;
+}
+
+export interface StartWorkoutFromProgramSlot {
+  routineExerciseId: string;
+  exerciseId: string;
+  orderIndex: number;
+}
+
+export interface StartWorkoutFromProgramInput {
+  routineDayId: string;
+  cycleId: string | null;
+  slots: StartWorkoutFromProgramSlot[];
+  now?: Date;
+}
+
+// The single funnel over startSession + addSessionExercise for "start today's programmed
+// workout" (D-33 will later route two more entry points — a one-off start, and re-opening a
+// stashed session — through this exact same startSession call, never a second insert path).
+// Does not duplicate startSession's captureCalendarDay call: that stamping happens exactly once,
+// inside startSession, here and everywhere else a session is created.
+export async function startWorkoutFromProgram(
+  input: StartWorkoutFromProgramInput,
+  db: WriteDb = getPowerSync(),
+): Promise<string> {
+  const sessionId = await startSession({ routineDayId: input.routineDayId, now: input.now }, db);
+
+  const ordered = [...input.slots].sort((a, b) => a.orderIndex - b.orderIndex);
+  for (const slot of ordered) {
+    await addSessionExercise(
+      {
+        sessionId,
+        exerciseId: slot.exerciseId,
+        orderIndex: slot.orderIndex,
+        routineExerciseId: slot.routineExerciseId,
+        cycleId: input.cycleId,
+      },
+      db,
+    );
+  }
+
+  return sessionId;
 }

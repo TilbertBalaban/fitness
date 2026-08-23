@@ -43,7 +43,7 @@ async function startExercise(page: import('@playwright/test').Page, exerciseId: 
 // database in a real browser (WINDOWS.md #22) and never calls connect/finish/flush/waitForFirstSync
 // — the crud queue this suite inspects is proven never to have touched a network.
 test.describe('client schema redefinition preserves unsynced data', () => {
-  test('populated, then redefined: every logged set survives, crud queue depth is unchanged, notes reads null, side disappears', async ({
+  test('populated, then redefined: every logged set survives, crud queue depth is unchanged, harness_probe reads null, side disappears', async ({
     page,
   }) => {
     await page.goto('/__durability');
@@ -99,7 +99,7 @@ test.describe('client schema redefinition preserves unsynced data', () => {
       (globalKey) => (window as unknown as HarnessWindow)[globalKey].readRawColumns('logged_set'),
       DURABILITY_HARNESS_GLOBAL,
     );
-    expect(columns).toContain('notes');
+    expect(columns).toContain('harness_probe');
     expect(columns).not.toContain('side');
 
     const rowsAfter = await page.evaluate(
@@ -115,7 +115,7 @@ test.describe('client schema redefinition preserves unsynced data', () => {
     expect(rowsAfter[1].reps).toBe(6);
     expect(rowsAfter[2].weight_kg).toBeNull();
     expect(rowsAfter[2].reps).toBe(12);
-    expect(rowsAfter.every((row) => row.notes === null)).toBe(true);
+    expect(rowsAfter.every((row) => row.harness_probe === null)).toBe(true);
     expect(rowsAfter.every((row) => !('side' in row))).toBe(true);
 
     const depthAfter = await page.evaluate(
