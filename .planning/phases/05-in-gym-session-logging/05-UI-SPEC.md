@@ -293,119 +293,183 @@ Extends Phase 1's R1–R3 and Phase 4's R4–R6 (all still binding: wrap-and-gro
 
 ## UI Considerations
 
-> Populated by the ui-phase UI-consideration probe (Step 9.5) and lifted by plan-phase's
-> `## UI Considerations` lift rule via the identical rule as SPEC `## Edge Coverage`. Shape-rooted UI *state*
-> coverage (empty / loading / error / populated / partial / overflow / zero-one-many / long-text).
-> Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
-> state coverage and REFERENCES those rows rather than restating the copy (de-dup).
+Shape-rooted UI **state** coverage, produced by the post-verification `ui-consideration-probe`
+run against the surfaces described above (element kinds authored per element, not left to the
+heuristic cue-match — E1's and E2's prose tripped only one cue each and were corrected upward).
+Empty-state and error-state **copy** is not restated here — it lives in **Copywriting Contract**
+and is referenced by the rows below.
 
-Applicable state considerations resolved: 68 covered, 9 backstop, 3 unresolved (of 80 applicable across 11 elements).
+**Coverage:** 80 applicable · 80 resolved (74 explicit, 6 backstop) · 0 unresolved
 
-Element key: **E1** Active Workout screen — live mode (list-collection of set rows + interactive-control) · **E2** Exercise Strip (list-collection) · **E3** Set Row (form + interactive-control) · **E4** Numeric Keypad (interactive-control) · **E5** Header Timer Bar (interactive-control + static-content) · **E6** Rest Timer Full-Screen (interactive-control) · **E7** Per-Exercise Action Bar (interactive-control) · **E8** Home In-Progress Banner (list-collection of 0-or-1) · **E9** Workout Summary (list-collection + form) · **E10** History tab (list-collection) · **E11** Active Workout screen — editing mode (form).
+A **backstop** row is a real gap: the contract does not fix it, so the planner must wire a held-out
+UI-state test rather than assume a rendering. At verify time an unwired backstop routes to
+`insufficient_spec → human_needed` — never a silent pass.
 
-| Category | Element | Status | Resolution / Reason |
-|----------|---------|--------|---------------------|
-| empty | E1 Active Workout (live) | ⊘ dismissed | A live session structurally always has ≥1 `session_exercise` row (LOG-01/02 always add at least one before the screen can render) — there is no zero-exercise live session to design for. |
-| loading | E1 Active Workout (live) | ✅ covered | Local-first synchronous read (Phase-Wide R6, inherited); only the very first paint may show the shipped 3-row skeleton pattern. |
-| error | E1 Active Workout (live) | ✅ covered | Local read failure reuses the shipped "couldn't load" pattern — see Copywriting Contract's new "Workout couldn't load" instance. |
-| populated | E1 Active Workout (live) | ✅ covered | Header timer bar + exercise strip + pager + current exercise's action bar + set rows, in that order — see Screen & Component Inventory focal point. |
-| partial | E1 Active Workout (live) | ✅ covered | An exercise mid-session with some sets checked and some not renders both states in the same page — checked rows keep their values visible and editable via undo (D-19), unchecked rows show prefill/reference as normal. |
-| zero-one-many | E1 Active Workout (live) | ✅ covered | One exercise: pager has no adjacent page (swipe is a no-op, matching Phase 4's Day Deck precedent); many exercises: strip scrolls, pager pages sequentially. |
-| overflow | E1 Active Workout (live) | 🧪 backstop | A session with 15+ exercises keeps the strip navigable via horizontal scroll only, no jump-to-exercise index — verified by a held-out interaction test, not visual inspection, matching Phase 4's Day Deck precedent for the same class of overflow. |
-| long-text | E1 Active Workout (live) | ✅ covered | Exercise name in the pager header wraps fully (R4, inherited) at maximum OS font scale. |
-| empty | E2 Exercise Strip | ⊘ dismissed | Same reasoning as E1 empty — a live session always has ≥1 exercise chip. |
-| loading | E2 Exercise Strip | ⊘ dismissed | Synchronous local query (R6, inherited). |
-| error | E2 Exercise Strip | ⊘ dismissed | Surfaces at E1's error state, not independently here. |
-| populated | E2 Exercise Strip | ✅ covered | Chips render in session order with the three-state treatment (current/completed/in-progress) — see Exercise Strip section. |
-| partial | E2 Exercise Strip | ✅ covered | A chip with some-but-not-all sets complete (e.g. `2/4`) renders the in-progress fraction treatment, distinct from both current and fully-completed. |
-| overflow | E2 Exercise Strip | ✅ covered | Strip scrolls horizontally; chips never wrap to a second row (inherited `CycleStrip` behavior). |
-| zero-one-many | E2 Exercise Strip | ✅ covered | One exercise still renders the strip with a single chip plus the trailing `+` add-exercise chip; many exercises scroll. |
-| long-text | E2 Exercise Strip | ✅ covered | A long exercise name widens its chip (R4) rather than truncating inside the chip. |
-| empty | E3 Set Row | ⊘ dismissed | A set row always carries at least a set number and three fields by construction — there is no contentless set row. |
-| loading | E3 Set Row | ⊘ dismissed | Optimistic local-first writes (R6, inherited) — no async loading state for entry. |
-| error | E3 Set Row | ⊘ dismissed | Numeric fields via the custom keypad cannot reach an invalid-format state structurally (no free-text entry exists) — nothing to validate against. |
-| populated | E3 Set Row | ✅ covered | All three fields carry real entered/prefilled values plus their greyed references, and the checkmark reflects completion state. |
-| partial | E3 Set Row | ✅ covered | Weight blank + "No previous" on a first-ever set-number, while reps/RIR still prefill from the program target — the three fields are independently sourced (D-16) and can be in different fill states simultaneously. |
-| overflow | E3 Set Row | 🧪 backstop | A wide value (e.g. a 4-digit weight or an RIR edge value) at maximum OS font scale grows the row's height and the field's column width rather than clipping — verified by a held-out layout test at the maximum font-scale multiplier, matching Phase 4's Exercise Slot Row precedent. |
-| zero-one-many | E3 Set Row | ✅ covered | A `warmup`-type row and a `normal`-type row render side by side in the same exercise's set list, distinguished only by the leading "W" badge — no separate list, no separate section. |
-| long-text | E3 Set Row | ✅ covered | The greyed reference value and the field value both wrap/grow at large font scale (R4), never forcing the checkmark column below its 48px floor. |
-| empty | E4 Numeric Keypad | ⊘ dismissed | The keypad is a fixed grid of controls, not data-driven content — no empty-content state exists. |
-| loading | E4 Numeric Keypad | ⊘ dismissed | Purely local, synchronous input handling. |
-| error | E4 Numeric Keypad | ⊘ dismissed | No free-text entry path exists (structurally rejects `TextInput`), so there is no malformed-input state to design for. |
-| populated | E4 Numeric Keypad | ✅ covered | Digit grid, stepper row, next/submit arrow, and the reserved plate band, all rendered per the Numeric Keypad section. |
-| partial | E4 Numeric Keypad | ⊘ dismissed | A glyph-grid control has no partial-content state distinct from its populated state. |
-| overflow | E4 Numeric Keypad | ⊘ dismissed | Fixed grid dimensions; no scrolling or overflow content within the keypad itself. |
-| zero-one-many | E4 Numeric Keypad | ⊘ dismissed | Exactly one keypad instance is ever mounted at a time (one active field), by construction of the field-focus activation model. |
-| long-text | E4 Numeric Keypad | ⊘ dismissed | Digit glyphs are fixed single characters — no long-text case applies to the keypad's own chrome (the active field's value display is covered under E3). |
-| empty | E5 Header Timer Bar | ⊘ dismissed | The bar always renders both columns in `live` mode; there is no contentless variant of the bar itself (the rest column's dormant `0:00` state is covered under `partial` below). |
-| loading | E5 Header Timer Bar | ⊘ dismissed | Purely derived from local session state (`started_at`, stored rest target) — no async load. |
-| error | E5 Header Timer Bar | ⚠ unresolved | What the bar shows if `started_at` is somehow missing/corrupt on a session that otherwise loaded is not specified — flagged as a planner assumption: fall back to `0:00` and treat as a data-integrity bug to log, not a user-facing error state, since `startSession` always stamps `started_at` at creation and no code path removes it. |
-| populated | E5 Header Timer Bar | ✅ covered | Duration counting up (left) and rest counting down or dormant (right), per the Header Timer Bar section. |
-| partial | E5 Header Timer Bar | ✅ covered | Rest column's dormant state (`0:00`, muted) between sets — explicitly covered, not a placeholder gap. |
-| zero-one-many | E5 Header Timer Bar | ⊘ dismissed | Exactly two columns always render; there is no variable-count case for this component. |
-| overflow | E5 Header Timer Bar | ✅ covered | A session running past an hour renders `H:MM:SS` instead of `MM:SS` — the Display-role readout grows in character count, not truncates; column width is not fixed, it grows with the text (R4). |
-| long-text | E5 Header Timer Bar | ⊘ dismissed | Both readouts are numeric only — no free text exists in this component to wrap. |
-| empty | E6 Rest Timer Full-Screen | ⊘ dismissed | Only reachable by tapping an active rest column (E5) — there is no route to this screen with nothing to show. |
-| loading | E6 Rest Timer Full-Screen | ⊘ dismissed | Purely derived from the same stored wall-clock target as E5 — no async load. |
-| error | E6 Rest Timer Full-Screen | ⊘ dismissed | Same reasoning as E5's error row — no user-facing error state exists for a missing timestamp on an already-loaded session. |
-| populated | E6 Rest Timer Full-Screen | ✅ covered | Large countdown + extend/skip pair + dismiss control, per the Rest Timer Full-Screen section. |
-| partial | E6 Rest Timer Full-Screen | ✅ covered | The at-zero state replaces extend/skip with a single "Back to Workout" button — explicitly covered, not an omission. |
-| zero-one-many | E6 Rest Timer Full-Screen | ⊘ dismissed | Exactly one countdown is ever shown; there is no multi-timer case in this phase (superset-paired rest timers are Phase 7's scope). |
-| overflow | E6 Rest Timer Full-Screen | ⊘ dismissed | A single large numeral has no overflow case at any realistic rest duration (even `9:59` fits the fixed large-numeral treatment without layout change). |
-| long-text | E6 Rest Timer Full-Screen | ⊘ dismissed | No free text on this screen beyond fixed button labels, already covered by the Copywriting Contract. |
-| empty | E7 Per-Exercise Action Bar | ⊘ dismissed | The bar is a fixed three-button row, not data-driven — no empty-content state exists. |
-| loading | E7 Per-Exercise Action Bar | ⊘ dismissed | Purely local; opening any of the three sheets is a synchronous local-state transition. |
-| error | E7 Per-Exercise Action Bar | ⊘ dismissed | No async write path is triggered by the bar itself (the sheets it opens have their own local-first writes, inheriting R6). |
-| populated | E7 Per-Exercise Action Bar | ✅ covered | Warm-up / Targets / Note buttons plus the trailing `⋮` overflow, per the Per-Exercise Action Bar section. |
-| partial | E7 Per-Exercise Action Bar | ✅ covered | The Note button's badge only appears once a note exists for that exercise — explicitly a partial/conditional visual state, not binary hidden/shown for the whole button. |
-| zero-one-many | E7 Per-Exercise Action Bar | ⊘ dismissed | Exactly three permanent buttons plus one overflow trigger always render, per D-13's fixed list-constant requirement — no variable count. |
-| overflow | E7 Per-Exercise Action Bar | ⊘ dismissed | Fixed four-control row at fixed sizes; no scrolling or overflow content within the bar. |
-| long-text | E7 Per-Exercise Action Bar | ✅ covered | Button captions ("Warm-up", "Targets", "Note") are fixed short strings that wrap to a second line beneath the glyph at extreme font scale rather than clipping, consistent with R4. |
-| empty | E8 Home In-Progress Banner | ✅ covered | No in-progress/paused session → banner renders nothing at all (not a hidden-but-present card) — see D-28's cost constraint and the Home In-Progress Banner section. |
-| loading | E8 Home In-Progress Banner | ⊘ dismissed | The conditional existence-check query is synchronous local SQLite (R6); no loading state for the banner itself. |
-| error | E8 Home In-Progress Banner | ⊘ dismissed | A local read failure here is indistinguishable from "no session" from the user's perspective and simply omits the banner — not surfaced as a distinct error state, since the Next Up card beneath it already owns Home's error-surfacing responsibility. |
-| populated | E8 Home In-Progress Banner | ✅ covered | Heading + elapsed duration + Resume/Discard actions, per the section above. |
-| partial | E8 Home In-Progress Banner | ✅ covered | Paused variant swaps only the heading text, per the section above — explicitly not a separate component. |
-| zero-one-many | E8 Home In-Progress Banner | ✅ covered | Structurally at most one in-progress/paused session can exist per the client-side single-session guard (RESEARCH.md §11) — there is no "many" case to design for. |
-| overflow | E8 Home In-Progress Banner | ⊘ dismissed | Fixed short content (heading + one duration string + two buttons) has no realistic overflow case. |
-| long-text | E8 Home In-Progress Banner | ⊘ dismissed | No variable-length user content appears in this banner (no exercise/program name is shown) — nothing to wrap. |
-| empty | E9 Workout Summary | ⊘ dismissed | A summary is only reached after finishing a session that structurally has ≥1 completed set (finishing with zero completed sets is prevented — see the unresolved row below). |
-| loading | E9 Workout Summary | ✅ covered | PR detection and e1RM computation run synchronously against already-local data at finish time (R6) — no async loading state; the screen renders complete on first paint. |
-| error | E9 Workout Summary | ⚠ unresolved | What happens if `personal_record` fails to sync-push at finish time (offline) is not specified visually — flagged as a planner assumption: the summary shows PRs computed from local data regardless of sync state (D-01's durability model means the local write already succeeded), and no error state is needed because there is nothing the user-facing summary depends on that could fail synchronously. |
-| populated | E9 Workout Summary | ✅ covered | Muscles Trained + per-exercise breakdown + PR badges + Done CTA, per the Workout Summary section. |
-| partial | E9 Workout Summary | ✅ covered | An exercise with a mix of e1RM-eligible and e1RM-ineligible (>10 rep) sets still reports the single best eligible e1RM for that exercise, or `—` if none of its sets qualify — not a per-set breakdown of validity. |
-| zero-one-many | E9 Workout Summary | ✅ covered | Zero PRs this session → no badges render anywhere (not a "no PRs" placeholder message — the absence is silent, matching this app's restrained empty-affordance pattern elsewhere); one or many PRs render as one badge per detected type, per exercise. |
-| overflow | E9 Workout Summary | ✅ covered | Multiple PR badges on one exercise wrap to a second line rather than truncating or scrolling horizontally (R4). |
-| long-text | E9 Workout Summary | ✅ covered | Exercise names in the breakdown wrap fully (R4); this is a new Phase 5 surface, not a reused Phase 3 truncating row. |
-| empty | E10 History tab | ✅ covered | No past workouts → "No workouts yet" / link to start a workout — see Copywriting Contract. |
-| loading | E10 History tab | ✅ covered | Reuses the exact 3-row skeleton pattern already shipped in `programs.tsx`/Phase 4's library screen. |
-| error | E10 History tab | ✅ covered | Reuses the exact "couldn't load" pattern already shipped, reworded for workouts. |
-| populated | E10 History tab | ✅ covered | A `FlashList` of past-session rows (date, program/one-off label, set count), each opening `editing` mode on tap; a persistent "Add Past Workout" entry point (D-33) at the top of the list. |
-| partial | E10 History tab | ✅ covered | A one-off session's row shows no program name (omits the field rather than showing "—" or "None" — a session-level label absence, distinct from the per-field em-dash convention used inside a session). |
-| overflow | E10 History tab | ✅ covered | Virtualized `FlashList` scroll with cursor-based pagination per RESEARCH.md §7's grouped-aggregate query — no per-row N+1 query. |
-| zero-one-many | E10 History tab | ⊘ dismissed | A plain reverse-chronological list has no distinct zero/one/many visual treatment beyond the empty state (zero) and populated state (one-or-many render identically, just more rows). |
-| long-text | E10 History tab | ✅ covered | A long custom session name/rename (LOG-20) wraps within the row rather than truncating (R4 — a new Phase 5 row). |
-| empty | E11 Active Workout (editing) | ⊘ dismissed | Same reasoning as E1 — an editable past session always has ≥1 exercise by construction. |
-| loading | E11 Active Workout (editing) | ⊘ dismissed | Same local-first synchronous read as `live` mode (R6). |
-| error | E11 Active Workout (editing) | ⊘ dismissed | Shares E1's error-state treatment — not independently designed. |
-| populated | E11 Active Workout (editing) | ✅ covered | Centered date heading in place of the timer bar + exercise strip + pager + set rows, identical set-row/keypad components to `live` mode — per Session Modes. |
-| partial | E11 Active Workout (editing) | ✅ covered | A past session with some sets originally left uncompleted (e.g. cut a workout short) still shows those rows as unchecked and editable — editing mode does not force-complete anything. |
-| zero-one-many | E11 Active Workout (editing) | ⊘ dismissed | Same reasoning as E1 — no distinct count-based treatment beyond the shared pager behavior already covered there. |
-| overflow | E11 Active Workout (editing) | ⊘ dismissed | Shares E1's overflow treatment (strip scroll) — not independently designed. |
-| long-text | E11 Active Workout (editing) | ✅ covered | Same wrap-and-grow rule as `live` mode's set rows and exercise names (R4) — no divergence for editing mode. |
-| — | E1/E11 mode-confusability | 🧪 backstop | `live` and `editing` modes are visually distinguishable at a glance per the Session Modes table's "visual tell" — verified by a held-out visual-parity/divergence assertion comparing the header region's rendered output between the two modes, not manual inspection alone (this is the concrete rendering-level check for Pitfall 3 in RESEARCH.md). |
-| — | E9 zero-completed-set finish | ⚠ unresolved | Whether "Finish Workout" is reachable/disabled when zero sets have been completed anywhere in the session is not specified by any decision or requirement — flagged as an explicit planner assumption for the plan phase to resolve (most likely: allow it, since a session with zero completed sets is a legitimate "started but bailed" case better served by Discard, but this needs an explicit call, not a silent default). |
+### E1 — Header Timer Bar
 
-<!-- Status vocabulary (locked by probe-core projectTruths):
-     ✅ covered   → a plain truth string lifted into must_haves.truths
-     🧪 backstop  → a flat scalar { statement, verification: backstop }; at verify time, no explicit
-                    evidence → insufficient_spec → human_needed (never a silent pass, #1154)
-     ⊘ dismissed  → not applicable to this surface, reason recorded; NOT lifted into must_haves
-     ⚠ unresolved → an explicit planner assumption (surfaced, never silently dropped)
-     Rows are REPLACED (not appended) on a probe re-run — idempotent. -->
+*Element kinds:* `static-content`, `interactive-control`
 
----
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Loading / in-flight | explicit | No loading state. Both readouts render from local session state already in memory/SQLite (R6: no loading state for already-seeded local data) — duration derives from session.started_at, rest from D-21's stored timestamp — so both have a real value on first paint. |
+| Error / failure | explicit | The bar has no failure mode of its own: if the session fails to load, the parent Active Workout screen renders 'Workout couldn't load' and the bar is never mounted. A denied notification permission is not an error here (R9) — the bar stays fully functional with in-app-only alerting. |
+| Overflow / truncation | explicit | Two fixed columns, flex-row justify-between, no scroll. The longest readout (H:MM:SS) is the sizing case; both columns hold position and size between dormant (0:00 muted) and active so nothing shifts under a thumb (D-24). |
+| Long text | explicit | Only labels ('Workout' / 'Rest' / 'Paused') and numerals. Per R4 the bar grows in height rather than clipping at large OS font scale; numerals are never abbreviated or ellipsised. |
 
+### E2 — Rest Timer Full-Screen
+
+*Element kinds:* `interactive-control`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Loading / in-flight | explicit | None. Opened from an already-running timer whose remaining time is computed from D-21's stored timestamp, so the countdown renders its true value on the first frame. |
+| Error / failure | explicit | No network or async dependency. If OS notification permission is denied the screen still functions fully (R9); the degraded-state banner copy lives in the Copywriting Contract and is not an error state. |
+| Overflow / truncation | explicit | Centered fixed layout, no scroll. The 64px countdown plus the two 48×48 controls fit the smallest supported viewport; if OS font scale pushes the control pair past the width they stack vertically rather than clipping (R4). |
+| Long text | explicit | Control labels ('+30s', 'Skip Rest', 'Back to Workout') wrap-and-grow per R4; the countdown numeral is never truncated. |
+
+### E3 — Exercise Strip
+
+*Element kinds:* `list-collection`, `interactive-control`, `nav`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | Never empty in live/editing mode: D-33's startSession funnel guarantees at least one exercise, and the trailing dashed '+' Add Exercise chip is always present — so even a session whose every exercise was removed still renders the '+' chip alone. |
+| Loading / in-flight | explicit | No loading state (R6); exercises read from local SQLite already seeded by startSession. |
+| Error / failure | explicit | Inherits the parent screen's 'Workout couldn't load' error state; the strip is never mounted independently of a loaded session. |
+| Populated / happy path | explicit | One chip per exercise in session order: current chip border-accent/bg-surface, completed chips showing a checkmark glyph in place of N/N, in-progress chips showing N/M in Label/muted — horizontally scrolling, never wrapping. |
+| Partial / incomplete | explicit | Partial completion is the normal state and the fraction's whole purpose: 0 < completed < total renders 'N/M' with border-foreground-muted/bg-surface. Warm-up sets are excluded from the denominator — completing a warm-up never moves 3/4 to 4/5. |
+| Overflow / truncation | explicit | Horizontal scroll, never wrap (inherited from Phase 4's CycleStrip rule); a chip widens to fit its exercise name rather than truncating it (R4). |
+| Zero / one / many | explicit | No plural copy anywhere in the strip — only names and fractions — so zero/one/many read identically. A single-exercise session renders one chip plus the '+' chip, left-aligned, with no centering special case. |
+| Long text | explicit | Exercise names widen the chip rather than truncating (R4); the strip scrolls horizontally to accommodate the wider chip. |
+
+### E4 — Set Row
+
+*Element kinds:* `form`, `list-collection`, `interactive-control`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | An exercise with zero sets is unreachable in live mode (the program prescribes set count; one-off exercises are created with at least one set). The field-level empty case is a first-ever set-number: 'No previous' in Label/muted with no underline, and a blank weight field — never a guessed number. |
+| Loading / in-flight | explicit | No loading state (R6). The greyed previous-session reference values come from a local history lookup resolved before the row paints; a set row never shows a skeleton or spinner. |
+| Error / failure | ⚠ backstop | What a set row shows if its local write fails is not specified — D-01 guarantees the write succeeds offline, and sync failure is deliberately not surfaced on the row. Needs a held-out UI-state test asserting the row's rendering on an unrecoverable local write failure. |
+| Populated / happy path | explicit | Set-number tap target (24px), then weight / reps / RIR each as a tappable value stacked over its greyed previous-session reference with the accent-underline autofill affordance, then a 48×48 checkmark (outline unchecked, bg-accent filled checked). |
+| Partial / incomplete | explicit | A prefilled-but-uncommitted row shows Body/regular placeholder-styled values with an outline checkmark; a committed row shows Body/semibold values with a filled accent checkmark. Tapping a filled checkmark undoes it (D-19), returning the row to editable with its fields exactly in place. One-off rows show '—' for null targets. |
+| Overflow / truncation | explicit | The row never clips, never scrolls horizontally, and never shrinks a neighbouring column below its content minimum: the set-number column is fixed at 24px, the checkmark at 48px (glyph-only, not text-scaled), and the three field columns flex:1 and grow the row's height at large font scale (R4). |
+| Zero / one / many | explicit | No plural copy on the row; a one-set exercise renders a single row identically to any row in a many-set exercise. Warm-up rows carry a leading 'W' badge and are excluded from the strip's completion fraction regardless of count. |
+| Long text | explicit | Values wrap-and-grow per R4 — the column widens and the row's height grows; 'No previous' and '—' are the only text strings and both are short and fixed. |
+
+### E5 — Numeric Keypad
+
+*Element kinds:* `form`, `list-collection`, `interactive-control`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | The keypad is not mounted when no field is focused — that is its empty state. Within a focused field an empty value renders the blinking 2px bg-accent cursor bar with no digits; the field's stacked greyed reference below is unaffected. |
+| Loading / in-flight | explicit | None. The keypad is pure local UI with no data dependency; it mounts synchronously on field focus. |
+| Error / failure | explicit | No inline validation (inherited rule: structural validity over inline validation). The keypad structurally cannot produce an invalid value — digit grid, decimal, and backspace are the only inputs and the stepper moves by the field's natural unit — so no error state renders. |
+| Populated / happy path | explicit | Reserved 40px plate band (empty this phase, R8), a 3×4 digit grid at 56×56 per key with hairline separators, a stepper row of 48×48 −/+, and the trailing bg-accent next/submit arrow that reads 'Done' on the RIR field. |
+| Partial / incomplete | explicit | A partially-entered value renders exactly as typed with the cursor trailing the last digit; nothing is auto-completed or auto-committed until the next/submit arrow is tapped. |
+| Overflow / truncation | explicit | Fixed-arity grid docked as a flex sibling of the scrollable content — never position:absolute — so it structurally cannot overlap a set row. The edited row scrolls into view above the reserved band the instant the keypad mounts (LOG-05). |
+| Zero / one / many | explicit | Fixed 12-key grid plus a fixed stepper row and one submit arrow; arity never varies, so the layout reads identically in every session and no plural copy exists. |
+| Long text | explicit | Key glyphs are single characters at Display role; 'Done' is the only word label and wrap-and-grows per R4. At large OS font scale keys grow from the 56×56 floor rather than clipping the glyph. |
+
+### E6 — Per-Exercise Action Bar
+
+*Element kinds:* `form`, `list-collection`, `nav`, `interactive-control`, `static-content`, `media`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | Never empty — a fixed constant list (D-13): Warm-up, Targets, Note, overflow. No item is ever conditionally hidden; the Warm-up button stays visible regardless of the warmup_sets_enabled preference (resolves RESEARCH Open Question 1). |
+| Loading / in-flight | explicit | No loading state (R6). The Note button's badge derives from a local note lookup already resolved with the exercise page. |
+| Error / failure | explicit | Inherits the parent screen's error state; the bar has no async failure mode of its own. |
+| Populated / happy path | explicit | Four 48×48-minimum Pressables, each a small Ionicons glyph above a Label-role caption, matching the visual weight of a bottom-tab-bar item rather than a text button. |
+| Partial / incomplete | explicit | The only per-item variable state is the Note button's 6px bg-accent dot badge — present when a note exists for this exercise, absent when it does not. Every other button renders identically in every session. |
+| Overflow / truncation | explicit | Four items wrap to a second row rather than scrolling or clipping (R4); the 48×48 hit-target floor is held in every wrapped configuration. |
+| Zero / one / many | explicit | Fixed arity of four actions (D-13) — the bar's arity never varies, so there is no zero or one case and no plural copy. |
+| Long text | explicit | Captions wrap-and-grow per R4; no truncation or ellipsis on this new surface. |
+
+### E7 — Active Workout screen
+
+*Element kinds:* `form`, `list-collection`, `nav`, `interactive-control`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | Workout tab with no session and no active program renders 'No active program' / 'Build or activate a program, or start a one-off workout.' linking to Program Library and a one-off start action. A started session is never empty — startSession (D-33) guarantees at least one exercise. |
+| Loading / in-flight | explicit | No loading state for already-seeded local data (R6); the session reads from local SQLite. Cold start stays within Phase 1's ~3s web bound (R2). |
+| Error / failure | explicit | 'Workout couldn't load' / 'Restart the app to try again. Your programs and history are safe.' — the shipped error pattern reused verbatim. |
+| Populated / happy path | explicit | Header timer bar, exercise strip, a horizontal pager of exercise pages each carrying its action bar and set rows, and the mode-appropriate primary action (Finish Workout / Done / Save Changes). |
+| Partial / incomplete | explicit | A partially-logged session is the normal mid-workout state: completed rows show filled accent checkmarks, uncompleted rows show outline circles over prefilled-but-uncommitted values. Force-quitting and relaunching restores exactly this partial state with every logged set intact. |
+| Overflow / truncation | explicit | Set rows scroll vertically within the exercise page, the strip scrolls horizontally, and the header bar and keypad are non-scrolling flex siblings — so neither ever overlaps the scroll region. |
+| Zero / one / many | explicit | A one-exercise session renders a single strip chip and a single pager page with no pager-affordance change; many exercises scroll the strip horizontally. No plural copy appears anywhere on the screen. |
+| Long text | explicit | R4 wrap-and-grow applies to every text surface here; the 'Editing {Weekday, Month D}' date line wraps to a second line rather than truncating. |
+
+### E8 — Home In-Progress Banner
+
+*Element kinds:* `list-collection`, `nav`, `interactive-control`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | Not rendered at all when no in_progress/paused session exists — and per D-28 the query itself is conditional, so the common no-session path costs nothing. There is no empty-state variant of the banner. |
+| Loading / in-flight | explicit | No loading state (R6); the banner either renders complete or is absent. The elapsed duration is recomputed on Home-tab focus, not streamed. |
+| Error / failure | ⚠ backstop | What Home shows if the in-progress-session query fails is not specified — the banner's absence is indistinguishable from a failed query. Needs a held-out UI-state test asserting Home's rendering when that conditional query errors. |
+| Populated / happy path | explicit | bg-secondary card with border-l-4 border-accent, heading 'Workout in Progress' with the elapsed duration inline in muted Label, and two actions side by side: Resume Workout (primary accent CTA fill) and Discard (text-only, text-destructive, opens the Discard Workout confirmation first). |
+| Partial / incomplete | explicit | The paused variant is the only alternate rendering: heading reads 'Workout Paused', layout otherwise identical. |
+| Overflow / truncation | explicit | Full-width card; the two actions wrap-and-grow per R4 rather than truncating their labels, and the card grows in height at large font scale. |
+| Zero / one / many | explicit | At most one in-progress session can exist, so the banner is strictly zero-or-one — there is no many case and no plural copy. |
+| Long text | explicit | Heading and action labels wrap-and-grow (R4); the elapsed-duration string is bounded by its H:MM formatting. |
+
+### E9 — Workout Summary
+
+*Element kinds:* `form`, `list-collection`, `interactive-control`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | ⚠ backstop | A summary for a session finished with zero completed sets is not specified — the working-set-only inclusion rule empties both the Muscles Trained chip row and the per-exercise breakdown, leaving only heading, duration, and Done. Needs a held-out UI-state test pinning that rendering. |
+| Loading / in-flight | explicit | No loading state (R6); PR detection and e1RM come from the shared local module computed synchronously against local data before the screen paints. |
+| Error / failure | ⚠ backstop | What the summary shows if PR detection or e1RM computation throws is not specified. Needs a held-out UI-state test asserting the breakdown still renders its sets/reps/weight/volume line with the e1RM cell degraded, rather than failing the whole screen. |
+| Populated / happy path | explicit | Heading 'Workout Complete' with duration beneath, a read-only MuscleTargetList chip row, per-exercise breakdown rows carrying sets/reps/weight/volume plus e1RM and any 'New PR' badges with a trailing Edit affordance, and a full-width Done CTA pinned to the bottom. |
+| Partial / incomplete | explicit | An exercise with some but not all sets completed appears in the breakdown counting only its completed sets. An e1RM past the 10-rep validity cutoff renders '—' (em dash) with the label still present — never omitted, never a number computed past the cutoff. |
+| Overflow / truncation | explicit | The screen scrolls vertically with the Done CTA pinned to the bottom; multiple PR badges on one exercise wrap to a second line rather than truncating (R4). |
+| Zero / one / many | explicit | Exercises with zero completed sets are omitted from the breakdown entirely; one and many render identically as a list with no plural copy — the 'New PR' badge text is invariant regardless of how many PR types fire. |
+| Long text | explicit | Exercise names and badge text wrap-and-grow (R4); no truncation on this new surface. |
+
+### E10 — Session Action Sheet
+
+*Element kinds:* `list-collection`, `media`, `static-content`, `nav`, `interactive-control`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | Fixed constant list of four rows (Swap, Remove, Reorder, Info) mirroring RoutineActionSheet; never empty. |
+| Loading / in-flight | explicit | None; the sheet is pure local UI opened from already-loaded session state. |
+| Error / failure | explicit | No async failure mode of its own. Remove opens the 'Remove Exercise' confirmation ('Any sets already logged for this exercise stay in your history. Remove it from this workout?') before acting; declining dismisses with no change. |
+| Populated / happy path | explicit | Four rows, each an Ionicons glyph plus a label — Remove rendered in the Destructive color, the other three in default foreground. |
+| Partial / incomplete | explicit | The row set is constant and every row is always actionable; there is no partial-data rendering and no disabled-row state. |
+| Overflow / truncation | explicit | The sheet is sized to its four rows; at large OS font scale it grows in height and scrolls internally rather than clipping a row (R4). |
+| Zero / one / many | explicit | Fixed arity of four rows — arity never varies, so there is no zero or one case and no plural copy. |
+| Long text | explicit | Row labels wrap-and-grow per R4; no truncation. |
+
+### E11 — History tab
+
+*Element kinds:* `list-collection`, `nav`, `interactive-control`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | 'No workouts yet' / 'Log your first workout to see it here.' (Copywriting Contract), with the add-a-past-workout entry point still reachable so the empty state is never a dead end. |
+| Loading / in-flight | explicit | No loading state for the already-local first page of session data (R6). |
+| Error / failure | explicit | Reuses the shipped pattern: 'History couldn't load' / 'Restart the app to try again. Your programs and history are safe.' |
+| Populated / happy path | ⚠ backstop | The history session-row anatomy — what each past-workout row shows, and where view/edit/duplicate/delete hang off it — is not specified in this UI-SPEC. Needs a held-out visual test once the planner fixes the row contract. |
+| Partial / incomplete | ⚠ backstop | How a partially-logged past session renders in the history list (whether an abandoned session is shown, hidden, or marked) is not specified. Needs a held-out UI-state test pinning it. |
+| Overflow / truncation | explicit | Vertical scroll; per R4 row content wraps and grows rather than truncating, and the list never scrolls horizontally. |
+| Zero / one / many | explicit | Zero renders the empty state above; one and many render the same list with no plural copy. |
+| Long text | explicit | R4 wrap-and-grow applies — session labels and dates never truncate or ellipsise. |
+
+### Backstop Summary — planner action required
+
+- **E4 Set Row — Error / failure:** What a set row shows if its local write fails is not specified — D-01 guarantees the write succeeds offline, and sync failure is deliberately not surfaced on the row. Needs a held-out UI-state test asserting the row's rendering on an unrecoverable local write failure.
+- **E8 Home In-Progress Banner — Error / failure:** What Home shows if the in-progress-session query fails is not specified — the banner's absence is indistinguishable from a failed query. Needs a held-out UI-state test asserting Home's rendering when that conditional query errors.
+- **E9 Workout Summary — Empty / no data:** A summary for a session finished with zero completed sets is not specified — the working-set-only inclusion rule empties both the Muscles Trained chip row and the per-exercise breakdown, leaving only heading, duration, and Done. Needs a held-out UI-state test pinning that rendering.
+- **E9 Workout Summary — Error / failure:** What the summary shows if PR detection or e1RM computation throws is not specified. Needs a held-out UI-state test asserting the breakdown still renders its sets/reps/weight/volume line with the e1RM cell degraded, rather than failing the whole screen.
+- **E11 History tab — Populated / happy path:** The history session-row anatomy — what each past-workout row shows, and where view/edit/duplicate/delete hang off it — is not specified in this UI-SPEC. Needs a held-out visual test once the planner fixes the row contract.
+- **E11 History tab — Partial / incomplete:** How a partially-logged past session renders in the history list (whether an abandoned session is shown, hidden, or marked) is not specified. Needs a held-out UI-state test pinning it.
 ## Registry Safety
 
 | Registry | Blocks Used | Safety Gate |
