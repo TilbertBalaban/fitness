@@ -1,0 +1,382 @@
+{
+  "items": [
+    {
+      "requirement_id": "LOG-01",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-02",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-03",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "LOG-03",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "LOG-03",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "LOG-04",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "LOG-04",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "LOG-04",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "LOG-05",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-06",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "LOG-06",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "LOG-06",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "LOG-07",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "LOG-07",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "LOG-07",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "LOG-08",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "LOG-08",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "LOG-08",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "LOG-09",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-10",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-11",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-12",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-13",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "LOG-13",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "LOG-13",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "LOG-14",
+      "category": "idempotency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens if this runs twice on the same input?"
+    },
+    {
+      "requirement_id": "LOG-14",
+      "category": "concurrency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "If interrupted or run in parallel, what is guaranteed?"
+    },
+    {
+      "requirement_id": "LOG-15",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-16",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "LOG-16",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "LOG-16",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "LOG-17",
+      "category": "adjacency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When two things are exactly equal or just touch, do they merge, collide, or separate?"
+    },
+    {
+      "requirement_id": "LOG-17",
+      "category": "empty",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What is the result for empty, single-element, or null input?"
+    },
+    {
+      "requirement_id": "LOG-17",
+      "category": "ordering",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "When elements compare equal, is output order specified and stable?"
+    },
+    {
+      "requirement_id": "LOG-17",
+      "category": "idempotency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens if this runs twice on the same input?"
+    },
+    {
+      "requirement_id": "LOG-17",
+      "category": "concurrency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "If interrupted or run in parallel, what is guaranteed?"
+    },
+    {
+      "requirement_id": "LOG-18",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-19",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    },
+    {
+      "requirement_id": "LOG-20",
+      "category": "idempotency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "What happens if this runs twice on the same input?"
+    },
+    {
+      "requirement_id": "LOG-20",
+      "category": "concurrency",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "If interrupted or run in parallel, what is guaranteed?"
+    },
+    {
+      "requirement_id": "LOG-21",
+      "category": "unclassified",
+      "status": "unresolved",
+      "verification": null,
+      "resolution": null,
+      "reason": null,
+      "probe": "unclassified — review manually"
+    }
+  ],
+  "coverage": {
+    "applicable": 41,
+    "resolved": 0,
+    "unresolved": 41,
+    "byVerification": {
+      "explicit": 0,
+      "backstop": 0
+    }
+  }
+}
