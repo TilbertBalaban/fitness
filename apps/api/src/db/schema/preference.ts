@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { bigint, pgTable, text } from 'drizzle-orm/pg-core';
+import { bigint, boolean, pgTable, text } from 'drizzle-orm/pg-core';
 import { user } from '../schema';
 
 // Single TEXT PRIMARY KEY id, deterministically equal to user_id — not keyed on user_id itself,
@@ -23,6 +23,10 @@ export const userPreference = pgTable('user_preference', {
   // following defaultEquipmentProfileId's precedent above: a foreign key here would turn archiving
   // the active routine into a constraint violation instead of a pointer clear.
   activeRoutineId: text('active_routine_id'),
+  // FEATURES.md item 6 records that hardcoded auto-advance with no override is the regression
+  // versus MacroFactor, so both toggles exist and default on (LOG-13, LOG-17).
+  autoAdvanceEnabled: boolean('auto_advance_enabled').notNull().default(true),
+  warmupSetsEnabled: boolean('warmup_sets_enabled').notNull().default(true),
   serverSeq: bigint('server_seq', { mode: 'number' })
     .notNull()
     .default(sql`nextval('sync_seq')`),

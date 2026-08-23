@@ -17,6 +17,11 @@ export const workoutSession = sqliteTable('workout_session', {
   deviceId: text('device_id'),
   timezone: text('timezone').notNull(),
   localDate: text('local_date').notNull(),
+  notes: text('notes'),
+  name: text('name'),
+  pausedAt: text('paused_at'),
+  accumulatedPausedSeconds: integer('accumulated_paused_seconds').notNull().default(0),
+  restTargetAt: text('rest_target_at'),
   serverSeq: integer('server_seq'),
 });
 
@@ -32,6 +37,8 @@ export const sessionExercise = sqliteTable('session_exercise', {
   targetRepMax: integer('target_rep_max'),
   targetRir: integer('target_rir'),
   targetRestSeconds: integer('target_rest_seconds'),
+  notes: text('notes'),
+  removedAt: text('removed_at'),
 });
 
 export const loggedSet = sqliteTable('logged_set', {
@@ -49,6 +56,7 @@ export const loggedSet = sqliteTable('logged_set', {
   parentSetId: text('parent_set_id'),
   restTakenSeconds: integer('rest_taken_seconds'),
   loggedAt: text('logged_at').notNull(),
+  notes: text('notes'),
 });
 
 export const routine = sqliteTable('routine', {
@@ -259,6 +267,8 @@ export const userPreference = sqliteTable('user_preference', {
   weightUnit: text('weight_unit').notNull(),
   defaultEquipmentProfileId: text('default_equipment_profile_id'),
   activeRoutineId: text('active_routine_id'),
+  autoAdvanceEnabled: integer('auto_advance_enabled', { mode: 'boolean' }).notNull().default(true),
+  warmupSetsEnabled: integer('warmup_sets_enabled', { mode: 'boolean' }).notNull().default(true),
   serverSeq: integer('server_seq'),
 });
 

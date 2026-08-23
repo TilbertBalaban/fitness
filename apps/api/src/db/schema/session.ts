@@ -2,6 +2,7 @@ import { relations, sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -38,11 +39,28 @@ export const workoutSession = pgTable(
     // recomputes these from started_at and the reading device's clock (PITFALLS §12).
     timezone: text('timezone').notNull(),
     localDate: date('local_date').notNull(),
+    notes: text('notes'),
+    // Nullable with no default: a null name is the normal case, and the History row falls back to
+    // the stamped local_date rather than to a generated placeholder that would then be
+    // indistinguishable from a real user-typed name (LOG-20).
+    name: text('name'),
+    pausedAt: timestamp('paused_at'),
+    accumulatedPausedSeconds: integer('accumulated_paused_seconds').notNull().default(0),
+    // A wall-clock target the client recomputes remaining time from on every foreground,
+    // deliberately not a countdown value — a stored remaining-seconds number would be wrong the
+    // instant the app is backgrounded (D-21, PITFALLS §6).
+    restTargetAt: timestamp('rest_target_at'),
     serverSeq: bigint('server_seq', { mode: 'number' })
       .notNull()
       .default(sql`nextval('sync_seq')`),
   },
-  (table) => [index('workout_session_userId_idx').on(table.userId)],
+  (table) => [
+    index('workout_session_userId_idx').on(table.userId),
+    // The seed script and any future direct-DB tooling bypass sync.service.ts's application-level
+    // validator entirely — this constraint is the real backstop. Literals must match
+    // WORKOUT_SESSION_STATUSES in packages/api-contracts/src/session.ts exactly.
+    check('workout_session_status_check', sql`${table.status} IN ('in_progress','paused','completed','discarded')`),
+  ],
 );
 
 // No user_id and no server_seq: this is a child of its aggregate root. Ownership and merge
@@ -81,6 +99,10 @@ export const sessionExercise = pgTable(
     targetRepMax: integer('target_rep_max'),
     targetRir: integer('target_rir'),
     targetRestSeconds: integer('target_rest_seconds'),
+    notes: text('notes'),
+    // Non-destructive mid-workout removal: sets already logged for a removed exercise stay
+    // queryable in history rather than being deleted (LOG-14).
+    removedAt: timestamp('removed_at'),
   },
   (table) => [index('session_exercise_sessionId_idx').on(table.sessionId)],
 );
@@ -107,10 +129,15 @@ export const loggedSet = pgTable(
     parentSetId: text('parent_set_id').references((): AnyPgColumn => loggedSet.id),
     restTakenSeconds: integer('rest_taken_seconds'),
     loggedAt: timestamp('logged_at').notNull(),
+    notes: text('notes'),
   },
   (table) => [
     index('logged_set_sessionExerciseId_idx').on(table.sessionExerciseId),
     index('logged_set_sessionExerciseId_setIndex_idx').on(table.sessionExerciseId, table.setIndex),
+    // The seed script and any future direct-DB tooling bypass sync.service.ts's application-level
+    // validator entirely — this constraint is the real backstop. Literals must match SET_TYPES in
+    // packages/api-contracts/src/session.ts exactly.
+    check('logged_set_set_type_check', sql`${table.setType} IN ('normal','warmup','drop','myorep','partial','failure','amrap')`),
   ],
 );
 

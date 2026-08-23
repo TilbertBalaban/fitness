@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { bigint, date, index, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { bigint, check, date, index, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { user } from '../schema';
 import { exercise } from './catalog';
 import { loggedSet } from './session';
@@ -23,7 +23,13 @@ export const personalRecord = pgTable(
       .notNull()
       .default(sql`nextval('sync_seq')`),
   },
-  (table) => [index('personal_record_userId_idx').on(table.userId)],
+  (table) => [
+    index('personal_record_userId_idx').on(table.userId),
+    // The seed script and any future direct-DB tooling bypass sync.service.ts's application-level
+    // validator entirely — this constraint is the real backstop. Literals must match PR_TYPES in
+    // packages/api-contracts/src/session.ts exactly.
+    check('personal_record_pr_type_check', sql`${table.prType} IN ('heaviest_weight','best_e1rm','most_reps_at_weight','best_set_volume')`),
+  ],
 );
 
 export const bodyMetric = pgTable(
