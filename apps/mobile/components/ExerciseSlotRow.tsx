@@ -32,7 +32,20 @@ export type StepDirection = 'inc' | 'dec';
 // only equivalent when step is 1: with rest's step of 15 and floor of 0, any value in (0, 15) —
 // reachable from a program authored on another client — stepped straight past the floor into a
 // negative, which the server's non-negative-integer shape check then rejects terminally.
-export function stepBoundedValue(current: number | null, direction: StepDirection, floor: number, ceiling: number | null, step = 1): number | null {
+//
+// `clearToNull` is false while a cycle is selected. An override's null means "inherit", never
+// "cleared" (resolveTarget's contract), so a step that cleared the value there would be written as
+// "inherit this from the base" and the number would jump *up* to the base — the user presses minus
+// and the readout increases. Clearing a prescription is a base-level act; inside a cycle the floor
+// is a floor.
+export function stepBoundedValue(
+  current: number | null,
+  direction: StepDirection,
+  floor: number,
+  ceiling: number | null,
+  step = 1,
+  clearToNull = true,
+): number | null {
   if (direction === 'inc') {
     if (current === null) return floor;
     const next = current + step;
@@ -40,7 +53,15 @@ export function stepBoundedValue(current: number | null, direction: StepDirectio
   }
   if (current === null) return null;
   const next = current - step;
-  return next < floor ? null : next;
+  if (next >= floor) return next;
+  return clearToNull ? null : floor;
+}
+
+// The decrement that would clear is a no-op while a cycle is selected, so the control is disabled
+// rather than pressable-and-inert.
+export function decreaseDisabledFor(value: number | null, floor: number, clearToNull: boolean): boolean {
+  if (value === null) return true;
+  return !clearToNull && value <= floor;
 }
 
 export interface RepRange {
@@ -53,8 +74,8 @@ const REP_CEILING = 50;
 
 // R5: incrementing min above the current max also raises max to match; the pair can never enter
 // an invalid (min > max) state. A null max means no ordering constraint yet — nothing to pair.
-export function stepRepMin(range: RepRange, direction: StepDirection): RepRange {
-  const nextMin = stepBoundedValue(range.min, direction, REP_FLOOR, REP_CEILING);
+export function stepRepMin(range: RepRange, direction: StepDirection, clearToNull = true): RepRange {
+  const nextMin = stepBoundedValue(range.min, direction, REP_FLOOR, REP_CEILING, 1, clearToNull);
   if (direction === 'inc' && range.max !== null && nextMin !== null && nextMin > range.max) {
     return { min: nextMin, max: nextMin };
   }
@@ -62,8 +83,8 @@ export function stepRepMin(range: RepRange, direction: StepDirection): RepRange 
 }
 
 // The mirror rule: decrementing max below the current min also lowers min to match.
-export function stepRepMax(range: RepRange, direction: StepDirection): RepRange {
-  const nextMax = stepBoundedValue(range.max, direction, REP_FLOOR, REP_CEILING);
+export function stepRepMax(range: RepRange, direction: StepDirection, clearToNull = true): RepRange {
+  const nextMax = stepBoundedValue(range.max, direction, REP_FLOOR, REP_CEILING, 1, clearToNull);
   if (direction === 'dec' && range.min !== null && nextMax !== null && nextMax < range.min) {
     return { min: nextMax, max: nextMax };
   }
@@ -231,6 +252,8 @@ export function ExerciseSlotRowView({
   const isLast = index >= orderedIds.length - 1;
   const isOverridden = (field: string) => cycleSelected && overriddenFields.includes(field);
   const canReset = cycleSelected && overriddenFields.length > 0 && onResetCycleTarget !== undefined;
+  // Inside a cycle a null means "inherit", not "cleared", so nothing here may step a value away.
+  const clearToNull = !cycleSelected;
 
   const handleMoveUp = () => {
     if (!onReorder || isFirst) return;
@@ -270,7 +293,7 @@ export function ExerciseSlotRowView({
             overridden: isOverridden('targetSets'),
             displayValue: displayOrDash(draft.targetSets),
             colors,
-            decreaseDisabled: draft.targetSets === null,
+            decreaseDisabled: decreaseDisabledFor(draft.targetSets, 1, clearToNull),
             increaseDisabled: false,
             onDecrease: () => onStepSets('dec'),
             onIncrease: () => onStepSets('inc'),
@@ -282,7 +305,7 @@ export function ExerciseSlotRowView({
               overridden: isOverridden('targetRepMin'),
               displayValue: displayOrDash(draft.targetRepMin),
               colors,
-              decreaseDisabled: draft.targetRepMin === null,
+              decreaseDisabled: decreaseDisabledFor(draft.targetRepMin, REP_FLOOR, clearToNull),
               increaseDisabled: draft.targetRepMin !== null && draft.targetRepMin >= REP_CEILING,
               onDecrease: () => onStepRepMin('dec'),
               onIncrease: () => onStepRepMin('inc'),
@@ -292,7 +315,7 @@ export function ExerciseSlotRowView({
               overridden: isOverridden('targetRepMax'),
               displayValue: displayOrDash(draft.targetRepMax),
               colors,
-              decreaseDisabled: draft.targetRepMax === null,
+              decreaseDisabled: decreaseDisabledFor(draft.targetRepMax, REP_FLOOR, clearToNull),
               increaseDisabled: draft.targetRepMax !== null && draft.targetRepMax >= REP_CEILING,
               onDecrease: () => onStepRepMax('dec'),
               onIncrease: () => onStepRepMax('inc'),
@@ -304,7 +327,7 @@ export function ExerciseSlotRowView({
             overridden: isOverridden('targetRir'),
             displayValue: displayOrDash(draft.targetRir),
             colors,
-            decreaseDisabled: draft.targetRir === null,
+            decreaseDisabled: decreaseDisabledFor(draft.targetRir, 0, clearToNull),
             increaseDisabled: draft.targetRir !== null && draft.targetRir >= 6,
             onDecrease: () => onStepRir('dec'),
             onIncrease: () => onStepRir('inc'),
@@ -315,7 +338,7 @@ export function ExerciseSlotRowView({
             overridden: isOverridden('targetRestSeconds'),
             displayValue: draft.targetRestSeconds === null ? '—' : formatRestReadout(draft.targetRestSeconds),
             colors,
-            decreaseDisabled: draft.targetRestSeconds === null,
+            decreaseDisabled: decreaseDisabledFor(draft.targetRestSeconds, 0, clearToNull),
             increaseDisabled: false,
             onDecrease: () => onStepRest('dec'),
             onIncrease: () => onStepRest('inc'),
@@ -423,6 +446,9 @@ export function ExerciseSlotRow({
 }: ExerciseSlotRowProps) {
   const colors = useThemeColors();
   const displayed = resolved ?? extractDraft(slot);
+  // Editing a cycle writes an override, and an override's null is "inherit", not "cleared" — so a
+  // step must not be able to produce one (WR-07).
+  const clearToNull = !cycleSelected;
   const [draft, setDraft] = useState<TargetDraft>(() => displayed);
 
   useEffect(() => {
@@ -461,17 +487,26 @@ export function ExerciseSlotRow({
       onResetCycleTarget={onResetCycleTarget}
       onReorder={onReorder}
       onToggleExpanded={onToggleExpanded}
-      onStepSets={(direction) => applyDraft({ ...draft, targetSets: stepBoundedValue(draft.targetSets, direction, 1, null) })}
+      onStepSets={(direction) =>
+        applyDraft({ ...draft, targetSets: stepBoundedValue(draft.targetSets, direction, 1, null, 1, clearToNull) })
+      }
       onStepRepMin={(direction) => {
-        const range = stepRepMin({ min: draft.targetRepMin, max: draft.targetRepMax }, direction);
+        const range = stepRepMin({ min: draft.targetRepMin, max: draft.targetRepMax }, direction, clearToNull);
         applyDraft({ ...draft, targetRepMin: range.min, targetRepMax: range.max });
       }}
       onStepRepMax={(direction) => {
-        const range = stepRepMax({ min: draft.targetRepMin, max: draft.targetRepMax }, direction);
+        const range = stepRepMax({ min: draft.targetRepMin, max: draft.targetRepMax }, direction, clearToNull);
         applyDraft({ ...draft, targetRepMin: range.min, targetRepMax: range.max });
       }}
-      onStepRir={(direction) => applyDraft({ ...draft, targetRir: stepBoundedValue(draft.targetRir, direction, 0, 6) })}
-      onStepRest={(direction) => applyDraft({ ...draft, targetRestSeconds: stepBoundedValue(draft.targetRestSeconds, direction, 0, null, 15) })}
+      onStepRir={(direction) =>
+        applyDraft({ ...draft, targetRir: stepBoundedValue(draft.targetRir, direction, 0, 6, 1, clearToNull) })
+      }
+      onStepRest={(direction) =>
+        applyDraft({
+          ...draft,
+          targetRestSeconds: stepBoundedValue(draft.targetRestSeconds, direction, 0, null, 15, clearToNull),
+        })
+      }
       onRemove={onRemove}
     />
   );
