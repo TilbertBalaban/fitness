@@ -5,7 +5,14 @@ import { resolve } from 'node:path';
 import { config } from 'dotenv';
 import { Client } from 'pg';
 import request from 'supertest';
-import { SYNC_PUSH_PATH, type SyncCrudOp, type SyncCrudOpType, type SyncPushRequest, type SyncPushResponse } from '@fitness/api-contracts';
+import {
+  SYNC_PUSH_PATH,
+  isTerminalRejection,
+  type SyncCrudOp,
+  type SyncCrudOpType,
+  type SyncPushRequest,
+  type SyncPushResponse,
+} from '@fitness/api-contracts';
 
 config({ path: [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../../.env')] });
 
@@ -93,6 +100,10 @@ function routineCycleOp(id: string, data: Record<string, unknown>, op: SyncCrudO
 
 function routineExerciseCycleTargetOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
   return { op_id: randomUUID(), op, type: 'routine_exercise_cycle_target', id, data };
+}
+
+function exerciseOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return { op_id: randomUUID(), op, type: 'exercise', id, data };
 }
 
 function workoutSessionOp(id: string, overrides: Partial<SyncCrudOp> = {}): SyncCrudOp {
@@ -212,6 +223,15 @@ async function routineExerciseCycleTargetRow(id: string): Promise<RoutineExercis
     [id],
   );
   return rows[0];
+}
+
+async function cycleTargetRowsForPair(routineExerciseId: string, cycleId: string): Promise<RoutineExerciseCycleTargetRow[]> {
+  const { rows } = await pg.query(
+    `SELECT id, routine_exercise_id, cycle_id, target_sets, target_rep_min, target_rep_max, target_rir, target_rest_seconds
+     FROM routine_exercise_cycle_target WHERE routine_exercise_id = $1 AND cycle_id = $2`,
+    [routineExerciseId, cycleId],
+  );
+  return rows;
 }
 
 async function tombstoneCount(rowIds: string[]): Promise<number> {
@@ -403,6 +423,34 @@ describe('program (routine) sync (e2e)', () => {
 
     const after = await routineRow(routineId);
     expect(after).toEqual(before);
+  });
+
+  // The cross-user half of CR-01 (04-REVIEW.md): the same id reused under two root types made the
+  // ownership lookup miss user A's routine entirely, so B's routine PUT was treated as a fresh
+  // insert and rewrote user_id/name/status. Aggregates are now keyed by (root table, root id), so
+  // the routine op is resolved against `routine` no matter what else the batch names.
+  it("rejects user B's routine PUT that reuses user A's routine id under a second root type in the same batch, and A's row is unchanged", async () => {
+    const cookieA = await signUp('id-collision-owner-a');
+    const cookieB = await signUp('id-collision-attacker-b');
+    const routineId = randomUUID();
+    createdRoutineIds.push(routineId);
+
+    const createRes = await push(cookieA, [routineOp(routineId, { name: "A's Program", status: 'ready' })]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+    const ownerA = (await routineRow(routineId))!.user_id;
+
+    const takeoverOp = routineOp(routineId, { name: 'PWNED', status: 'draft' });
+    const decoyOp = exerciseOp(routineId, { name: 'Decoy', load_type: 'external_weight' });
+    const res = await push(cookieB, [takeoverOp, decoyOp]);
+    const body: SyncPushResponse = res.body;
+
+    expect(body.applied).not.toContain(takeoverOp.op_id);
+    expect(body.rejected).toContainEqual({ op_id: takeoverOp.op_id, reason: 'not_owner' });
+
+    const after = await routineRow(routineId);
+    expect(after?.user_id).toBe(ownerA);
+    expect(after?.name).toBe("A's Program");
+    expect(after?.status).toBe('ready');
   });
 
   it('rejects a PUT with status outside ROUTINE_STATUSES as invalid_field and writes no row', async () => {
@@ -1216,7 +1264,12 @@ describe('routine_exercise_cycle_target sync (e2e)', () => {
     expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
   });
 
-  it('a second override for the same (routine_exercise_id, cycle_id) pair with a different id is rejected, the transaction rolls back, and the first row is unchanged', async () => {
+  // CR-03 (04-REVIEW.md). Two devices editing the same override offline is the ordinary
+  // local-first case, not an edge case — the unique constraint exists because it happens. The
+  // upsert used to arbitrate on the primary key only, so the second device's row violated the pair
+  // constraint and threw, and the rollback took every other op in the same routine aggregate down
+  // with it.
+  it('a second override for the same (routine_exercise_id, cycle_id) pair with a different id merges into the stored row instead of throwing', async () => {
     const cookie = await signUp('cet-duplicate-pair');
     const { routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-duplicate-pair');
 
@@ -1229,11 +1282,48 @@ describe('routine_exercise_cycle_target sync (e2e)', () => {
     const dupeId = randomUUID();
     const dupeOp = routineExerciseCycleTargetOp(dupeId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 3 });
     const dupeRes = await push(cookie, [dupeOp]);
-    expect((dupeRes.body as SyncPushResponse).rejected).toEqual([{ op_id: dupeOp.op_id, reason: 'invalid_field' }]);
-    expect(await routineExerciseCycleTargetRow(dupeId)).toBeUndefined();
+    expect((dupeRes.body as SyncPushResponse).rejected).toEqual([]);
+    expect((dupeRes.body as SyncPushResponse).applied).toEqual([dupeOp.op_id]);
 
-    const first = await routineExerciseCycleTargetRow(firstId);
-    expect(first?.target_sets).toBe(5);
+    // Exactly one row for the pair, still under the id the server already stored — the loser id is
+    // never created, so the row's primary key does not flip between the two devices.
+    const rowsForPair = await cycleTargetRowsForPair(routineExerciseId, cycleId);
+    expect(rowsForPair).toHaveLength(1);
+    expect(rowsForPair[0].id).toBe(firstId);
+    expect(rowsForPair[0].target_sets).toBe(3);
+    expect(await routineExerciseCycleTargetRow(dupeId)).toBeUndefined();
+  });
+
+  it("a duplicate-pair override pushed alongside the rest of an offline session no longer takes its siblings down — the new day, exercise and cycle all apply", async () => {
+    const cookie = await signUp('cet-duplicate-pair-siblings');
+    const { routineId, routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-dupe-siblings');
+
+    const firstId = randomUUID();
+    const firstRes = await push(cookie, [
+      routineExerciseCycleTargetOp(firstId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 5 }),
+    ]);
+    expect((firstRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const newDayId = randomUUID();
+    const newExerciseId = randomUUID();
+    const newCycleId = randomUUID();
+    const dupeOp = routineExerciseCycleTargetOp(randomUUID(), {
+      routine_exercise_id: routineExerciseId,
+      cycle_id: cycleId,
+      target_sets: 2,
+    });
+    const res = await push(cookie, [
+      routineDayOp(newDayId, { routine_id: routineId, order_index: 1, name: 'Day 2' }),
+      routineExerciseOp(newExerciseId, { routine_day_id: newDayId, exercise_id: exerciseId, order_index: 0 }),
+      routineCycleOp(newCycleId, { routine_id: routineId, order_index: 1, name: 'Week 2', kind: 'deload' }),
+      dupeOp,
+    ]);
+
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+    expect(await routineDayRow(newDayId)).toBeDefined();
+    expect(await routineExerciseRow(newExerciseId)).toBeDefined();
+    expect(await routineCycleRow(newCycleId)).toBeDefined();
+    expect((await cycleTargetRowsForPair(routineExerciseId, cycleId))[0].target_sets).toBe(2);
   });
 
   it('a PATCH naming target_sets: null (with the identity fields, required present on every op) sets that column to null and leaves the other four untouched', async () => {
@@ -1329,6 +1419,71 @@ describe('routine_exercise_cycle_target sync (e2e)', () => {
 
     expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
     expect(await tombstoneCount([routineExerciseId, cetId])).toBe(2);
+  });
+
+  // The transitive three-level cascade (day -> exercise -> override). The shipped day-delete case
+  // seeds no override, so it asserts two tombstones and never three; nothing in CI watched the
+  // deepest, most fragile path in the override model until now (04-VERIFICATION.md).
+  it('deleting the day cascades two levels — the exercise AND its override are both gone and both tombstoned, three tombstones in all', async () => {
+    const cookie = await signUp('cet-day-cascade');
+    const { dayId, routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-day-cascade');
+    const cetId = randomUUID();
+    const createRes = await push(cookie, [
+      routineExerciseCycleTargetOp(cetId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 4 }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const deleteOp = routineDayOp(dayId, {}, 'DELETE');
+    const res = await push(cookie, [deleteOp]);
+    expect((res.body as SyncPushResponse).applied).toEqual([deleteOp.op_id]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await routineDayRow(dayId)).toBeUndefined();
+    expect(await routineExerciseRow(routineExerciseId)).toBeUndefined();
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+    expect(await tombstoneCount([dayId, routineExerciseId, cetId])).toBe(3);
+    // The cycle hangs off the routine, not the day — it must survive.
+    expect(await routineCycleRow(cycleId)).toBeDefined();
+  });
+
+  // CR-04 (04-REVIEW.md). missing_parent is non-terminal, so the connector leaves the crud
+  // transaction queued and PowerSync re-sends it forever. When the parent is permanently gone that
+  // retry can never succeed, and because the queue is ordered nothing behind it uploads again
+  // either — the device's sync is dead until its local database is wiped.
+  it("rejects an override whose routine_exercise was cascade-deleted on another device as deleted, not missing_parent", async () => {
+    const cookie = await signUp('cet-orphan-terminal');
+    const { dayId, routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-orphan-terminal');
+
+    const deleteRes = await push(cookie, [routineDayOp(dayId, {}, 'DELETE')]);
+    expect((deleteRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    // The offline device never saw the delete and pushes an override for the vanished exercise.
+    const cetId = randomUUID();
+    const staleOp = routineExerciseCycleTargetOp(cetId, {
+      routine_exercise_id: routineExerciseId,
+      cycle_id: cycleId,
+      target_sets: 3,
+    });
+    const res = await push(cookie, [staleOp]);
+
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: staleOp.op_id, reason: 'deleted' }]);
+    expect(isTerminalRejection('deleted', 'routine_exercise_cycle_target')).toBe(true);
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+  });
+
+  it("rejects a routine_exercise whose routine_day was deleted on another device as deleted, not missing_parent", async () => {
+    const cookie = await signUp('re-orphan-terminal');
+    const { dayId } = await seedRoutineAndDay(cookie, 're-orphan-terminal');
+
+    const deleteRes = await push(cookie, [routineDayOp(dayId, {}, 'DELETE')]);
+    expect((deleteRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const staleId = randomUUID();
+    const staleOp = routineExerciseOp(staleId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 });
+    const res = await push(cookie, [staleOp]);
+
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: staleOp.op_id, reason: 'deleted' }]);
+    expect(await routineExerciseRow(staleId)).toBeUndefined();
   });
 
   it('a DELETE for an owned override applies and the row is gone; the exercise and the cycle both survive', async () => {
