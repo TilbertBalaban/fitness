@@ -13,7 +13,7 @@ import {
 import { ORDER_INDEX_GAP } from '../programs/order-index';
 import { getPowerSync } from '../powersync';
 import { generateClientId } from '../id';
-import { routineCycle, routineExerciseCycleTarget } from '../schema';
+import { routineCycle, routineExercise, routineExerciseCycleTarget } from '../schema';
 
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../id', () => ({ generateClientId: jest.fn(() => 'fixed-id') }));
@@ -77,6 +77,12 @@ function cycleRows(rows: Record<string, unknown>[]): TableRows[] {
 
 function overrideRows(rows: Record<string, unknown>[]): TableRows[] {
   return [{ table: routineExerciseCycleTarget, rows }];
+}
+
+// setCycleTarget reads the base row so it can validate the resolved merge rather than the sparse
+// override (WR-06); an empty routineExercise list is the all-null base the older cases assume.
+function baseTargetRows(base: Record<string, unknown>): TableRows {
+  return { table: routineExercise, rows: [base] };
 }
 
 describe('validateCycle', () => {
@@ -565,5 +571,74 @@ describe('clearCycleTarget', () => {
       expect(calls.deletes).toHaveLength(1);
       expect(getPowerSyncMock).toHaveBeenCalled();
     });
+  });
+});
+
+// WR-06: normalizeOverride resolved against EMPTY_TARGET, so an override naming only one half of
+// the rep range was never range-checked at all — validateTargets' ordering rule needs both halves
+// non-null. The row the builder renders is the merge, so the merge is what has to be valid.
+describe('setCycleTarget — validates the resolved pair, not the sparse override (WR-06)', () => {
+  beforeEach(() => {
+    generateClientIdMock.mockReturnValue('fixed-id');
+  });
+
+  const BASE_8_TO_12 = baseTargetRows({
+    targetSets: 3,
+    targetRepMin: 8,
+    targetRepMax: 12,
+    targetRir: 2,
+    targetRestSeconds: 90,
+  });
+
+  it('refuses an override whose rep max falls below the rep min it inherits', async () => {
+    const { db, calls } = fakeDb([...overrideRows([]), BASE_8_TO_12]);
+
+    await expect(
+      setCycleTarget({ routineExerciseId: 'rex1', cycleId: 'c1', override: { targetRepMax: 5 } }, db),
+    ).rejects.toThrow('min-above-max');
+    expect(calls.inserts).toHaveLength(0);
+    expect(calls.updates).toHaveLength(0);
+  });
+
+  it('refuses an override whose rep min rises above the rep max it inherits', async () => {
+    const { db, calls } = fakeDb([...overrideRows([]), BASE_8_TO_12]);
+
+    await expect(
+      setCycleTarget({ routineExerciseId: 'rex1', cycleId: 'c1', override: { targetRepMin: 20 } }, db),
+    ).rejects.toThrow('min-above-max');
+    expect(calls.inserts).toHaveLength(0);
+  });
+
+  it('accepts a one-sided override that resolves inside the base range', async () => {
+    const { db, calls } = fakeDb([...overrideRows([]), BASE_8_TO_12]);
+
+    await setCycleTarget({ routineExerciseId: 'rex1', cycleId: 'c1', override: { targetRepMax: 10 } }, db);
+
+    expect(calls.inserts).toHaveLength(1);
+  });
+
+  it('still writes only the sparse override, never a five-column copy of the resolved merge', async () => {
+    const { db, calls } = fakeDb([...overrideRows([]), BASE_8_TO_12]);
+
+    await setCycleTarget({ routineExerciseId: 'rex1', cycleId: 'c1', override: { targetRepMax: 10 } }, db);
+
+    expect(calls.inserts[0].values).toEqual({
+      id: 'fixed-id',
+      routineExerciseId: 'rex1',
+      cycleId: 'c1',
+      targetSets: null,
+      targetRepMin: null,
+      targetRepMax: 10,
+      targetRir: null,
+      targetRestSeconds: null,
+    });
+  });
+
+  it('falls back to an all-null base when the slot row has not synced yet, rather than throwing', async () => {
+    const { db, calls } = fakeDb(overrideRows([]));
+
+    await setCycleTarget({ routineExerciseId: 'rex1', cycleId: 'c1', override: { targetRepMax: 10 } }, db);
+
+    expect(calls.inserts).toHaveLength(1);
   });
 });

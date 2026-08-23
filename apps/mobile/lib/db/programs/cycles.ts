@@ -2,7 +2,7 @@ import { CYCLE_KINDS, EMPTY_TARGET, isEmptyOverride, resolveTarget, type CycleKi
 import { and, eq } from 'drizzle-orm';
 import { generateClientId } from '../id';
 import { getPowerSync, type WriteDb } from '../powersync';
-import { routineCycle, routineExerciseCycleTarget } from '../schema';
+import { routineCycle, routineExercise, routineExerciseCycleTarget } from '../schema';
 import { computeReorder } from './days';
 import { appendOrderIndex } from './order-index';
 import { validateTargets, type TargetDraft } from './targets';
@@ -139,8 +139,25 @@ export interface SetCycleTargetInput extends CycleTargetKey {
   override: TargetOverride;
 }
 
+// What is stored: the sparse override with every un-named field explicitly null. Deliberately not
+// the value that gets validated — writing the resolved merge here would turn every override into a
+// five-column copy of the base and destroy the table's sparseness.
 function normalizeOverride(override: TargetOverride): TargetDraft {
   return resolveTarget(EMPTY_TARGET, override);
+}
+
+async function readBaseTarget(routineExerciseId: string, db: WriteDb): Promise<TargetDraft | null> {
+  const [row] = await db
+    .select({
+      targetSets: routineExercise.targetSets,
+      targetRepMin: routineExercise.targetRepMin,
+      targetRepMax: routineExercise.targetRepMax,
+      targetRir: routineExercise.targetRir,
+      targetRestSeconds: routineExercise.targetRestSeconds,
+    })
+    .from(routineExercise)
+    .where(eq(routineExercise.id, routineExerciseId));
+  return row ?? null;
 }
 
 async function readOverrideId({ routineExerciseId, cycleId }: CycleTargetKey, db: WriteDb): Promise<string | null> {
@@ -166,7 +183,13 @@ export async function setCycleTarget(
   db: WriteDb = getPowerSync(),
 ): Promise<void> {
   const draft = normalizeOverride(override);
-  const errors = validateTargets(draft);
+
+  // Validated against the base it will be merged with, not against EMPTY_TARGET. An override
+  // naming only one half of the rep range has one null half, and validateTargets' ordering rule
+  // needs both — so validating the sparse override alone never range-checks it at all, and the
+  // slot row would render an inverted range the user never typed.
+  const base = await readBaseTarget(routineExerciseId, db);
+  const errors = validateTargets(resolveTarget(base ?? EMPTY_TARGET, override));
   if (Object.keys(errors).length > 0) {
     const [field, code] = Object.entries(errors)[0];
     throw new Error(`${field}: ${code}`);
