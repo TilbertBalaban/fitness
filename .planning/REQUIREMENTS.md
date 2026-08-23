@@ -42,7 +42,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [x] **PROG-04**: User can organize a program into cycles (weeks), each with its own targets
 - [x] **PROG-05**: User can place a deload at the start or end of a cycle
 - [x] **PROG-06**: User can schedule planned time off within a program
-- [x] **PROG-07**: User can duplicate, archive, and restore programs and individual workouts
+- [ ] **PROG-07**: User can duplicate, archive, and restore programs and individual workouts
 - [x] **PROG-08**: User can set which program is active
 - [x] **PROG-09**: User can view the active program's upcoming workouts with target muscles and per-cycle rep/RIR targets
 - [x] **PROG-10**: User can freeze a program so progression stops modifying it
@@ -216,7 +216,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PROG-04 | Phase 4 — Program Builder | Complete |
 | PROG-05 | Phase 4 — Program Builder | Complete |
 | PROG-06 | Phase 4 — Program Builder | Complete |
-| PROG-07 | Phase 4 — Program Builder | Complete |
+| PROG-07 | Phase 4 — Program Builder | Partial |
 | PROG-08 | Phase 4 — Program Builder | Complete |
 | PROG-09 | Phase 4 — Program Builder | Complete |
 | PROG-10 | Phase 4 — Program Builder | Complete |
