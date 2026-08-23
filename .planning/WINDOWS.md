@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 74
+open_count: 80
 waived_count: 1
 fixed_count: 13
-total_count: 88
-last_updated: 2026-08-23T09:25:45.802Z
+total_count: 94
+last_updated: 2026-08-23T10:07:32.713Z
 ---
 
 # Broken Windows Ledger
@@ -103,6 +103,12 @@ last_updated: 2026-08-23T09:25:45.802Z
 | 89 | 04 | stub | apps/mobile/lib/db/programs/lifecycle.ts |  | markRoutineReady is implemented and tested but has no UI call site: the UI-SPEC's action sheet enumerates four actions and does not include a draft->ready transition, so nothing in the shipped app can move a routine out of 'draft'. Needs either a UI affordance or an explicit decision that status advances implicitly. | open |  | 2026-08-22T13:45:27.350Z |  |
 | 90 | 04 | deviation | apps/mobile/components/RoutineActionSheet.tsx |  | Three files outside 04-11's declared files_modified were touched, all additively: RoutineActionSheet.tsx created (the UI-SPEC binds the '...' trigger to it and no earlier plan built it), ArchiveDialog.tsx gained an optional subject prop so the program copy lands verbatim (existing call sites and its shipped test untouched and green), and new.tsx landed in Task 2's commit because the route-guard assertion on the segment's children needs the route to exist. | open |  | 2026-08-22T13:45:27.676Z |  |
 | 91 | 04 | deviation | apps/api/src/sync/sync.service.ts |  | CR-01 shipped: applyBatch keyed aggregates on the bare client-chosen root id with no type discriminator, so a two-op batch reusing one id under two root types routed the ownership check at the wrong table and let any authenticated user overwrite and re-own a shared seeded catalog exercise. Confirmed exploitable end-to-end against a running server (HTTP 201, both ops applied, zero rejected); because exercise.user_id cascades on user delete, deleting the attacking account then hard-deleted the shared row for every user. Caught by 04-REVIEW.md, not by the 207 green e2e tests. Fixed by keying aggregates and ownership lookups on (root table, root id) and removing rootTypeByRootId; permanent e2e cover added for both the seeded-catalog and cross-user routine variants. | fixed |  | 2026-08-23T09:25:24.682Z | 2026-08-23T09:25:45.802Z |
+| 92 | 04 | deviation | apps/api/src/sync/sync.service.ts |  | WR-12 shipped and now fixed: USER_EXERCISE_PREFERENCE_PATCH_FIELDS.exerciseId: null meant 'write unconditionally', not 'never write' as four comments in patch-update-set.ts claimed, and toUserExercisePreferenceValues read the client's exercise_id — so a PATCH or PUT naming a different exercise silently re-targeted an existing preference row, moving an archived/never-suggest flag onto another movement. Fixed by resolving exercise_id database-first from the existing batched root query (zero extra queries), matching every other parent resolver's precedence; the four inverted comments and the PatchFieldMap contract were rewritten. Two e2e regressions added, both confirmed failing pre-fix. | open |  | 2026-08-23T10:07:32.284Z |  |
+| 93 | 04 | deviation | apps/api/src/sync/sync.service.ts |  | WR-13 item 1 shipped and now fixed: the delete-op tombstone pre-pass ran isTombstoned per op inside a Promise.all, firing up to SYNC_MAX_BATCH_OPS concurrent queries and risking connection-pool exhaustion for unrelated requests. Replaced with the already-existing batched findTombstoned. Query-count regression added (1 query regardless of batch size); pre-fix it measured 3 for a 3-op batch. | open |  | 2026-08-23T10:07:32.378Z |  |
+| 94 | 04 | lint-warning | apps/api/src/sync/sync.service.ts |  | WR-13 item 3 OPEN: cascaded child tombstones are written one recordTombstone INSERT at a time inside the delete transaction — a day delete on a 30-exercise, 6-cycle program is up to 180 sequential inserts holding locks. Batchable into one multi-row insert per table via a plural recordTombstones helper. Deferred because transaction queries bypass pool.query, so the existing countQueries helper cannot observe them and the change would land untested on the delete-cascade path. Needs a client-level query counter before it is safe to make. | open |  | 2026-08-23T10:07:32.462Z |  |
+| 95 | 04 | deviation | apps/api/test/schema-parity.e2e-spec.ts |  | WR-14 addressed: the RIR-range removal was correct and user-approved, and no-migration is this repo's convention (drizzle-kit push, no ./drizzle directory, db:verify as the gate) — recorded next to the columns in session.ts. The real gap was detectability: schema-parity's session_exercise required-column list omitted target_rir and target_rest_seconds, so a database predating the push passed every test green. Added those plus a FORBIDDEN_COLUMNS gate across the three affected tables, verified failing against a deliberately staled database. | open |  | 2026-08-23T10:07:32.545Z |  |
+| 96 | 04 | unmet-truth | apps/mobile/lib/export/build-export-document.ts |  | WR-14 export half NOT actioned (apps/mobile was a concurrent agent's territory). Assessment: the finding is overstated — the manifest already carries app_version (CLIENT_VERSION) and exported_at so a shape change is detectable, and no importer exists anywhere in the repo (TrainingExport is referenced only by the two files producing it), so there is no round-trip to regress. An explicit schema_version field would still be a cheap improvement over relying on app_version as a proxy. Bears on PLAT-10. | open |  | 2026-08-23T10:07:32.629Z |  |
+| 97 | 04 | unmet-truth | apps/api/src/db/schema/program.ts |  | WR-15 assessed and deliberately NOT fixed — overstated. The push side already rejects a cycle target whose two parent chains disagree (resolveRoutineIdForCycleTarget returns conflict:true, op rejected not_owner), covered by program-sync.e2e-spec.ts:1172, so 04-07's pull-side single-chain walk is sound for anything written through applyBatch. Residual gap is out-of-band writers only, and none exist (the seed script never touches the table). The suggested fix — denormalise routine_id with composite FKs on both parents — is architectural: it appends to a synced table's wire contract and requires an apps/mobile local-schema change. A cheaper mitigation exists (add the cycle chain to the pull query in ops/powersync/sync-rules.yaml) but nothing in this repo validates that file — no test references it, no PowerSync service runs in the test path — so it needs live-service validation first. | open |  | 2026-08-23T10:07:32.713Z |  |
 
 ````json
 [
@@ -1161,6 +1167,78 @@ last_updated: 2026-08-23T09:25:45.802Z
     "reason": "",
     "recorded_at": "2026-08-23T09:25:24.682Z",
     "resolved_at": "2026-08-23T09:25:45.802Z"
+  },
+  {
+    "id": 92,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "WR-12 shipped and now fixed: USER_EXERCISE_PREFERENCE_PATCH_FIELDS.exerciseId: null meant 'write unconditionally', not 'never write' as four comments in patch-update-set.ts claimed, and toUserExercisePreferenceValues read the client's exercise_id — so a PATCH or PUT naming a different exercise silently re-targeted an existing preference row, moving an archived/never-suggest flag onto another movement. Fixed by resolving exercise_id database-first from the existing batched root query (zero extra queries), matching every other parent resolver's precedence; the four inverted comments and the PatchFieldMap contract were rewritten. Two e2e regressions added, both confirmed failing pre-fix.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:07:32.284Z",
+    "resolved_at": null
+  },
+  {
+    "id": 93,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "WR-13 item 1 shipped and now fixed: the delete-op tombstone pre-pass ran isTombstoned per op inside a Promise.all, firing up to SYNC_MAX_BATCH_OPS concurrent queries and risking connection-pool exhaustion for unrelated requests. Replaced with the already-existing batched findTombstoned. Query-count regression added (1 query regardless of batch size); pre-fix it measured 3 for a 3-op batch.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:07:32.378Z",
+    "resolved_at": null
+  },
+  {
+    "id": 94,
+    "kind": "lint-warning",
+    "phase": "04",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "WR-13 item 3 OPEN: cascaded child tombstones are written one recordTombstone INSERT at a time inside the delete transaction — a day delete on a 30-exercise, 6-cycle program is up to 180 sequential inserts holding locks. Batchable into one multi-row insert per table via a plural recordTombstones helper. Deferred because transaction queries bypass pool.query, so the existing countQueries helper cannot observe them and the change would land untested on the delete-cascade path. Needs a client-level query counter before it is safe to make.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:07:32.462Z",
+    "resolved_at": null
+  },
+  {
+    "id": 95,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/api/test/schema-parity.e2e-spec.ts",
+    "line": null,
+    "description": "WR-14 addressed: the RIR-range removal was correct and user-approved, and no-migration is this repo's convention (drizzle-kit push, no ./drizzle directory, db:verify as the gate) — recorded next to the columns in session.ts. The real gap was detectability: schema-parity's session_exercise required-column list omitted target_rir and target_rest_seconds, so a database predating the push passed every test green. Added those plus a FORBIDDEN_COLUMNS gate across the three affected tables, verified failing against a deliberately staled database.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:07:32.545Z",
+    "resolved_at": null
+  },
+  {
+    "id": 96,
+    "kind": "unmet-truth",
+    "phase": "04",
+    "file": "apps/mobile/lib/export/build-export-document.ts",
+    "line": null,
+    "description": "WR-14 export half NOT actioned (apps/mobile was a concurrent agent's territory). Assessment: the finding is overstated — the manifest already carries app_version (CLIENT_VERSION) and exported_at so a shape change is detectable, and no importer exists anywhere in the repo (TrainingExport is referenced only by the two files producing it), so there is no round-trip to regress. An explicit schema_version field would still be a cheap improvement over relying on app_version as a proxy. Bears on PLAT-10.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:07:32.629Z",
+    "resolved_at": null
+  },
+  {
+    "id": 97,
+    "kind": "unmet-truth",
+    "phase": "04",
+    "file": "apps/api/src/db/schema/program.ts",
+    "line": null,
+    "description": "WR-15 assessed and deliberately NOT fixed — overstated. The push side already rejects a cycle target whose two parent chains disagree (resolveRoutineIdForCycleTarget returns conflict:true, op rejected not_owner), covered by program-sync.e2e-spec.ts:1172, so 04-07's pull-side single-chain walk is sound for anything written through applyBatch. Residual gap is out-of-band writers only, and none exist (the seed script never touches the table). The suggested fix — denormalise routine_id with composite FKs on both parents — is architectural: it appends to a synced table's wire contract and requires an apps/mobile local-schema change. A cheaper mitigation exists (add the cycle chain to the pull query in ops/powersync/sync-rules.yaml) but nothing in this repo validates that file — no test references it, no PowerSync service runs in the test path — so it needs live-service validation first.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:07:32.713Z",
+    "resolved_at": null
   }
 ]
 ````
