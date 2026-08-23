@@ -287,4 +287,47 @@ describe('user_exercise_preference sync (e2e)', () => {
     const row = await uepRow(firstId);
     expect(row?.archived_at).not.toBeNull();
   });
+
+  it('a PATCH naming a different exercise_id cannot re-target an existing preference row — stored linkage wins', async () => {
+    const { cookie, userId } = await signUp('uep-patch-retarget');
+    const originalExerciseId = await seedNullOwnerExercise('Cable Fly (patch re-target origin)');
+    const otherExerciseId = await seedNullOwnerExercise('Pec Deck (patch re-target destination)');
+
+    const prefId = randomUUID();
+    const createRes = await push(cookie, [
+      userExercisePreferenceOp(prefId, { exercise_id: originalExerciseId, never_suggest: true }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    // exercise_id is required on every non-DELETE op (hasInvalidField), so a PATCH always carries
+    // one — naming a different exercise here is the whole attack surface. The PATCH's own field
+    // (never_suggest) must still apply; only the identity column is pinned.
+    const patchRes = await push(cookie, [
+      userExercisePreferenceOp(prefId, { exercise_id: otherExerciseId, never_suggest: false }, 'PATCH'),
+    ]);
+    expect((patchRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await uepRow(prefId);
+    expect(row?.exercise_id).toBe(originalExerciseId);
+    expect(row?.never_suggest).toBe(false);
+    expect(await uepCountFor(userId, otherExerciseId)).toBe(0);
+  });
+
+  it('a PUT naming a different exercise_id cannot re-target an existing preference row either', async () => {
+    const { cookie, userId } = await signUp('uep-put-retarget');
+    const originalExerciseId = await seedNullOwnerExercise('Seated Row (put re-target origin)');
+    const otherExerciseId = await seedNullOwnerExercise('Chest Supported Row (put re-target destination)');
+
+    const prefId = randomUUID();
+    await push(cookie, [userExercisePreferenceOp(prefId, { exercise_id: originalExerciseId, never_suggest: true })]);
+
+    const putRes = await push(cookie, [
+      userExercisePreferenceOp(prefId, { exercise_id: otherExerciseId, never_suggest: true }),
+    ]);
+    expect((putRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await uepRow(prefId);
+    expect(row?.exercise_id).toBe(originalExerciseId);
+    expect(await uepCountFor(userId, otherExerciseId)).toBe(0);
+  });
 });
