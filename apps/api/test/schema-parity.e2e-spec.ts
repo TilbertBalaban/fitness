@@ -41,8 +41,29 @@ const REQUIRED_USER_COLUMNS = ['id', 'email', 'email_verified'] as const;
 // Per-table required-column maps, covering the columns whose absence would be silent — a
 // TypeScript type mismatch here would still compile, so only a live-database read catches it.
 const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
-  workout_session: ['id', 'user_id', 'started_at', 'timezone', 'local_date', 'server_seq'],
-  logged_set: ['id', 'session_exercise_id', 'set_index', 'weight_kg', 'reps', 'completed', 'parent_set_id'],
+  workout_session: [
+    'id',
+    'user_id',
+    'started_at',
+    'timezone',
+    'local_date',
+    'notes',
+    'name',
+    'paused_at',
+    'accumulated_paused_seconds',
+    'rest_target_at',
+    'server_seq',
+  ],
+  logged_set: [
+    'id',
+    'session_exercise_id',
+    'set_index',
+    'weight_kg',
+    'reps',
+    'completed',
+    'parent_set_id',
+    'notes',
+  ],
   session_exercise: [
     'id',
     'session_id',
@@ -52,8 +73,18 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
     'target_rir',
     'target_rest_seconds',
     'superset_group_id',
+    'notes',
+    'removed_at',
   ],
-  user_preference: ['id', 'user_id', 'weight_unit', 'active_routine_id', 'server_seq'],
+  user_preference: [
+    'id',
+    'user_id',
+    'weight_unit',
+    'active_routine_id',
+    'auto_advance_enabled',
+    'warmup_sets_enabled',
+    'server_seq',
+  ],
   routine: ['id', 'user_id', 'name', 'status', 'source', 'archived_at', 'progression_frozen', 'server_seq'],
   exercise: [
     'id',
@@ -437,5 +468,144 @@ describe('Schema parity (e2e)', () => {
     // Deleting the routine cascades away the day/exercise/cycle/target rows created above.
     await pg.query(`DELETE FROM routine WHERE id = $1`, [routineId]);
     await pg.query(`DELETE FROM exercise WHERE id = $1`, [catalogExerciseId]);
+  });
+
+  it('workout_session.accumulated_paused_seconds is not-null with a default of 0', async () => {
+    const { rows } = await pg.query<{ is_nullable: string; column_default: string | null }>(
+      `SELECT is_nullable, column_default FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'workout_session' AND column_name = 'accumulated_paused_seconds'`,
+    );
+
+    expect(rows.length).toBe(1);
+    expect(rows[0].is_nullable).toBe('NO');
+    expect(rows[0].column_default).toContain('0');
+  });
+
+  it('user_preference.auto_advance_enabled and warmup_sets_enabled are not-null with a true default', async () => {
+    const { rows } = await pg.query<{ column_name: string; is_nullable: string; column_default: string | null }>(
+      `SELECT column_name, is_nullable, column_default FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'user_preference'
+         AND column_name IN ('auto_advance_enabled', 'warmup_sets_enabled')`,
+    );
+
+    expect(rows.length).toBe(2);
+    for (const row of rows) {
+      expect(row.is_nullable).toBe('NO');
+      expect(row.column_default).toContain('true');
+    }
+  });
+
+  it('workout_session_status_check exists and names all four WORKOUT_SESSION_STATUSES literals', async () => {
+    // A CHECK that exists but lists three values would otherwise pass silently — asserting the
+    // constraint's own definition, not just its presence in pg_constraint, is what has teeth,
+    // mirroring exercise_load_type_check's precedent above.
+    const { rows } = await pg.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname = $1`,
+      ['workout_session_status_check'],
+    );
+
+    expect(rows.length).toBe(1);
+    const definition = rows[0].definition;
+    for (const literal of ['in_progress', 'paused', 'completed', 'discarded']) {
+      expect(definition).toContain(literal);
+    }
+  });
+
+  it('logged_set_set_type_check exists and names all seven SET_TYPES literals', async () => {
+    const { rows } = await pg.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname = $1`,
+      ['logged_set_set_type_check'],
+    );
+
+    expect(rows.length).toBe(1);
+    const definition = rows[0].definition;
+    for (const literal of ['normal', 'warmup', 'drop', 'myorep', 'partial', 'failure', 'amrap']) {
+      expect(definition).toContain(literal);
+    }
+  });
+
+  it('personal_record_pr_type_check exists and names all four PR_TYPES literals', async () => {
+    const { rows } = await pg.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname = $1`,
+      ['personal_record_pr_type_check'],
+    );
+
+    expect(rows.length).toBe(1);
+    const definition = rows[0].definition;
+    for (const literal of ['heaviest_weight', 'best_e1rm', 'most_reps_at_weight', 'best_set_volume']) {
+      expect(definition).toContain(literal);
+    }
+  });
+
+  it('rejects a workout_session row with status outside the vocabulary at the database level, and accepts paused', async () => {
+    // Proves workout_session_status_check has teeth, not merely exists — a direct pg insert
+    // bypasses sync.service.ts's application-level validator entirely, which is exactly the path
+    // the seed script and any future direct-DB tooling take.
+    const { rows: users } = await pg.query<{ id: string }>(`SELECT id FROM "user" LIMIT 1`);
+    if (users.length === 0) {
+      throw new Error('schema-parity: no user row exists to attach a test workout_session to — seed the database first');
+    }
+    const userId = users[0].id;
+
+    const badId = `schema-parity-bogus-session-status-${Date.now()}`;
+    await expect(
+      pg.query(
+        `INSERT INTO workout_session (id, user_id, started_at, status, timezone, local_date) VALUES ($1, $2, now(), $3, $4, $5)`,
+        [badId, userId, 'abandoned', 'UTC', '2026-01-01'],
+      ),
+    ).rejects.toThrow();
+
+    const validId = `schema-parity-valid-session-status-${Date.now()}`;
+    await pg.query(
+      `INSERT INTO workout_session (id, user_id, started_at, status, timezone, local_date) VALUES ($1, $2, now(), $3, $4, $5)`,
+      [validId, userId, 'paused', 'UTC', '2026-01-01'],
+    );
+    await pg.query(`DELETE FROM workout_session WHERE id = $1`, [validId]);
+  });
+
+  it('rejects a logged_set row with a bogus set_type at the database level', async () => {
+    // Proves logged_set_set_type_check has teeth via the same direct-insert path.
+    const { rows: sessionExercises } = await pg.query<{ id: string }>(`SELECT id FROM session_exercise LIMIT 1`);
+    if (sessionExercises.length === 0) {
+      throw new Error('schema-parity: no session_exercise row exists to attach a test logged_set to — seed the database first');
+    }
+    const sessionExerciseId = sessionExercises[0].id;
+
+    const badId = `schema-parity-bogus-set-type-${Date.now()}`;
+    await expect(
+      pg.query(
+        `INSERT INTO logged_set (id, session_exercise_id, set_index, set_type, reps, logged_at) VALUES ($1, $2, $3, $4, $5, now())`,
+        [badId, sessionExerciseId, 0, 'bogus', 5],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('rejects a personal_record row with a bogus pr_type at the database level, and accepts best_e1rm', async () => {
+    // Proves personal_record_pr_type_check has teeth via the same direct-insert path.
+    const { rows: users } = await pg.query<{ id: string }>(`SELECT id FROM "user" LIMIT 1`);
+    if (users.length === 0) {
+      throw new Error('schema-parity: no user row exists to attach a test personal_record to — seed the database first');
+    }
+    const userId = users[0].id;
+    const { rows: exercises } = await pg.query<{ id: string }>(`SELECT id FROM exercise LIMIT 1`);
+    if (exercises.length === 0) {
+      throw new Error('schema-parity: no exercise row exists to attach a test personal_record to — seed the database first');
+    }
+    const exerciseId = exercises[0].id;
+
+    const badId = `schema-parity-bogus-pr-type-${Date.now()}`;
+    await expect(
+      pg.query(
+        `INSERT INTO personal_record (id, user_id, exercise_id, pr_type, value, achieved_at) VALUES ($1, $2, $3, $4, $5, now())`,
+        [badId, userId, exerciseId, 'bogus', '100.000'],
+      ),
+    ).rejects.toThrow();
+
+    const validId = `schema-parity-valid-pr-type-${Date.now()}`;
+    await pg.query(
+      `INSERT INTO personal_record (id, user_id, exercise_id, pr_type, value, achieved_at) VALUES ($1, $2, $3, $4, $5, now())`,
+      [validId, userId, exerciseId, 'best_e1rm', '100.000'],
+    );
+    await pg.query(`DELETE FROM personal_record WHERE id = $1`, [validId]);
   });
 });
