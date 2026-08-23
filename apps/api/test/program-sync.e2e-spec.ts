@@ -5,7 +5,14 @@ import { resolve } from 'node:path';
 import { config } from 'dotenv';
 import { Client } from 'pg';
 import request from 'supertest';
-import { SYNC_PUSH_PATH, type SyncCrudOp, type SyncCrudOpType, type SyncPushRequest, type SyncPushResponse } from '@fitness/api-contracts';
+import {
+  SYNC_PUSH_PATH,
+  isTerminalRejection,
+  type SyncCrudOp,
+  type SyncCrudOpType,
+  type SyncPushRequest,
+  type SyncPushResponse,
+} from '@fitness/api-contracts';
 
 config({ path: [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../../.env')] });
 
@@ -1412,6 +1419,46 @@ describe('routine_exercise_cycle_target sync (e2e)', () => {
 
     expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
     expect(await tombstoneCount([routineExerciseId, cetId])).toBe(2);
+  });
+
+  // CR-04 (04-REVIEW.md). missing_parent is non-terminal, so the connector leaves the crud
+  // transaction queued and PowerSync re-sends it forever. When the parent is permanently gone that
+  // retry can never succeed, and because the queue is ordered nothing behind it uploads again
+  // either — the device's sync is dead until its local database is wiped.
+  it("rejects an override whose routine_exercise was cascade-deleted on another device as deleted, not missing_parent", async () => {
+    const cookie = await signUp('cet-orphan-terminal');
+    const { dayId, routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-orphan-terminal');
+
+    const deleteRes = await push(cookie, [routineDayOp(dayId, {}, 'DELETE')]);
+    expect((deleteRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    // The offline device never saw the delete and pushes an override for the vanished exercise.
+    const cetId = randomUUID();
+    const staleOp = routineExerciseCycleTargetOp(cetId, {
+      routine_exercise_id: routineExerciseId,
+      cycle_id: cycleId,
+      target_sets: 3,
+    });
+    const res = await push(cookie, [staleOp]);
+
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: staleOp.op_id, reason: 'deleted' }]);
+    expect(isTerminalRejection('deleted', 'routine_exercise_cycle_target')).toBe(true);
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+  });
+
+  it("rejects a routine_exercise whose routine_day was deleted on another device as deleted, not missing_parent", async () => {
+    const cookie = await signUp('re-orphan-terminal');
+    const { dayId } = await seedRoutineAndDay(cookie, 're-orphan-terminal');
+
+    const deleteRes = await push(cookie, [routineDayOp(dayId, {}, 'DELETE')]);
+    expect((deleteRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const staleId = randomUUID();
+    const staleOp = routineExerciseOp(staleId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 });
+    const res = await push(cookie, [staleOp]);
+
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: staleOp.op_id, reason: 'deleted' }]);
+    expect(await routineExerciseRow(staleId)).toBeUndefined();
   });
 
   it('a DELETE for an owned override applies and the row is gone; the exercise and the cycle both survive', async () => {

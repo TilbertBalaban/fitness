@@ -28,7 +28,14 @@ import {
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { classifyTransactionError } from './rejection-reason';
-import { recordConflict, recordTombstone, isTombstoned } from './conflict-log';
+import {
+  findTombstoned,
+  isTombstoned,
+  recordConflict,
+  recordTombstone,
+  tombstoneKeyOf,
+  type TombstoneKey,
+} from './conflict-log';
 import {
   EXERCISE_PATCH_FIELDS,
   LOGGED_SET_PATCH_FIELDS,
@@ -1073,6 +1080,95 @@ export class SyncService {
       remaining = remaining.filter((op) => !cetConflictOpIds.has(op.op_id));
       if (remaining.length === 0) {
         return { applied, rejected, server_seq: highestServerSeq.toString() };
+      }
+    }
+
+    // Every ancestor an op depends on, walked with the same database-wins resolvers root
+    // resolution uses. An op whose ancestor is tombstoned is not waiting on a parent that has yet
+    // to arrive — its parent is gone for good.
+    //
+    // The tombstone short-circuit further up covers DELETE ops only, and only for the op's OWN id.
+    // An op whose parent was cascade-deleted on another device never reached that check or the
+    // in-transaction one: it failed to resolve a root, poisoned its aggregate, and every op in it
+    // was rejected missing_parent. missing_parent is non-terminal, so the connector left the crud
+    // transaction queued and PowerSync re-sent the identical batch forever — and because the queue
+    // is ordered, nothing behind it uploaded again either. The parent is permanently gone, so that
+    // retry could never succeed; the device's sync was dead until its local database was wiped
+    // (CR-04). 'deleted' is the honest answer and is terminal.
+    function ancestorTombstoneKeys(op: SyncCrudOp): TombstoneKey[] {
+      if (op.type === 'session_exercise') {
+        const sessionId = resolveSessionIdForSessionExercise(op.id);
+        return sessionId ? [{ table: 'workout_session', rowId: sessionId }] : [];
+      }
+      if (op.type === 'logged_set') {
+        const sessionExerciseId = resolveSessionExerciseIdForLoggedSet(op.id);
+        if (!sessionExerciseId) return [];
+        const keys: TombstoneKey[] = [{ table: 'session_exercise', rowId: sessionExerciseId }];
+        const sessionId = resolveSessionIdForSessionExercise(sessionExerciseId);
+        if (sessionId) keys.push({ table: 'workout_session', rowId: sessionId });
+        return keys;
+      }
+      if (op.type === 'routine_day') {
+        const routineId = resolveRoutineIdForRoutineDay(op.id);
+        return routineId ? [{ table: 'routine', rowId: routineId }] : [];
+      }
+      if (op.type === 'routine_exercise') {
+        const routineDayId = resolveRoutineDayIdForRoutineExercise(op.id);
+        if (!routineDayId) return [];
+        const keys: TombstoneKey[] = [{ table: 'routine_day', rowId: routineDayId }];
+        const routineId = resolveRoutineIdForRoutineDay(routineDayId);
+        if (routineId) keys.push({ table: 'routine', rowId: routineId });
+        return keys;
+      }
+      if (op.type === 'routine_cycle') {
+        const routineId = resolveRoutineIdForRoutineCycle(op.id);
+        return routineId ? [{ table: 'routine', rowId: routineId }] : [];
+      }
+      if (op.type === 'routine_exercise_cycle_target') {
+        // Both parent chains, because either one going away orphans the override.
+        const keys: TombstoneKey[] = [];
+        const cetRoutineExerciseId = resolveRoutineExerciseIdForCycleTarget(op.id);
+        if (cetRoutineExerciseId) {
+          keys.push({ table: 'routine_exercise', rowId: cetRoutineExerciseId });
+          const routineDayId = resolveRoutineDayIdForRoutineExercise(cetRoutineExerciseId);
+          if (routineDayId) {
+            keys.push({ table: 'routine_day', rowId: routineDayId });
+            const routineId = resolveRoutineIdForRoutineDay(routineDayId);
+            if (routineId) keys.push({ table: 'routine', rowId: routineId });
+          }
+        }
+        const cetCycleId = resolveCycleIdForCycleTarget(op.id);
+        if (cetCycleId) {
+          keys.push({ table: 'routine_cycle', rowId: cetCycleId });
+          const routineId = resolveRoutineIdForRoutineCycle(cetCycleId);
+          if (routineId) keys.push({ table: 'routine', rowId: routineId });
+        }
+        return keys;
+      }
+      return [];
+    }
+
+    const ancestorKeysByOpId = new Map<string, TombstoneKey[]>();
+    for (const op of remaining) {
+      const keys = ancestorTombstoneKeys(op);
+      if (keys.length > 0) ancestorKeysByOpId.set(op.op_id, keys);
+    }
+    if (ancestorKeysByOpId.size > 0) {
+      const tombstonedAncestors = await findTombstoned(this.db, [...ancestorKeysByOpId.values()].flat(), userId);
+      if (tombstonedAncestors.size > 0) {
+        const orphanedByDeleteOpIds = new Set<string>();
+        for (const [opId, keys] of ancestorKeysByOpId) {
+          if (keys.some((key) => tombstonedAncestors.has(tombstoneKeyOf(key)))) orphanedByDeleteOpIds.add(opId);
+        }
+        if (orphanedByDeleteOpIds.size > 0) {
+          for (const op of remaining) {
+            if (orphanedByDeleteOpIds.has(op.op_id)) rejected.push({ op_id: op.op_id, reason: 'deleted' });
+          }
+          remaining = remaining.filter((op) => !orphanedByDeleteOpIds.has(op.op_id));
+          if (remaining.length === 0) {
+            return { applied, rejected, server_seq: highestServerSeq.toString() };
+          }
+        }
       }
     }
 
