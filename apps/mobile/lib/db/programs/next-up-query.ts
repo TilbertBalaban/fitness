@@ -3,7 +3,7 @@ import { captureCalendarDay } from '../../calendar-day';
 import type { SessionRecord } from '../../programs/next-up';
 import { getPowerSync, type WriteDb } from '../powersync';
 import { exerciseMuscleMapping, muscleGroup, routine, workoutSession } from '../schema';
-import { loadActiveRoutineId } from './lifecycle';
+import { loadActiveRoutineId, resolveLiveRoutineId } from './lifecycle';
 import { loadProgramTree, type ProgramCycle, type ProgramDay } from './load-program';
 
 export interface NextUpData {
@@ -46,12 +46,13 @@ export async function loadNextUp(userId: string | null, db: WriteDb = getPowerSy
 
   // Both halves of this check are reachable through ordinary sync ordering — the pointer is one
   // row and the routine is another, and PowerSync delivers them independently, so a pointer can
-  // name a routine that has not arrived or one this device has not yet seen archived.
-  const [routineRow] = await db
+  // name a routine that has not arrived or one this device has not yet seen archived. The verdict
+  // goes through the shared resolver so this reader cannot drift from the library's.
+  const routineRows = await db
     .select({ id: routine.id, archivedAt: routine.archivedAt })
     .from(routine)
     .where(eq(routine.id, activeRoutineId));
-  if (!routineRow || routineRow.archivedAt !== null) return { ...EMPTY, today };
+  if (resolveLiveRoutineId(routineRows, activeRoutineId) === null) return { ...EMPTY, today };
 
   const tree = await loadProgramTree(activeRoutineId, db);
   if (!tree) return { ...EMPTY, today };

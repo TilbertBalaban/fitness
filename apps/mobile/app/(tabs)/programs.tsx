@@ -14,6 +14,7 @@ import { getPowerSync } from '@/lib/db/powersync';
 import {
   loadActiveRoutineId,
   loadLibraryRoutines,
+  resolveLiveRoutineId,
   setProgressionFrozen,
   type LibraryRoutineRow,
 } from '@/lib/db/programs/lifecycle';
@@ -88,12 +89,10 @@ export function resolveDisplayedRoutineId({
   routines,
   activeRoutineId,
 }: DisplayedRoutineInput): string | null {
-  const usable =
-    routineIdParam !== undefined &&
-    routines !== null &&
-    routines.some((routine) => routine.id === routineIdParam && routine.archivedAt === null);
-
-  return usable ? (routineIdParam as string) : activeRoutineId;
+  const loaded = routines ?? [];
+  // Same predicate for the param and for the pointer, from the single owner of the rule (WR-09) —
+  // "is this still a live routine in this list" is one question, not two.
+  return resolveLiveRoutineId(loaded, routineIdParam) ?? resolveLiveRoutineId(loaded, activeRoutineId);
 }
 
 export const FREEZE_SWITCH_TITLE = 'Update Program';

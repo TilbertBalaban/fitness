@@ -14,7 +14,10 @@ jest.mock('../../../lib/db/programs/days', () => ({
   removeDay: jest.fn(),
   removeExercise: jest.fn(),
 }));
+// resolveLiveRoutineId stays real — it is pure, and it is the rule resolveDisplayedRoutineId is
+// asserted against (WR-08/WR-09).
 jest.mock('../../../lib/db/programs/lifecycle', () => ({
+  ...jest.requireActual('../../../lib/db/programs/lifecycle'),
   loadActiveRoutineId: jest.fn(),
   loadLibraryRoutines: jest.fn(),
   setProgressionFrozen: jest.fn(),

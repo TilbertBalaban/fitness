@@ -3,7 +3,11 @@
 // Jest's transform can parse.
 jest.mock('../../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../../../lib/db/id', () => ({ generateClientId: jest.fn(() => 'fixed-id') }));
+// Only the database-touching exports are stubbed. resolveLiveRoutineId is pure and is the single
+// owner of the archived-versus-pointer rule (WR-09) — stubbing it would mean partitionRoutines was
+// tested against a fake copy of the very rule under test.
 jest.mock('../../../lib/db/programs/lifecycle', () => ({
+  ...jest.requireActual('../../../lib/db/programs/lifecycle'),
   activateRoutine: jest.fn(),
   archiveRoutine: jest.fn(),
   loadActiveRoutineId: jest.fn(),

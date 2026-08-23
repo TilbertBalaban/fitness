@@ -14,6 +14,7 @@ import {
   loadActiveRoutineId,
   loadLibraryRoutines,
   renameRoutine,
+  resolveLiveRoutineId,
   restoreRoutine,
   type LibraryRoutineRow,
 } from '@/lib/db/programs/lifecycle';
@@ -49,16 +50,20 @@ function byNameThenId(a: LibraryRoutineRow, b: LibraryRoutineRow): number {
 
 // Archived wins over every other classification, including the active pointer: a stale pointer
 // arriving from another device must not be able to present an archived program as the one being
-// run. Ordering is by name then id so the sequence is total even when two programs share a name.
+// run. That reconciliation is resolveLiveRoutineId's to make — the pointer and the archive stamp
+// are two rows under row-level LWW and can genuinely disagree, and one owner of the rule is what
+// keeps this screen, the builder and the Home card from answering it differently. Ordering is by
+// name then id so the sequence is total even when two programs share a name.
 export function partitionRoutines(
   rows: LibraryRoutineRow[],
   activeRoutineId: string | null = null,
 ): PartitionedRoutines {
   const partition: PartitionedRoutines = { active: [], drafts: [], ready: [], archived: [] };
+  const resolvedActiveId = resolveLiveRoutineId(rows, activeRoutineId);
 
   for (const row of rows) {
     if (row.archivedAt !== null) partition.archived.push(row);
-    else if (row.id === activeRoutineId) partition.active.push(row);
+    else if (row.id === resolvedActiveId) partition.active.push(row);
     else if (row.status === 'draft') partition.drafts.push(row);
     else partition.ready.push(row);
   }
@@ -308,7 +313,7 @@ export default function ProgramLibraryScreen() {
       return (
         <RoutineActionSheet
           programName={row.name}
-          actions={actionsForRow(row, row.id === activeRoutineId && row.archivedAt === null)}
+          actions={actionsForRow(row, row.id === resolveLiveRoutineId(routines ?? [], activeRoutineId))}
           onSelect={(key) => void handleSelectAction(key)}
           onCancel={() => setSheetRowId(null)}
         />
