@@ -92,13 +92,17 @@ export interface SyncPushRequest {
 
 // 'deleted' is unused by any op this plan emits — plan 02-03 is what emits it. Present from the
 // first commit because the contract is additive-only afterwards.
+// 'server_error' is appended, never inserted: an older client that has not heard of it falls
+// through isTerminalRejection's trailing table check and treats it as non-terminal, which is the
+// safe direction (the write stays queued rather than being destroyed).
 export type SyncRejectionReason =
   | 'not_owner'
   | 'unknown_table'
   | 'invalid_field'
   | 'missing_parent'
   | 'batch_too_large'
-  | 'deleted';
+  | 'deleted'
+  | 'server_error';
 
 export interface SyncPushResponse {
   applied: string[];
@@ -108,10 +112,15 @@ export interface SyncPushResponse {
 }
 
 const TERMINAL_REASONS = new Set<SyncRejectionReason>(['not_owner', 'invalid_field', 'deleted']);
-const NON_TERMINAL_REASONS = new Set<SyncRejectionReason>(['missing_parent', 'batch_too_large']);
+const NON_TERMINAL_REASONS = new Set<SyncRejectionReason>(['missing_parent', 'batch_too_large', 'server_error']);
 
 // Terminal means "retrying this identical op can never succeed" — the only question the client
 // needs answered to decide whether completing the crud transaction destroys a recoverable write.
+// server_error is the answer to the case that used to be misfiled as invalid_field: the server
+// failed for a reason that has nothing to do with the payload (a deadlock between the same user's
+// two devices, a serialization failure, a statement timeout, a dropped connection). Telling the
+// client that is terminal makes it call transaction.complete() and delete an entire offline
+// editing session from the local queue over a blip (CR-02).
 // unknown_table is the one reason whose terminality depends on the table: a name in
 // PUSH_DEFERRED_TABLES is a known, permanent gap (terminal), but a name recognized by neither
 // list means contract drift a later client/server deploy may cure (not terminal).

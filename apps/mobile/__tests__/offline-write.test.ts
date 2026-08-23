@@ -239,6 +239,29 @@ describe('SyncConnector.uploadData — reading the push response body (CR-01)', 
     expect(complete).not.toHaveBeenCalled();
   });
 
+  // CR-02 of 04-REVIEW.md: the whole point of the new reason. A deadlock between the same user's
+  // phone and browser used to arrive as invalid_field, and this branch answered by deleting an
+  // entire offline editing session from the local queue.
+  it('does not complete the transaction on a server_error rejection, leaving the offline writes queued for the next attempt', async () => {
+    const entry = fakeCrudEntry({ clientId: 11, table: 'routine_exercise_cycle_target' });
+    apiFetchMock.mockResolvedValue({
+      response: fakeResponse(async () =>
+        fakePushResponse({ rejected: [{ op_id: '11', reason: 'server_error' }] }),
+      ) as never,
+      outcome: 'ok',
+    });
+    const complete = jest.fn().mockResolvedValue(undefined);
+    const transaction = fakeTransaction([entry], complete);
+
+    await new SyncConnector().uploadData(fakeDatabase(transaction));
+
+    expect(complete).not.toHaveBeenCalled();
+    const status = await getSyncStatus();
+    expect(status.rejectedOps).toEqual(
+      expect.arrayContaining([expect.objectContaining({ opId: '11', reason: 'server_error' })]),
+    );
+  });
+
   it('does not complete the transaction when the response body cannot be parsed as JSON', async () => {
     apiFetchMock.mockResolvedValue({
       response: fakeResponse(async () => {

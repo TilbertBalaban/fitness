@@ -27,6 +27,7 @@ import {
   userPreference,
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
+import { classifyTransactionError } from './rejection-reason';
 import { recordConflict, recordTombstone, isTombstoned } from './conflict-log';
 import {
   EXERCISE_PATCH_FIELDS,
@@ -1599,15 +1600,21 @@ export class SyncService {
         // let the loop over aggregates.values() survive and continue to the next one (CR-04). An
         // op already rejected earlier in this same attempt (e.g. a tombstone race) keeps that
         // reason rather than being overwritten.
+        //
+        // The reason is CLASSIFIED, never assumed: this used to report every throw as
+        // invalid_field, which the client treats as terminal and answers by calling
+        // transaction.complete() — so a deadlock between two of the same user's devices was enough
+        // to delete an entire offline editing session from the local queue (CR-02).
         applied.length = appliedBefore;
+        const reason = classifyTransactionError(error);
         const alreadyRejected = new Set(rejected.slice(rejectedBefore).map((r) => r.op_id));
         for (const op of aggregate.ops) {
           if (!alreadyRejected.has(op.op_id)) {
-            rejected.push({ op_id: op.op_id, reason: 'invalid_field' });
+            rejected.push({ op_id: op.op_id, reason });
           }
         }
         this.logger.error(
-          `applyBatch: aggregate root=${root} failed and was rolled back (opIds=${aggregate.ops.map((op) => op.op_id).join(',')})`,
+          `applyBatch: aggregate root=${root} failed and was rolled back as ${reason} (opIds=${aggregate.ops.map((op) => op.op_id).join(',')})`,
           error instanceof Error ? error.stack : String(error),
         );
       }

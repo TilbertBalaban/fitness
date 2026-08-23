@@ -99,4 +99,14 @@ describe('isTerminalRejection', () => {
     expect(isTerminalRejection('missing_parent', 'workout_session')).toBe(false);
     expect(isTerminalRejection('batch_too_large', 'logged_set')).toBe(false);
   });
+
+  // CR-04 of 04-REVIEW.md: the server used to report every transaction-level throw as
+  // invalid_field, so a deadlock between the same user's two devices read on the wire as "this
+  // data is permanently unacceptable" and the connector completed the crud transaction away.
+  it('is false for server_error on every table, including a deferred one — a transient server failure never destroys a queued write', () => {
+    expect(isTerminalRejection('server_error', 'routine')).toBe(false);
+    expect(isTerminalRejection('server_error', 'routine_exercise_cycle_target')).toBe(false);
+    expect(isTerminalRejection('server_error', 'equipment_profile')).toBe(false);
+    expect(isTerminalRejection('server_error', '')).toBe(false);
+  });
 });
