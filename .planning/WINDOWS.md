@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 74
 waived_count: 1
-fixed_count: 12
-total_count: 87
-last_updated: 2026-08-22T13:45:27.676Z
+fixed_count: 13
+total_count: 88
+last_updated: 2026-08-23T09:25:45.802Z
 ---
 
 # Broken Windows Ledger
@@ -102,6 +102,7 @@ last_updated: 2026-08-22T13:45:27.676Z
 | 88 | 04 | deviation | apps/mobile/lib/db/programs/duplicate-routine.ts |  | duplicateRoutine writes supersetGroupId, progressionSchemeId and notes as null rather than copying them, because loadProgramTree's ProgramSlot does not carry them. Harmless today (all three are always null — addExercisesToDay is their only writer and hardcodes them), but the moment any phase makes one writable this becomes silent data loss on duplication. The fix is to widen ProgramSlot so every tree consumer sees them, not to add a second read here. | open |  | 2026-08-22T13:45:26.811Z |  |
 | 89 | 04 | stub | apps/mobile/lib/db/programs/lifecycle.ts |  | markRoutineReady is implemented and tested but has no UI call site: the UI-SPEC's action sheet enumerates four actions and does not include a draft->ready transition, so nothing in the shipped app can move a routine out of 'draft'. Needs either a UI affordance or an explicit decision that status advances implicitly. | open |  | 2026-08-22T13:45:27.350Z |  |
 | 90 | 04 | deviation | apps/mobile/components/RoutineActionSheet.tsx |  | Three files outside 04-11's declared files_modified were touched, all additively: RoutineActionSheet.tsx created (the UI-SPEC binds the '...' trigger to it and no earlier plan built it), ArchiveDialog.tsx gained an optional subject prop so the program copy lands verbatim (existing call sites and its shipped test untouched and green), and new.tsx landed in Task 2's commit because the route-guard assertion on the segment's children needs the route to exist. | open |  | 2026-08-22T13:45:27.676Z |  |
+| 91 | 04 | deviation | apps/api/src/sync/sync.service.ts |  | CR-01 shipped: applyBatch keyed aggregates on the bare client-chosen root id with no type discriminator, so a two-op batch reusing one id under two root types routed the ownership check at the wrong table and let any authenticated user overwrite and re-own a shared seeded catalog exercise. Confirmed exploitable end-to-end against a running server (HTTP 201, both ops applied, zero rejected); because exercise.user_id cascades on user delete, deleting the attacking account then hard-deleted the shared row for every user. Caught by 04-REVIEW.md, not by the 207 green e2e tests. Fixed by keying aggregates and ownership lookups on (root table, root id) and removing rootTypeByRootId; permanent e2e cover added for both the seeded-catalog and cross-user routine variants. | fixed |  | 2026-08-23T09:25:24.682Z | 2026-08-23T09:25:45.802Z |
 
 ````json
 [
@@ -1148,6 +1149,18 @@ last_updated: 2026-08-22T13:45:27.676Z
     "reason": "",
     "recorded_at": "2026-08-22T13:45:27.676Z",
     "resolved_at": null
+  },
+  {
+    "id": 91,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/api/src/sync/sync.service.ts",
+    "line": null,
+    "description": "CR-01 shipped: applyBatch keyed aggregates on the bare client-chosen root id with no type discriminator, so a two-op batch reusing one id under two root types routed the ownership check at the wrong table and let any authenticated user overwrite and re-own a shared seeded catalog exercise. Confirmed exploitable end-to-end against a running server (HTTP 201, both ops applied, zero rejected); because exercise.user_id cascades on user delete, deleting the attacking account then hard-deleted the shared row for every user. Caught by 04-REVIEW.md, not by the 207 green e2e tests. Fixed by keying aggregates and ownership lookups on (root table, root id) and removing rootTypeByRootId; permanent e2e cover added for both the seeded-catalog and cross-user routine variants.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-23T09:25:24.682Z",
+    "resolved_at": "2026-08-23T09:25:45.802Z"
   }
 ]
 ````
