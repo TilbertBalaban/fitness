@@ -10,6 +10,9 @@ import { Pressable, Text } from 'react-native';
 import { PrimaryButton } from '../../../components/PrimaryButton';
 import { NumericKeypadView } from '../../../components/NumericKeypad';
 import { SetRowView } from '../../../components/SetRow';
+import { ExerciseStripView } from '../../../components/ExerciseStrip';
+import { ExercisePagerView } from '../../../components/ExercisePager';
+import { ExercisePageView } from '../../../components/ExercisePage';
 import {
   WorkoutScreenView,
   buildSetRows,
@@ -128,6 +131,18 @@ const LOGGED_ROW: LoggedSetRow = {
   loggedAt: '2026-08-20T10:00:00.000Z',
 };
 
+const WARMUP_ROW: LoggedSetRow = {
+  id: 'ls-warmup',
+  sessionExerciseId: 'se-1',
+  setIndex: 5,
+  setType: 'warmup',
+  weightKg: '40.000',
+  reps: 10,
+  rir: null,
+  completed: true,
+  loggedAt: '2026-08-20T09:55:00.000Z',
+};
+
 describe('buildSetRows', () => {
   it('renders one row plus a trailing draft when the exercise has zero logged sets', () => {
     const rows = buildSetRows([], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null);
@@ -175,26 +190,48 @@ describe('buildSetRows', () => {
     const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: null, rir: null }, 'lb', null);
     expect(rows[0].values.weight).toBe('220.5');
   });
+
+  it('sorts a warm-up row ahead of working rows regardless of its own higher set_index', () => {
+    const rows = buildSetRows([LOGGED_ROW, WARMUP_ROW], {}, { weight: null, reps: null, rir: null }, 'kg', null);
+    expect(rows.map((row) => row.setId)).toEqual(['ls-warmup', 'ls-1', null]);
+  });
 });
 
 function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): WorkoutScreenViewProps {
   return {
     screenState: 'ready',
     colors: COLORS,
-    exerciseName: 'Bench Press',
-    rows: buildSetRows([], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null),
+    exercises: [{ id: 'se-1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3 }],
+    currentExerciseId: 'se-1',
+    currentIndex: 0,
+    pagerWidth: 375,
+    rowsByExercise: { 'se-1': buildSetRows([], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null) },
     activeField: null,
     starting: false,
     canStartWorkout: false,
     nextUpHeading: null,
     weightUnit: 'kg',
     onStartWorkout: jest.fn(),
+    onSelectExercise: jest.fn(),
+    onIndexChange: jest.fn(),
+    onAddExercise: jest.fn(),
     onFieldPress: jest.fn(),
     onKeypadPress: jest.fn(),
     onSubmitField: jest.fn(),
     onCheckmarkPress: jest.fn(),
     ...overrides,
   };
+}
+
+// ExercisePagerView renders its pages through react-native-tab-view's TabView, which our
+// no-renderer walker never invokes (TabView's scenes come from calling renderScene, not from a
+// props.children tree) — so reaching what a given exercise's page actually renders means calling
+// the pager's own renderExercise prop by hand, exactly the "opaque nested component" pattern the
+// tracer task established for SetRowView/NumericKeypadView/PrimaryButton.
+function renderCurrentExercisePage(result: ReactNode, exercise: { id: string; name: string; completedWorkingSets: number; targetSets: number }) {
+  const [pager] = findByType(result, ExercisePagerView);
+  const pageElement = (pager.props.renderExercise as (ex: typeof exercise) => AnyElement)(exercise);
+  return ExercisePageView(pageElement.props as unknown as Parameters<typeof ExercisePageView>[0]);
 }
 
 describe('WorkoutScreenView', () => {
@@ -227,32 +264,93 @@ describe('WorkoutScreenView', () => {
     expect(findByType(result, PrimaryButton)).toHaveLength(0);
   });
 
-  it('renders the exercise name and one SetRowView per resolved row, each carrying its own setId', () => {
-    const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null);
-    const result = WorkoutScreenView(baseViewProps({ rows, exerciseName: 'Bench Press' }));
+  it('renders the exercise strip with one chip per session exercise', () => {
+    const result = WorkoutScreenView(
+      baseViewProps({
+        exercises: [
+          { id: 'se-1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3 },
+          { id: 'se-2', name: 'Row', completedWorkingSets: 1, targetSets: 3 },
+        ],
+      }),
+    );
+    const [strip] = findByType(result, ExerciseStripView);
 
-    expect(flatText(result)).toContain('Bench Press');
-    const setRows = findByType(result, SetRowView);
+    expect(strip).toBeDefined();
+    expect(strip.props.exercises).toHaveLength(2);
+    expect(strip.props.currentExerciseId).toBe('se-1');
+  });
+
+  it('tapping a strip chip calls onSelectExercise with that exercise’s id', () => {
+    const onSelectExercise = jest.fn();
+    const result = WorkoutScreenView(baseViewProps({ onSelectExercise }));
+    const [strip] = findByType(result, ExerciseStripView);
+
+    (strip.props.onSelectExercise as (id: string) => void)('se-2');
+
+    expect(onSelectExercise).toHaveBeenCalledWith('se-2');
+  });
+
+  it('renders the pager wired to the shared index and width', () => {
+    const result = WorkoutScreenView(baseViewProps({ currentIndex: 1, pagerWidth: 400 }));
+    const [pager] = findByType(result, ExercisePagerView);
+
+    expect(pager.props.index).toBe(1);
+    expect(pager.props.width).toBe(400);
+  });
+
+  it('swiping the pager calls onIndexChange', () => {
+    const onIndexChange = jest.fn();
+    const result = WorkoutScreenView(baseViewProps({ onIndexChange }));
+    const [pager] = findByType(result, ExercisePagerView);
+
+    (pager.props.onIndexChange as (index: number) => void)(1);
+
+    expect(onIndexChange).toHaveBeenCalledWith(1);
+  });
+
+  it('renders the exercise name and one SetRowView per resolved row for the current exercise', () => {
+    const exercise = { id: 'se-1', name: 'Bench Press', completedWorkingSets: 1, targetSets: 1 };
+    const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null);
+    const result = WorkoutScreenView(baseViewProps({ exercises: [exercise], rowsByExercise: { 'se-1': rows } }));
+
+    const page = renderCurrentExercisePage(result, exercise);
+    expect(flatText(page)).toContain('Bench Press');
+    const setRows = findByType(page, SetRowView);
     expect(setRows).toHaveLength(2);
     expect(setRows[0].props.completed).toBe(true);
     expect(setRows[1].props.completed).toBe(false);
   });
 
-  it('a SetRowView field press resolves that row’s setId, field and current value through onFieldPress', () => {
+  it('a SetRowView field press resolves that row’s exerciseId, setId, field and current value through onFieldPress', () => {
+    const exercise = { id: 'se-1', name: 'Bench Press', completedWorkingSets: 1, targetSets: 1 };
     const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null);
     const onFieldPress = jest.fn();
-    const result = WorkoutScreenView(baseViewProps({ rows, onFieldPress }));
-    const [existingRow] = findByType(result, SetRowView);
+    const result = WorkoutScreenView(baseViewProps({ exercises: [exercise], rowsByExercise: { 'se-1': rows }, onFieldPress }));
 
+    const page = renderCurrentExercisePage(result, exercise);
+    const [existingRow] = findByType(page, SetRowView);
     (existingRow.props.onFieldPress as (field: string) => void)('rir');
 
-    expect(onFieldPress).toHaveBeenCalledWith('ls-1', 'rir', '2');
+    expect(onFieldPress).toHaveBeenCalledWith('se-1', 'ls-1', 'rir', '2');
+  });
+
+  it('a checkmark press resolves that exercise’s id and the row’s setId through onCheckmarkPress', () => {
+    const exercise = { id: 'se-1', name: 'Bench Press', completedWorkingSets: 1, targetSets: 1 };
+    const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null);
+    const onCheckmarkPress = jest.fn();
+    const result = WorkoutScreenView(baseViewProps({ exercises: [exercise], rowsByExercise: { 'se-1': rows }, onCheckmarkPress }));
+
+    const page = renderCurrentExercisePage(result, exercise);
+    const [existingRow] = findByType(page, SetRowView);
+    (existingRow.props.onCheckmarkPress as () => void)();
+
+    expect(onCheckmarkPress).toHaveBeenCalledWith('se-1', 'ls-1');
   });
 
   it('docks the keypad only while a field is active', () => {
     const withoutKeypad = WorkoutScreenView(baseViewProps({ activeField: null }));
     const withKeypad = WorkoutScreenView(
-      baseViewProps({ activeField: { setId: null, field: 'weight', value: null, touched: false } }),
+      baseViewProps({ activeField: { exerciseId: 'se-1', setId: null, field: 'weight', value: null, touched: false } }),
     );
 
     expect(findByType(withoutKeypad, NumericKeypadView)).toHaveLength(0);

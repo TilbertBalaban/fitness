@@ -1,8 +1,8 @@
 import { fromCanonicalKg, toCanonicalKg, type WeightUnit } from '@fitness/api-contracts';
 import { eq } from 'drizzle-orm';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { Text, useWindowDimensions, View } from 'react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import {
   applyKeypadPress,
@@ -11,7 +11,10 @@ import {
   type KeypadField,
   type KeypadPress,
 } from '@/components/NumericKeypad';
-import { SetRowView, type SetRowValues } from '@/components/SetRow';
+import { type SetRowValues } from '@/components/SetRow';
+import { countCompletedWorkingSets, ExerciseStripView, type ExerciseStripExercise } from '@/components/ExerciseStrip';
+import { clampPagerIndex, ExercisePagerView } from '@/components/ExercisePager';
+import { ExercisePageView } from '@/components/ExercisePage';
 import { authClient } from '@/lib/auth-client';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, startWorkoutFromProgram, updateLoggedSet } from '@/lib/db/log-set';
@@ -110,6 +113,7 @@ export function defaultDraftValues(exercise: SessionExerciseRow): SetRowValues {
 }
 
 export interface ActiveFieldState {
+  exerciseId: string;
   setId: string | null;
   field: KeypadField;
   value: string | null;
@@ -130,6 +134,23 @@ export interface ResolvedSetRow {
   completed: boolean;
 }
 
+interface BuildSetRowsActiveField {
+  setId: string | null;
+  field: KeypadField;
+  value: string | null;
+  touched: boolean;
+}
+
+// Warm-up rows always render ahead of working rows, regardless of raw set_index — RESEARCH.md
+// Pitfall 2: set_index is a flat, strictly-incrementing counter across the whole session_exercise,
+// not a "which came first" signal, so a warm-up added after working sets already exist would sort
+// after them without this explicit bucket-then-concat step.
+function orderForDisplay(existingSets: LoggedSetRow[]): LoggedSetRow[] {
+  const warmups = existingSets.filter((row) => row.setType === 'warmup');
+  const working = existingSets.filter((row) => row.setType !== 'warmup');
+  return [...warmups, ...working];
+}
+
 // Existing rows (DB truth, patched by any local override not yet reflected by a reload) plus
 // exactly one trailing draft — the tracer's one-set-at-a-time model, which is what keeps a
 // completed row's assigned set_index always equal to its position in this list (LOG-07 ordering).
@@ -138,9 +159,10 @@ export function buildSetRows(
   rowOverrides: Record<string, RowOverride>,
   draftValues: SetRowValues,
   weightUnit: WeightUnit,
-  activeField: ActiveFieldState | null,
+  activeField: BuildSetRowsActiveField | null,
 ): ResolvedSetRow[] {
-  const rows: ResolvedSetRow[] = existingSets.map((row) => {
+  const ordered = orderForDisplay(existingSets);
+  const rows: ResolvedSetRow[] = ordered.map((row) => {
     const override = rowOverrides[row.id];
     const weightKg = override?.weightKg !== undefined ? override.weightKg : row.weightKg;
     const reps = override?.reps !== undefined ? override.reps : row.reps;
@@ -180,34 +202,50 @@ export function stepAmountFor(field: KeypadField, weightUnit: WeightUnit): numbe
 export interface WorkoutScreenViewProps {
   screenState: WorkoutScreenState;
   colors: ThemeColors;
-  exerciseName: string | null;
-  rows: ResolvedSetRow[];
+  exercises: ExerciseStripExercise[];
+  currentExerciseId: string | null;
+  currentIndex: number;
+  pagerWidth: number;
+  rowsByExercise: Record<string, ResolvedSetRow[]>;
   activeField: ActiveFieldState | null;
   starting: boolean;
   canStartWorkout: boolean;
   nextUpHeading: string | null;
   weightUnit: WeightUnit;
   onStartWorkout: () => void;
-  onFieldPress: (setId: string | null, field: KeypadField, currentValue: string | null) => void;
+  onSelectExercise: (exerciseId: string) => void;
+  onIndexChange: (index: number) => void;
+  onAddExercise: () => void;
+  onFieldPress: (exerciseId: string, setId: string | null, field: KeypadField, currentValue: string | null) => void;
   onKeypadPress: (press: KeypadPress) => void;
   onSubmitField: () => void;
-  onCheckmarkPress: (setId: string | null) => void;
+  onCheckmarkPress: (exerciseId: string, setId: string | null) => void;
 }
 
 // Hook-free — direct-invocable by Jest with no renderer, matching CycleStripView/DayDeckView.
 // `colors` arrives as a prop; SessionModeProvider is mounted by the default export below, not
 // here, so this component's own output is identical whether or not a mode provider wraps it.
+// ExerciseStripView/ExercisePagerView/ExercisePageView/NumericKeypadView are all separate,
+// independently-tested component boundaries composed here as real JSX — a test that needs to see
+// inside one of them calls it directly with the props this view handed it, the same technique
+// established for SetRowView/NumericKeypadView/PrimaryButton in the tracer task.
 export function WorkoutScreenView({
   screenState,
   colors,
-  exerciseName,
-  rows,
+  exercises,
+  currentExerciseId,
+  currentIndex,
+  pagerWidth,
+  rowsByExercise,
   activeField,
   starting,
   canStartWorkout,
   nextUpHeading,
   weightUnit,
   onStartWorkout,
+  onSelectExercise,
+  onIndexChange,
+  onAddExercise,
   onFieldPress,
   onKeypadPress,
   onSubmitField,
@@ -251,21 +289,29 @@ export function WorkoutScreenView({
 
   return (
     <View className="flex-1 bg-background">
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 }}>
-        <Text className="mb-md text-heading font-semibold text-foreground">{exerciseName}</Text>
-        {rows.map((row) => (
-          <SetRowView
-            key={row.setId ?? `draft-${row.setIndex}`}
-            setIndex={row.setIndex}
-            values={row.values}
-            completed={row.completed}
-            activeField={activeField && activeField.setId === row.setId ? activeField.field : null}
+      <ExerciseStripView
+        exercises={exercises}
+        currentExerciseId={currentExerciseId}
+        colors={colors}
+        onSelectExercise={onSelectExercise}
+        onAddExercise={onAddExercise}
+      />
+      <ExercisePagerView
+        exercises={exercises}
+        index={currentIndex}
+        onIndexChange={onIndexChange}
+        width={pagerWidth}
+        renderExercise={(exercise) => (
+          <ExercisePageView
+            exerciseName={exercise.name}
+            rows={rowsByExercise[exercise.id] ?? []}
+            activeField={activeField && activeField.exerciseId === exercise.id ? { setId: activeField.setId, field: activeField.field } : null}
             colors={colors}
-            onFieldPress={(field) => onFieldPress(row.setId, field, row.values[field])}
-            onCheckmarkPress={() => onCheckmarkPress(row.setId)}
+            onFieldPress={(setId, field, currentValue) => onFieldPress(exercise.id, setId, field, currentValue)}
+            onCheckmarkPress={(setId) => onCheckmarkPress(exercise.id, setId)}
           />
-        ))}
-      </ScrollView>
+        )}
+      />
 
       {activeField ? (
         <NumericKeypadView
@@ -296,18 +342,35 @@ export type WorkoutScreenViewModel = Omit<WorkoutScreenViewProps, 'colors'>;
 export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): WorkoutScreenViewModel {
   const [read, setRead] = useState<WorkoutScreenReadResult | null>(null);
   const [activeField, setActiveField] = useState<ActiveFieldState | null>(null);
-  const [draftValues, setDraftValues] = useState<SetRowValues>({ weight: null, reps: null, rir: null });
+  const [draftValuesByExercise, setDraftValuesByExercise] = useState<Record<string, SetRowValues>>({});
   const [rowOverrides, setRowOverrides] = useState<Record<string, RowOverride>>({});
   const [starting, setStarting] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const { width: pagerWidth } = useWindowDimensions();
+  const lastSessionIdRef = useRef<string | null>(null);
 
+  // Resets the pager back to the first exercise only when the open session's identity actually
+  // changes (a fresh start, or a different device's session synced in) — not on every reload, or
+  // completing a set on exercise 3 would yank the pager back to exercise 1 the instant the
+  // checkmark landed.
   const applyReadResult = useCallback((result: WorkoutScreenReadResult) => {
+    const nextSessionId = !('failed' in result) ? (result.session?.session.id ?? null) : null;
+    if (lastSessionIdRef.current !== nextSessionId) {
+      lastSessionIdRef.current = nextSessionId;
+      setCurrentIndex(0);
+    }
+
     setRead(result);
     setRowOverrides({});
     if (!('failed' in result) && result.session) {
-      const firstExercise = result.session.exercises[0];
-      if (firstExercise) {
-        setDraftValues(defaultDraftValues(firstExercise));
-      }
+      const session = result.session;
+      setDraftValuesByExercise((current) => {
+        const drafts = { ...current };
+        for (const exercise of session.exercises) {
+          if (!(exercise.id in drafts)) drafts[exercise.id] = defaultDraftValues(exercise);
+        }
+        return drafts;
+      });
     }
   }, []);
 
@@ -349,9 +412,30 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
   const weightUnit = read !== null && !('failed' in read) ? read.weightUnit : DEFAULT_WEIGHT_UNIT;
   const screenState = deriveWorkoutScreenState({ failed, session: liveSession, nextUp });
 
-  const firstExercise = liveSession?.exercises[0] ?? null;
-  const existingSets = firstExercise ? (liveSession?.setsByExerciseId[firstExercise.id] ?? []) : [];
-  const rows = firstExercise ? buildSetRows(existingSets, rowOverrides, draftValues, weightUnit, activeField) : [];
+  const sessionExercises = liveSession?.exercises ?? [];
+  const safeIndex = clampPagerIndex(currentIndex, sessionExercises.length);
+  const currentExercise = sessionExercises[safeIndex] ?? null;
+
+  const exercises: ExerciseStripExercise[] = sessionExercises.map((exercise) => {
+    const existingSets = liveSession?.setsByExerciseId[exercise.id] ?? [];
+    const completedWorkingSets = countCompletedWorkingSets(
+      existingSets.map((row) => ({ setType: row.setType, completed: rowOverrides[row.id]?.completed ?? row.completed })),
+    );
+    return {
+      id: exercise.id,
+      name: exercise.exerciseName,
+      completedWorkingSets,
+      targetSets: exercise.targetSets ?? 0,
+    };
+  });
+
+  const rowsByExercise: Record<string, ResolvedSetRow[]> = {};
+  for (const exercise of sessionExercises) {
+    const existingSets = liveSession?.setsByExerciseId[exercise.id] ?? [];
+    const draftValues = draftValuesByExercise[exercise.id] ?? defaultDraftValues(exercise);
+    const activeFieldForExercise = activeField && activeField.exerciseId === exercise.id ? activeField : null;
+    rowsByExercise[exercise.id] = buildSetRows(existingSets, rowOverrides, draftValues, weightUnit, activeFieldForExercise);
+  }
 
   async function handleStartWorkout() {
     if (!nextUp || nextUp.kind !== 'workout' || starting) return;
@@ -375,8 +459,24 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
     }
   }
 
-  function handleFieldPress(setId: string | null, field: KeypadField, currentValue: string | null) {
-    setActiveField({ setId, field, value: currentValue, touched: false });
+  function handleSelectExercise(exerciseId: string) {
+    const index = sessionExercises.findIndex((exercise) => exercise.id === exerciseId);
+    if (index === -1) return;
+    setActiveField(null);
+    setCurrentIndex(index);
+  }
+
+  function handleIndexChange(index: number) {
+    setActiveField(null);
+    setCurrentIndex(clampPagerIndex(index, sessionExercises.length));
+  }
+
+  function handleAddExercise() {
+    // No-op this task — 05-06 wires this to ExercisePickerModal in multi-select mode.
+  }
+
+  function handleFieldPress(exerciseId: string, setId: string | null, field: KeypadField, currentValue: string | null) {
+    setActiveField({ exerciseId, setId, field, value: currentValue, touched: false });
   }
 
   function handleKeypadPress(press: KeypadPress) {
@@ -386,7 +486,11 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
   }
 
   async function handleSubmitField() {
-    if (!activeField || !firstExercise) return;
+    if (!activeField) return;
+    const exercise = sessionExercises.find((candidate) => candidate.id === activeField.exerciseId);
+    if (!exercise) return;
+    const existingSets = liveSession?.setsByExerciseId[exercise.id] ?? [];
+    const draftValues = draftValuesByExercise[exercise.id] ?? defaultDraftValues(exercise);
 
     let updatedDraft = draftValues;
     let updatedOverride: RowOverride | undefined;
@@ -394,7 +498,7 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
     if (activeField.touched) {
       if (activeField.setId === null) {
         updatedDraft = { ...draftValues, [activeField.field]: activeField.value };
-        setDraftValues(updatedDraft);
+        setDraftValuesByExercise((current) => ({ ...current, [exercise.id]: updatedDraft }));
       } else {
         const setId = activeField.setId;
         if (activeField.field === 'weight') {
@@ -434,18 +538,21 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
       nextValue = null;
     }
 
-    setActiveField({ setId: activeField.setId, field: next, value: nextValue, touched: false });
+    setActiveField({ exerciseId: exercise.id, setId: activeField.setId, field: next, value: nextValue, touched: false });
   }
 
-  async function handleCheckmarkPress(setId: string | null) {
-    if (!firstExercise) return;
+  async function handleCheckmarkPress(exerciseId: string, setId: string | null) {
+    const exercise = sessionExercises.find((candidate) => candidate.id === exerciseId);
+    if (!exercise) return;
+    const existingSets = liveSession?.setsByExerciseId[exercise.id] ?? [];
 
     if (setId === null) {
+      const draftValues = draftValuesByExercise[exercise.id] ?? defaultDraftValues(exercise);
       // LOG-07: reps must hold a value to reach completed=true — rejected without writing.
       if (draftValues.reps === null || draftValues.reps === '') return;
       await logSet(
         {
-          sessionExerciseId: firstExercise.id,
+          sessionExerciseId: exercise.id,
           weight: { value: draftValues.weight, unit: weightUnit },
           reps: Number(draftValues.reps),
           rir: draftValues.rir === null ? null : Number(draftValues.rir),
@@ -471,18 +578,24 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
 
   return {
     screenState,
-    exerciseName: firstExercise?.exerciseName ?? null,
-    rows,
+    exercises,
+    currentExerciseId: currentExercise?.id ?? null,
+    currentIndex: safeIndex,
+    pagerWidth,
+    rowsByExercise,
     activeField,
     starting,
     canStartWorkout: nextUp?.kind === 'workout',
     nextUpHeading,
     weightUnit,
     onStartWorkout: () => void handleStartWorkout(),
+    onSelectExercise: handleSelectExercise,
+    onIndexChange: handleIndexChange,
+    onAddExercise: handleAddExercise,
     onFieldPress: handleFieldPress,
     onKeypadPress: handleKeypadPress,
     onSubmitField: () => void handleSubmitField(),
-    onCheckmarkPress: (setId) => void handleCheckmarkPress(setId),
+    onCheckmarkPress: (exerciseId, setId) => void handleCheckmarkPress(exerciseId, setId),
   };
 }
 
