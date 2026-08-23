@@ -149,7 +149,7 @@ async function seedPersonalRecord(userId: string, exerciseId: string): Promise<s
   seededPersonalRecordIds.push(id);
   await pg.query(
     `INSERT INTO personal_record (id, user_id, exercise_id, pr_type, value, achieved_at)
-     VALUES ($1, $2, $3, 'e1rm', '100.000', now())`,
+     VALUES ($1, $2, $3, 'best_e1rm', '100.000', now())`,
     [id, userId, exerciseId],
   );
   return id;
