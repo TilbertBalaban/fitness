@@ -14,6 +14,22 @@ import { getPowerSync } from '../powersync';
 import { generateClientId } from '../id';
 import { routine, routineCycle, routineDay, routineExercise, routineExerciseCycleTarget } from '../schema';
 
+// WR-10: the multi-row helpers now wrap their writes in db.transaction. The fake's transaction
+// handle IS the fake — the shipped helpers call tx.insert/tx.update, and handing them a separate
+// object would hide those calls from the recorders below. `this` resolves to the fake because the
+// helpers always call it as db.transaction(...).
+let transactionCount = 0;
+
+beforeEach(() => {
+  transactionCount = 0;
+});
+
+async function runInFakeTransaction(this: unknown, run: (tx: unknown) => Promise<unknown>) {
+  transactionCount += 1;
+  return run(this);
+}
+
+
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../id', () => ({ generateClientId: jest.fn(() => 'fixed-id') }));
 
@@ -28,6 +44,7 @@ function fakeInsertDb(insertedValuesSpy: jest.Mock) {
         return Promise.resolve();
       },
     }),
+    transaction: runInFakeTransaction,
   } as unknown as ReturnType<typeof getPowerSync>;
 }
 
@@ -109,7 +126,7 @@ describe('loadRoutines', () => {
       },
     }));
     const selectSpy = jest.fn(() => ({ from: fromSpy }));
-    const db = { select: selectSpy } as unknown as ReturnType<typeof getPowerSync>;
+    const db = { select: selectSpy, transaction: runInFakeTransaction } as unknown as ReturnType<typeof getPowerSync>;
 
     const result = await loadRoutines(db);
 
@@ -137,6 +154,7 @@ function fakeSelectDb(rows: unknown[]) {
     delete: () => ({
       where: () => Promise.resolve(),
     }),
+    transaction: runInFakeTransaction,
   } as unknown as ReturnType<typeof getPowerSync>;
 }
 
@@ -157,6 +175,7 @@ describe('addDay', () => {
           return Promise.resolve();
         },
       }),
+      transaction: runInFakeTransaction,
     } as unknown as ReturnType<typeof getPowerSync>;
 
     const id = await addDay({ routineId: 'r1', name: 'Push' }, db);
@@ -181,6 +200,7 @@ describe('addDay', () => {
           return Promise.resolve();
         },
       }),
+      transaction: runInFakeTransaction,
     } as unknown as ReturnType<typeof getPowerSync>;
 
     await expect(addDay({ routineId: 'r1', name: '' }, db)).rejects.toThrow('Day name is required');
@@ -224,6 +244,7 @@ describe('addExercisesToDay', () => {
           return Promise.resolve();
         },
       }),
+      transaction: runInFakeTransaction,
     } as unknown as ReturnType<typeof getPowerSync>;
 
     const ids = await addExercisesToDay({ routineDayId: 'd1', exerciseIds: ['e1', 'e2'] }, db);
@@ -266,6 +287,7 @@ describe('addExercisesToDay', () => {
           return Promise.resolve();
         },
       }),
+      transaction: runInFakeTransaction,
     } as unknown as ReturnType<typeof getPowerSync>;
 
     await addExercisesToDay({ routineDayId: 'd1', exerciseIds: ['e1', 'e1'] }, db);
@@ -286,6 +308,7 @@ describe('addExercisesToDay', () => {
           return Promise.resolve();
         },
       }),
+      transaction: runInFakeTransaction,
     } as unknown as ReturnType<typeof getPowerSync>;
 
     const ids = await addExercisesToDay({ routineDayId: 'd1', exerciseIds: [] }, db);
@@ -332,6 +355,7 @@ function fakeReorderDb(siblingRows: { id: string; orderIndex: number }[]) {
         },
       }),
     }),
+    transaction: runInFakeTransaction,
   } as unknown as ReturnType<typeof getPowerSync>;
   return { db, updateCalls };
 }
@@ -423,6 +447,7 @@ describe('removeExercise', () => {
           return Promise.resolve();
         },
       }),
+      transaction: runInFakeTransaction,
     } as unknown as ReturnType<typeof getPowerSync>;
 
     await removeExercise('x', db);
@@ -446,6 +471,7 @@ describe('removeDay', () => {
           },
         };
       },
+      transaction: runInFakeTransaction,
     } as unknown as ReturnType<typeof getPowerSync>;
 
     await removeDay('d1', db);
@@ -460,6 +486,7 @@ describe('removeDay', () => {
       getPowerSyncMock.mockClear();
       const db = {
         delete: () => ({ where: () => Promise.resolve() }),
+        transaction: runInFakeTransaction,
       } as unknown as ReturnType<typeof getPowerSync>;
 
       await removeDay('d1', db);
@@ -470,6 +497,7 @@ describe('removeDay', () => {
     it('falls back to getPowerSync() when no database argument is passed', async () => {
       const db = {
         delete: () => ({ where: () => Promise.resolve() }),
+        transaction: runInFakeTransaction,
       } as unknown as ReturnType<typeof getPowerSync>;
       getPowerSyncMock.mockReturnValue(db);
 
@@ -490,6 +518,7 @@ describe('renameDay', () => {
           return { where: () => Promise.resolve() };
         },
       }),
+      transaction: runInFakeTransaction,
     } as unknown as ReturnType<typeof getPowerSync>;
 
     await renameDay('d1', '  Pull  ', db);
@@ -525,6 +554,7 @@ function fakeLoadProgramDb(rows: FakeLoadProgramRows) {
         }),
       };
     },
+    transaction: runInFakeTransaction,
   } as unknown as ReturnType<typeof getPowerSync>;
   return { db, getSelectCount: () => selectCount };
 }
@@ -753,3 +783,54 @@ describe('loadProgramTree', () => {
     expect(tree?.days[0].slots[0].exerciseName).toBe('Unknown exercise');
   });
 });
+
+// WR-10: the renumber branch emits one update per sibling and the multi-select emits one insert per
+// exercise, each as an independent await. Interrupted, a renumber leaves duplicate order_index
+// values that sortByOrderThenId still renders stably — so the list is not the one the user dragged
+// to and nothing looks wrong.
+describe('multi-row writes are one unit (WR-10)', () => {
+  it('renumbers inside exactly one transaction', async () => {
+    const { db, updateCalls } = fakeReorderDb([
+      { id: 'a', orderIndex: 1 },
+      { id: 'b', orderIndex: 2 },
+      { id: 'c', orderIndex: 3 },
+      { id: 'x', orderIndex: 4 },
+    ]);
+
+    await moveExercise({ routineDayId: 'd1', exerciseId: 'x', beforeId: 'a', afterId: 'b' }, db);
+
+    expect(transactionCount).toBe(1);
+    expect(updateCalls.length).toBeGreaterThan(1);
+  });
+
+  it('still opens one transaction for the single-update gap case', async () => {
+    const { db, updateCalls } = fakeReorderDb([
+      { id: 'a', orderIndex: 1024 },
+      { id: 'b', orderIndex: 2048 },
+      { id: 'x', orderIndex: 3072 },
+    ]);
+
+    await moveExercise({ routineDayId: 'd1', exerciseId: 'x', beforeId: 'a', afterId: 'b' }, db);
+
+    expect(transactionCount).toBe(1);
+    expect(updateCalls).toHaveLength(1);
+  });
+
+  it('adds a multi-exercise selection inside exactly one transaction', async () => {
+    generateClientIdMock.mockReturnValueOnce('ex-1').mockReturnValueOnce('ex-2').mockReturnValueOnce('ex-3');
+    const db = fakeSelectDb([]);
+
+    await addExercisesToDay({ routineDayId: 'd1', exerciseIds: ['e1', 'e2', 'e3'] }, db);
+
+    expect(transactionCount).toBe(1);
+  });
+
+  it('opens no transaction for an empty selection', async () => {
+    const db = fakeSelectDb([]);
+
+    await addExercisesToDay({ routineDayId: 'd1', exerciseIds: [] }, db);
+
+    expect(transactionCount).toBe(0);
+  });
+});
+

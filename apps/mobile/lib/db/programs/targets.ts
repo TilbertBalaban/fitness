@@ -1,6 +1,7 @@
+import { resolveTarget, type TargetOverride } from '@fitness/api-contracts';
 import { eq } from 'drizzle-orm';
 import { getPowerSync, type WriteDb } from '../powersync';
-import { routineExercise } from '../schema';
+import { routineExercise, routineExerciseCycleTarget } from '../schema';
 
 // Answers the "what does a blank target mean" question CONTEXT.md left to discretion: null means
 // deliberately unprescribed, never zero, and the builder always allows it. Nothing downstream may
@@ -14,7 +15,15 @@ export interface TargetDraft {
   targetRestSeconds: number | null;
 }
 
-export type TargetFieldError = 'whole-number' | 'negative' | 'not-a-number' | 'min-above-max' | 'below-minimum';
+export type TargetFieldError =
+  | 'whole-number'
+  | 'negative'
+  | 'not-a-number'
+  | 'min-above-max'
+  | 'below-minimum'
+  // The field is valid on its own but breaks a cycle override that inherits it. Distinct from
+  // min-above-max because the offending value is not the one the user is looking at.
+  | 'cycle-conflict';
 
 export type ParsedTargetField = { value: number | null } | { error: TargetFieldError };
 
@@ -50,16 +59,64 @@ export function validateTargets(draft: TargetDraft): TargetValidationErrors {
   if (draft.targetRepMin !== null && draft.targetRepMin < 1) {
     errors.targetRepMin = 'below-minimum';
   }
-  if (draft.targetRepMin !== null && draft.targetRepMax !== null && draft.targetRepMax < draft.targetRepMin) {
+  if (draft.targetRepMax !== null && draft.targetRepMax < 1) {
+    errors.targetRepMax = 'below-minimum';
+  } else if (draft.targetRepMin !== null && draft.targetRepMax !== null && draft.targetRepMax < draft.targetRepMin) {
     errors.targetRepMax = 'min-above-max';
+  }
+  // Rest and RIR have no lower bound of their own — 0 rest and 0 RIR are both real prescriptions —
+  // but neither may go negative. The server's shape validator rejects a negative with
+  // invalid_field, which is terminal: the client completes the crud transaction and the write is
+  // gone. Nothing may leave this module in a state the server will silently destroy.
+  if (draft.targetRir !== null && draft.targetRir < 0) {
+    errors.targetRir = 'negative';
+  }
+  if (draft.targetRestSeconds !== null && draft.targetRestSeconds < 0) {
+    errors.targetRestSeconds = 'negative';
   }
 
   return errors;
 }
 
-function firstErrorMessage(errors: TargetValidationErrors): string {
+export function firstErrorMessage(errors: TargetValidationErrors): string {
   const [field, code] = Object.entries(errors)[0] as [keyof TargetDraft, TargetFieldError];
   return `${field}: ${code}`;
+}
+
+// A base and its per-cycle overrides are only ever read merged, so they have to be validated
+// merged. validateTargets' min-above-max rule needs both halves of the range non-null, and an
+// override naming only one half never has both — so an override is never range-checked against the
+// base it inherits from, and the base is never checked against the overrides that inherit from it.
+// Either edit can therefore leave a cycle resolving to repMin > repMax, which the slot row renders
+// verbatim and log-set.ts will snapshot into a session.
+export function validateResolvedOverrides(
+  base: TargetDraft,
+  overrides: TargetOverride[],
+): TargetValidationErrors {
+  for (const override of overrides) {
+    const errors = validateTargets(resolveTarget(base, override));
+    const fields = Object.keys(errors) as (keyof TargetDraft)[];
+    if (fields.length === 0) continue;
+    // Reported as cycle-conflict rather than the underlying code: the value the user just typed is
+    // valid, and naming it min-above-max would point at the wrong number.
+    const conflict: TargetValidationErrors = {};
+    for (const field of fields) conflict[field] = 'cycle-conflict';
+    return conflict;
+  }
+  return {};
+}
+
+async function readOverridesFor(routineExerciseId: string, db: WriteDb): Promise<TargetOverride[]> {
+  return db
+    .select({
+      targetSets: routineExerciseCycleTarget.targetSets,
+      targetRepMin: routineExerciseCycleTarget.targetRepMin,
+      targetRepMax: routineExerciseCycleTarget.targetRepMax,
+      targetRir: routineExerciseCycleTarget.targetRir,
+      targetRestSeconds: routineExerciseCycleTarget.targetRestSeconds,
+    })
+    .from(routineExerciseCycleTarget)
+    .where(eq(routineExerciseCycleTarget.routineExerciseId, routineExerciseId));
 }
 
 // Writes all five columns every time, including the nulls — a partial write would leave a stale
@@ -73,6 +130,11 @@ export async function setExerciseTargets(
   const errors = validateTargets(draft);
   if (Object.keys(errors).length > 0) {
     throw new Error(firstErrorMessage(errors));
+  }
+
+  const conflicts = validateResolvedOverrides(draft, await readOverridesFor(routineExerciseId, db));
+  if (Object.keys(conflicts).length > 0) {
+    throw new Error(firstErrorMessage(conflicts));
   }
 
   await db

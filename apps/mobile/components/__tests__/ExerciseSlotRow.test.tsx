@@ -5,6 +5,7 @@ import {
   CYCLE_OVERRIDE_MARKER,
   ExerciseSlotRowView,
   formatSlotSummary,
+  decreaseDisabledFor,
   stepBoundedValue,
   stepRepMax,
   stepRepMin,
@@ -283,6 +284,25 @@ describe('stepBoundedValue', () => {
     expect(stepBoundedValue(15, 'dec', 0, null, 15)).toBe(0);
     expect(stepBoundedValue(0, 'dec', 0, null, 15)).toBeNull();
   });
+
+  // WR-01: the old guard tested `current <= floor`, so a rest value in (0, 15) — reachable from a
+  // program authored on another client, or a future importer — decremented straight past the floor
+  // into a negative that the server rejects terminally.
+  it('never returns a negative when a step would overshoot the floor', () => {
+    expect(stepBoundedValue(10, 'dec', 0, null, 15)).toBeNull();
+    expect(stepBoundedValue(1, 'dec', 0, null, 15)).toBeNull();
+    expect(stepBoundedValue(14, 'dec', 0, null, 15)).toBeNull();
+  });
+
+  it('clears rather than undershoots for any step and floor combination', () => {
+    for (const current of [1, 2, 7, 13, 14]) {
+      expect(stepBoundedValue(current, 'dec', 0, null, 15)).toBeNull();
+    }
+    for (const current of [2, 3, 5]) {
+      expect(stepBoundedValue(current, 'dec', 1, null, 5)).toBeNull();
+    }
+    expect(stepBoundedValue(6, 'dec', 1, null, 5)).toBe(1);
+  });
 });
 
 describe('stepRepMin / stepRepMax — R5 structural pairing', () => {
@@ -308,5 +328,71 @@ describe('stepRepMin / stepRepMax — R5 structural pairing', () => {
 
   it('incrementing max never pushes min', () => {
     expect(stepRepMax({ min: 8, max: 10 }, 'inc')).toEqual({ min: 8, max: 11 });
+  });
+});
+
+// WR-07: a step that cleared a value inside a cycle was written by overrideDelta as an all-null
+// delta, which resolveTarget reads as "inherit" — so the base value came back and the readout went
+// *up* when the user pressed minus. Clearing a prescription is a base-level act; inside a cycle the
+// floor is a floor.
+describe('clearing is a base-level act (WR-07)', () => {
+  it('holds sets at its floor instead of clearing when a cycle is selected', () => {
+    expect(stepBoundedValue(1, 'dec', 1, null, 1, false)).toBe(1);
+    expect(stepBoundedValue(2, 'dec', 1, null, 1, false)).toBe(1);
+  });
+
+  it('holds rest at zero instead of clearing, including from a value inside one step of the floor', () => {
+    expect(stepBoundedValue(0, 'dec', 0, null, 15, false)).toBe(0);
+    expect(stepBoundedValue(10, 'dec', 0, null, 15, false)).toBe(0);
+    expect(stepBoundedValue(15, 'dec', 0, null, 15, false)).toBe(0);
+  });
+
+  it('holds RIR at zero instead of clearing', () => {
+    expect(stepBoundedValue(0, 'dec', 0, 6, 1, false)).toBe(0);
+  });
+
+  it('still treats an already-null value as a no-op — there is nothing to hold', () => {
+    expect(stepBoundedValue(null, 'dec', 1, null, 1, false)).toBeNull();
+  });
+
+  it('keeps the clearing behaviour on the base, where null genuinely means unprescribed', () => {
+    expect(stepBoundedValue(1, 'dec', 1, null, 1, true)).toBeNull();
+    expect(stepBoundedValue(1, 'dec', 1, null)).toBeNull();
+  });
+
+  it('holds the rep range at its floor rather than clearing half of it inside a cycle', () => {
+    expect(stepRepMin({ min: 1, max: 12 }, 'dec', false)).toEqual({ min: 1, max: 12 });
+    expect(stepRepMax({ min: 1, max: 1 }, 'dec', false)).toEqual({ min: 1, max: 1 });
+  });
+
+  it('keeps R5 pairing intact with clearing disabled — max never lands below min', () => {
+    expect(stepRepMax({ min: 5, max: 5 }, 'dec', false)).toEqual({ min: 4, max: 4 });
+    expect(stepRepMin({ min: 10, max: 10 }, 'inc', false)).toEqual({ min: 11, max: 11 });
+  });
+});
+
+describe('decreaseDisabledFor', () => {
+  it('disables the decrement on an unprescribed field regardless of the mode', () => {
+    expect(decreaseDisabledFor(null, 1, true)).toBe(true);
+    expect(decreaseDisabledFor(null, 1, false)).toBe(true);
+  });
+
+  it('disables the decrement at the floor inside a cycle, where it would be a no-op', () => {
+    expect(decreaseDisabledFor(1, 1, false)).toBe(true);
+    expect(decreaseDisabledFor(0, 0, false)).toBe(true);
+  });
+
+  it('leaves the decrement live at the floor on the base, where it clears the target', () => {
+    expect(decreaseDisabledFor(1, 1, true)).toBe(false);
+    expect(decreaseDisabledFor(0, 0, true)).toBe(false);
+  });
+
+  it('leaves the decrement live above the floor in both modes', () => {
+    expect(decreaseDisabledFor(3, 1, false)).toBe(false);
+    expect(decreaseDisabledFor(3, 1, true)).toBe(false);
+  });
+
+  it('disables a below-floor value inside a cycle rather than stepping it further down', () => {
+    expect(decreaseDisabledFor(0, 1, false)).toBe(true);
   });
 });

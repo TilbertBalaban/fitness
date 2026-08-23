@@ -14,7 +14,10 @@ jest.mock('../../../lib/db/programs/days', () => ({
   removeDay: jest.fn(),
   removeExercise: jest.fn(),
 }));
+// resolveLiveRoutineId stays real — it is pure, and it is the rule resolveDisplayedRoutineId is
+// asserted against (WR-08/WR-09).
 jest.mock('../../../lib/db/programs/lifecycle', () => ({
+  ...jest.requireActual('../../../lib/db/programs/lifecycle'),
   loadActiveRoutineId: jest.fn(),
   loadLibraryRoutines: jest.fn(),
   setProgressionFrozen: jest.fn(),
@@ -25,14 +28,13 @@ jest.mock('../../../lib/db/programs/load-program', () => ({
 }));
 jest.mock('../../../lib/db/programs/cycles', () => ({
   addCycle: jest.fn(),
-  renameCycle: jest.fn(),
-  setCycleKind: jest.fn(),
-  setCycleDuration: jest.fn(),
+  updateCycle: jest.fn(),
   moveCycle: jest.fn(),
   removeCycle: jest.fn(),
   setCycleTarget: jest.fn(),
   clearCycleTarget: jest.fn(),
   validateCycle: jest.fn(() => null),
+  cycleErrorMessage: jest.fn((code: string) => code),
 }));
 // programs.tsx now imports ExercisePickerModal, whose top-level imports reach the exercises
 // screen (drizzle-orm/expo-router) and authClient (better-auth/react's ESM dist, which Jest's
@@ -43,11 +45,14 @@ jest.mock('../../../lib/auth-client', () => ({ authClient: { useSession: () => (
 
 import {
   FREEZE_SWITCH_TITLE,
+  cycleDurationFieldValue,
   deriveProgramsScreenState,
   freezeSwitchLabel,
   nextExpandedSlotId,
   overrideDelta,
   overriddenFields,
+  parseCycleDuration,
+  resolveDisplayedRoutineId,
   resolveSlotTargets,
   selectedCycleOf,
 } from '../programs';
@@ -245,5 +250,95 @@ describe('overrideDelta', () => {
 
   it('drops a field the user cleared back to null — clearing a prescription is a base-row edit', () => {
     expect(overrideDelta(BASE_TARGETS, { ...BASE_TARGETS, targetRir: null }).targetRir).toBeNull();
+  });
+});
+
+// The Edit Cycle form's Days off field, which the shipped form did not have — its absence is why
+// "Make Time off" could only ever produce a cycle with no length (04-VERIFICATION gap 2).
+describe('parseCycleDuration', () => {
+  it('reads an empty or whitespace-only field as no duration', () => {
+    expect(parseCycleDuration('')).toBeNull();
+    expect(parseCycleDuration('   ')).toBeNull();
+  });
+
+  it('reads a whole number, ignoring surrounding whitespace', () => {
+    expect(parseCycleDuration('7')).toBe(7);
+    expect(parseCycleDuration('  14  ')).toBe(14);
+  });
+
+  it('never coerces a non-numeric field to a number validateCycle would accept', () => {
+    expect(Number.isNaN(parseCycleDuration('abc') as number)).toBe(true);
+    expect(parseCycleDuration('0')).toBe(0);
+  });
+});
+
+describe('cycleDurationFieldValue', () => {
+  it('shows an existing duration so an edit starts from what is stored', () => {
+    expect(cycleDurationFieldValue(7)).toBe('7');
+  });
+
+  it('shows an empty field for a cycle with no duration, including one arriving null from sync', () => {
+    expect(cycleDurationFieldValue(null)).toBe('');
+    expect(cycleDurationFieldValue(undefined)).toBe('');
+  });
+
+  it('round-trips through parseCycleDuration', () => {
+    expect(parseCycleDuration(cycleDurationFieldValue(14))).toBe(14);
+    expect(parseCycleDuration(cycleDurationFieldValue(null))).toBeNull();
+  });
+});
+
+// WR-08: displayedRoutineId was `routineIdParam ?? activeRoutineId` and the builder branch tests it
+// before screenState is consulted, so deriveProgramsScreenState's "a pointer naming a routine that
+// is not in the list reads as no-active" rule was bypassed whenever the param was present.
+describe('resolveDisplayedRoutineId (WR-08)', () => {
+  const LIVE = { id: 'r-live', archivedAt: null };
+  const ARCHIVED = { id: 'r-archived', archivedAt: '2026-01-01T00:00:00.000Z' };
+
+  it('honours a param naming a loaded, non-archived program', () => {
+    expect(
+      resolveDisplayedRoutineId({ routineIdParam: 'r-live', routines: [LIVE], activeRoutineId: null }),
+    ).toBe('r-live');
+  });
+
+  it('falls back to the active pointer for a param naming an archived program', () => {
+    expect(
+      resolveDisplayedRoutineId({
+        routineIdParam: 'r-archived',
+        routines: [LIVE, ARCHIVED],
+        activeRoutineId: 'r-live',
+      }),
+    ).toBe('r-live');
+  });
+
+  it('reads as no-active for an archived param when nothing else is active', () => {
+    expect(
+      resolveDisplayedRoutineId({ routineIdParam: 'r-archived', routines: [ARCHIVED], activeRoutineId: null }),
+    ).toBeNull();
+  });
+
+  it('falls back for a param naming a program this device does not have', () => {
+    expect(
+      resolveDisplayedRoutineId({ routineIdParam: 'r-gone', routines: [LIVE], activeRoutineId: 'r-live' }),
+    ).toBe('r-live');
+  });
+
+  it('does not honour a param before the list has loaded — it is not checkable yet', () => {
+    expect(
+      resolveDisplayedRoutineId({ routineIdParam: 'r-live', routines: null, activeRoutineId: null }),
+    ).toBeNull();
+  });
+
+  it('uses the active pointer when no param is present at all', () => {
+    expect(resolveDisplayedRoutineId({ routines: [LIVE], activeRoutineId: 'r-live' })).toBe('r-live');
+  });
+
+  // The screen holds `routines` already filtered to non-archived, so the two functions see the same
+  // list — and must reach the same verdict about a pointer naming something not in it.
+  it('agrees with deriveProgramsScreenState rather than bypassing it', () => {
+    const routines = [LIVE];
+
+    expect(resolveDisplayedRoutineId({ routineIdParam: 'r-archived', routines, activeRoutineId: null })).toBeNull();
+    expect(deriveProgramsScreenState({ failed: false, routines, activeRoutineId: 'r-archived' })).toBe('no-active');
   });
 });

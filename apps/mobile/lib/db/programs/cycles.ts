@@ -1,8 +1,8 @@
 import { CYCLE_KINDS, EMPTY_TARGET, isEmptyOverride, resolveTarget, type CycleKind, type TargetOverride } from '@fitness/api-contracts';
 import { and, eq } from 'drizzle-orm';
 import { generateClientId } from '../id';
-import { getPowerSync, type WriteDb } from '../powersync';
-import { routineCycle, routineExerciseCycleTarget } from '../schema';
+import { getPowerSync, type WriteDb, type WriteTx } from '../powersync';
+import { routineCycle, routineExercise, routineExerciseCycleTarget } from '../schema';
 import { computeReorder } from './days';
 import { appendOrderIndex } from './order-index';
 import { validateTargets, type TargetDraft } from './targets';
@@ -25,9 +25,27 @@ export function validateCycle({ name, kind, durationDays }: CycleDraft): CycleVa
 
   const duration = durationDays ?? null;
   if (kind === 'time_off' && duration === null) return 'duration-required';
-  if (duration !== null && duration < 1) return 'duration-too-small';
+  // Number.isInteger before the comparison: a form field parsed with Number('') is 0 but
+  // Number('abc') is NaN, and every comparison against NaN is false, so a bare `< 1` would let a
+  // non-numeric duration through to the row.
+  if (duration !== null && (!Number.isInteger(duration) || duration < 1)) return 'duration-too-small';
 
   return null;
+}
+
+// The codes above are internal; these are the strings a user reads. Kept beside the union so a new
+// code cannot be added without the switch failing to typecheck.
+export function cycleErrorMessage(error: CycleValidationError): string {
+  switch (error) {
+    case 'name-required':
+      return 'Cycle name is required.';
+    case 'unknown-kind':
+      return 'Choose Training, Deload or Time off.';
+    case 'duration-required':
+      return 'Time off needs a length in days.';
+    case 'duration-too-small':
+      return 'Days off must be a whole number of at least 1.';
+  }
 }
 
 export interface AddCycleInput extends CycleDraft {
@@ -59,46 +77,28 @@ export async function addCycle(
   return id;
 }
 
-export async function renameCycle(cycleId: string, name: string, db: WriteDb = getPowerSync()): Promise<void> {
-  if (name.trim().length === 0) throw new Error('name-required' satisfies CycleValidationError);
-
-  await db.update(routineCycle).set({ name: name.trim() }).where(eq(routineCycle.id, cycleId));
-}
-
-async function readCycle(cycleId: string, db: WriteDb) {
-  const [row] = await db
-    .select({ id: routineCycle.id, kind: routineCycle.kind, durationDays: routineCycle.durationDays })
-    .from(routineCycle)
-    .where(eq(routineCycle.id, cycleId));
-  return row ?? null;
-}
-
-// Reads the row's current duration before writing: without that read a cycle could become
-// durationless time off through a kind change that skipped the duration check addCycle enforces.
-export async function setCycleKind(cycleId: string, kind: CycleKind, db: WriteDb = getPowerSync()): Promise<void> {
-  if (!(CYCLE_KINDS as readonly string[]).includes(kind)) throw new Error('unknown-kind' satisfies CycleValidationError);
-
-  const row = await readCycle(cycleId, db);
-  if (kind === 'time_off' && (row?.durationDays ?? null) === null) {
-    throw new Error('duration-required' satisfies CycleValidationError);
-  }
-
-  await db.update(routineCycle).set({ kind }).where(eq(routineCycle.id, cycleId));
-}
-
-export async function setCycleDuration(
+// The edit path's single write, and the reason a durationless time-off cycle is unrepresentable
+// from either door: name, kind and duration are one draft validated by the same validateCycle rule
+// addCycle enforces, then written as one update. Splitting it into a kind write and a duration
+// write is what let the Edit Cycle form produce `kind = 'time_off'` with `duration_days = null` —
+// a cycle resolveNextUp can only step over.
+//
+// One update also means one crud op: there is no intermediate row for a sync to observe, so the
+// invariant survives a push that lands between the two halves of the edit. It does NOT survive two
+// devices editing the same cycle concurrently — routine_cycle reconciles by row-level LWW like
+// every other row — which is why resolveNextUp keeps its defensive skip.
+export async function updateCycle(
   cycleId: string,
-  durationDays: number | null,
+  { name, kind, durationDays }: CycleDraft,
   db: WriteDb = getPowerSync(),
 ): Promise<void> {
-  if (durationDays !== null && durationDays < 1) throw new Error('duration-too-small' satisfies CycleValidationError);
+  const error = validateCycle({ name, kind, durationDays });
+  if (error) throw new Error(error);
 
-  const row = await readCycle(cycleId, db);
-  if (durationDays === null && row?.kind === 'time_off') {
-    throw new Error('duration-required' satisfies CycleValidationError);
-  }
-
-  await db.update(routineCycle).set({ durationDays }).where(eq(routineCycle.id, cycleId));
+  await db
+    .update(routineCycle)
+    .set({ name: name.trim(), kind, durationDays: durationDays ?? null })
+    .where(eq(routineCycle.id, cycleId));
 }
 
 export interface MoveCycleInput {
@@ -118,9 +118,13 @@ export async function moveCycle(
     .where(eq(routineCycle.routineId, routineId));
 
   const updates = computeReorder(siblings, cycleId, beforeId, afterId);
-  for (const update of updates) {
-    await db.update(routineCycle).set({ orderIndex: update.orderIndex }).where(eq(routineCycle.id, update.id));
-  }
+  // Same reason as moveDay/moveExercise: the renumber branch is N updates, and half of them leaves
+  // a block order the user did not choose with nothing to show for it.
+  await db.transaction(async (tx: WriteTx) => {
+    for (const update of updates) {
+      await tx.update(routineCycle).set({ orderIndex: update.orderIndex }).where(eq(routineCycle.id, update.id));
+    }
+  });
 }
 
 // The override children cascade at the database level on both sides (04-07), and the server emits
@@ -139,8 +143,25 @@ export interface SetCycleTargetInput extends CycleTargetKey {
   override: TargetOverride;
 }
 
+// What is stored: the sparse override with every un-named field explicitly null. Deliberately not
+// the value that gets validated — writing the resolved merge here would turn every override into a
+// five-column copy of the base and destroy the table's sparseness.
 function normalizeOverride(override: TargetOverride): TargetDraft {
   return resolveTarget(EMPTY_TARGET, override);
+}
+
+async function readBaseTarget(routineExerciseId: string, db: WriteDb): Promise<TargetDraft | null> {
+  const [row] = await db
+    .select({
+      targetSets: routineExercise.targetSets,
+      targetRepMin: routineExercise.targetRepMin,
+      targetRepMax: routineExercise.targetRepMax,
+      targetRir: routineExercise.targetRir,
+      targetRestSeconds: routineExercise.targetRestSeconds,
+    })
+    .from(routineExercise)
+    .where(eq(routineExercise.id, routineExerciseId));
+  return row ?? null;
 }
 
 async function readOverrideId({ routineExerciseId, cycleId }: CycleTargetKey, db: WriteDb): Promise<string | null> {
@@ -166,7 +187,13 @@ export async function setCycleTarget(
   db: WriteDb = getPowerSync(),
 ): Promise<void> {
   const draft = normalizeOverride(override);
-  const errors = validateTargets(draft);
+
+  // Validated against the base it will be merged with, not against EMPTY_TARGET. An override
+  // naming only one half of the rep range has one null half, and validateTargets' ordering rule
+  // needs both — so validating the sparse override alone never range-checks it at all, and the
+  // slot row would render an inverted range the user never typed.
+  const base = await readBaseTarget(routineExerciseId, db);
+  const errors = validateTargets(resolveTarget(base ?? EMPTY_TARGET, override));
   if (Object.keys(errors).length > 0) {
     const [field, code] = Object.entries(errors)[0];
     throw new Error(`${field}: ${code}`);

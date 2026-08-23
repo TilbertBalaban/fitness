@@ -475,9 +475,17 @@ function targetsOf(row: Row) {
   };
 }
 
+// The snapshot is written once, at addSessionExercise, and no program edit may re-derive it. Every
+// select the program write path makes is a read of the program, never of session_exercise — so the
+// guard is on session_exercise, plus routine_exercise, which no editing helper has any reason to
+// read back.
+//
+// routine_exercise_cycle_target is deliberately NOT in this list: setExerciseTargets reads this
+// slot's overrides so it can reject a base edit that would leave a cycle resolving to repMin above
+// repMax (WR-06). That read informs the write; it never reaches the session.
 function expectNoRoutineReadsSince(store: ReturnType<typeof inMemoryDb>) {
   expect(store.selectCountFor(routineExercise)).toBe(0);
-  expect(store.selectCountFor(routineExerciseCycleTarget)).toBe(0);
+  expect(store.selectCountFor(sessionExercise)).toBe(0);
 }
 
 describe('PROG-11 — editing a program never changes a logged session', () => {

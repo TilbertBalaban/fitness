@@ -19,6 +19,27 @@ export async function loadActiveRoutineId(userId: string, db: WriteDb = getPower
   return row?.activeRoutineId ?? null;
 }
 
+export interface ArchivableRoutine {
+  id: string;
+  archivedAt: string | null;
+}
+
+// "Does this id still name a live routine in this list?" — the one place that owns the
+// archived-versus-pointer reconciliation. archived_at and active_routine_id are two independent
+// rows under row-level LWW, so "archived AND active" is representable however carefully
+// archiveRoutine writes; every reader has to defend against it, and three independent defences is
+// how they start disagreeing. An archived target, or one this device does not hold, reads as
+// nothing. Used for the active pointer and for the builder's routineId route param alike, because
+// the question is the same one.
+export function resolveLiveRoutineId<T extends ArchivableRoutine>(
+  routines: T[],
+  candidateId: string | null | undefined,
+): string | null {
+  if (!candidateId) return null;
+  const target = routines.find((routine) => routine.id === candidateId);
+  return target && target.archivedAt === null ? candidateId : null;
+}
+
 export async function loadProgressionFrozen(routineId: string, db: WriteDb = getPowerSync()): Promise<boolean> {
   const [row] = await db
     .select({ progressionFrozen: routine.progressionFrozen })
@@ -85,8 +106,11 @@ export interface ArchiveRoutineInput {
 // with no foreign key, so a destroyed routine orphans history that cannot be reconstructed. The
 // server's own HARD_DELETE_FORBIDDEN rejects a routine delete independently.
 //
-// The conditional pointer clear is what keeps "archived AND active" unrepresentable — the two rows
-// would otherwise be free to disagree.
+// The conditional pointer clear is a best-effort local reconciliation, NOT an invariant. archived_at
+// lives on routine and active_routine_id lives on user_preference, two independent rows reconciled
+// by row-level LWW — so device A archiving R while device B activates R offline converges to
+// "archived AND active", and nothing at the write layer can prevent that. resolveLiveRoutineId is
+// where the rule is actually enforced, on the read side, once.
 export async function archiveRoutine(
   { userId, routineId }: ArchiveRoutineInput,
   db: WriteDb = getPowerSync(),

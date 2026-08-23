@@ -39,20 +39,12 @@ export interface ResolveNextUpInput<D extends PositionDay, C extends PositionCyc
   today: string;
 }
 
-// A time-off cycle with no duration cannot be walked past by calendar arithmetic, so it is skipped
-// and reported here rather than blocking the walk forever.
-interface NextUpCommon {
-  skippedTimeOffCycleIds: string[];
-}
-
-export type NextUp<D extends PositionDay, C extends PositionCycle> = NextUpCommon &
-  (
-    | { kind: 'no-active-program' }
-    | { kind: 'no-days' }
-    | { kind: 'workout'; cycle: C | null; day: D }
-    | { kind: 'time-off'; cycle: C; daysRemaining: number }
-    | { kind: 'program-complete'; lastCycle: C | null }
-  );
+export type NextUp<D extends PositionDay, C extends PositionCycle> =
+  | { kind: 'no-active-program' }
+  | { kind: 'no-days' }
+  | { kind: 'workout'; cycle: C | null; day: D }
+  | { kind: 'time-off'; cycle: C; daysRemaining: number }
+  | { kind: 'program-complete'; lastCycle: C | null };
 
 const COMPLETED = 'completed';
 
@@ -123,13 +115,11 @@ export function resolveNextUp<D extends PositionDay, C extends PositionCycle>({
   history,
   today,
 }: ResolveNextUpInput<D, C>): NextUp<D, C> {
-  const skippedTimeOffCycleIds: string[] = [];
-
-  if (!routine) return { kind: 'no-active-program', skippedTimeOffCycleIds };
+  if (!routine) return { kind: 'no-active-program' };
 
   const orderedDays = sortByOrderThenId(days);
   const dayCount = orderedDays.length;
-  if (dayCount === 0) return { kind: 'no-days', skippedTimeOffCycleIds };
+  if (dayCount === 0) return { kind: 'no-days' };
 
   const lastIndex = lastLoggedDayIndex(history, orderedDays);
   const dayIndex = lastIndex === null ? 0 : (lastIndex + 1) % dayCount;
@@ -137,31 +127,31 @@ export function resolveNextUp<D extends PositionDay, C extends PositionCycle>({
 
   const orderedCycles = sortByOrderThenId(cycles);
   if (orderedCycles.length === 0) {
-    return { kind: 'workout', cycle: null, day, skippedTimeOffCycleIds };
+    return { kind: 'workout', cycle: null, day };
   }
 
   const countable = countableHistory(history, orderedDays);
-  const completed = completedSessions(history);
-  const lastCompleted = completed[completed.length - 1];
+  // Both derivations read the same list. `history` is every completed session the device holds,
+  // including sessions logged against other programs, so seeding the countdown from it let one
+  // session in an old program restart the time-off clock in the current one. countableHistory
+  // already encodes "counts toward this program's position", and the two derivations must not
+  // disagree about which sessions those are.
+  const lastCountable = countable[countable.length - 1];
   let remaining = countable.length;
-  let elapsed = daysBetween(lastCompleted ? lastCompleted.localDate : today, today);
+  let elapsed = daysBetween(lastCountable ? lastCountable.localDate : today, today);
 
   for (const cycle of orderedCycles) {
     if (cycle.kind === 'time_off') {
       // Unreachable while preceding cycles still owe rotation positions — a time-off cycle spans
       // zero of them — but a routine synced from another client is not required to be coherent.
       if (remaining > 0) continue;
-      if (cycle.durationDays === null) {
-        skippedTimeOffCycleIds.push(cycle.id);
-        continue;
-      }
+      // updateCycle makes this shape unwritable from this client, but routine_cycle reconciles by
+      // row-level LWW like every other row, so a concurrent kind change and duration clear can
+      // still converge to it. Stepping over the cycle keeps the walk finite; the user repairs the
+      // duration in the Edit Cycle form.
+      if (cycle.durationDays === null) continue;
       if (elapsed < cycle.durationDays) {
-        return {
-          kind: 'time-off',
-          cycle,
-          daysRemaining: Math.max(0, cycle.durationDays - elapsed),
-          skippedTimeOffCycleIds,
-        };
+        return { kind: 'time-off', cycle, daysRemaining: Math.max(0, cycle.durationDays - elapsed) };
       }
       elapsed -= cycle.durationDays;
       continue;
@@ -172,14 +162,10 @@ export function resolveNextUp<D extends PositionDay, C extends PositionCycle>({
       remaining -= span;
       continue;
     }
-    return { kind: 'workout', cycle, day, skippedTimeOffCycleIds };
+    return { kind: 'workout', cycle, day };
   }
 
   // The block does not loop. Silently restarting it would make "which cycle am I in" answer
   // differently for the same history depending only on how long ago the block ended.
-  return {
-    kind: 'program-complete',
-    lastCycle: orderedCycles[orderedCycles.length - 1] ?? null,
-    skippedTimeOffCycleIds,
-  };
+  return { kind: 'program-complete', lastCycle: orderedCycles[orderedCycles.length - 1] ?? null };
 }

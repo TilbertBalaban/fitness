@@ -11,6 +11,22 @@ import {
   userPreference,
 } from '../schema';
 
+// WR-10: the multi-row helpers now wrap their writes in db.transaction. The fake's transaction
+// handle IS the fake — the shipped helpers call tx.insert/tx.update, and handing them a separate
+// object would hide those calls from the recorders below. `this` resolves to the fake because the
+// helpers always call it as db.transaction(...).
+let transactionCount = 0;
+
+beforeEach(() => {
+  transactionCount = 0;
+});
+
+async function runInFakeTransaction(this: unknown, run: (tx: unknown) => Promise<unknown>) {
+  transactionCount += 1;
+  return run(this);
+}
+
+
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../id', () => ({ generateClientId: jest.fn() }));
 
@@ -61,6 +77,7 @@ function fakeDb(tableRows: TableRows[] = []) {
         return Promise.resolve();
       },
     }),
+    transaction: runInFakeTransaction,
   } as unknown as ReturnType<typeof getPowerSync>;
 
   return { db, calls };
@@ -509,3 +526,35 @@ describe('duplicateDay', () => {
     expect(getPowerSyncMock).toHaveBeenCalledTimes(1);
   });
 });
+
+// WR-10: every insert ran as an independent await, so an app backgrounded and killed mid-loop left
+// a routine row with some days, one partially-populated day and no cycles — a half-copy that looks
+// like a real program in the library and can be activated.
+describe('duplication is one unit (WR-10)', () => {
+  it('writes the whole routine copy inside exactly one transaction', async () => {
+    const { db, calls } = fakeDb(sourceFixture());
+
+    await duplicateRoutine({ sourceRoutineId: 'src-r1', name: 'PPL copy' }, db);
+
+    expect(transactionCount).toBe(1);
+    expect(calls.inserts.length).toBeGreaterThan(1);
+  });
+
+  it('opens no transaction when the source does not exist — nothing is written to roll back', async () => {
+    const { db, calls } = fakeDb([]);
+
+    await expect(duplicateRoutine({ sourceRoutineId: 'missing', name: 'Copy' }, db)).rejects.toThrow(
+      'Program not found',
+    );
+    expect(transactionCount).toBe(0);
+    expect(calls.inserts).toHaveLength(0);
+  });
+
+  it('opens no transaction for a blank name — validation precedes the write', async () => {
+    const { db } = fakeDb(sourceFixture());
+
+    await expect(duplicateRoutine({ sourceRoutineId: 'src-r1', name: '  ' }, db)).rejects.toThrow();
+    expect(transactionCount).toBe(0);
+  });
+});
+

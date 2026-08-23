@@ -22,6 +22,17 @@ export const AppSchema = new DrizzleAppSchema({
 
 export type WriteDb = ReturnType<typeof wrapPowerSyncWithDrizzle>;
 
+// The handle db.transaction() hands its callback. The drizzle driver routes it through PowerSync's
+// own writeTransaction, so every write made through it lands in one local SQLite transaction AND
+// one crud transaction — and the connector uploads exactly one crud transaction per push
+// (getNextCrudTransaction), so the unit reaches the server as a single aggregate.
+//
+// What that buys, precisely: a multi-row helper cannot leave a half-applied result behind on this
+// device, and cannot be split across two pushes. What it does NOT buy: atomic convergence with
+// another device. Reconciliation is still row-level LWW on the server, and no client-side
+// transaction can change that.
+export type WriteTx = Parameters<Parameters<WriteDb['transaction']>[0]>[0];
+
 let db: ReturnType<typeof wrapPowerSyncWithDrizzle> | null = null;
 let powersync: PowerSyncDatabase | null = null;
 

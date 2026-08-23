@@ -73,6 +73,7 @@ function fakeNextUpDb(rows: FakeRows) {
   return { db, getSelectCount: () => selectCount, getWhereTables: () => whereTables };
 }
 
+const USER_ID = 'user-1';
 const ACTIVE_PREFERENCE = [{ activeRoutineId: 'r1' }];
 const ACTIVE_ROUTINE = [{ id: 'r1', name: 'Push Pull Legs', goal: null, status: 'ready', archivedAt: null }];
 
@@ -118,7 +119,7 @@ describe('loadNextUp — stopping at the pointer', () => {
   it('issues exactly one select and returns a null routine when no user_preference row exists', async () => {
     const { db, getSelectCount } = fakeNextUpDb({ preferenceRows: [] });
 
-    const data = await loadNextUp(db);
+    const data = await loadNextUp(USER_ID, db);
 
     expect(data.routine).toBeNull();
     expect(getSelectCount()).toBe(1);
@@ -127,7 +128,7 @@ describe('loadNextUp — stopping at the pointer', () => {
   it('issues exactly one select when the preference row has a null activeRoutineId', async () => {
     const { db, getSelectCount } = fakeNextUpDb({ preferenceRows: [{ activeRoutineId: null }] });
 
-    const data = await loadNextUp(db);
+    const data = await loadNextUp(USER_ID, db);
 
     expect(data.routine).toBeNull();
     expect(getSelectCount()).toBe(1);
@@ -136,7 +137,7 @@ describe('loadNextUp — stopping at the pointer', () => {
   it('returns a null routine without throwing when the pointer names a routine that has not synced yet', async () => {
     const { db } = fakeNextUpDb({ preferenceRows: ACTIVE_PREFERENCE, routineRows: [] });
 
-    await expect(loadNextUp(db)).resolves.toMatchObject({ routine: null });
+    await expect(loadNextUp(USER_ID, db)).resolves.toMatchObject({ routine: null });
   });
 
   it('returns a null routine when the active pointer names an archived routine', async () => {
@@ -145,13 +146,13 @@ describe('loadNextUp — stopping at the pointer', () => {
       routineRows: [{ id: 'r1', name: 'Push Pull Legs', goal: null, status: 'ready', archivedAt: '2026-01-01T00:00:00.000Z' }],
     });
 
-    await expect(loadNextUp(db)).resolves.toMatchObject({ routine: null });
+    await expect(loadNextUp(USER_ID, db)).resolves.toMatchObject({ routine: null });
   });
 
   it('never loads the program tree when the pointer resolves to nothing', async () => {
     const { db, getSelectCount } = fakeNextUpDb({ preferenceRows: ACTIVE_PREFERENCE, routineRows: [] });
 
-    await loadNextUp(db);
+    await loadNextUp(USER_ID, db);
 
     expect(getSelectCount()).toBe(2);
   });
@@ -161,7 +162,7 @@ describe('loadNextUp — a bounded number of queries', () => {
   it('issues exactly twelve selects for a full load', async () => {
     const { db, getSelectCount } = fakeNextUpDb(programFixture(3, 1));
 
-    await loadNextUp(db);
+    await loadNextUp(USER_ID, db);
 
     expect(getSelectCount()).toBe(12);
   });
@@ -170,8 +171,8 @@ describe('loadNextUp — a bounded number of queries', () => {
     const small = fakeNextUpDb(programFixture(3, 1));
     const large = fakeNextUpDb(programFixture(30, 1));
 
-    await loadNextUp(small.db);
-    await loadNextUp(large.db);
+    await loadNextUp(USER_ID, small.db);
+    await loadNextUp(USER_ID, large.db);
 
     expect(large.getSelectCount()).toBe(small.getSelectCount());
   });
@@ -180,8 +181,8 @@ describe('loadNextUp — a bounded number of queries', () => {
     const short = fakeNextUpDb(programFixture(3, 1));
     const long = fakeNextUpDb(programFixture(3, 200));
 
-    await loadNextUp(short.db);
-    await loadNextUp(long.db);
+    await loadNextUp(USER_ID, short.db);
+    await loadNextUp(USER_ID, long.db);
 
     expect(long.getSelectCount()).toBe(short.getSelectCount());
   });
@@ -189,7 +190,7 @@ describe('loadNextUp — a bounded number of queries', () => {
   it('filters the session history in SQL rather than in JavaScript', async () => {
     const { db, getWhereTables } = fakeNextUpDb(programFixture(3, 1));
 
-    await loadNextUp(db);
+    await loadNextUp(USER_ID, db);
 
     expect(getWhereTables()).toContain(workoutSession);
   });
@@ -199,7 +200,7 @@ describe('loadNextUp — what it returns', () => {
   it('returns the program tree, its history and the device calendar day', async () => {
     const { db } = fakeNextUpDb(programFixture(2, 3));
 
-    const data = await loadNextUp(db);
+    const data = await loadNextUp(USER_ID, db);
 
     expect(data.routine).toEqual({ id: 'r1', name: 'Push Pull Legs' });
     expect(data.days.map((day) => day.id)).toEqual(['d1']);
@@ -221,7 +222,7 @@ describe('loadNextUp — what it returns', () => {
     ];
     const { db } = fakeNextUpDb(rows);
 
-    const data = await loadNextUp(db);
+    const data = await loadNextUp(USER_ID, db);
 
     expect(data.musclesByExerciseId['ex-0']).toEqual(['Chest', 'Triceps']);
   });
@@ -231,7 +232,7 @@ describe('loadNextUp — what it returns', () => {
     rows.mappingRows = [{ exerciseId: 'ex-0', muscleGroupId: 'mg-chest' }];
     const { db } = fakeNextUpDb(rows);
 
-    const data = await loadNextUp(db);
+    const data = await loadNextUp(USER_ID, db);
 
     expect(data.musclesByExerciseId['ex-1']).toEqual([]);
   });
@@ -241,7 +242,7 @@ describe('loadNextUp — what it returns', () => {
     rows.muscleGroupRows = [];
     const { db } = fakeNextUpDb(rows);
 
-    const data = await loadNextUp(db);
+    const data = await loadNextUp(USER_ID, db);
 
     expect(data.musclesByExerciseId['ex-0']).toEqual(['mg-chest']);
   });
@@ -252,7 +253,7 @@ describe('loadNextUp — the database-injection seam', () => {
     getPowerSyncMock.mockClear();
     const { db } = fakeNextUpDb({ preferenceRows: [] });
 
-    await loadNextUp(db);
+    await loadNextUp(USER_ID, db);
 
     expect(getPowerSyncMock).not.toHaveBeenCalled();
   });
@@ -261,8 +262,39 @@ describe('loadNextUp — the database-injection seam', () => {
     const { db } = fakeNextUpDb({ preferenceRows: [] });
     getPowerSyncMock.mockReturnValue(db);
 
-    await loadNextUp();
+    await loadNextUp(USER_ID);
 
     expect(getPowerSyncMock).toHaveBeenCalled();
+  });
+});
+
+// WR-02: the pointer read used to be `select(...).from(userPreference)` with no filter, so it
+// returned whichever row SQLite ordered first. The user_preference row's id IS the user id, so an
+// unfiltered read is another account's active program the moment a local database outlives a user
+// switch.
+describe('loadNextUp — the pointer belongs to a user (WR-02)', () => {
+  it('filters the user_preference read by user id rather than taking the first row', async () => {
+    const { db, getWhereTables } = fakeNextUpDb({ preferenceRows: ACTIVE_PREFERENCE, routineRows: [] });
+
+    await loadNextUp(USER_ID, db);
+
+    expect(getWhereTables()).toContain(userPreference);
+  });
+
+  it('reads nothing at all when there is no signed-in user', async () => {
+    const { db, getSelectCount } = fakeNextUpDb(programFixture(3, 1));
+
+    const data = await loadNextUp(null, db);
+
+    expect(data.routine).toBeNull();
+    expect(getSelectCount()).toBe(0);
+  });
+
+  it('still stamps today when it short-circuits on a missing user', async () => {
+    const { db } = fakeNextUpDb(programFixture(3, 1));
+
+    const data = await loadNextUp(null, db);
+
+    expect(data.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

@@ -1,6 +1,6 @@
 import { eq, inArray } from 'drizzle-orm';
 import { generateClientId } from '../id';
-import { getPowerSync, type WriteDb } from '../powersync';
+import { getPowerSync, type WriteDb, type WriteTx } from '../powersync';
 import { routine, routineCycle, routineDay, routineExercise, routineExerciseCycleTarget } from '../schema';
 import { loadProgramTree } from './load-program';
 import { appendOrderIndex } from './order-index';
@@ -41,86 +41,94 @@ export async function duplicateRoutine(
   }
 
   const routineId = generateClientId();
-  await db.insert(routine).values({
-    id: routineId,
-    name: trimmed,
-    goal: tree.goal,
-    // A duplicate is always a fresh draft: it has been authored by nobody yet, progression has never
-    // touched it, and it is not archived. It also never becomes the active program by being created —
-    // nothing in this function reads or writes user_preference.
-    status: 'draft',
-    progressionFrozen: false,
-    source: 'user',
-    createdFromTemplateId: sourceRoutineId,
-    archivedAt: null,
-  });
-
-  const cycleIdBySourceId = new Map<string, string>();
-  for (const cycle of tree.cycles) {
-    const id = generateClientId();
-    cycleIdBySourceId.set(cycle.id, id);
-    await db.insert(routineCycle).values({
-      id,
-      routineId,
-      orderIndex: cycle.orderIndex,
-      name: cycle.name,
-      kind: cycle.kind,
-      durationDays: cycle.durationDays,
-    });
-  }
-
-  for (const day of tree.days) {
-    const dayId = generateClientId();
-    // The source's gaps are preserved rather than renumbered densely: order_index is gap-based, and
-    // a copy that renumbers would give the duplicate a different insertion headroom than the program
-    // it was copied from.
-    await db.insert(routineDay).values({
-      id: dayId,
-      routineId,
-      orderIndex: day.orderIndex,
-      name: day.name,
-      isRestDay: day.isRestDay,
+  // Every insert below is one unit. Backgrounded and killed mid-loop without it, the library holds
+  // a routine row with some days, one partially-populated day and no cycles — a half-copy that
+  // looks like a real program and can be activated. It also means the whole copy reaches the
+  // server as one crud transaction rather than being split across pushes; it does NOT make the
+  // copy converge atomically against a concurrent push from another device, which stays row-level
+  // LWW.
+  await db.transaction(async (tx: WriteTx) => {
+    await tx.insert(routine).values({
+      id: routineId,
+      name: trimmed,
+      goal: tree.goal,
+      // A duplicate is always a fresh draft: it has been authored by nobody yet, progression has never
+      // touched it, and it is not archived. It also never becomes the active program by being created —
+      // nothing in this function reads or writes user_preference.
+      status: 'draft',
+      progressionFrozen: false,
+      source: 'user',
+      createdFromTemplateId: sourceRoutineId,
+      archivedAt: null,
     });
 
-    for (const slot of day.slots) {
-      const slotId = generateClientId();
-      await db.insert(routineExercise).values({
-        id: slotId,
-        routineDayId: dayId,
-        exerciseId: slot.exerciseId,
-        orderIndex: slot.orderIndex,
-        // supersetGroupId, progressionSchemeId and notes are written null rather than copied because
-        // loadProgramTree does not return them and nothing in the app writes them yet (D-11 defers
-        // supersets and progression schemes; addExercisesToDay hardcodes all three to null). The fix
-        // when they become writable is to widen ProgramSlot so every tree consumer sees them, not to
-        // bolt a second read onto this one caller.
-        supersetGroupId: null,
-        targetSets: slot.targetSets,
-        targetRepMin: slot.targetRepMin,
-        targetRepMax: slot.targetRepMax,
-        targetRir: slot.targetRir,
-        targetRestSeconds: slot.targetRestSeconds,
-        progressionSchemeId: null,
-        notes: null,
+    const cycleIdBySourceId = new Map<string, string>();
+    for (const cycle of tree.cycles) {
+      const id = generateClientId();
+      cycleIdBySourceId.set(cycle.id, id);
+      await tx.insert(routineCycle).values({
+        id,
+        routineId,
+        orderIndex: cycle.orderIndex,
+        name: cycle.name,
+        kind: cycle.kind,
+        durationDays: cycle.durationDays,
+      });
+    }
+
+    for (const day of tree.days) {
+      const dayId = generateClientId();
+      // The source's gaps are preserved rather than renumbered densely: order_index is gap-based, and
+      // a copy that renumbers would give the duplicate a different insertion headroom than the program
+      // it was copied from.
+      await tx.insert(routineDay).values({
+        id: dayId,
+        routineId,
+        orderIndex: day.orderIndex,
+        name: day.name,
+        isRestDay: day.isRestDay,
       });
 
-      for (const [sourceCycleId, override] of Object.entries(slot.overridesByCycleId)) {
-        const cycleId = cycleIdBySourceId.get(sourceCycleId);
-        if (!cycleId) continue;
-
-        await db.insert(routineExerciseCycleTarget).values({
-          id: generateClientId(),
-          routineExerciseId: slotId,
-          cycleId,
-          targetSets: override.targetSets ?? null,
-          targetRepMin: override.targetRepMin ?? null,
-          targetRepMax: override.targetRepMax ?? null,
-          targetRir: override.targetRir ?? null,
-          targetRestSeconds: override.targetRestSeconds ?? null,
+      for (const slot of day.slots) {
+        const slotId = generateClientId();
+        await tx.insert(routineExercise).values({
+          id: slotId,
+          routineDayId: dayId,
+          exerciseId: slot.exerciseId,
+          orderIndex: slot.orderIndex,
+          // supersetGroupId, progressionSchemeId and notes are written null rather than copied because
+          // loadProgramTree does not return them and nothing in the app writes them yet (D-11 defers
+          // supersets and progression schemes; addExercisesToDay hardcodes all three to null). The fix
+          // when they become writable is to widen ProgramSlot so every tree consumer sees them, not to
+          // bolt a second read onto this one caller.
+          supersetGroupId: null,
+          targetSets: slot.targetSets,
+          targetRepMin: slot.targetRepMin,
+          targetRepMax: slot.targetRepMax,
+          targetRir: slot.targetRir,
+          targetRestSeconds: slot.targetRestSeconds,
+          progressionSchemeId: null,
+          notes: null,
         });
+
+        for (const [sourceCycleId, override] of Object.entries(slot.overridesByCycleId)) {
+          const cycleId = cycleIdBySourceId.get(sourceCycleId);
+          if (!cycleId) continue;
+
+          await tx.insert(routineExerciseCycleTarget).values({
+            id: generateClientId(),
+            routineExerciseId: slotId,
+            cycleId,
+            targetSets: override.targetSets ?? null,
+            targetRepMin: override.targetRepMin ?? null,
+            targetRepMax: override.targetRepMax ?? null,
+            targetRir: override.targetRir ?? null,
+            targetRestSeconds: override.targetRestSeconds ?? null,
+          });
+        }
       }
     }
-  }
+  });
 
   return { id: routineId };
 }
@@ -190,49 +198,53 @@ export async function duplicateDay(
     : [];
 
   const dayId = generateClientId();
-  await db.insert(routineDay).values({
-    id: dayId,
-    routineId: sourceDay.routineId,
-    orderIndex: appendOrderIndex(siblings.map((row) => row.orderIndex)),
-    name: trimmed,
-    isRestDay: sourceDay.isRestDay,
+  // One unit, for the same reason duplicateRoutine is: a day copied without its exercises, or with
+  // its exercises but not their overrides, is a program state the user never asked for.
+  await db.transaction(async (tx: WriteTx) => {
+    await tx.insert(routineDay).values({
+      id: dayId,
+      routineId: sourceDay.routineId,
+      orderIndex: appendOrderIndex(siblings.map((row) => row.orderIndex)),
+      name: trimmed,
+      isRestDay: sourceDay.isRestDay,
+    });
+
+    const slotIdBySourceId = new Map<string, string>();
+    for (const slot of sourceSlots) {
+      const slotId = generateClientId();
+      slotIdBySourceId.set(slot.id, slotId);
+      await tx.insert(routineExercise).values({
+        id: slotId,
+        routineDayId: dayId,
+        exerciseId: slot.exerciseId,
+        orderIndex: slot.orderIndex,
+        supersetGroupId: slot.supersetGroupId,
+        targetSets: slot.targetSets,
+        targetRepMin: slot.targetRepMin,
+        targetRepMax: slot.targetRepMax,
+        targetRir: slot.targetRir,
+        targetRestSeconds: slot.targetRestSeconds,
+        progressionSchemeId: slot.progressionSchemeId,
+        notes: slot.notes,
+      });
+    }
+
+    for (const override of sourceOverrides) {
+      const routineExerciseId = slotIdBySourceId.get(override.routineExerciseId);
+      if (!routineExerciseId) continue;
+
+      await tx.insert(routineExerciseCycleTarget).values({
+        id: generateClientId(),
+        routineExerciseId,
+        cycleId: override.cycleId,
+        targetSets: override.targetSets,
+        targetRepMin: override.targetRepMin,
+        targetRepMax: override.targetRepMax,
+        targetRir: override.targetRir,
+        targetRestSeconds: override.targetRestSeconds,
+      });
+    }
   });
-
-  const slotIdBySourceId = new Map<string, string>();
-  for (const slot of sourceSlots) {
-    const slotId = generateClientId();
-    slotIdBySourceId.set(slot.id, slotId);
-    await db.insert(routineExercise).values({
-      id: slotId,
-      routineDayId: dayId,
-      exerciseId: slot.exerciseId,
-      orderIndex: slot.orderIndex,
-      supersetGroupId: slot.supersetGroupId,
-      targetSets: slot.targetSets,
-      targetRepMin: slot.targetRepMin,
-      targetRepMax: slot.targetRepMax,
-      targetRir: slot.targetRir,
-      targetRestSeconds: slot.targetRestSeconds,
-      progressionSchemeId: slot.progressionSchemeId,
-      notes: slot.notes,
-    });
-  }
-
-  for (const override of sourceOverrides) {
-    const routineExerciseId = slotIdBySourceId.get(override.routineExerciseId);
-    if (!routineExerciseId) continue;
-
-    await db.insert(routineExerciseCycleTarget).values({
-      id: generateClientId(),
-      routineExerciseId,
-      cycleId: override.cycleId,
-      targetSets: override.targetSets,
-      targetRepMin: override.targetRepMin,
-      targetRepMax: override.targetRepMax,
-      targetRir: override.targetRir,
-      targetRestSeconds: override.targetRestSeconds,
-    });
-  }
 
   return { id: dayId };
 }

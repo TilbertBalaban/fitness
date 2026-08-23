@@ -8,6 +8,7 @@ import {
   loadProgressionFrozen,
   markRoutineReady,
   renameRoutine,
+  resolveLiveRoutineId,
   restoreRoutine,
   setProgressionFrozen,
 } from '../programs/lifecycle';
@@ -423,5 +424,69 @@ describe('loadLibraryRoutines', () => {
 
     await expect(loadLibraryRoutines()).resolves.toEqual([]);
     expect(getPowerSyncMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// WR-09: archiveRoutine's comment claimed the conditional pointer clear made "archived AND active"
+// unrepresentable. It does not — routine.archived_at and user_preference.active_routine_id are two
+// independent rows reconciled by row-level LWW, so device A archiving R while device B activates R
+// offline converges to exactly that state. The rule is a read-side one, and this is its one owner.
+describe('resolveLiveRoutineId (WR-09)', () => {
+  const LIVE = { id: 'r-live', archivedAt: null };
+  const ARCHIVED = { id: 'r-archived', archivedAt: '2026-01-01T00:00:00.000Z' };
+
+  it('resolves a pointer naming a live routine', () => {
+    expect(resolveLiveRoutineId([LIVE], 'r-live')).toBe('r-live');
+  });
+
+  it('reads a pointer naming an archived routine as no active routine — the LWW convergence case', () => {
+    expect(resolveLiveRoutineId([LIVE, ARCHIVED], 'r-archived')).toBeNull();
+  });
+
+  it('reads a pointer naming a routine this device does not hold as no active routine', () => {
+    expect(resolveLiveRoutineId([LIVE], 'r-unsynced')).toBeNull();
+  });
+
+  it('reads an absent pointer as no active routine', () => {
+    expect(resolveLiveRoutineId([LIVE], null)).toBeNull();
+    expect(resolveLiveRoutineId([LIVE], undefined)).toBeNull();
+    expect(resolveLiveRoutineId([LIVE], '')).toBeNull();
+  });
+
+  it('reads any pointer as no active routine when the list is empty', () => {
+    expect(resolveLiveRoutineId([], 'r-live')).toBeNull();
+  });
+
+  it('does not mutate or reorder the list it is given', () => {
+    const rows = [LIVE, ARCHIVED];
+    resolveLiveRoutineId(rows, 'r-live');
+    expect(rows).toEqual([LIVE, ARCHIVED]);
+  });
+});
+
+describe('archiveRoutine — best-effort local reconciliation', () => {
+  it('clears the pointer when it names the routine being archived', async () => {
+    const { db, calls } = fakeDb([{ table: userPreference, rows: [{ activeRoutineId: 'r-1' }] }]);
+
+    await archiveRoutine({ userId: 'u-1', routineId: 'r-1' }, db);
+
+    const pointerWrites = calls.updates.filter((update) => update.table === userPreference);
+    expect(pointerWrites).toHaveLength(1);
+    expect(pointerWrites[0].values).toEqual({ activeRoutineId: null });
+  });
+
+  it('leaves a pointer naming a different routine alone', async () => {
+    const { db, calls } = fakeDb([{ table: userPreference, rows: [{ activeRoutineId: 'r-other' }] }]);
+
+    await archiveRoutine({ userId: 'u-1', routineId: 'r-1' }, db);
+
+    expect(calls.updates.filter((update) => update.table === userPreference)).toHaveLength(0);
+  });
+
+  // The two writes are separate rows, so a concurrent activation on another device still converges
+  // to archived-and-active. That is the state resolveLiveRoutineId exists to absorb.
+  it('produces a state resolveLiveRoutineId still reads as no active routine', () => {
+    const converged = [{ id: 'r-1', archivedAt: '2026-01-01T00:00:00.000Z' }];
+    expect(resolveLiveRoutineId(converged, 'r-1')).toBeNull();
   });
 });
