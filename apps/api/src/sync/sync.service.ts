@@ -1545,19 +1545,37 @@ export class SyncService {
               });
           } else if (op.type === 'routine_exercise_cycle_target') {
             // No serverSeq — a child of the routine aggregate root hanging off TWO parents at
-            // once (rank 3, one level below both routine_exercise and routine_cycle). The unique
-            // constraint on (routineExerciseId, cycleId) is a SECOND conflict target this single
-            // `target: routineExerciseCycleTarget.id` onConflictDoUpdate does not cover — a
-            // violation therefore throws, the transaction below rolls back, and the existing catch
-            // rejects the whole aggregate invalid_field (the duplicate-pair e2e case asserts this
-            // observed rejection reason).
+            // once (rank 3, one level below both routine_exercise and routine_cycle).
+            //
+            // The arbiter is the (routineExerciseId, cycleId) unique constraint, NOT the primary
+            // key. Two devices editing the same override offline is the ordinary local-first case
+            // — the constraint exists precisely because it happens — and each produces a row with
+            // its own client uuid for the same pair. With the id as the arbiter, the second push
+            // violated the pair constraint, the transaction rolled back, and every other op in the
+            // same routine aggregate (new days, exercises, reorders, base-target edits, all valid)
+            // was rejected with it: a whole offline session lost because one override was touched
+            // twice (CR-03).
+            //
+            // Keying on the pair loses nothing the id arbiter covered. An op whose id already
+            // exists reads its parents back from the database (resolveRoutineExerciseIdForCycleTarget
+            // / resolveCycleIdForCycleTarget both prefer stored linkage), so the pair it inserts is
+            // that row's own pair and the arbiter lands on the same row the id would have.
             const routineExerciseCycleTargetValues = values as RoutineExerciseCycleTargetValues;
+            // `id` is deliberately dropped from the update set. Carrying it would rename the
+            // surviving row to whichever device pushed last, so two devices would flip the row's
+            // primary key back and forth; the stored id stays authoritative and the losing id is
+            // simply never created.
+            const { id: _unusedIncomingId, ...cycleTargetSet } = patchAwareSet(
+              op,
+              routineExerciseCycleTargetValues,
+              ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS,
+            );
             await tx
               .insert(routineExerciseCycleTarget)
               .values(routineExerciseCycleTargetValues)
               .onConflictDoUpdate({
-                target: routineExerciseCycleTarget.id,
-                set: patchAwareSet(op, routineExerciseCycleTargetValues, ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS),
+                target: [routineExerciseCycleTarget.routineExerciseId, routineExerciseCycleTarget.cycleId],
+                set: cycleTargetSet,
               });
           } else if (op.type === 'routine') {
             // routine — the aggregate root the tracer proves. Carries server_seq like exercise and
