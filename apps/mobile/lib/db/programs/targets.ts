@@ -50,8 +50,20 @@ export function validateTargets(draft: TargetDraft): TargetValidationErrors {
   if (draft.targetRepMin !== null && draft.targetRepMin < 1) {
     errors.targetRepMin = 'below-minimum';
   }
-  if (draft.targetRepMin !== null && draft.targetRepMax !== null && draft.targetRepMax < draft.targetRepMin) {
+  if (draft.targetRepMax !== null && draft.targetRepMax < 1) {
+    errors.targetRepMax = 'below-minimum';
+  } else if (draft.targetRepMin !== null && draft.targetRepMax !== null && draft.targetRepMax < draft.targetRepMin) {
     errors.targetRepMax = 'min-above-max';
+  }
+  // Rest and RIR have no lower bound of their own — 0 rest and 0 RIR are both real prescriptions —
+  // but neither may go negative. The server's shape validator rejects a negative with
+  // invalid_field, which is terminal: the client completes the crud transaction and the write is
+  // gone. Nothing may leave this module in a state the server will silently destroy.
+  if (draft.targetRir !== null && draft.targetRir < 0) {
+    errors.targetRir = 'negative';
+  }
+  if (draft.targetRestSeconds !== null && draft.targetRestSeconds < 0) {
+    errors.targetRestSeconds = 'negative';
   }
 
   return errors;

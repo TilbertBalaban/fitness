@@ -142,3 +142,29 @@ describe('setExerciseTargets', () => {
     expect(getPowerSyncMock).toHaveBeenCalledTimes(1);
   });
 });
+
+// WR-01: the server's shape validator rejects a negative target with invalid_field, which the
+// connector treats as terminal — it completes the crud transaction and the offline write is gone.
+// These are the fields validateTargets did not cover.
+describe('validateTargets — non-negative shape (WR-01)', () => {
+  it('refuses a negative rest, which the server would terminally reject', () => {
+    expect(validateTargets(draft({ targetRestSeconds: -5 })).targetRestSeconds).toBe('negative');
+  });
+
+  it('refuses a negative RIR', () => {
+    expect(validateTargets(draft({ targetRir: -1 })).targetRir).toBe('negative');
+  });
+
+  it('still accepts zero for both — they are real prescriptions, not absences', () => {
+    expect(validateTargets(draft({ targetRestSeconds: 0, targetRir: 0 }))).toEqual({});
+  });
+
+  it('refuses a rep max below one even when rep min is unset, so the pair rule cannot be dodged', () => {
+    expect(validateTargets(draft({ targetRepMax: 0 })).targetRepMax).toBe('below-minimum');
+    expect(validateTargets(draft({ targetRepMax: -3 })).targetRepMax).toBe('below-minimum');
+  });
+
+  it('still names min-above-max when both halves are otherwise in range', () => {
+    expect(validateTargets(draft({ targetRepMin: 12, targetRepMax: 8 })).targetRepMax).toBe('min-above-max');
+  });
+});

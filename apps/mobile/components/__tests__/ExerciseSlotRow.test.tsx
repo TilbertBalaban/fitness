@@ -283,6 +283,25 @@ describe('stepBoundedValue', () => {
     expect(stepBoundedValue(15, 'dec', 0, null, 15)).toBe(0);
     expect(stepBoundedValue(0, 'dec', 0, null, 15)).toBeNull();
   });
+
+  // WR-01: the old guard tested `current <= floor`, so a rest value in (0, 15) — reachable from a
+  // program authored on another client, or a future importer — decremented straight past the floor
+  // into a negative that the server rejects terminally.
+  it('never returns a negative when a step would overshoot the floor', () => {
+    expect(stepBoundedValue(10, 'dec', 0, null, 15)).toBeNull();
+    expect(stepBoundedValue(1, 'dec', 0, null, 15)).toBeNull();
+    expect(stepBoundedValue(14, 'dec', 0, null, 15)).toBeNull();
+  });
+
+  it('clears rather than undershoots for any step and floor combination', () => {
+    for (const current of [1, 2, 7, 13, 14]) {
+      expect(stepBoundedValue(current, 'dec', 0, null, 15)).toBeNull();
+    }
+    for (const current of [2, 3, 5]) {
+      expect(stepBoundedValue(current, 'dec', 1, null, 5)).toBeNull();
+    }
+    expect(stepBoundedValue(6, 'dec', 1, null, 5)).toBe(1);
+  });
 });
 
 describe('stepRepMin / stepRepMax — R5 structural pairing', () => {

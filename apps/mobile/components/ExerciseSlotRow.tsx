@@ -25,8 +25,13 @@ export const CYCLE_OVERRIDE_MARKER = '· this cycle';
 export type StepDirection = 'inc' | 'dec';
 
 // Increment: null jumps to the floor, otherwise adds `step`, capped at `ceiling` (no cap when
-// null). Decrement: null is a no-op (already empty), the floor clears back to null (this is how a
-// target becomes unprescribed again), otherwise subtracts `step`.
+// null). Decrement: null is a no-op (already empty), a step that would land below the floor clears
+// back to null (this is how a target becomes unprescribed again), otherwise subtracts `step`.
+//
+// The decrement guard tests the *result*, not the current value. Testing `current <= floor` is
+// only equivalent when step is 1: with rest's step of 15 and floor of 0, any value in (0, 15) —
+// reachable from a program authored on another client — stepped straight past the floor into a
+// negative, which the server's non-negative-integer shape check then rejects terminally.
 export function stepBoundedValue(current: number | null, direction: StepDirection, floor: number, ceiling: number | null, step = 1): number | null {
   if (direction === 'inc') {
     if (current === null) return floor;
@@ -34,8 +39,8 @@ export function stepBoundedValue(current: number | null, direction: StepDirectio
     return ceiling !== null ? Math.min(next, ceiling) : next;
   }
   if (current === null) return null;
-  if (current <= floor) return null;
-  return current - step;
+  const next = current - step;
+  return next < floor ? null : next;
 }
 
 export interface RepRange {
