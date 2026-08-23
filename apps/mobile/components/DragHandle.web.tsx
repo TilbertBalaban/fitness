@@ -39,15 +39,48 @@ export interface DragHandleProps {
   onReorder: (beforeId: string | null, afterId: string | null) => void;
 }
 
-// Pointer-events-based drag: onPointerDown captures the starting Y and the pointer id, onPointerMove
-// accumulates translationY while that pointer is active, onPointerUp/onPointerCancel commits through
-// the identical pure helpers reorder-drag.ts exports — the same computeDropTarget/neighboursForIndex
-// pair DragHandle.tsx uses, so native and web can never compute a different drop target for the same
+// The DOM only dispatches pointer events to the element the pointer is currently over. A reorder
+// drag leaves the 48x48 handle after roughly a third of one row, so without a capture the handle
+// stops receiving pointermove and never receives pointerup at all: the drop is never committed and
+// translationY is left at its last observed value, freezing the grip visually off-centre.
+//
+// Typed structurally rather than as Element so this stays testable and so react-native-web's View
+// ref — which is the DOM node on web and a native shadow node elsewhere — can be passed without a
+// platform check.
+export interface PointerCaptureTarget {
+  setPointerCapture?: (pointerId: number) => void;
+  releasePointerCapture?: (pointerId: number) => void;
+  hasPointerCapture?: (pointerId: number) => boolean;
+}
+
+export function capturePointer(node: PointerCaptureTarget | null | undefined, pointerId: number): void {
+  node?.setPointerCapture?.(pointerId);
+}
+
+// releasePointerCapture throws NotFoundError when the id names no captured pointer, and the browser
+// releases implicitly on pointercancel — so the capture is confirmed first where the engine reports
+// it, and the call is guarded where it does not.
+export function releasePointer(node: PointerCaptureTarget | null | undefined, pointerId: number): void {
+  if (!node?.releasePointerCapture) return;
+  if (node.hasPointerCapture && !node.hasPointerCapture(pointerId)) return;
+  try {
+    node.releasePointerCapture(pointerId);
+  } catch {
+    // Already revoked by the browser; there is nothing left to release.
+  }
+}
+
+// Pointer-events-based drag: onPointerDown records the starting Y, records the pointer id and
+// captures that pointer to this element, onPointerMove accumulates translationY while that pointer
+// is active, onPointerUp/onPointerCancel releases the capture and commits through the identical
+// pure helpers reorder-drag.ts exports — the same computeDropTarget/neighboursForIndex pair
+// DragHandle.tsx uses, so native and web can never compute a different drop target for the same
 // gesture shape.
 export function DragHandle({ exerciseName, exerciseId, fromIndex, orderedIds, onReorder }: DragHandleProps) {
   const colors = useThemeColors();
   const startY = useRef<number | null>(null);
   const activePointerId = useRef<number | null>(null);
+  const handleRef = useRef<View | null>(null);
   const [translationY, setTranslationY] = useState(0);
 
   const commitDrop = useCallback(
@@ -59,15 +92,23 @@ export function DragHandle({ exerciseName, exerciseId, fromIndex, orderedIds, on
     [fromIndex, orderedIds, exerciseId, onReorder],
   );
 
+  // Also the cancel path: the browser revoking the capture (scroll takeover, element removed) must
+  // leave no half-drag behind, so releasing and resetting are the same call.
   const endDrag = useCallback(() => {
+    const pointerId = activePointerId.current;
+    if (pointerId !== null) {
+      releasePointer(handleRef.current as PointerCaptureTarget | null, pointerId);
+    }
     activePointerId.current = null;
     startY.current = null;
     setTranslationY(0);
   }, []);
 
   const handlePointerDown = useCallback((event: PointerEvent) => {
-    activePointerId.current = event.nativeEvent.pointerId;
-    startY.current = event.nativeEvent.clientY;
+    const { pointerId, clientY } = event.nativeEvent;
+    activePointerId.current = pointerId;
+    startY.current = clientY;
+    capturePointer(handleRef.current as PointerCaptureTarget | null, pointerId);
   }, []);
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
@@ -87,6 +128,7 @@ export function DragHandle({ exerciseName, exerciseId, fromIndex, orderedIds, on
 
   return (
     <View
+      ref={handleRef}
       style={{ transform: [{ translateY: translationY }] }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
