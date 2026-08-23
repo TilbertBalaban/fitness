@@ -15,6 +15,22 @@ import { getPowerSync } from '../powersync';
 import { generateClientId } from '../id';
 import { routineCycle, routineExercise, routineExerciseCycleTarget } from '../schema';
 
+// WR-10: the multi-row helpers now wrap their writes in db.transaction. The fake's transaction
+// handle IS the fake — the shipped helpers call tx.insert/tx.update, and handing them a separate
+// object would hide those calls from the recorders below. `this` resolves to the fake because the
+// helpers always call it as db.transaction(...).
+let transactionCount = 0;
+
+beforeEach(() => {
+  transactionCount = 0;
+});
+
+async function runInFakeTransaction(this: unknown, run: (tx: unknown) => Promise<unknown>) {
+  transactionCount += 1;
+  return run(this);
+}
+
+
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../id', () => ({ generateClientId: jest.fn(() => 'fixed-id') }));
 
@@ -66,6 +82,7 @@ function fakeDb(tableRows: TableRows[] = []) {
         return Promise.resolve();
       },
     }),
+    transaction: runInFakeTransaction,
   } as unknown as ReturnType<typeof getPowerSync>;
 
   return { db, calls };
@@ -642,3 +659,37 @@ describe('setCycleTarget — validates the resolved pair, not the sparse overrid
     expect(calls.inserts).toHaveLength(1);
   });
 });
+
+describe('moveCycle is one unit (WR-10)', () => {
+  it('renumbers the block inside exactly one transaction', async () => {
+    const { db, calls } = fakeDb(
+      cycleRows([
+        { id: 'a', orderIndex: 1 },
+        { id: 'b', orderIndex: 2 },
+        { id: 'c', orderIndex: 3 },
+        { id: 'x', orderIndex: 4 },
+      ]),
+    );
+
+    await moveCycle({ routineId: 'r1', cycleId: 'x', beforeId: 'a', afterId: 'b' }, db);
+
+    expect(transactionCount).toBe(1);
+    expect(calls.updates.length).toBeGreaterThan(1);
+  });
+
+  it('still opens one transaction for the single-update gap case', async () => {
+    const { db, calls } = fakeDb(
+      cycleRows([
+        { id: 'a', orderIndex: ORDER_INDEX_GAP },
+        { id: 'b', orderIndex: ORDER_INDEX_GAP * 2 },
+        { id: 'x', orderIndex: ORDER_INDEX_GAP * 3 },
+      ]),
+    );
+
+    await moveCycle({ routineId: 'r1', cycleId: 'x', beforeId: 'a', afterId: 'b' }, db);
+
+    expect(transactionCount).toBe(1);
+    expect(calls.updates).toHaveLength(1);
+  });
+});
+

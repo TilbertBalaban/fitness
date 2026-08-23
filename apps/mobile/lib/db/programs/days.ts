@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { generateClientId } from '../id';
-import { getPowerSync, type WriteDb } from '../powersync';
+import { getPowerSync, type WriteDb, type WriteTx } from '../powersync';
 import { routineDay, routineExercise } from '../schema';
 import { appendOrderIndex, midpointOrderIndex, needsRenumber, renumberOrderIndexes, sortByOrderThenId } from './order-index';
 
@@ -104,9 +104,14 @@ export async function moveDay({ routineId, dayId, beforeId, afterId }: MoveDayIn
     .where(eq(routineDay.routineId, routineId));
 
   const updates = computeReorder(siblings, dayId, beforeId, afterId);
-  for (const update of updates) {
-    await db.update(routineDay).set({ orderIndex: update.orderIndex }).where(eq(routineDay.id, update.id));
-  }
+  // The renumber branch can emit one update per sibling. Interrupted halfway it leaves duplicate
+  // order_index values, which sortByOrderThenId still renders stably — so the list is not the one
+  // the user dragged to and nothing looks wrong.
+  await db.transaction(async (tx: WriteTx) => {
+    for (const update of updates) {
+      await tx.update(routineDay).set({ orderIndex: update.orderIndex }).where(eq(routineDay.id, update.id));
+    }
+  });
 }
 
 export interface MoveExerciseInput {
@@ -126,9 +131,11 @@ export async function moveExercise(
     .where(eq(routineExercise.routineDayId, routineDayId));
 
   const updates = computeReorder(siblings, exerciseId, beforeId, afterId);
-  for (const update of updates) {
-    await db.update(routineExercise).set({ orderIndex: update.orderIndex }).where(eq(routineExercise.id, update.id));
-  }
+  await db.transaction(async (tx: WriteTx) => {
+    for (const update of updates) {
+      await tx.update(routineExercise).set({ orderIndex: update.orderIndex }).where(eq(routineExercise.id, update.id));
+    }
+  });
 }
 
 export interface AddExercisesToDayInput {
@@ -155,28 +162,32 @@ export async function addExercisesToDay(
   let existing = existingRows.map((row) => row.orderIndex);
   const ids: string[] = [];
 
-  for (const exerciseId of exerciseIds) {
-    const id = generateClientId();
-    const orderIndex = appendOrderIndex(existing);
-    existing = [...existing, orderIndex];
+  // One transaction for the whole multi-select: adding six exercises is one act, and a partial
+  // apply would leave the day holding a subset the user never chose.
+  await db.transaction(async (tx: WriteTx) => {
+    for (const exerciseId of exerciseIds) {
+      const id = generateClientId();
+      const orderIndex = appendOrderIndex(existing);
+      existing = [...existing, orderIndex];
 
-    await db.insert(routineExercise).values({
-      id,
-      routineDayId,
-      exerciseId,
-      orderIndex,
-      supersetGroupId: null,
-      targetSets: null,
-      targetRepMin: null,
-      targetRepMax: null,
-      targetRir: null,
-      targetRestSeconds: null,
-      progressionSchemeId: null,
-      notes: null,
-    });
+      await tx.insert(routineExercise).values({
+        id,
+        routineDayId,
+        exerciseId,
+        orderIndex,
+        supersetGroupId: null,
+        targetSets: null,
+        targetRepMin: null,
+        targetRepMax: null,
+        targetRir: null,
+        targetRestSeconds: null,
+        progressionSchemeId: null,
+        notes: null,
+      });
 
-    ids.push(id);
-  }
+      ids.push(id);
+    }
+  });
 
   return ids;
 }

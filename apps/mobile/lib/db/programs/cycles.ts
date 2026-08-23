@@ -1,7 +1,7 @@
 import { CYCLE_KINDS, EMPTY_TARGET, isEmptyOverride, resolveTarget, type CycleKind, type TargetOverride } from '@fitness/api-contracts';
 import { and, eq } from 'drizzle-orm';
 import { generateClientId } from '../id';
-import { getPowerSync, type WriteDb } from '../powersync';
+import { getPowerSync, type WriteDb, type WriteTx } from '../powersync';
 import { routineCycle, routineExercise, routineExerciseCycleTarget } from '../schema';
 import { computeReorder } from './days';
 import { appendOrderIndex } from './order-index';
@@ -118,9 +118,13 @@ export async function moveCycle(
     .where(eq(routineCycle.routineId, routineId));
 
   const updates = computeReorder(siblings, cycleId, beforeId, afterId);
-  for (const update of updates) {
-    await db.update(routineCycle).set({ orderIndex: update.orderIndex }).where(eq(routineCycle.id, update.id));
-  }
+  // Same reason as moveDay/moveExercise: the renumber branch is N updates, and half of them leaves
+  // a block order the user did not choose with nothing to show for it.
+  await db.transaction(async (tx: WriteTx) => {
+    for (const update of updates) {
+      await tx.update(routineCycle).set({ orderIndex: update.orderIndex }).where(eq(routineCycle.id, update.id));
+    }
+  });
 }
 
 // The override children cascade at the database level on both sides (04-07), and the server emits
