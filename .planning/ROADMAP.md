@@ -276,11 +276,34 @@ Plans:
   5. User can correct a mistake with a single tap-to-undo mid-workout, and can view, edit, duplicate, and backfill past workouts afterward
   6. User finishes to a summary showing muscles trained, PRs, and a per-exercise breakdown, and can correct entries from that screen
 
-**Plans**: TBD
+**Plans**: 10 plans
 
 Plans:
 
-- [ ] 05-01: TBD during `/gsd-plan-phase 5`
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Tracer: start today's programmed workout and log a set end-to-end — session read, set row, in-app keypad, tap-to-complete, exercise strip and pager, previous-session reference
+- [ ] 05-02-PLAN.md — Session vocabularies, the ten Phase 5 schema columns and three CHECK constraints, pushed to the live database
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 05-03-PLAN.md — Sync apply path: `personal_record` wired as a singleton root, tuple-sourced validators, notes/pause/preference PATCH fields
+- [ ] 05-04-PLAN.md — `@fitness/pr-rules`: the four PR types, the estimated-1RM validity cutoff, and deterministic warm-up scaling
+- [ ] 05-05-PLAN.md — Rest and duration timers: persisted wall-clock target, `.web.ts` alert seam, header bar, full-screen extend/skip, honest permission degrade
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 05-06-PLAN.md — Per-exercise actions: targets sheet with program write-back, notes at three levels, warm-up generation, add/swap/remove/reorder
+- [ ] 05-07-PLAN.md — Session lifecycle: one-off start, pause/resume, finish, discard, Home in-progress banner, auto-advance and workout settings
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 05-08-PLAN.md — Finish summary: muscles trained, PR detection and writes, per-exercise breakdown with e1RM, correct-from-summary
+- [ ] 05-09-PLAN.md — History tab: constant-cost paged list, rename, duplicate, delete
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 05-10-PLAN.md — Editing mode with the live machinery structurally unreachable, and backfilling a past workout to a chosen date
 
 ### Phase 6: Gym Profiles & Plate Math
 
