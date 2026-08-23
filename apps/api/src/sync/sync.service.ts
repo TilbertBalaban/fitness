@@ -405,7 +405,11 @@ function toExerciseValues(id: string, userId: string, data: Record<string, unkno
 
 // userId always comes from the authenticated session argument, never from data — a PUT naming
 // another user's user_id in its payload is stored against the pusher's own id regardless
-// (T-03-02/T-03-13). exerciseId falls back to '' when absent, matching isInvalidSessionExercise's
+// (T-03-02/T-03-13). storedExerciseId is the linkage already in the database, and it wins over
+// whatever the op claims, exactly as every parent resolver in applyBatch does: a preference row's
+// target movement is identity, so an op naming a different exercise_id is trying to re-target an
+// existing row rather than edit it. Only a row that does not exist yet (storedExerciseId
+// undefined) trusts the client value. The '' fallback matches isInvalidSessionExercise's
 // established empty-string-FK guard precedent: hasInvalidField rejects any op with a missing or
 // empty exercise_id before this function ever runs, so the fallback is defense in depth, not the
 // primary guard.
@@ -413,12 +417,13 @@ function toUserExercisePreferenceValues(
   id: string,
   userId: string,
   data: Record<string, unknown> | null | undefined,
+  storedExerciseId?: string,
 ): UserExercisePreferenceValues {
   const d = (data ?? {}) as UserExercisePreferenceOpData;
   return {
     id,
     userId,
-    exerciseId: d.exercise_id ?? '',
+    exerciseId: storedExerciseId ?? d.exercise_id ?? '',
     archivedAt: d.archived_at ? new Date(d.archived_at) : null,
     neverSuggest: d.never_suggest ?? false,
     updatedAt: d.updated_at ? new Date(d.updated_at) : new Date(),
@@ -808,19 +813,19 @@ export class SyncService {
     // its own row is gone, so there is nothing in the batch or the database to chain back to a
     // session. Short-circuited here, ahead of root resolution, so a second delete of the same id
     // stays idempotent instead of failing missing_parent.
+    // One query for the whole batch (findTombstoned), never one per DELETE op. The per-op form
+    // this replaces was dispatched through Promise.all, so a delete-heavy batch fired up to
+    // SYNC_MAX_BATCH_OPS queries CONCURRENTLY and could drain the connection pool out from under
+    // every other request on the process.
     const deleteOpsInBatch = workable.filter((op) => op.op === 'DELETE');
-    const alreadyTombstonedKeys = new Set<string>();
-    if (deleteOpsInBatch.length) {
-      const results = await Promise.all(
-        deleteOpsInBatch.map((op) => isTombstoned(this.db, op.type, op.id, userId)),
-      );
-      deleteOpsInBatch.forEach((op, index) => {
-        if (results[index]) alreadyTombstonedKeys.add(`${op.type}:${op.id}`);
-      });
-    }
+    const alreadyTombstonedKeys = await findTombstoned(
+      this.db,
+      deleteOpsInBatch.map((op) => ({ table: op.type, rowId: op.id })),
+      userId,
+    );
     let remaining: SyncCrudOp[] = [];
     for (const op of workable) {
-      if (op.op === 'DELETE' && alreadyTombstonedKeys.has(`${op.type}:${op.id}`)) {
+      if (op.op === 'DELETE' && alreadyTombstonedKeys.has(tombstoneKeyOf({ table: op.type, rowId: op.id }))) {
         applied.push(op.op_id);
         continue;
       }
@@ -1282,12 +1287,31 @@ export class SyncService {
           .from(exercise)
           .where(inArray(exercise.id, exerciseRootIds))
       : [];
+    // exerciseId is read alongside userId, in the same query, because it is identity on this
+    // table in the way a parent id is on every other one: the row means "this user's stance on
+    // THIS movement", so re-pointing it at a different exercise is not an edit of the row, it is
+    // a different row. Feeds resolveExerciseIdForUserExercisePreference below at no extra query
+    // cost.
     const existingUserExercisePreferenceRoots = userExercisePreferenceRootIds.length
       ? await this.db
-          .select({ id: userExercisePreference.id, userId: userExercisePreference.userId })
+          .select({
+            id: userExercisePreference.id,
+            userId: userExercisePreference.userId,
+            exerciseId: userExercisePreference.exerciseId,
+          })
           .from(userExercisePreference)
           .where(inArray(userExercisePreference.id, userExercisePreferenceRootIds))
       : [];
+    // Database-wins-over-client-claimed, the same precedence every parent resolver in this file
+    // applies (T-02-03/T-04-09): an existing preference row cannot be re-targeted onto a different
+    // movement by a push that simply names a different exercise_id; only a row with no stored
+    // linkage trusts the client-supplied value. Necessary rather than defensive —
+    // USER_EXERCISE_PREFERENCE_PATCH_FIELDS maps exerciseId to null, which means "written
+    // unconditionally" (see patch-update-set.ts), so without this a PATCH moved an
+    // archived/never-suggest flag from one exercise to another.
+    const dbExerciseIdByUserExercisePreferenceId = new Map(
+      existingUserExercisePreferenceRoots.map((row) => [row.id, row.exerciseId]),
+    );
     // Keyed by aggregateKey, not by the bare id, for the same reason the aggregate map is: two
     // roots of different types sharing one id would otherwise overwrite each other here and hand
     // one aggregate the other's owner.
@@ -1532,7 +1556,12 @@ export class SyncService {
                   : op.type === 'exercise'
                     ? toExerciseValues(op.id, userId, op.data)
                     : op.type === 'user_exercise_preference'
-                      ? toUserExercisePreferenceValues(op.id, userId, op.data)
+                      ? toUserExercisePreferenceValues(
+                          op.id,
+                          userId,
+                          op.data,
+                          dbExerciseIdByUserExercisePreferenceId.get(op.id),
+                        )
                       : op.type === 'routine'
                         ? toRoutineValues(op.id, userId, op.data)
                         : op.type === 'routine_day'

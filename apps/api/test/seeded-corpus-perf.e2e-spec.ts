@@ -7,9 +7,9 @@ import { eq, inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { SYNC_PUSH_PATH, type SyncCrudOp } from '@fitness/api-contracts';
 import { db, pool } from '../src/db/drizzle.module';
-import { user, workoutSession, sessionExercise, loggedSet } from '../src/db/schema';
+import { user, userPreference, workoutSession, sessionExercise, loggedSet } from '../src/db/schema';
 import { SyncService } from '../src/sync/sync.service';
-import { generateCorpus } from '../src/seed/generate-corpus';
+import { ensureUserPreference, generateCorpus } from '../src/seed/generate-corpus';
 import { CORPUS_SHAPE, PERF_BUDGET } from '../src/seed/corpus-shape';
 
 config({ path: [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../../.env')] });
@@ -339,6 +339,62 @@ describe('Seeded-corpus performance budget (e2e)', () => {
     expect(thirty.result.sets.length).toBe(30);
     expect(three.queryCount).toBeLessThanOrEqual(PERF_BUDGET.maxQueriesPerSessionRead);
     expect(thirty.queryCount).toBe(three.queryCount);
+  });
+
+  // The tombstone pre-pass runs on the pool, before any transaction, so countQueries sees it.
+  // A re-pushed batch of already-tombstoned deletes short-circuits immediately afterwards, which
+  // makes that pre-pass the only pool traffic the push produces — the cleanest place to assert it
+  // is one batched read rather than one read per DELETE op fired concurrently.
+  it('resolves already-tombstoned deletes in a query count that does not grow with the number of DELETE ops', async () => {
+    const syncService = new SyncService(db);
+
+    async function tombstonedDeleteBatch(setCount: number): Promise<SyncCrudOp[]> {
+      const sessionId = await pushSetsDirectly(corpusUserId, setCount);
+      const setRows = await db
+        .select({ id: loggedSet.id })
+        .from(loggedSet)
+        .innerJoin(sessionExercise, eq(loggedSet.sessionExerciseId, sessionExercise.id))
+        .where(eq(sessionExercise.sessionId, sessionId));
+      const deletes: SyncCrudOp[] = setRows.map((row) => ({
+        op_id: randomUUID(),
+        op: 'DELETE',
+        type: 'logged_set',
+        id: row.id,
+        data: null,
+      }));
+      const first = await syncService.applyBatch(corpusUserId, deletes);
+      expect(first.rejected).toEqual([]);
+      // Fresh op_ids: the same rows, re-deleted, which is what an offline device replaying its
+      // queue actually sends.
+      return deletes.map((op) => ({ ...op, op_id: randomUUID() }));
+    }
+
+    const threeDeletes = await tombstonedDeleteBatch(3);
+    const thirtyDeletes = await tombstonedDeleteBatch(30);
+
+    const three = await countQueries(() => syncService.applyBatch(corpusUserId, threeDeletes));
+    const thirty = await countQueries(() => syncService.applyBatch(corpusUserId, thirtyDeletes));
+
+    expect(three.result.applied).toHaveLength(3);
+    expect(thirty.result.applied).toHaveLength(30);
+    expect(three.queryCount).toBe(1);
+    expect(thirty.queryCount).toBe(three.queryCount);
+  });
+
+  // Pins the upsert arbiter to the primary key this statement writes. The row created by
+  // generateCorpus above already collides on both id and user_id, so a re-run must resolve rather
+  // than raise user_preference_pkey — the failure mode a mismatched arbiter is one schema tweak
+  // away from. Re-applies the pointer it already holds, so the corpus is unchanged afterwards.
+  it('re-runs ensureUserPreference against an existing row without duplicating it or violating the primary key', async () => {
+    const [before] = await db.select().from(userPreference).where(eq(userPreference.userId, corpusUserId));
+    expect(before.id).toBe(corpusUserId);
+    expect(before.activeRoutineId).not.toBeNull();
+
+    await ensureUserPreference(corpusUserId, before.activeRoutineId!);
+
+    const after = await db.select().from(userPreference).where(eq(userPreference.userId, corpusUserId));
+    expect(after).toHaveLength(1);
+    expect(after[0].activeRoutineId).toBe(before.activeRoutineId);
   });
 
   it('returns none of another user\'s rows when reading the corpus for one user', async () => {

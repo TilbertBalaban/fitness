@@ -143,6 +143,15 @@ export interface RoutineExerciseCycleTargetValues {
 // exists to provide; it is the exact way this defect was introduced (the prior weight-only guard
 // covered exactly one column and nothing stopped the other eight logged_set columns, or either of
 // the other two tables, from going unclassified).
+//
+// READ THE MAPPING DIRECTION BEFORE ADDING A COLUMN. A wire name means "write this column only
+// when the PATCH names it". `null` means the OPPOSITE of "never written": it means the column is
+// server-derived and is written UNCONDITIONALLY on every PATCH, from whatever the to*Values
+// builder produced. So `null` is safe only where that builder ignores the client — an
+// authenticated-session userId, a forced constant, or a database-first resolver. A `null` mapping
+// on a column whose builder reads op.data is a hole, not a guard: it hands the client an
+// always-applied write on a column the map appears to protect (that is precisely how a PATCH was
+// able to re-target user_exercise_preference.exercise_id).
 export type PatchFieldMap<V> = { [K in keyof V]: string | null };
 
 export const WORKOUT_SESSION_PATCH_FIELDS: PatchFieldMap<WorkoutSessionValues> = {
@@ -191,9 +200,10 @@ export const LOGGED_SET_PATCH_FIELDS: PatchFieldMap<LoggedSetValues> = {
 // custom-vs-seeded classification and provenance do not change after creation. archivedAt is
 // never client-patchable on this table at all: archive state lives exclusively in
 // user_exercise_preference (Pattern 3), and accepting archived_at here would reopen the
-// two-code-path picker problem the schema was shaped to avoid — sync.service.ts's
-// hasInvalidField rejects any op naming it, independent of this map, but the map itself stays
-// null here too so the exhaustiveness gate documents the same rule in one place.
+// two-code-path picker problem the schema was shaped to avoid. What enforces that is
+// sync.service.ts's hasInvalidField, which rejects any op naming archived_at outright, plus
+// toExerciseValues forcing the column to null — the map's null does not withhold the write, it
+// applies the forced value every time.
 export const EXERCISE_PATCH_FIELDS: PatchFieldMap<ExerciseValues> = {
   id: null,
   userId: null,
@@ -213,8 +223,11 @@ export const EXERCISE_PATCH_FIELDS: PatchFieldMap<ExerciseValues> = {
   archivedAt: null,
 };
 
-// id/userId/exerciseId are fixed at insert — a preference row's identity never moves once
-// created; re-targeting it would just be a new row.
+// id/userId/exerciseId are all server-derived, so all three are written unconditionally: id from
+// the op id, userId from the authenticated session, and exerciseId from
+// dbExerciseIdByUserExercisePreferenceId (sync.service.ts) — the stored linkage, never the value
+// the op claims. The identity guarantee ("a preference row never moves onto another movement")
+// therefore lives in that resolver; a null here alone would have written the client's value.
 export const USER_EXERCISE_PREFERENCE_PATCH_FIELDS: PatchFieldMap<UserExercisePreferenceValues> = {
   id: null,
   userId: null,
@@ -251,9 +264,11 @@ export const USER_PREFERENCE_PATCH_FIELDS: PatchFieldMap<UserPreferenceValues> =
   activeRoutineId: 'active_routine_id',
 };
 
-// id/routineId are fixed at insert — a PATCH must never reparent a day onto a different routine
-// (T-04-09); the anti-reparenting guarantee lives in sync.service.ts's resolver precedence, and
-// this map backs it up structurally by never letting a PATCH write routineId at all.
+// id/routineId are written unconditionally because both are server-derived: routineId comes from
+// resolveRoutineIdForRoutineDay, which returns the stored linkage in preference to the op's claim.
+// That resolver, not this map, is the anti-reparenting guarantee (T-04-09) — the null here only
+// says "take the resolved value every time", which is safe exactly because the resolver is
+// database-first.
 export const ROUTINE_DAY_PATCH_FIELDS: PatchFieldMap<RoutineDayValues> = {
   id: null,
   routineId: null,
@@ -262,8 +277,10 @@ export const ROUTINE_DAY_PATCH_FIELDS: PatchFieldMap<RoutineDayValues> = {
   isRestDay: 'is_rest_day',
 };
 
-// id/routineDayId are fixed at insert — same anti-reparenting guarantee as ROUTINE_DAY_PATCH_FIELDS,
-// one level deeper (T-04-09). progressionSchemeId is carried through as a plain nullable
+// id/routineDayId are server-derived and written unconditionally — same shape as
+// ROUTINE_DAY_PATCH_FIELDS, one level deeper, with resolveRoutineDayIdForRoutineExercise supplying
+// the database-first value the anti-reparenting guarantee actually rests on (T-04-09).
+// progressionSchemeId is carried through as a plain nullable
 // passthrough: nothing in this phase reads it (D-11), it stays an unowned column here.
 export const ROUTINE_EXERCISE_PATCH_FIELDS: PatchFieldMap<RoutineExerciseValues> = {
   id: null,
@@ -280,9 +297,9 @@ export const ROUTINE_EXERCISE_PATCH_FIELDS: PatchFieldMap<RoutineExerciseValues>
   notes: 'notes',
 };
 
-// id/routineId are fixed at insert — same anti-reparenting guarantee as ROUTINE_DAY_PATCH_FIELDS
-// (T-04-09/T-04-31); the anti-reparenting guarantee lives in sync.service.ts's resolver
-// precedence, and this map backs it up structurally by never letting a PATCH write routineId.
+// id/routineId are server-derived and written unconditionally — same shape as
+// ROUTINE_DAY_PATCH_FIELDS (T-04-09/T-04-31), with resolveRoutineIdForRoutineCycle supplying the
+// database-first value the anti-reparenting guarantee rests on.
 export const ROUTINE_CYCLE_PATCH_FIELDS: PatchFieldMap<RoutineCycleValues> = {
   id: null,
   routineId: null,
@@ -292,10 +309,10 @@ export const ROUTINE_CYCLE_PATCH_FIELDS: PatchFieldMap<RoutineCycleValues> = {
   durationDays: 'duration_days',
 };
 
-// id/routineExerciseId/cycleId are fixed at insert — both parents are identity here, and a PATCH
-// must reparent neither. The anti-reparenting guarantee lives in sync.service.ts's dual-chain
-// resolver precedence (database linkage wins over client-claimed for both parents independently);
-// this map backs it up structurally by never letting a PATCH write either parent column.
+// id/routineExerciseId/cycleId are server-derived and written unconditionally. Both parents are
+// identity here, and neither may be reparented — the guarantee is sync.service.ts's dual-chain
+// resolver precedence (database linkage wins over client-claimed for both parents independently),
+// which is what makes writing them on every PATCH safe.
 export const ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS: PatchFieldMap<RoutineExerciseCycleTargetValues> = {
   id: null,
   routineExerciseId: null,
@@ -324,6 +341,8 @@ export function patchAwareSet<V extends object>(
   const set: Partial<V> = {};
   for (const key of Object.keys(values) as (keyof V)[]) {
     const wireKey = fields[key];
+    // wireKey === null includes the column ALWAYS. See PatchFieldMap's contract above before
+    // reading this as an exclusion.
     if (wireKey === null || wireKey in data) {
       set[key] = values[key];
     }
