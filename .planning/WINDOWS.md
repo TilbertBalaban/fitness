@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 87
+open_count: 91
 waived_count: 1
 fixed_count: 14
-total_count: 102
-last_updated: 2026-08-23T10:37:33.873Z
+total_count: 106
+last_updated: 2026-08-23T18:42:48.569Z
 ---
 
 # Broken Windows Ledger
@@ -117,6 +117,10 @@ last_updated: 2026-08-23T10:37:33.873Z
 | 103 | 04 | unrun-verify | apps/mobile/components/DragHandle.web.tsx |  | WR-03's pointer capture is fixed against the DOM Pointer Events contract and unit-tested through a fake capture target, but has NOT been observed in a browser (CLAUDE.md forbids browser testing without an explicit request). Whether a real pointer leaving the handle mid-drag now stays captured is unverified in a live DOM. Compounds ledger entry 64: which of DragHandle.tsx / DragHandle.web.tsx Metro resolves into the web bundle was never conclusively confirmed — if the native file wins, this fix is inert. | open |  | 2026-08-23T10:37:33.707Z |  |
 | 104 | 04 | unrun-verify | apps/mobile/app/(tabs)/index.tsx |  | WR-04's useFocusEffect wiring is unverified as wiring: the mobile lockfile has no renderer (no @testing-library/react-native, no react-test-renderer), so readNextUp is tested by direct invocation and the focus subscription itself is proven only by typecheck. Note also the fix is refocus-driven, not reactive — a write made while Home is already foregrounded still will not appear until the tab is refocused. Genuine reactivity (a PowerSync watch) is a design change, not a warning-pass fix. | open |  | 2026-08-23T10:37:33.790Z |  |
 | 105 | 04 | deviation | apps/mobile/lib/db/powersync.ts |  | WR-10's transactions buy LOCAL atomicity plus one crud transaction per push (getNextCrudTransaction), so the server applies each group as one aggregate in one Postgres transaction. They do NOT buy atomic convergence against a concurrent push from another device — that remains row-level LWW and no client-side change can alter it. Recorded so a later reader does not mistake the wrapper for a cross-device guarantee. | open |  | 2026-08-23T10:37:33.873Z |  |
+| 106 | 05 | unrun-verify | apps/mobile/e2e/workout-screen.spec.ts |  | Task 1/2 tracer e2e (start workout, durable checkmark, reload, pager swipe/chip-tap) written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested | open |  | 2026-08-23T18:42:33.633Z |  |
+| 107 | 05 | unrun-verify | apps/mobile/e2e/durability.spec.ts |  | Task 3 two-prior-sessions previousSetReference reload case written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested | open |  | 2026-08-23T18:42:41.654Z |  |
+| 108 | 05 | unrun-verify | apps/mobile/e2e/schema-redefinition.spec.ts |  | notes->harness_probe rename verified by re-reading the spec's literal replacements only; the schema-redefinition e2e suite itself was not re-run in this session (browser launch restricted) | open |  | 2026-08-23T18:42:44.927Z |  |
+| 109 | 05 | stub | apps/mobile/components/SetRow.tsx |  | Warm-up rows sort ahead of working rows and are excluded from strip/reference counts, but SetRow.tsx does not yet render 05-UI-SPEC's leading 14px W badge — out of Task 2's file scope, deferred to a later plan touching SetRow.tsx | open |  | 2026-08-23T18:42:48.569Z |  |
 
 ````json
 [
@@ -1342,6 +1346,54 @@ last_updated: 2026-08-23T10:37:33.873Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-23T10:37:33.873Z",
+    "resolved_at": null
+  },
+  {
+    "id": 106,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/e2e/workout-screen.spec.ts",
+    "line": null,
+    "description": "Task 1/2 tracer e2e (start workout, durable checkmark, reload, pager swipe/chip-tap) written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T18:42:33.633Z",
+    "resolved_at": null
+  },
+  {
+    "id": 107,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/e2e/durability.spec.ts",
+    "line": null,
+    "description": "Task 3 two-prior-sessions previousSetReference reload case written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T18:42:41.654Z",
+    "resolved_at": null
+  },
+  {
+    "id": 108,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/e2e/schema-redefinition.spec.ts",
+    "line": null,
+    "description": "notes->harness_probe rename verified by re-reading the spec's literal replacements only; the schema-redefinition e2e suite itself was not re-run in this session (browser launch restricted)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T18:42:44.927Z",
+    "resolved_at": null
+  },
+  {
+    "id": 109,
+    "kind": "stub",
+    "phase": "05",
+    "file": "apps/mobile/components/SetRow.tsx",
+    "line": null,
+    "description": "Warm-up rows sort ahead of working rows and are excluded from strip/reference counts, but SetRow.tsx does not yet render 05-UI-SPEC's leading 14px W badge — out of Task 2's file scope, deferred to a later plan touching SetRow.tsx",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T18:42:48.569Z",
     "resolved_at": null
   }
 ]
