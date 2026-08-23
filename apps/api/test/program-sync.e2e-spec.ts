@@ -95,6 +95,10 @@ function routineExerciseCycleTargetOp(id: string, data: Record<string, unknown>,
   return { op_id: randomUUID(), op, type: 'routine_exercise_cycle_target', id, data };
 }
 
+function exerciseOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return { op_id: randomUUID(), op, type: 'exercise', id, data };
+}
+
 function workoutSessionOp(id: string, overrides: Partial<SyncCrudOp> = {}): SyncCrudOp {
   return {
     op_id: randomUUID(),
@@ -403,6 +407,34 @@ describe('program (routine) sync (e2e)', () => {
 
     const after = await routineRow(routineId);
     expect(after).toEqual(before);
+  });
+
+  // The cross-user half of CR-01 (04-REVIEW.md): the same id reused under two root types made the
+  // ownership lookup miss user A's routine entirely, so B's routine PUT was treated as a fresh
+  // insert and rewrote user_id/name/status. Aggregates are now keyed by (root table, root id), so
+  // the routine op is resolved against `routine` no matter what else the batch names.
+  it("rejects user B's routine PUT that reuses user A's routine id under a second root type in the same batch, and A's row is unchanged", async () => {
+    const cookieA = await signUp('id-collision-owner-a');
+    const cookieB = await signUp('id-collision-attacker-b');
+    const routineId = randomUUID();
+    createdRoutineIds.push(routineId);
+
+    const createRes = await push(cookieA, [routineOp(routineId, { name: "A's Program", status: 'ready' })]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+    const ownerA = (await routineRow(routineId))!.user_id;
+
+    const takeoverOp = routineOp(routineId, { name: 'PWNED', status: 'draft' });
+    const decoyOp = exerciseOp(routineId, { name: 'Decoy', load_type: 'external_weight' });
+    const res = await push(cookieB, [takeoverOp, decoyOp]);
+    const body: SyncPushResponse = res.body;
+
+    expect(body.applied).not.toContain(takeoverOp.op_id);
+    expect(body.rejected).toContainEqual({ op_id: takeoverOp.op_id, reason: 'not_owner' });
+
+    const after = await routineRow(routineId);
+    expect(after?.user_id).toBe(ownerA);
+    expect(after?.name).toBe("A's Program");
+    expect(after?.status).toBe('ready');
   });
 
   it('rejects a PUT with status outside ROUTINE_STATUSES as invalid_field and writes no row', async () => {

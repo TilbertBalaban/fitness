@@ -82,6 +82,21 @@ function loggedSetOp(id: string, data: Record<string, unknown>, op: SyncCrudOpTy
   return { op_id: randomUUID(), op, type: 'logged_set', id, data };
 }
 
+function workoutSessionOp(id: string, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return {
+    op_id: randomUUID(),
+    op,
+    type: 'workout_session',
+    id,
+    data: {
+      started_at: new Date().toISOString(),
+      status: 'in_progress',
+      timezone: 'UTC',
+      local_date: new Date().toISOString().slice(0, 10),
+    },
+  };
+}
+
 interface ExerciseRow {
   id: string;
   user_id: string | null;
@@ -366,6 +381,37 @@ describe('exercise sync (e2e)', () => {
     expect(['Converge A', 'Converge B']).toContain(row?.name);
     expect(['external_weight', 'bodyweight']).toContain(row?.load_type);
   });
+
+  // CR-01 (04-REVIEW.md), reproduced against a running server before it was fixed: HTTP 201 with
+  // both ops applied and zero rejected, the seeded row renamed and re-owned by the pusher. The
+  // second-order damage was worse than the rename — exercise.user_id cascades on user delete, so
+  // deleting the attacking account afterwards hard-deleted the shared row for every user.
+  it.each([
+    ['exercise op first', 'exercise-first'],
+    ['workout_session op first', 'session-first'],
+  ])(
+    'rejects a two-op batch reusing one seeded exercise id under a second root type (%s) — the shared row keeps its name and its null owner',
+    async (_label, tag) => {
+      const cookie = await signUp(`id-collision-${tag}`);
+      const seededId = await seedNullOwnerExercise('Barbell Bench Press (seeded)');
+
+      const takeoverOp = exerciseOp(seededId, { name: 'PWNED', load_type: 'external_weight' });
+      const decoyOp = workoutSessionOp(seededId);
+      const batch = tag === 'exercise-first' ? [takeoverOp, decoyOp] : [decoyOp, takeoverOp];
+
+      const res = await push(cookie, batch);
+      const body: SyncPushResponse = res.body;
+
+      expect(body.applied).not.toContain(takeoverOp.op_id);
+      expect(body.rejected).toContainEqual({ op_id: takeoverOp.op_id, reason: 'not_owner' });
+
+      const after = await exerciseRow(seededId);
+      expect(after?.user_id).toBeNull();
+      expect(after?.name).toBe('Barbell Bench Press (seeded)');
+      expect(after?.source).toBe('seed');
+      expect(after?.is_custom).toBe(false);
+    },
+  );
 
   it('a batch with one exercise op plus one orphaned logged_set op rejects the logged_set as missing_parent, never healed onto the exercise root', async () => {
     const cookie = await signUp('no-heal-onto-exercise');

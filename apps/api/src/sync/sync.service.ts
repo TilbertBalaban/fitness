@@ -126,11 +126,28 @@ function rootFamilyOf(type: string): string {
   return type;
 }
 
+// The root TABLE an op's aggregate is looked up in. rootFamilyOf's output is always a
+// ROOT_TABLE_BY_TYPE key for every MappedTable, so this is a narrowing, not a second mapping —
+// it exists so aggregate identity, the ownership query and capturedRootSeq all derive the root
+// table from the op's own type rather than from a map keyed on a client-chosen id (CR-01).
+function rootTableTypeOf(type: MappedTable): RootTableType {
+  return rootFamilyOf(type) as RootTableType;
+}
+
+// The identity of an aggregate, and of an ownership lookup result. Both halves matter: the id
+// alone is client-chosen and shared across tables, the type alone is not unique within a batch.
+function aggregateKey(rootType: RootTableType, rootId: string): string {
+  return `${rootType}:${rootId}`;
+}
+
 // Parents apply before children within an aggregate — PowerSync's crud queue can genuinely
 // deliver ops in an order the app did not intend, so this is an explicit sort, not an assumption
 // (PITFALLS §4). exercise/user_exercise_preference/routine never have children to order against
-// in this plan, so rank 0 is safe: aggregates are keyed by distinct root id, and a workout_session
-// aggregate never shares a key with an exercise, user_exercise_preference or routine aggregate.
+// in this plan, so rank 0 is safe: aggregates are keyed by (root TABLE, root id) — rootTableTypeOf
+// of the op's own type, never the bare id — so a workout_session aggregate structurally cannot
+// share a key with an exercise, user_exercise_preference or routine aggregate. That used to be a
+// comment asserting an invariant nothing enforced, and a two-op batch reusing one id across two
+// root types was enough to break it (CR-01).
 const AGGREGATE_RANK: Record<MappedTable, number> = {
   workout_session: 0,
   session_exercise: 1,
@@ -735,6 +752,9 @@ function hasInvalidField(op: SyncCrudOp): boolean {
 
 interface Aggregate {
   root: string | null;
+  // The table `root` lives in. Part of the aggregate's map key, so ops of two different root
+  // families can never merge into one aggregate however their ids collide (CR-01).
+  rootType: RootTableType;
   ops: SyncCrudOp[];
   poisoned: boolean;
 }
@@ -1103,63 +1123,50 @@ export class SyncService {
       healRootByFamily.set(familyType, candidates.size === 1 ? [...candidates][0] : null);
     }
 
+    // Keyed by (root TABLE, root id), never the bare id. Both halves of a bare-id key are
+    // attacker-chosen — op.id is a client-generated uuid — so keying on the id alone let a batch
+    // naming one id under two root types collapse into a single aggregate, whose ownership was
+    // then resolved against whichever table the LAST op happened to name. Pointing that lookup at
+    // a table the id does not live in returns "no such row", which skips the shared-row guard
+    // below and adopts the row for the pusher: a live takeover of any seeded catalog exercise,
+    // and (because exercise.user_id cascades on user delete) a way to hard-delete a shared row for
+    // every user by deleting the attacking account afterwards (CR-01).
     const aggregates = new Map<string, Aggregate>();
     let orphanSeq = 0;
     for (const op of remaining) {
+      const rootType = rootTableTypeOf(op.type as MappedTable);
       const resolvedRoot = rootByOpId.get(op.op_id) ?? null;
       const healRoot = healRootByFamily.get(rootFamilyOf(op.type)) ?? null;
       const effectiveRoot = resolvedRoot ?? healRoot;
-      const key = effectiveRoot ?? `__orphan_${orphanSeq++}`;
+      const key = effectiveRoot === null ? `__orphan_${orphanSeq++}` : aggregateKey(rootType, effectiveRoot);
       const existing = aggregates.get(key);
       if (existing) {
         existing.ops.push(op);
         if (resolvedRoot === null) existing.poisoned = true;
       } else {
-        aggregates.set(key, { root: effectiveRoot, ops: [op], poisoned: resolvedRoot === null });
-      }
-    }
-
-    // Every root type an op in this batch self-roots as (aggregate or singleton) — built once so
-    // ownership resolution below and capturedRootSeq know which table to query per root, without
-    // repeating the root-resolution branch logic. A root id resolved via the session_exercise/
-    // logged_set child-chain fallback defaults to workout_session wherever this map is read (both
-    // resolve exclusively to that family). routine_day/routine_exercise are the one case that
-    // fallback default would get wrong: a batch containing ONLY a routine_day or routine_exercise
-    // op (no literal 'routine' op) still resolves its root to a real routine id — recorded here
-    // explicitly so existingOwnerByRoot's table split below queries `routine`, not
-    // `workout_session`, for that root (the not_owner cross-user routine_day/routine_exercise
-    // cases depend on this).
-    const rootTypeByRootId = new Map<string, RootTableType>();
-    for (const op of remaining) {
-      if (AGGREGATE_ROOT_TYPES.has(op.type) || SINGLETON_ROOT_TYPES.has(op.type)) {
-        rootTypeByRootId.set(op.id, op.type as RootTableType);
-      } else if (
-        op.type === 'routine_day' ||
-        op.type === 'routine_exercise' ||
-        op.type === 'routine_cycle' ||
-        op.type === 'routine_exercise_cycle_target'
-      ) {
-        const resolvedRoot = rootByOpId.get(op.op_id);
-        if (resolvedRoot) rootTypeByRootId.set(resolvedRoot, 'routine');
+        aggregates.set(key, { root: effectiveRoot, rootType, ops: [op], poisoned: resolvedRoot === null });
       }
     }
 
     // Ownership is resolved once per aggregate, through the root — re-read from the database on
     // every push rather than trusted from a prior op, so an id already accepted once is never
     // treated as already-owned (T-02-01, T-02-03). One batched query per root table, never a
-    // per-row lookup (T-03-18) — every ROOT_TABLE_BY_TYPE member is split from the rest by type,
-    // since each lives in its own table.
-    const nonPoisonedRoots = [...aggregates.values()]
-      .filter((a) => !a.poisoned && a.root !== null)
-      .map((a) => a.root as string);
-    const workoutSessionRootIds = nonPoisonedRoots.filter(
-      (id) => (rootTypeByRootId.get(id) ?? 'workout_session') === 'workout_session',
-    );
-    const routineRootIds = nonPoisonedRoots.filter((id) => rootTypeByRootId.get(id) === 'routine');
-    const exerciseRootIds = nonPoisonedRoots.filter((id) => rootTypeByRootId.get(id) === 'exercise');
-    const userExercisePreferenceRootIds = nonPoisonedRoots.filter(
-      (id) => rootTypeByRootId.get(id) === 'user_exercise_preference',
-    );
+    // per-row lookup (T-03-18). Which table an aggregate is queried in comes from its own
+    // rootType, so the lookup can never be routed at a table the root id does not live in, and
+    // the `owner === undefined` adoption further down is only ever reached after the aggregate's
+    // OWN table genuinely returned no row (CR-01). user_preference is the one root type absent
+    // from every list: its owner IS its row id (the option-a wire contract), read with no query.
+    const rootIdsByRootType = new Map<RootTableType, string[]>();
+    for (const aggregate of aggregates.values()) {
+      if (aggregate.poisoned || aggregate.root === null || aggregate.rootType === 'user_preference') continue;
+      const existing = rootIdsByRootType.get(aggregate.rootType);
+      if (existing) existing.push(aggregate.root);
+      else rootIdsByRootType.set(aggregate.rootType, [aggregate.root]);
+    }
+    const workoutSessionRootIds = rootIdsByRootType.get('workout_session') ?? [];
+    const routineRootIds = rootIdsByRootType.get('routine') ?? [];
+    const exerciseRootIds = rootIdsByRootType.get('exercise') ?? [];
+    const userExercisePreferenceRootIds = rootIdsByRootType.get('user_exercise_preference') ?? [];
 
     const existingRoots = workoutSessionRootIds.length
       ? await this.db
@@ -1184,11 +1191,17 @@ export class SyncService {
           .from(userExercisePreference)
           .where(inArray(userExercisePreference.id, userExercisePreferenceRootIds))
       : [];
+    // Keyed by aggregateKey, not by the bare id, for the same reason the aggregate map is: two
+    // roots of different types sharing one id would otherwise overwrite each other here and hand
+    // one aggregate the other's owner.
     const existingOwnerByRoot = new Map<string, string | null>([
-      ...existingRoots.map((row): [string, string | null] => [row.id, row.userId]),
-      ...existingRoutineRoots.map((row): [string, string | null] => [row.id, row.userId]),
-      ...existingExerciseRoots.map((row): [string, string | null] => [row.id, row.userId]),
-      ...existingUserExercisePreferenceRoots.map((row): [string, string | null] => [row.id, row.userId]),
+      ...existingRoots.map((row): [string, string | null] => [aggregateKey('workout_session', row.id), row.userId]),
+      ...existingRoutineRoots.map((row): [string, string | null] => [aggregateKey('routine', row.id), row.userId]),
+      ...existingExerciseRoots.map((row): [string, string | null] => [aggregateKey('exercise', row.id), row.userId]),
+      ...existingUserExercisePreferenceRoots.map((row): [string, string | null] => [
+        aggregateKey('user_exercise_preference', row.id),
+        row.userId,
+      ]),
     ]);
 
     for (const aggregate of aggregates.values()) {
@@ -1209,7 +1222,7 @@ export class SyncService {
       // is otherwise always authoritative — a PUT for an id that already exists under another user
       // is a takeover attempt, not a fresh insert, regardless of who pushed it.
       let owner: string | null | undefined =
-        rootTypeByRootId.get(root) === 'user_preference' ? root : existingOwnerByRoot.get(root);
+        aggregate.rootType === 'user_preference' ? root : existingOwnerByRoot.get(aggregateKey(aggregate.rootType, root));
 
       // A stored owner of null (only possible for exercise, whose userId column is nullable) means
       // a shared/seeded row exists and nobody owns it — never adoptable by the pushing user. This
@@ -1252,11 +1265,9 @@ export class SyncService {
         // "no server_seq on a child row" decision) — captured once, before any op in this
         // transaction touches it, so a conflict logged later in the same loop always compares
         // against the value that was true before this push started (T-02-02). Reads whichever
-        // root table this root actually lives in (ROOT_TABLE_BY_TYPE), falling back to
-        // workout_session when the root type is not known — the pre-existing behavior for a root
-        // row that does not exist yet.
-        const rootTableType = rootTypeByRootId.get(root) ?? 'workout_session';
-        const rootTable = ROOT_TABLE_BY_TYPE[rootTableType];
+        // root table this aggregate's own rootType names (ROOT_TABLE_BY_TYPE) — no fallback,
+        // because the aggregate's root table is now part of its identity (CR-01).
+        const rootTable = ROOT_TABLE_BY_TYPE[aggregate.rootType];
         const [rootBefore] = await tx
           .select({ serverSeq: rootTable.serverSeq })
           .from(rootTable)
