@@ -276,14 +276,14 @@ Plans:
   5. User can correct a mistake with a single tap-to-undo mid-workout, and can view, edit, duplicate, and backfill past workouts afterward
   6. User finishes to a summary showing muscles trained, PRs, and a per-exercise breakdown, and can correct entries from that screen
 
-**Plans**: 10 plans
+**Plans**: 2/10 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Tracer: start today's programmed workout and log a set end-to-end — session read, set row, in-app keypad, tap-to-complete, exercise strip and pager, previous-session reference
-- [ ] 05-02-PLAN.md — Session vocabularies, the ten Phase 5 schema columns and three CHECK constraints, pushed to the live database
+- [x] 05-01-PLAN.md — Tracer: start today's programmed workout and log a set end-to-end — session read, set row, in-app keypad, tap-to-complete, exercise strip and pager, previous-session reference
+- [x] 05-02-PLAN.md — Session vocabularies, the ten Phase 5 schema columns and three CHECK constraints, pushed to the live database
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -473,7 +473,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
-| 5. In-Gym Session Logging | 0/TBD | Not started | - |
+| 5. In-Gym Session Logging | 2/10 | In Progress|  |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
 | 8. Progression Engine | 0/TBD | Not started | - |
