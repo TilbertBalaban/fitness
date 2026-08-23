@@ -341,6 +341,46 @@ describe('Seeded-corpus performance budget (e2e)', () => {
     expect(thirty.queryCount).toBe(three.queryCount);
   });
 
+  // The tombstone pre-pass runs on the pool, before any transaction, so countQueries sees it.
+  // A re-pushed batch of already-tombstoned deletes short-circuits immediately afterwards, which
+  // makes that pre-pass the only pool traffic the push produces — the cleanest place to assert it
+  // is one batched read rather than one read per DELETE op fired concurrently.
+  it('resolves already-tombstoned deletes in a query count that does not grow with the number of DELETE ops', async () => {
+    const syncService = new SyncService(db);
+
+    async function tombstonedDeleteBatch(setCount: number): Promise<SyncCrudOp[]> {
+      const sessionId = await pushSetsDirectly(corpusUserId, setCount);
+      const setRows = await db
+        .select({ id: loggedSet.id })
+        .from(loggedSet)
+        .innerJoin(sessionExercise, eq(loggedSet.sessionExerciseId, sessionExercise.id))
+        .where(eq(sessionExercise.sessionId, sessionId));
+      const deletes: SyncCrudOp[] = setRows.map((row) => ({
+        op_id: randomUUID(),
+        op: 'DELETE',
+        type: 'logged_set',
+        id: row.id,
+        data: null,
+      }));
+      const first = await syncService.applyBatch(corpusUserId, deletes);
+      expect(first.rejected).toEqual([]);
+      // Fresh op_ids: the same rows, re-deleted, which is what an offline device replaying its
+      // queue actually sends.
+      return deletes.map((op) => ({ ...op, op_id: randomUUID() }));
+    }
+
+    const threeDeletes = await tombstonedDeleteBatch(3);
+    const thirtyDeletes = await tombstonedDeleteBatch(30);
+
+    const three = await countQueries(() => syncService.applyBatch(corpusUserId, threeDeletes));
+    const thirty = await countQueries(() => syncService.applyBatch(corpusUserId, thirtyDeletes));
+
+    expect(three.result.applied).toHaveLength(3);
+    expect(thirty.result.applied).toHaveLength(30);
+    expect(three.queryCount).toBe(1);
+    expect(thirty.queryCount).toBe(three.queryCount);
+  });
+
   it('returns none of another user\'s rows when reading the corpus for one user', async () => {
     const { sessions } = await readAllSessionsForUser(corpusUserId);
     expect(sessions.every((s) => s.userId === corpusUserId)).toBe(true);

@@ -813,19 +813,19 @@ export class SyncService {
     // its own row is gone, so there is nothing in the batch or the database to chain back to a
     // session. Short-circuited here, ahead of root resolution, so a second delete of the same id
     // stays idempotent instead of failing missing_parent.
+    // One query for the whole batch (findTombstoned), never one per DELETE op. The per-op form
+    // this replaces was dispatched through Promise.all, so a delete-heavy batch fired up to
+    // SYNC_MAX_BATCH_OPS queries CONCURRENTLY and could drain the connection pool out from under
+    // every other request on the process.
     const deleteOpsInBatch = workable.filter((op) => op.op === 'DELETE');
-    const alreadyTombstonedKeys = new Set<string>();
-    if (deleteOpsInBatch.length) {
-      const results = await Promise.all(
-        deleteOpsInBatch.map((op) => isTombstoned(this.db, op.type, op.id, userId)),
-      );
-      deleteOpsInBatch.forEach((op, index) => {
-        if (results[index]) alreadyTombstonedKeys.add(`${op.type}:${op.id}`);
-      });
-    }
+    const alreadyTombstonedKeys = await findTombstoned(
+      this.db,
+      deleteOpsInBatch.map((op) => ({ table: op.type, rowId: op.id })),
+      userId,
+    );
     let remaining: SyncCrudOp[] = [];
     for (const op of workable) {
-      if (op.op === 'DELETE' && alreadyTombstonedKeys.has(`${op.type}:${op.id}`)) {
+      if (op.op === 'DELETE' && alreadyTombstonedKeys.has(tombstoneKeyOf({ table: op.type, rowId: op.id }))) {
         applied.push(op.op_id);
         continue;
       }
