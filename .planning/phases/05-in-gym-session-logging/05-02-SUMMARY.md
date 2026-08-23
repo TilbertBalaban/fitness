@@ -189,6 +189,15 @@ None - no external service configuration required. `DATABASE_URL` is a local dev
 - 05-01 (running in parallel in a sibling worktree) owns `apps/mobile/lib/db/log-set.ts`, `apps/mobile/lib/db/session-query.ts` and `apps/mobile/lib/db/test-support.ts` — those files will need to start supplying the new `notes`/pause/rest-timer/removal fields on their own insert/update paths once merged; this plan's `.default()` additions on the mobile schema keep them typechecking in the meantime but do not populate the new columns for them.
 - No blockers for downstream plans.
 
+## Self-Check: PASSED
+
+- FOUND: packages/api-contracts/src/session.ts
+- FOUND: docs/session-vocabularies.md
+- FOUND: .planning/phases/05-in-gym-session-logging/05-02-SUMMARY.md
+- FOUND: commit 34f5c1c
+- FOUND: commit 4acb64c
+- FOUND: commit 25ca986
+
 ---
 *Phase: 05-in-gym-session-logging*
 *Completed: 2026-08-23*
