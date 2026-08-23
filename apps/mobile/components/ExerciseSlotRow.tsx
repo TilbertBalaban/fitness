@@ -421,7 +421,10 @@ export interface ExerciseSlotRowProps {
   onResetCycleTarget?: (id: string) => void;
   onToggleExpanded: (id: string) => void;
   onRemove: (id: string) => void;
-  onSaveTargets: (routineExerciseId: string, draft: TargetDraft) => Promise<void>;
+  // Resolves false when the write did not land. The row has to know: it sets the draft optimistically
+  // and the resync effect only fires when the *persisted* values change, so a rejected write would
+  // otherwise leave the stepper showing a number that was never stored (WR-11).
+  onSaveTargets: (routineExerciseId: string, draft: TargetDraft) => Promise<boolean>;
   onReorder?: (beforeId: string | null, afterId: string | null) => void;
 }
 
@@ -465,12 +468,18 @@ export function ExerciseSlotRow({
 
   const applyDraft = useCallback(
     (next: TargetDraft) => {
+      const previous = draft;
       setDraft(next);
-      void onSaveTargets(slot.id, next).catch((error) => {
-        console.error('save target failed', error);
-      });
+      void onSaveTargets(slot.id, next)
+        .then((saved) => {
+          if (!saved) setDraft(previous);
+        })
+        .catch((error) => {
+          setDraft(previous);
+          console.error('save target failed', error);
+        });
     },
-    [slot.id, onSaveTargets],
+    [draft, slot.id, onSaveTargets],
   );
 
   return (

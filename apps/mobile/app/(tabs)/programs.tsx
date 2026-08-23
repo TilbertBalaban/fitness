@@ -39,6 +39,7 @@ import {
   type ProgramTree,
 } from '@/lib/db/programs/load-program';
 import { setExerciseTargets, type TargetDraft } from '@/lib/db/programs/targets';
+import { runMutation } from '@/lib/programs/mutation';
 
 const SKELETON_ROW_COUNT = 3;
 
@@ -217,6 +218,9 @@ export default function ProgramsScreen() {
   const [cycleFormKind, setCycleFormKind] = useState<CycleKind>('training');
   const [cycleFormDuration, setCycleFormDuration] = useState('');
   const [cycleFormError, setCycleFormError] = useState<string | null>(null);
+  // Every failed write lands here. Without it the shipped handlers either stopped at console.error
+  // — the user watched their edit revert with no explanation — or did not catch at all (WR-11).
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [editingCycleId, setEditingCycleId] = useState<string | null>(null);
   const [cycleEditName, setCycleEditName] = useState('');
   // Kind and duration are staged, not written per tap: a cycle only becomes time off together with
@@ -309,10 +313,28 @@ export default function ProgramsScreen() {
   const progressionFrozen =
     routines?.find((routine) => routine.id === displayedRoutineId)?.progressionFrozen ?? false;
 
+  // The single write path for this screen. It never rejects, so no handler below can produce an
+  // unhandled promise rejection by being handed to onPress, and every failure has somewhere to be
+  // seen. The tree reloads either way: on a failure the row snaps back to what is actually stored,
+  // with the banner saying why rather than leaving the user to notice.
+  const mutate = useCallback(
+    async (action: () => Promise<unknown>, fallback: string): Promise<boolean> => {
+      const outcome = await runMutation(action, fallback);
+      setMutationError(outcome.message);
+      if (displayedRoutineId) await reloadTree(displayedRoutineId);
+      return outcome.ok;
+    },
+    [displayedRoutineId, reloadTree],
+  );
+
   const handleToggleFreeze = useCallback(
     async (updateEnabled: boolean) => {
       if (!displayedRoutineId) return;
-      await setProgressionFrozen(displayedRoutineId, !updateEnabled);
+      const outcome = await runMutation(
+        () => setProgressionFrozen(displayedRoutineId, !updateEnabled),
+        "Couldn't change whether progression updates this program.",
+      );
+      setMutationError(outcome.message);
       await reload();
     },
     [displayedRoutineId, reload],
@@ -320,31 +342,25 @@ export default function ProgramsScreen() {
 
   const handleAddDay = useCallback(async () => {
     if (!displayedRoutineId) return;
-    try {
-      await addDay({ routineId: displayedRoutineId, name: newDayName });
-      setNewDayName('');
-      await reloadTree(displayedRoutineId);
-    } catch (error) {
-      console.error('add day failed', error);
-    }
-  }, [displayedRoutineId, newDayName, reloadTree]);
+    const added = await mutate(
+      () => addDay({ routineId: displayedRoutineId, name: newDayName }),
+      "Couldn't add that day.",
+    );
+    if (added) setNewDayName('');
+  }, [displayedRoutineId, mutate, newDayName]);
 
   const handleRemoveDay = useCallback(
     async (dayId: string) => {
-      if (!displayedRoutineId) return;
-      await removeDay(dayId);
-      await reloadTree(displayedRoutineId);
+      await mutate(() => removeDay(dayId), "Couldn't remove that day.");
     },
-    [displayedRoutineId, reloadTree],
+    [mutate],
   );
 
   const handleRemoveExercise = useCallback(
     async (routineExerciseId: string) => {
-      if (!displayedRoutineId) return;
-      await removeExercise(routineExerciseId);
-      await reloadTree(displayedRoutineId);
+      await mutate(() => removeExercise(routineExerciseId), "Couldn't remove that exercise.");
     },
-    [displayedRoutineId, reloadTree],
+    [mutate],
   );
 
   const handleToggleExpanded = useCallback((slotId: string) => {
@@ -356,33 +372,37 @@ export default function ProgramsScreen() {
   // override row. Neither can reach the other's table, so a mis-routed edit is not a runtime risk
   // (T-04-39).
   const handleSaveTargets = useCallback(
-    async (routineExerciseId: string, draft: TargetDraft) => {
-      if (!displayedRoutineId) return;
+    async (routineExerciseId: string, draft: TargetDraft): Promise<boolean> => {
+      if (!displayedRoutineId) return false;
 
       if (selectedCycleId === null) {
-        await setExerciseTargets(routineExerciseId, draft);
-      } else {
-        const slot = tree?.days.flatMap((day) => day.slots).find((candidate) => candidate.id === routineExerciseId);
-        if (!slot) return;
-        await setCycleTarget({
-          routineExerciseId,
-          cycleId: selectedCycleId,
-          override: overrideDelta(baseOf(slot), draft),
-        });
+        return mutate(() => setExerciseTargets(routineExerciseId, draft), "Couldn't save those targets.");
       }
 
-      await reloadTree(displayedRoutineId);
+      const slot = tree?.days.flatMap((day) => day.slots).find((candidate) => candidate.id === routineExerciseId);
+      if (!slot) return false;
+      return mutate(
+        () =>
+          setCycleTarget({
+            routineExerciseId,
+            cycleId: selectedCycleId,
+            override: overrideDelta(baseOf(slot), draft),
+          }),
+        "Couldn't save those targets for this cycle.",
+      );
     },
-    [displayedRoutineId, reloadTree, selectedCycleId, tree],
+    [displayedRoutineId, mutate, selectedCycleId, tree],
   );
 
   const handleResetCycleTarget = useCallback(
     async (routineExerciseId: string) => {
-      if (!displayedRoutineId || !selectedCycleId) return;
-      await clearCycleTarget({ routineExerciseId, cycleId: selectedCycleId });
-      await reloadTree(displayedRoutineId);
+      if (!selectedCycleId) return;
+      await mutate(
+        () => clearCycleTarget({ routineExerciseId, cycleId: selectedCycleId }),
+        "Couldn't reset that exercise to its base targets.",
+      );
     },
-    [displayedRoutineId, reloadTree, selectedCycleId],
+    [mutate, selectedCycleId],
   );
 
   const handleOpenCycleForm = useCallback(() => {
@@ -414,18 +434,23 @@ export default function ProgramsScreen() {
       return;
     }
 
-    try {
-      const id = await addCycle({ routineId: displayedRoutineId, ...draft });
-      setCycleFormOpen(false);
-      setCycleFormName('');
-      setCycleFormDuration('');
-      setCycleFormKind('training');
-      setSelectedCycleId(id);
-      await reloadTree(displayedRoutineId);
-    } catch (caught) {
-      setCycleFormError(caught instanceof Error ? caught.message : 'Cycle could not be saved.');
+    let id: string | null = null;
+    const added = await mutate(async () => {
+      id = await addCycle({ routineId: displayedRoutineId, ...draft });
+    }, "Couldn't add that cycle.");
+
+    if (!added) {
+      setCycleFormError("Couldn't add that cycle.");
+      return;
     }
-  }, [displayedRoutineId, cycleFormDuration, cycleFormKind, cycleFormName, reloadTree]);
+
+    setCycleFormOpen(false);
+    setCycleFormName('');
+    setCycleFormDuration('');
+    setCycleFormKind('training');
+    setCycleFormError(null);
+    setSelectedCycleId(id);
+  }, [displayedRoutineId, cycleFormDuration, cycleFormKind, cycleFormName, mutate]);
 
   const handleEditCycle = useCallback(
     (cycleId: string) => {
@@ -456,14 +481,15 @@ export default function ProgramsScreen() {
       return;
     }
 
-    try {
-      await updateCycle(editingCycleId, draft);
-      setEditingCycleId(null);
-      await reloadTree(displayedRoutineId);
-    } catch (caught) {
-      setCycleEditError(caught instanceof Error ? caught.message : 'Cycle could not be saved.');
+    const saved = await mutate(() => updateCycle(editingCycleId, draft), "Couldn't save that cycle.");
+    if (!saved) {
+      setCycleEditError("Couldn't save that cycle.");
+      return;
     }
-  }, [displayedRoutineId, cycleEditDuration, cycleEditKind, cycleEditName, editingCycleId, reloadTree]);
+
+    setEditingCycleId(null);
+    setCycleEditError(null);
+  }, [displayedRoutineId, cycleEditDuration, cycleEditKind, cycleEditName, editingCycleId, mutate]);
 
   const handleSelectCycleEditKind = useCallback((kind: CycleKind) => {
     setCycleEditKind(kind);
@@ -482,44 +508,45 @@ export default function ProgramsScreen() {
       const beforeId = to > 0 ? (withoutMoved[to - 1]?.id ?? null) : null;
       const afterId = withoutMoved[to]?.id ?? null;
 
-      await moveCycle({ routineId: displayedRoutineId, cycleId: editingCycleId, beforeId, afterId });
-      await reloadTree(displayedRoutineId);
+      await mutate(
+        () => moveCycle({ routineId: displayedRoutineId, cycleId: editingCycleId, beforeId, afterId }),
+        "Couldn't move that cycle.",
+      );
     },
-    [displayedRoutineId, editingCycleId, reloadTree, tree],
+    [displayedRoutineId, editingCycleId, mutate, tree],
   );
 
   const handleRemoveCycle = useCallback(async () => {
-    if (!displayedRoutineId || !editingCycleId) return;
-    await removeCycle(editingCycleId);
+    if (!editingCycleId) return;
+    const removed = await mutate(() => removeCycle(editingCycleId), "Couldn't remove that cycle.");
+    if (!removed) return;
     if (selectedCycleId === editingCycleId) setSelectedCycleId(null);
     setEditingCycleId(null);
-    await reloadTree(displayedRoutineId);
-  }, [displayedRoutineId, editingCycleId, reloadTree, selectedCycleId]);
+  }, [editingCycleId, mutate, selectedCycleId]);
 
   // The gesture layer (DragHandle) and the Move up/down controls both funnel here — neither reads
   // or writes order_index itself, they only produce a toIndex/neighbour pair that this callback
   // hands straight to moveExercise (04-02), the single write path for reordering.
   const handleReorderExercise = useCallback(
     async (routineDayId: string, exerciseId: string, beforeId: string | null, afterId: string | null) => {
-      if (!displayedRoutineId) return;
-      await moveExercise({ routineDayId, exerciseId, beforeId, afterId });
-      await reloadTree(displayedRoutineId);
+      await mutate(
+        () => moveExercise({ routineDayId, exerciseId, beforeId, afterId }),
+        "Couldn't reorder that exercise.",
+      );
     },
-    [displayedRoutineId, reloadTree],
+    [mutate],
   );
 
   const handleAddExercises = useCallback(
     async (rows: PickerCatalogRow[]) => {
-      if (!displayedRoutineId || !pickerDayId) return;
-      try {
-        await addExercisesToDay({ routineDayId: pickerDayId, exerciseIds: rows.map((row) => row.id) });
-        setPickerDayId(null);
-        await reloadTree(displayedRoutineId);
-      } catch (error) {
-        console.error('add exercises failed', error);
-      }
+      if (!pickerDayId) return;
+      const added = await mutate(
+        () => addExercisesToDay({ routineDayId: pickerDayId, exerciseIds: rows.map((row) => row.id) }),
+        "Couldn't add those exercises.",
+      );
+      if (added) setPickerDayId(null);
     },
-    [displayedRoutineId, pickerDayId, reloadTree],
+    [mutate, pickerDayId],
   );
 
   const handleStartRename = useCallback((dayId: string, currentName: string) => {
@@ -528,15 +555,10 @@ export default function ProgramsScreen() {
   }, []);
 
   const handleSaveRename = useCallback(async () => {
-    if (!displayedRoutineId || !renamingDayId) return;
-    try {
-      await renameDay(renamingDayId, renameValue);
-      setRenamingDayId(null);
-      await reloadTree(displayedRoutineId);
-    } catch (error) {
-      console.error('rename day failed', error);
-    }
-  }, [displayedRoutineId, renamingDayId, renameValue, reloadTree]);
+    if (!renamingDayId) return;
+    const renamed = await mutate(() => renameDay(renamingDayId, renameValue), "Couldn't rename that day.");
+    if (renamed) setRenamingDayId(null);
+  }, [mutate, renamingDayId, renameValue]);
 
   if (screenState === 'error') {
     return (
@@ -597,6 +619,8 @@ export default function ProgramsScreen() {
           ) : tree ? (
             <>
               <Text className="text-heading font-semibold text-foreground">{tree.name}</Text>
+
+              <ErrorBanner message={mutationError} />
 
               {showingActiveProgram ? (
                 <Pressable
@@ -688,7 +712,7 @@ export default function ProgramsScreen() {
                       keyboardType="number-pad"
                     />
                   ) : null}
-                  <PrimaryButton label="Add Cycle" onPress={handleAddCycle} />
+                  <PrimaryButton label="Add Cycle" onPress={() => void handleAddCycle()} />
                 </View>
               ) : null}
 
@@ -738,10 +762,10 @@ export default function ProgramsScreen() {
                     />
                   ) : null}
                   {cycleEditKind !== 'time_off' && cycleEditError ? <ErrorBanner message={cycleEditError} /> : null}
-                  <PrimaryButton label="Save" onPress={handleSaveCycleEdit} />
+                  <PrimaryButton label="Save" onPress={() => void handleSaveCycleEdit()} />
                   <View className="flex-row flex-wrap gap-sm">
                     <Pressable
-                      onPress={() => handleMoveCycle(-1)}
+                      onPress={() => void handleMoveCycle(-1)}
                       accessibilityRole="button"
                       accessibilityLabel="Move cycle earlier"
                       style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
@@ -749,7 +773,7 @@ export default function ProgramsScreen() {
                       <Text className="text-label font-normal text-foreground-muted">Earlier</Text>
                     </Pressable>
                     <Pressable
-                      onPress={() => handleMoveCycle(1)}
+                      onPress={() => void handleMoveCycle(1)}
                       accessibilityRole="button"
                       accessibilityLabel="Move cycle later"
                       style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
@@ -757,7 +781,7 @@ export default function ProgramsScreen() {
                       <Text className="text-label font-normal text-foreground-muted">Later</Text>
                     </Pressable>
                     <Pressable
-                      onPress={handleRemoveCycle}
+                      onPress={() => void handleRemoveCycle()}
                       accessibilityRole="button"
                       accessibilityLabel="Remove cycle"
                       style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
@@ -776,7 +800,7 @@ export default function ProgramsScreen() {
                       {renamingDayId === day.id ? (
                         <View className="gap-sm">
                           <TextField label="Day name" value={renameValue} onChangeText={setRenameValue} />
-                          <PrimaryButton label="Save" onPress={handleSaveRename} />
+                          <PrimaryButton label="Save" onPress={() => void handleSaveRename()} />
                         </View>
                       ) : (
                         <View className="flex-row items-center justify-between gap-sm">
@@ -789,7 +813,7 @@ export default function ProgramsScreen() {
                             <Text className="text-body font-semibold text-foreground">{day.name}</Text>
                           </Pressable>
                           <Pressable
-                            onPress={() => handleRemoveDay(day.id)}
+                            onPress={() => void handleRemoveDay(day.id)}
                             accessibilityRole="button"
                             accessibilityLabel={`Remove ${day.name}`}
                             style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
@@ -851,7 +875,7 @@ export default function ProgramsScreen() {
 
               <View className="gap-sm">
                 <TextField label="New day name" value={newDayName} onChangeText={setNewDayName} />
-                <PrimaryButton label="Add Day" onPress={handleAddDay} />
+                <PrimaryButton label="Add Day" onPress={() => void handleAddDay()} />
               </View>
             </>
           ) : null}

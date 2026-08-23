@@ -3,11 +3,13 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { ArchiveDialog } from '@/components/ArchiveDialog';
+import { ErrorBanner } from '@/components/ErrorBanner';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { RoutineActionSheet, type RoutineAction } from '@/components/RoutineActionSheet';
 import { TextField } from '@/components/TextField';
 import { authClient } from '@/lib/auth-client';
 import { duplicateRoutine } from '@/lib/db/programs/duplicate-routine';
+import { runMutation } from '@/lib/programs/mutation';
 import {
   activateRoutine,
   archiveRoutine,
@@ -178,6 +180,7 @@ export default function ProgramLibraryScreen() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -219,6 +222,18 @@ export default function ProgramLibraryScreen() {
     };
   }, [userId]);
 
+  // Same rule as the builder's mutate: never rejects, so no async handler reaches onSelect/onPress
+  // as an unhandled rejection, and every failure has a banner to land in (WR-11).
+  const mutate = useCallback(
+    async (action: () => Promise<unknown>, fallback: string): Promise<boolean> => {
+      const outcome = await runMutation(action, fallback);
+      setMutationError(outcome.message);
+      await reload();
+      return outcome.ok;
+    },
+    [reload],
+  );
+
   const handleSelectAction = useCallback(
     async (key: string) => {
       const row = routines?.find((candidate) => candidate.id === sheetRowId);
@@ -229,15 +244,20 @@ export default function ProgramLibraryScreen() {
       switch (key) {
         case ACTIVATE:
           if (!userId) return;
-          await activateRoutine({ userId, routineId: row.id });
-          await reload();
+          await mutate(
+            () => activateRoutine({ userId, routineId: row.id }),
+            `Couldn't make ${row.name} the active program.`,
+          );
           return;
         case DUPLICATE: {
-          const result = await duplicateRoutine({ sourceRoutineId: row.id, name: `${row.name} copy` });
-          await reload();
+          let duplicateId: string | null = null;
+          const duplicated = await mutate(async () => {
+            duplicateId = (await duplicateRoutine({ sourceRoutineId: row.id, name: `${row.name} copy` })).id;
+          }, `Couldn't duplicate ${row.name}.`);
+          if (!duplicated || duplicateId === null) return;
           // Duplicating navigates straight into the new draft rather than leaving the user on the
           // list — "the builder should not put anything between the user and building".
-          router.push({ pathname: '/(tabs)/programs', params: { routineId: result.id } });
+          router.push({ pathname: '/(tabs)/programs', params: { routineId: duplicateId } });
           return;
         }
         case RENAME:
@@ -255,7 +275,7 @@ export default function ProgramLibraryScreen() {
           return;
       }
     },
-    [reload, routines, router, sheetRowId, userId],
+    [mutate, routines, router, sheetRowId, userId],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -264,24 +284,24 @@ export default function ProgramLibraryScreen() {
     setConfirming(null);
 
     if (unarchiving) {
-      await restoreRoutine(routineId);
-    } else if (userId) {
-      await archiveRoutine({ userId, routineId });
+      await mutate(() => restoreRoutine(routineId), "Couldn't restore that program.");
+      return;
     }
-
-    await reload();
-  }, [confirming, reload, userId]);
+    if (userId) {
+      await mutate(() => archiveRoutine({ userId, routineId }), "Couldn't archive that program.");
+    }
+  }, [confirming, mutate, userId]);
 
   const handleSaveRename = useCallback(async () => {
     if (!renamingId) return;
-    try {
-      await renameRoutine(renamingId, renameValue);
+    const renamed = await mutate(() => renameRoutine(renamingId, renameValue), "Couldn't rename that program.");
+    if (renamed) {
       setRenamingId(null);
-      await reload();
-    } catch (error) {
-      setRenameError(error instanceof Error ? error.message : 'Program name is required');
+      setRenameError(null);
+      return;
     }
-  }, [reload, renameValue, renamingId]);
+    setRenameError('Program name is required');
+  }, [mutate, renameValue, renamingId]);
 
   const screenState = deriveLibraryScreenState({ failed, routines });
 
@@ -301,7 +321,7 @@ export default function ProgramLibraryScreen() {
       <ArchiveDialog
         subject="program"
         unarchiving={confirming.unarchiving}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
         onCancel={() => setConfirming(null)}
       />
     );
@@ -325,6 +345,11 @@ export default function ProgramLibraryScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {mutationError ? (
+        <View className="px-lg pt-md">
+          <ErrorBanner message={mutationError} />
+        </View>
+      ) : null}
       <FlashList
         data={items}
         keyExtractor={(item) => (item.kind === 'header' ? `header-${item.title}` : item.row.id)}
