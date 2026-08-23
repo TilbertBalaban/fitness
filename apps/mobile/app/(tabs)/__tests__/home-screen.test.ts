@@ -14,6 +14,7 @@ import {
   formatNextUpExerciseLine,
   formatTimeOffRemaining,
   nextUpHeading,
+  readNextUp,
 } from '../index';
 
 const WORKOUT_NO_CYCLE = {
@@ -228,5 +229,66 @@ describe('dayTargetMuscles', () => {
 
   it('tolerates an exercise missing from the muscle map', () => {
     expect(dayTargetMuscles([slot('re9', 'unknown', 'Mystery')], muscles)).toEqual([]);
+  });
+});
+
+// WR-04: the card loaded once on mount with an empty dependency array and nothing ever re-ran the
+// read, so activating a program on the Programs tab left Home reading "No active program" until the
+// app was killed. HomeScreen's focus effect is now this function and nothing else; the focus wiring
+// itself is not exercised here because this workspace has no renderer.
+describe('readNextUp', () => {
+  const EMPTY_DATA = {
+    routine: null,
+    days: [],
+    cycles: [],
+    history: [],
+    musclesByExerciseId: {},
+    today: '2026-01-01',
+  };
+
+  it('passes the signed-in user through to the read', async () => {
+    const load = jest.fn().mockResolvedValue(EMPTY_DATA);
+
+    await readNextUp('user-1', load);
+
+    expect(load).toHaveBeenCalledWith('user-1');
+  });
+
+  it('returns the data on a successful read', async () => {
+    const load = jest.fn().mockResolvedValue(EMPTY_DATA);
+
+    expect(await readNextUp('user-1', load)).toEqual({ data: EMPTY_DATA });
+  });
+
+  it('reports a failure instead of throwing, so a focus never crashes the tab', async () => {
+    const load = jest.fn().mockRejectedValue(new Error('database locked'));
+
+    expect(await readNextUp('user-1', load)).toEqual({ failed: true });
+  });
+
+  it('re-reads on every call — nothing memoises the first result', async () => {
+    const load = jest
+      .fn()
+      .mockResolvedValueOnce(EMPTY_DATA)
+      .mockResolvedValueOnce({ ...EMPTY_DATA, routine: { id: 'r1', name: 'Push Pull Legs' } });
+
+    expect(await readNextUp('user-1', load)).toEqual({ data: EMPTY_DATA });
+    expect(await readNextUp('user-1', load)).toMatchObject({ data: { routine: { id: 'r1' } } });
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('recovers from a failure — a later read reports data, not the earlier failure', async () => {
+    const load = jest.fn().mockRejectedValueOnce(new Error('database locked')).mockResolvedValueOnce(EMPTY_DATA);
+
+    expect(await readNextUp('user-1', load)).toEqual({ failed: true });
+    expect(await readNextUp('user-1', load)).toEqual({ data: EMPTY_DATA });
+  });
+
+  it('still reads with a null user, so the signed-out empty state is derived not assumed', async () => {
+    const load = jest.fn().mockResolvedValue(EMPTY_DATA);
+
+    await readNextUp(null, load);
+
+    expect(load).toHaveBeenCalledWith(null);
   });
 });

@@ -1,6 +1,6 @@
 import { resolveTarget, type ResolvedTarget } from '@fitness/api-contracts';
-import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { authClient } from '@/lib/auth-client';
@@ -167,6 +167,24 @@ function NextUpCard({
   );
 }
 
+export type NextUpRead = { data: NextUpData } | { failed: true };
+
+// The whole body of the screen's focus effect, extracted so the read/failure sequence is exercised
+// without a renderer (there is none in this workspace's lockfile). A success clears a previous
+// failure: with the card now re-reading on every focus, a transient error must not outlive the
+// read that succeeded after it.
+export async function readNextUp(
+  userId: string | null,
+  load: (id: string | null) => Promise<NextUpData> = (id) => loadNextUp(id, getPowerSync()),
+): Promise<NextUpRead> {
+  try {
+    return { data: await load(userId) };
+  } catch (error) {
+    console.error('next up load failed', error);
+    return { failed: true };
+  }
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const session = authClient.useSession();
@@ -174,23 +192,33 @@ export default function HomeScreen() {
   const [data, setData] = useState<NextUpData | null>(null);
   const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
+  // On focus, not on mount. Both tabs stay mounted in a tab navigator, so a mount-only read meant
+  // activating a program on the Programs tab left Home reading "No active program" until the app
+  // was killed — and the same staleness covered every day, exercise and target edit.
+  //
+  // This does not make the card reactive: a change arriving from the other device while Home is
+  // already focused still waits for the next focus. Closing that needs a PowerSync watched query
+  // over the seven tables the card derives from.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
 
-    (async () => {
-      try {
-        const loaded = await loadNextUp(userId, getPowerSync());
-        if (mounted) setData(loaded);
-      } catch (error) {
-        console.error('next up load failed', error);
-        if (mounted) setFailed(true);
-      }
-    })();
+      void (async () => {
+        const result = await readNextUp(userId);
+        if (!active) return;
+        if ('failed' in result) {
+          setFailed(true);
+          return;
+        }
+        setData(result.data);
+        setFailed(false);
+      })();
 
-    return () => {
-      mounted = false;
-    };
-  }, [userId]);
+      return () => {
+        active = false;
+      };
+    }, [userId]),
+  );
 
   const nextUp = useMemo(
     () =>
