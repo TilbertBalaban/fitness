@@ -68,6 +68,34 @@ export function deriveProgramsScreenState({
   return 'populated';
 }
 
+export interface DisplayedRoutineInput {
+  routineIdParam?: string;
+  routines: { id: string; archivedAt: string | null }[] | null;
+  activeRoutineId: string | null;
+}
+
+// deriveProgramsScreenState's rule — "a pointer naming a routine that is not in the list reads as
+// no-active" — was bypassed entirely by the routeIdParam, because the builder branch tests
+// displayedRoutineId before screenState is ever consulted. A param naming an archived program
+// therefore rendered it fully editable, and a param naming a program this device does not have
+// rendered a header and two links and nothing else. The param has to clear the same bar the pointer
+// does before it is honoured.
+//
+// While routines is still null the param is not yet checkable, so the screen shows its loading
+// state for one frame rather than opening a routine it has not verified.
+export function resolveDisplayedRoutineId({
+  routineIdParam,
+  routines,
+  activeRoutineId,
+}: DisplayedRoutineInput): string | null {
+  const usable =
+    routineIdParam !== undefined &&
+    routines !== null &&
+    routines.some((routine) => routine.id === routineIdParam && routine.archivedAt === null);
+
+  return usable ? (routineIdParam as string) : activeRoutineId;
+}
+
 export const FREEZE_SWITCH_TITLE = 'Update Program';
 
 // The switch is on when the program is NOT frozen: "Update Program" describes what progression is
@@ -171,8 +199,9 @@ export default function ProgramsScreen() {
 
   const [activeRoutineId, setActiveRoutineId] = useState<string | null>(null);
   // What the builder is pointed at. The active pointer decides by default (D-26); an explicit
-  // routineId param overrides it so a just-created duplicate opens straight into its own tree.
-  const displayedRoutineId = routineIdParam ?? activeRoutineId;
+  // routineId param overrides it so a just-created duplicate opens straight into its own tree —
+  // but only once it has been checked against the loaded, non-archived list.
+  const displayedRoutineId = resolveDisplayedRoutineId({ routineIdParam, routines, activeRoutineId });
   const [tree, setTree] = useState<ProgramTree | null>(null);
   const [treeFailed, setTreeFailed] = useState(false);
   const [exerciseNames, setExerciseNames] = useState<Map<string, string> | null>(null);

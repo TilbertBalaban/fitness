@@ -49,6 +49,7 @@ import {
   overrideDelta,
   overriddenFields,
   parseCycleDuration,
+  resolveDisplayedRoutineId,
   resolveSlotTargets,
   selectedCycleOf,
 } from '../programs';
@@ -281,5 +282,60 @@ describe('cycleDurationFieldValue', () => {
   it('round-trips through parseCycleDuration', () => {
     expect(parseCycleDuration(cycleDurationFieldValue(14))).toBe(14);
     expect(parseCycleDuration(cycleDurationFieldValue(null))).toBeNull();
+  });
+});
+
+// WR-08: displayedRoutineId was `routineIdParam ?? activeRoutineId` and the builder branch tests it
+// before screenState is consulted, so deriveProgramsScreenState's "a pointer naming a routine that
+// is not in the list reads as no-active" rule was bypassed whenever the param was present.
+describe('resolveDisplayedRoutineId (WR-08)', () => {
+  const LIVE = { id: 'r-live', archivedAt: null };
+  const ARCHIVED = { id: 'r-archived', archivedAt: '2026-01-01T00:00:00.000Z' };
+
+  it('honours a param naming a loaded, non-archived program', () => {
+    expect(
+      resolveDisplayedRoutineId({ routineIdParam: 'r-live', routines: [LIVE], activeRoutineId: null }),
+    ).toBe('r-live');
+  });
+
+  it('falls back to the active pointer for a param naming an archived program', () => {
+    expect(
+      resolveDisplayedRoutineId({
+        routineIdParam: 'r-archived',
+        routines: [LIVE, ARCHIVED],
+        activeRoutineId: 'r-live',
+      }),
+    ).toBe('r-live');
+  });
+
+  it('reads as no-active for an archived param when nothing else is active', () => {
+    expect(
+      resolveDisplayedRoutineId({ routineIdParam: 'r-archived', routines: [ARCHIVED], activeRoutineId: null }),
+    ).toBeNull();
+  });
+
+  it('falls back for a param naming a program this device does not have', () => {
+    expect(
+      resolveDisplayedRoutineId({ routineIdParam: 'r-gone', routines: [LIVE], activeRoutineId: 'r-live' }),
+    ).toBe('r-live');
+  });
+
+  it('does not honour a param before the list has loaded — it is not checkable yet', () => {
+    expect(
+      resolveDisplayedRoutineId({ routineIdParam: 'r-live', routines: null, activeRoutineId: null }),
+    ).toBeNull();
+  });
+
+  it('uses the active pointer when no param is present at all', () => {
+    expect(resolveDisplayedRoutineId({ routines: [LIVE], activeRoutineId: 'r-live' })).toBe('r-live');
+  });
+
+  // The screen holds `routines` already filtered to non-archived, so the two functions see the same
+  // list — and must reach the same verdict about a pointer naming something not in it.
+  it('agrees with deriveProgramsScreenState rather than bypassing it', () => {
+    const routines = [LIVE];
+
+    expect(resolveDisplayedRoutineId({ routineIdParam: 'r-archived', routines, activeRoutineId: null })).toBeNull();
+    expect(deriveProgramsScreenState({ failed: false, routines, activeRoutineId: 'r-archived' })).toBe('no-active');
   });
 });
