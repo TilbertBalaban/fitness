@@ -1,4 +1,4 @@
-import { loadLiveSession, loadSessionTree } from '../session-query';
+import { loadLiveSession, loadSessionTree, previousSetReference, previousSetReferencesForSession } from '../session-query';
 import { getPowerSync } from '../powersync';
 import { loadExerciseNameMap } from '../programs/load-program';
 import { loggedSet, sessionExercise, workoutSession } from '../schema';
@@ -255,5 +255,233 @@ describe('loadLiveSession', () => {
     await loadLiveSession('user-1');
 
     expect(getPowerSyncMock).toHaveBeenCalled();
+  });
+});
+
+// previousSetReference/previousSetReferencesForSession build compound and()/inArray()/ne()
+// conditions the eq()-only evaluator above can't interpret, so this fake walks the same
+// queryChunks shape one level further: a leaf clause is COLUMN OP VALUE(S) (operator one of
+// " = " / " <> " / " in ", verified empirically against the exact drizzle-orm build in this
+// workspace's lockfile), and and()/or() wrap several leaves with a joining " and "/" or " string
+// chunk between them — recursing on nested SQL nodes covers both shapes with one function.
+function isSqlNode(node: unknown): node is { queryChunks: unknown[] } {
+  return !!node && typeof node === 'object' && Array.isArray((node as { queryChunks?: unknown[] }).queryChunks);
+}
+
+function isColumnChunk(node: unknown): node is { name: string } {
+  return !!node && typeof node === 'object' && typeof (node as { name?: unknown }).name === 'string' && 'table' in (node as object);
+}
+
+// A StringChunk (literal syntax fragment — an operator, "(", ")", " and ") stores its text as an
+// ARRAY of strings in `.value`; a Param (an actual bound value, including each element of an
+// inArray() list) stores its value as the bare scalar. Verified empirically against this
+// workspace's exact drizzle-orm build (`node -e` against `eq()`'s own queryChunks) — this is the
+// one distinction the whole evaluator hinges on, and it is easy to get backwards.
+function stringChunkText(node: unknown): string | null {
+  if (!node || typeof node !== 'object') return null;
+  const value = (node as { value?: unknown }).value;
+  if (Array.isArray(value) && typeof value[0] === 'string') return value.join('');
+  return null;
+}
+
+function isParamChunk(node: unknown): node is { value: unknown } {
+  if (!node || typeof node !== 'object') return false;
+  if (!('value' in (node as object))) return false;
+  return !Array.isArray((node as { value: unknown }).value);
+}
+
+function buildPredicate(table: TableLike, node: unknown): (row: Record<string, unknown>) => boolean {
+  if (!isSqlNode(node)) return () => true;
+  const chunks = node.queryChunks;
+
+  const subNodes = chunks.filter(isSqlNode);
+  const joinsOr = chunks.some((chunk) => stringChunkText(chunk)?.trim() === 'or');
+  if (subNodes.length > 1) {
+    const predicates = subNodes.map((sub) => buildPredicate(table, sub));
+    return (row) => (joinsOr ? predicates.some((p) => p(row)) : predicates.every((p) => p(row)));
+  }
+  if (subNodes.length === 1) return buildPredicate(table, subNodes[0]);
+
+  let column: string | null = null;
+  let operator: string | null = null;
+  let values: unknown[] = [];
+  for (const chunk of chunks) {
+    if (isColumnChunk(chunk)) {
+      column = chunk.name;
+      continue;
+    }
+    if (Array.isArray(chunk)) {
+      values = chunk.map((entry) => (isParamChunk(entry) ? entry.value : undefined));
+      continue;
+    }
+    const text = stringChunkText(chunk);
+    if (text !== null) {
+      const trimmed = text.trim();
+      if (trimmed === '=' || trimmed === '<>' || trimmed === 'in') operator = trimmed;
+      continue;
+    }
+    if (isParamChunk(chunk) && operator && operator !== 'in') {
+      values = [chunk.value];
+    }
+  }
+
+  if (!column || !operator) return () => true;
+  const key = propertyKeyForColumn(table, column);
+  if (!key) return () => true;
+
+  return (row) => {
+    const rowValue = row[key];
+    if (operator === '=') return rowValue === values[0];
+    if (operator === '<>') return rowValue !== values[0];
+    if (operator === 'in') return values.includes(rowValue);
+    return true;
+  };
+}
+
+interface ReferenceFakeRows {
+  sessionExerciseRows?: Record<string, unknown>[];
+  workoutSessionRows?: Record<string, unknown>[];
+  loggedSetRows?: Record<string, unknown>[];
+}
+
+function fakeReferenceDb({ sessionExerciseRows = [], workoutSessionRows = [], loggedSetRows = [] }: ReferenceFakeRows) {
+  const tables = new Map<unknown, [TableLike, Record<string, unknown>[]]>([
+    [sessionExercise, [sessionExercise as unknown as TableLike, sessionExerciseRows]],
+    [workoutSession, [workoutSession as unknown as TableLike, workoutSessionRows]],
+    [loggedSet, [loggedSet as unknown as TableLike, loggedSetRows]],
+  ]);
+
+  const db = {
+    select: () => ({
+      from: (table: unknown) => ({
+        where: (condition: unknown) => {
+          const [tableDef, tableRows] = tables.get(table) ?? [{}, []];
+          const predicate = buildPredicate(tableDef, condition);
+          return Promise.resolve(tableRows.filter(predicate));
+        },
+      }),
+    }),
+  } as unknown as ReturnType<typeof getPowerSync>;
+
+  return db;
+}
+
+const EXERCISE_A_SE_CURRENT = { id: 'se-current', sessionId: 's-current', exerciseId: 'ex-a' };
+const EXERCISE_A_SE_PRIOR_1 = { id: 'se-prior-1', sessionId: 's-prior-1', exerciseId: 'ex-a' };
+const EXERCISE_A_SE_PRIOR_2 = { id: 'se-prior-2', sessionId: 's-prior-2', exerciseId: 'ex-a' };
+
+const SESSION_PRIOR_1 = { id: 's-prior-1', startedAt: '2026-08-01T10:00:00.000Z' };
+const SESSION_PRIOR_2 = { id: 's-prior-2', startedAt: '2026-08-10T10:00:00.000Z' };
+
+describe('previousSetReference', () => {
+  it('resolves the prior session’s same-set_index row, not its most recently logged row (Pitfall 1)', async () => {
+    const db = fakeReferenceDb({
+      sessionExerciseRows: [EXERCISE_A_SE_CURRENT, EXERCISE_A_SE_PRIOR_1],
+      workoutSessionRows: [SESSION_PRIOR_1],
+      loggedSetRows: [
+        { id: 'ls-1', sessionExerciseId: 'se-prior-1', setIndex: 1, setType: 'normal', weightKg: '90.000', reps: 8, loggedAt: 't1' },
+        { id: 'ls-2', sessionExerciseId: 'se-prior-1', setIndex: 2, setType: 'normal', weightKg: '92.500', reps: 8, loggedAt: 't2' },
+        { id: 'ls-3', sessionExerciseId: 'se-prior-1', setIndex: 3, setType: 'normal', weightKg: '95.000', reps: 6, loggedAt: 't3' },
+      ],
+    });
+
+    const result = await previousSetReference({ exerciseId: 'ex-a', setIndex: 2, beforeSessionId: 's-current', userId: 'user-1' }, db);
+
+    expect(result).toEqual({ weightKg: '92.500', reps: 8, sessionId: 's-prior-1', loggedAt: 't2' });
+  });
+
+  it('picks the reference from the prior session with the greater started_at when two prior sessions share a set_index', async () => {
+    const db = fakeReferenceDb({
+      sessionExerciseRows: [EXERCISE_A_SE_CURRENT, EXERCISE_A_SE_PRIOR_1, EXERCISE_A_SE_PRIOR_2],
+      workoutSessionRows: [SESSION_PRIOR_1, SESSION_PRIOR_2],
+      loggedSetRows: [
+        { id: 'ls-older', sessionExerciseId: 'se-prior-1', setIndex: 1, setType: 'normal', weightKg: '90.000', reps: 8, loggedAt: 't1' },
+        { id: 'ls-newer', sessionExerciseId: 'se-prior-2', setIndex: 1, setType: 'normal', weightKg: '100.000', reps: 5, loggedAt: 't2' },
+      ],
+    });
+
+    const result = await previousSetReference({ exerciseId: 'ex-a', setIndex: 1, beforeSessionId: 's-current', userId: 'user-1' }, db);
+
+    expect(result).toMatchObject({ weightKg: '100.000', sessionId: 's-prior-2' });
+  });
+
+  it('breaks a started_at tie by the greater logged_at', async () => {
+    const db = fakeReferenceDb({
+      sessionExerciseRows: [EXERCISE_A_SE_CURRENT, EXERCISE_A_SE_PRIOR_1],
+      workoutSessionRows: [SESSION_PRIOR_1],
+      loggedSetRows: [
+        { id: 'ls-a', sessionExerciseId: 'se-prior-1', setIndex: 1, setType: 'normal', weightKg: '90.000', reps: 8, loggedAt: 't1' },
+        { id: 'ls-b', sessionExerciseId: 'se-prior-1', setIndex: 1, setType: 'normal', weightKg: '91.000', reps: 8, loggedAt: 't2' },
+      ],
+    });
+
+    const result = await previousSetReference({ exerciseId: 'ex-a', setIndex: 1, beforeSessionId: 's-current', userId: 'user-1' }, db);
+
+    expect(result).toMatchObject({ weightKg: '91.000', loggedAt: 't2' });
+  });
+
+  it('resolves null for a first-ever exercise with no prior session', async () => {
+    const db = fakeReferenceDb({ sessionExerciseRows: [EXERCISE_A_SE_CURRENT] });
+
+    const result = await previousSetReference({ exerciseId: 'ex-a', setIndex: 1, beforeSessionId: 's-current', userId: 'user-1' }, db);
+
+    expect(result).toBeNull();
+  });
+
+  it('excludes a warm-up row from its own source set, even at the exact matching set_index', async () => {
+    const db = fakeReferenceDb({
+      sessionExerciseRows: [EXERCISE_A_SE_CURRENT, EXERCISE_A_SE_PRIOR_1],
+      workoutSessionRows: [SESSION_PRIOR_1],
+      loggedSetRows: [
+        { id: 'ls-warmup', sessionExerciseId: 'se-prior-1', setIndex: 1, setType: 'warmup', weightKg: '40.000', reps: 10, loggedAt: 't1' },
+      ],
+    });
+
+    const result = await previousSetReference({ exerciseId: 'ex-a', setIndex: 1, beforeSessionId: 's-current', userId: 'user-1' }, db);
+
+    expect(result).toBeNull();
+  });
+
+  it('resolves null for a signed-out read without querying', async () => {
+    const db = fakeReferenceDb({ sessionExerciseRows: [EXERCISE_A_SE_CURRENT] });
+
+    const result = await previousSetReference({ exerciseId: 'ex-a', setIndex: 1, beforeSessionId: 's-current', userId: null }, db);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('previousSetReferencesForSession', () => {
+  it('resolves a key per (session_exercise, set_index) for every existing row plus its next draft index', async () => {
+    const db = fakeReferenceDb({
+      sessionExerciseRows: [EXERCISE_A_SE_CURRENT, EXERCISE_A_SE_PRIOR_1],
+      workoutSessionRows: [SESSION_PRIOR_1],
+      loggedSetRows: [
+        { id: 'ls-cur-1', sessionExerciseId: 'se-current', setIndex: 1, setType: 'normal', weightKg: '80.000', reps: 10, loggedAt: 'now' },
+        { id: 'ls-prior-1', sessionExerciseId: 'se-prior-1', setIndex: 1, setType: 'normal', weightKg: '90.000', reps: 8, loggedAt: 't1' },
+        { id: 'ls-prior-2', sessionExerciseId: 'se-prior-1', setIndex: 2, setType: 'normal', weightKg: '92.500', reps: 8, loggedAt: 't2' },
+      ],
+    });
+
+    const result = await previousSetReferencesForSession('s-current', db);
+
+    expect(result['se-current:1']).toMatchObject({ weightKg: '90.000' });
+    expect(result['se-current:2']).toMatchObject({ weightKg: '92.500' });
+  });
+
+  it('resolves an empty map for a session with no exercises', async () => {
+    const db = fakeReferenceDb({});
+
+    const result = await previousSetReferencesForSession('s-current', db);
+
+    expect(result).toEqual({});
+  });
+
+  it('never includes a key for a set_index with no prior data', async () => {
+    const db = fakeReferenceDb({ sessionExerciseRows: [EXERCISE_A_SE_CURRENT] });
+
+    const result = await previousSetReferencesForSession('s-current', db);
+
+    expect(result['se-current:1']).toBeUndefined();
   });
 });

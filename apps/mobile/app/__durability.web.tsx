@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
 import { SyncConnector } from '../lib/db/connector';
 import { addSessionExercise, logSet, startSession } from '../lib/db/log-set';
+import { previousSetReference } from '../lib/db/session-query';
 import {
   connectPowerSync,
   disconnectPowerSync,
@@ -131,6 +132,12 @@ export default function DurabilityHarnessScreen() {
       },
       async readSets(sessionExerciseId: string) {
         return readLoggedSets(requireOpenDb(), sessionExerciseId);
+      },
+      // Delegates to the real previousSetReference against the currently open() database — the
+      // two-prior-sessions reload case (durability.spec.ts) proves the same tie-break the unit
+      // tests already cover, but through the real browser database instead of a fake.
+      async previousSetReference(input: Parameters<typeof previousSetReference>[0]) {
+        return previousSetReference(input, requireOpenDb());
       },
       async crudCount() {
         if (usingProductionDb) {

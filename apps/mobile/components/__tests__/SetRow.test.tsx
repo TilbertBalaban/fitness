@@ -35,10 +35,12 @@ function baseProps(overrides: Partial<SetRowViewProps> = {}): SetRowViewProps {
   return {
     setIndex: 1,
     values: { weight: null, reps: '10', rir: '2' },
+    reference: { weight: null, reps: null },
     completed: false,
     activeField: null,
     colors: COLORS,
     onFieldPress: jest.fn(),
+    onReferenceTap: jest.fn(),
     onCheckmarkPress: jest.fn(),
     ...overrides,
   };
@@ -166,5 +168,66 @@ describe('SetRowView', () => {
     const result = SetRowView(baseProps({ values: { weight: '99999.999', reps: '999', rir: '99' } }));
     const checkmark = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Mark set complete');
     expect(checkmark?.props.style).toEqual({ width: 48, height: 48 });
+  });
+
+  it('a null reference renders the exact string "No previous" with no press handler', () => {
+    const result = SetRowView(baseProps({ reference: { weight: null, reps: null } }));
+
+    expect(findByType(result, Text).some((el) => flatText(el) === 'No previous')).toBe(true);
+    expect(findByType(result, Pressable).some((el) => (el.props.accessibilityLabel as string)?.startsWith('Weight, use previous'))).toBe(
+      false,
+    );
+  });
+
+  // rir never carries a reference (D-16's deliberate split — the reps/rir prefill trains toward
+  // the program, only weight and reps show what actually happened last time) — this is the same
+  // "No previous, no press handler" shape a warm-up-sourced null would produce, since
+  // previousSetReference already excludes warm-up rows from its own source set before SetRow ever
+  // sees a value (tested at the query layer in session-query.test.ts).
+  it('rir never renders a tappable reference, regardless of the weight/reps reference state', () => {
+    const result = SetRowView(baseProps({ reference: { weight: '95.00', reps: '8' } }));
+    const rirField = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'RIR, set field');
+
+    expect(rirField).toBeDefined();
+    expect(findByType(result, Pressable).some((el) => (el.props.accessibilityLabel as string)?.startsWith('RIR, use previous'))).toBe(
+      false,
+    );
+  });
+
+  it('a present weight reference renders a press handler that fills only the weight field', () => {
+    const onReferenceTap = jest.fn();
+    const result = SetRowView(baseProps({ reference: { weight: '95.00', reps: null }, onReferenceTap }));
+    const referenceTarget = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Weight, use previous 95.00');
+
+    expect(referenceTarget).toBeDefined();
+    (referenceTarget?.props.onPress as () => void)();
+
+    expect(onReferenceTap).toHaveBeenCalledWith('weight');
+    expect(onReferenceTap).not.toHaveBeenCalledWith('reps');
+  });
+
+  it('a present reps reference renders a press handler that fills only the reps field', () => {
+    const onReferenceTap = jest.fn();
+    const result = SetRowView(baseProps({ reference: { weight: null, reps: '8' }, onReferenceTap }));
+    const referenceTarget = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Reps, use previous 8');
+
+    expect(referenceTarget).toBeDefined();
+    (referenceTarget?.props.onPress as () => void)();
+
+    expect(onReferenceTap).toHaveBeenCalledWith('reps');
+    expect(onReferenceTap).not.toHaveBeenCalledWith('weight');
+  });
+
+  it('tapping a reference whose value already equals the field still calls onReferenceTap once, leaving the field value identical', () => {
+    const onReferenceTap = jest.fn();
+    const result = SetRowView(
+      baseProps({ values: { weight: '95.00', reps: '10', rir: '2' }, reference: { weight: '95.00', reps: null }, onReferenceTap }),
+    );
+    const referenceTarget = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Weight, use previous 95.00');
+
+    (referenceTarget?.props.onPress as () => void)();
+
+    expect(onReferenceTap).toHaveBeenCalledTimes(1);
+    expect(onReferenceTap).toHaveBeenCalledWith('weight');
   });
 });

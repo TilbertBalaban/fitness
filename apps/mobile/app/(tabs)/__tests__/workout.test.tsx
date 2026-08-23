@@ -147,7 +147,13 @@ describe('buildSetRows', () => {
   it('renders one row plus a trailing draft when the exercise has zero logged sets', () => {
     const rows = buildSetRows([], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toEqual({ setId: null, setIndex: 1, values: { weight: null, reps: '12', rir: '2' }, completed: false });
+    expect(rows[0]).toEqual({
+      setId: null,
+      setIndex: 1,
+      values: { weight: null, reps: '12', rir: '2' },
+      reference: { weight: null, reps: null },
+      completed: false,
+    });
   });
 
   it('renders every existing row plus one trailing draft, in set_index order', () => {
@@ -195,6 +201,25 @@ describe('buildSetRows', () => {
     const rows = buildSetRows([LOGGED_ROW, WARMUP_ROW], {}, { weight: null, reps: null, rir: null }, 'kg', null);
     expect(rows.map((row) => row.setId)).toEqual(['ls-warmup', 'ls-1', null]);
   });
+
+  it('attaches the matching reference for an existing row and for the trailing draft, by set_index', () => {
+    const referenceMap = {
+      'se-1:1': { weightKg: '95.000', reps: 8, sessionId: 's-prior', loggedAt: 't' },
+      'se-1:2': { weightKg: '97.500', reps: 9, sessionId: 's-prior', loggedAt: 't' },
+    };
+    const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: null, rir: null }, 'kg', null, {
+      sessionExerciseId: 'se-1',
+      referenceMap,
+    });
+    expect(rows[0].reference).toEqual({ weight: '95.00', reps: '8' });
+    expect(rows[1].reference).toEqual({ weight: '97.50', reps: '9' });
+  });
+
+  it('defaults to no reference on every row when no reference context is passed', () => {
+    const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: null, rir: null }, 'kg', null);
+    expect(rows[0].reference).toEqual({ weight: null, reps: null });
+    expect(rows[1].reference).toEqual({ weight: null, reps: null });
+  });
 });
 
 function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): WorkoutScreenViewProps {
@@ -216,6 +241,7 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     onIndexChange: jest.fn(),
     onAddExercise: jest.fn(),
     onFieldPress: jest.fn(),
+    onReferenceTap: jest.fn(),
     onKeypadPress: jest.fn(),
     onSubmitField: jest.fn(),
     onCheckmarkPress: jest.fn(),
@@ -332,6 +358,22 @@ describe('WorkoutScreenView', () => {
     (existingRow.props.onFieldPress as (field: string) => void)('rir');
 
     expect(onFieldPress).toHaveBeenCalledWith('se-1', 'ls-1', 'rir', '2');
+  });
+
+  it('a SetRowView reference tap resolves that row’s exerciseId, setId and field through onReferenceTap', () => {
+    const exercise = { id: 'se-1', name: 'Bench Press', completedWorkingSets: 1, targetSets: 1 };
+    const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null, {
+      sessionExerciseId: 'se-1',
+      referenceMap: { 'se-1:1': { weightKg: '95.000', reps: 8, sessionId: 's-prior', loggedAt: 't' } },
+    });
+    const onReferenceTap = jest.fn();
+    const result = WorkoutScreenView(baseViewProps({ exercises: [exercise], rowsByExercise: { 'se-1': rows }, onReferenceTap }));
+
+    const page = renderCurrentExercisePage(result, exercise);
+    const [existingRow] = findByType(page, SetRowView);
+    (existingRow.props.onReferenceTap as (field: 'weight' | 'reps') => void)('weight');
+
+    expect(onReferenceTap).toHaveBeenCalledWith('se-1', 'ls-1', 'weight');
   });
 
   it('a checkmark press resolves that exercise’s id and the row’s setId through onCheckmarkPress', () => {

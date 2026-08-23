@@ -2,12 +2,13 @@ import type { ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import type { KeypadField } from './NumericKeypad';
-import { SetRowView, type SetRowValues } from './SetRow';
+import { SetRowView, type SetRowReference, type SetRowValues } from './SetRow';
 
 export interface ExercisePageSetRow {
   setId: string | null;
   setIndex: number;
   values: SetRowValues;
+  reference: SetRowReference;
   completed: boolean;
 }
 
@@ -23,6 +24,7 @@ export interface ExercisePageViewProps {
   colors: ThemeColors;
   actionBarSlot?: ReactNode;
   onFieldPress: (setId: string | null, field: KeypadField, currentValue: string | null) => void;
+  onReferenceTap: (setId: string | null, field: 'weight' | 'reps') => void;
   onCheckmarkPress: (setId: string | null) => void;
 }
 
@@ -31,7 +33,7 @@ export interface ExercisePageViewProps {
 // regardless of raw set_index, per RESEARCH.md Pitfall 2) — this component only renders the order
 // it is given. `actionBarSlot` is a render-prop slot 05-06 fills with the Warm-up/Targets/Note
 // action bar (D-13); left undefined this task since those actions don't exist yet.
-export function ExercisePageView({ exerciseName, rows, activeField, colors, actionBarSlot, onFieldPress, onCheckmarkPress }: ExercisePageViewProps) {
+export function ExercisePageView({ exerciseName, rows, activeField, colors, actionBarSlot, onFieldPress, onReferenceTap, onCheckmarkPress }: ExercisePageViewProps) {
   return (
     <View className="flex-1 bg-background">
       <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 }}>
@@ -42,10 +44,12 @@ export function ExercisePageView({ exerciseName, rows, activeField, colors, acti
             key={row.setId ?? `draft-${row.setIndex}`}
             setIndex={row.setIndex}
             values={row.values}
+            reference={row.reference}
             completed={row.completed}
             activeField={activeField && activeField.setId === row.setId ? activeField.field : null}
             colors={colors}
             onFieldPress={(field) => onFieldPress(row.setId, field, row.values[field])}
+            onReferenceTap={(field) => onReferenceTap(row.setId, field)}
             onCheckmarkPress={() => onCheckmarkPress(row.setId)}
           />
         ))}

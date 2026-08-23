@@ -25,14 +25,31 @@ export interface SetRowValues {
   rir: string | null;
 }
 
+// Weight and reps carry a previous-actual comparison (D-16/D-17); rir does not — the field trains
+// you toward the program (its own prefill still comes from the session_exercise snapshot), the
+// greyed weight/reps numbers tell you what you actually did last time. Values arrive already
+// display-formatted (weight converted through fromCanonicalKg at the boundary, reps stringified) —
+// SetRow renders, it never converts.
+export interface SetRowReference {
+  weight: string | null;
+  reps: string | null;
+}
+
 export interface SetRowViewProps {
   setIndex: number;
   values: SetRowValues;
+  reference: SetRowReference;
   completed: boolean;
   activeField: KeypadField | null;
   colors: ThemeColors;
   onFieldPress: (field: KeypadField) => void;
+  onReferenceTap: (field: 'weight' | 'reps') => void;
   onCheckmarkPress: () => void;
+}
+
+interface SetFieldReference {
+  value: string;
+  onTap: () => void;
 }
 
 interface SetFieldProps {
@@ -43,6 +60,7 @@ interface SetFieldProps {
   completed: boolean;
   colors: ThemeColors;
   onPress: () => void;
+  reference: SetFieldReference | null;
 }
 
 // A plain function, called (never rendered as a JSX tag) so its returned Pressable/View/Text tree
@@ -50,9 +68,11 @@ interface SetFieldProps {
 // unexpanded node to a test that walks the tree by direct invocation with no renderer, exactly the
 // trap CycleStripView/DayDeckView avoid by never introducing a second component boundary.
 //
-// The reference slot below the value renders "No previous" only in this task — Task 3 (D-16/D-17)
-// replaces it with the real history-lookup result and the tap-to-autofill affordance.
-function renderSetField({ field, label, value, active, completed, colors, onPress }: SetFieldProps) {
+// `reference` is null both when this field genuinely has no history (a first-ever set) and when
+// this field never carries one at all (rir) — both render the identical "No previous", no
+// underline, no press target literal string, since a reader can't tell "never applicable" from
+// "not yet logged" apart and shouldn't need to.
+function renderSetField({ field, label, value, active, completed, colors, onPress, reference }: SetFieldProps) {
   return (
     <Pressable
       key={field}
@@ -66,7 +86,17 @@ function renderSetField({ field, label, value, active, completed, colors, onPres
         <Text className={`text-body ${completed ? 'font-semibold' : 'font-normal'} text-foreground`}>{value}</Text>
         {active ? <View accessibilityLabel={`${field} cursor`} style={{ width: 2, height: 20, backgroundColor: colors.accent }} /> : null}
       </View>
-      <Text className="text-label font-normal text-foreground-muted">No previous</Text>
+      {reference ? (
+        <Pressable
+          onPress={reference.onTap}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}, use previous ${reference.value}`}
+        >
+          <Text className="text-label font-normal text-accent underline">{reference.value}</Text>
+        </Pressable>
+      ) : (
+        <Text className="text-label font-normal text-foreground-muted">No previous</Text>
+      )}
     </Pressable>
   );
 }
@@ -74,7 +104,7 @@ function renderSetField({ field, label, value, active, completed, colors, onPres
 // Hook-free — direct-invocable by a test, matching CycleStripView/DayDeckView. Every set row is
 // always fully visible, never collapsible (unlike Phase 4's slot row), because logging is the
 // whole point of this screen.
-export function SetRowView({ setIndex, values, completed, activeField, colors, onFieldPress, onCheckmarkPress }: SetRowViewProps) {
+export function SetRowView({ setIndex, values, reference, completed, activeField, colors, onFieldPress, onReferenceTap, onCheckmarkPress }: SetRowViewProps) {
   return (
     <View className="flex-row items-center gap-xs border-b border-foreground-muted/20 py-sm">
       <View style={{ width: 24, minHeight: 24, alignItems: 'center', justifyContent: 'center' }}>
@@ -95,6 +125,7 @@ export function SetRowView({ setIndex, values, completed, activeField, colors, o
         completed,
         colors,
         onPress: () => onFieldPress('weight'),
+        reference: reference.weight !== null ? { value: reference.weight, onTap: () => onReferenceTap('weight') } : null,
       })}
       {renderSetField({
         field: 'reps',
@@ -104,6 +135,7 @@ export function SetRowView({ setIndex, values, completed, activeField, colors, o
         completed,
         colors,
         onPress: () => onFieldPress('reps'),
+        reference: reference.reps !== null ? { value: reference.reps, onTap: () => onReferenceTap('reps') } : null,
       })}
       {renderSetField({
         field: 'rir',
@@ -113,6 +145,7 @@ export function SetRowView({ setIndex, values, completed, activeField, colors, o
         completed,
         colors,
         onPress: () => onFieldPress('rir'),
+        reference: null,
       })}
 
       <Pressable
@@ -136,9 +169,11 @@ export function SetRowView({ setIndex, values, completed, activeField, colors, o
 export interface SetRowProps {
   setIndex: number;
   values: SetRowValues;
+  reference: SetRowReference;
   completed: boolean;
   activeField: KeypadField | null;
   onFieldPress: (field: KeypadField) => void;
+  onReferenceTap: (field: 'weight' | 'reps') => void;
   onCheckmarkPress: () => void;
 }
 
