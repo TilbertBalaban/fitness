@@ -66,6 +66,16 @@ export const sessionExercise = pgTable(
     routineExerciseId: text('routine_exercise_id'),
     // Copied once at session start and never re-read from routine_exercise afterward (D-05) — a
     // six-month-old workout renders from this snapshot regardless of how the routine has changed.
+    //
+    // RIR is ONE number, not a range. target_rir_min/target_rir_max existed briefly and were
+    // removed by user decision during phase 04; do not reintroduce a range. The removal shipped as
+    // a `drizzle-kit push` DROP COLUMN with no migration file, which is this project's convention
+    // rather than an oversight (there is no ./drizzle directory and no db:generate script — the
+    // live database is verified against this file by test/schema-parity.e2e-spec.ts, run as
+    // `pnpm --filter api db:verify`). Acceptable only because the project is pre-release and no
+    // deployed database held RIR-range data. The first real deployment is the point at which push
+    // must be replaced with generated migrations; a database predating this change is detected by
+    // schema-parity's FORBIDDEN_COLUMNS gate rather than silently tolerated.
     targetSets: integer('target_sets'),
     targetRepMin: integer('target_rep_min'),
     targetRepMax: integer('target_rep_max'),

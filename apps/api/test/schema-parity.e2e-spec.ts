@@ -43,7 +43,16 @@ const REQUIRED_USER_COLUMNS = ['id', 'email', 'email_verified'] as const;
 const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
   workout_session: ['id', 'user_id', 'started_at', 'timezone', 'local_date', 'server_seq'],
   logged_set: ['id', 'session_exercise_id', 'set_index', 'weight_kg', 'reps', 'completed', 'parent_set_id'],
-  session_exercise: ['id', 'session_id', 'target_sets', 'target_rep_min', 'target_rep_max', 'superset_group_id'],
+  session_exercise: [
+    'id',
+    'session_id',
+    'target_sets',
+    'target_rep_min',
+    'target_rep_max',
+    'target_rir',
+    'target_rest_seconds',
+    'superset_group_id',
+  ],
   user_preference: ['id', 'user_id', 'weight_unit', 'active_routine_id', 'server_seq'],
   routine: ['id', 'user_id', 'name', 'status', 'source', 'archived_at', 'progression_frozen', 'server_seq'],
   exercise: [
@@ -68,6 +77,18 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
     'target_rir',
     'target_rest_seconds',
   ],
+};
+
+// The mirror of REQUIRED_COLUMNS, for columns a schema change REMOVED. This project applies schema
+// changes with `drizzle-kit push` and keeps no migration files, so a database that was pushed
+// before the change keeps the old columns and every other test still passes green against it —
+// the divergence is silent in exactly the direction REQUIRED_COLUMNS cannot see. target_rir_min /
+// target_rir_max were collapsed into the single target_rir column during phase 04; their continued
+// presence means this database predates that push.
+const FORBIDDEN_COLUMNS: Record<string, readonly string[]> = {
+  session_exercise: ['target_rir_min', 'target_rir_max'],
+  routine_exercise: ['target_rir_min', 'target_rir_max'],
+  routine_exercise_cycle_target: ['target_rir_min', 'target_rir_max'],
 };
 
 let pg: Client;
@@ -123,6 +144,21 @@ describe('Schema parity (e2e)', () => {
     const present = new Set(rows.map((r) => r.column_name));
     for (const column of columns) {
       expect(present.has(column)).toBe(true);
+    }
+  });
+
+  it.each(Object.entries(FORBIDDEN_COLUMNS))('has no removed column left on %s', async (table, columns) => {
+    const { rows } = await pg.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = $1`,
+      [table],
+    );
+
+    expect(rows.length).toBeGreaterThan(0);
+
+    const present = new Set(rows.map((r) => r.column_name));
+    for (const column of columns) {
+      expect(present.has(column)).toBe(false);
     }
   });
 
