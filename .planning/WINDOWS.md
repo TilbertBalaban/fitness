@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 80
+open_count: 87
 waived_count: 1
-fixed_count: 13
-total_count: 94
-last_updated: 2026-08-23T10:07:32.713Z
+fixed_count: 14
+total_count: 102
+last_updated: 2026-08-23T10:37:33.873Z
 ---
 
 # Broken Windows Ledger
@@ -93,7 +93,7 @@ last_updated: 2026-08-23T10:07:32.713Z
 | 79 | 04 | deviation | apps/mobile/lib/programs/next-up.ts |  | Adopted resolution (RESEARCH Pitfall 5a): a completed session logged against a since-deleted day stops counting toward rotation position, so deleting a day rewinds which cycle the lifter is in. The rejected alternative (keeping it countable) makes the answer depend on which day was deleted. | open |  | 2026-08-22T13:45:23.769Z |  |
 | 80 | 04 | deviation | apps/mobile/lib/programs/next-up.ts |  | 04-UI-SPEC overrides 04-10-PLAN's must-have truth on the deleted-day case: when the most recently logged day has been deleted, the next day resolves silently to the first day of the current cycle, never to a rewound index and never to a visible error. The plan text explicitly rejected this; the user-reviewed UI-SPEC mandates it and takes precedence. | open |  | 2026-08-22T13:45:23.975Z |  |
 | 81 | 04 | deviation | apps/mobile/lib/programs/next-up.ts |  | Consecutive time-off cycles chain (each elapsed cycle consumes its own duration_days from the elapsed count before the next is considered), so a 3-day and a 5-day time-off cycle back to back are 8 days off. Neither CONTEXT.md nor the UI-SPEC specifies this; the alternative (each measuring independently from the last session) makes the pair 5 days. | open |  | 2026-08-22T13:45:24.180Z |  |
-| 82 | 04 | stub | apps/mobile/lib/programs/next-up.ts |  | skippedTimeOffCycleIds is computed and returned but nothing renders it. A time-off cycle synced with a null duration_days is silently walked past. Surfacing it needs a Home-card state the UI-SPEC does not define. | open |  | 2026-08-22T13:45:24.415Z |  |
+| 82 | 04 | stub | apps/mobile/lib/programs/next-up.ts |  | skippedTimeOffCycleIds is computed and returned but nothing renders it. A time-off cycle synced with a null duration_days is silently walked past. Surfacing it needs a Home-card state the UI-SPEC does not define. | fixed |  | 2026-08-22T13:45:24.415Z | 2026-08-23T10:37:33.195Z |
 | 83 | 04 | todo | apps/mobile/lib/db/programs/next-up-query.ts |  | loadNextUp issues 12 selects; 2 of them are loadExerciseNameMap's seeded/custom reads, which the Home screen could hoist and pass in as a cached name map to bring the count to 10. | open |  | 2026-08-22T13:45:24.660Z |  |
 | 84 | 04 | deviation | apps/mobile/lib/programs/__tests__/next-up.test.ts |  | All three 04-10 tasks were written test-first but committed as single feat commits; no separate RED-phase test(...) commit exists, so the TDD gate sequence is not auditable from git history. | open |  | 2026-08-22T13:45:24.937Z |  |
 | 85 | 04 | unrun-verify | apps/mobile/app/programs/library.tsx |  | The program library, the New Program fork and the freeze switch have been observed on neither iOS nor Android; no Xcode and no Android SDK. Web observation also not performed (CLAUDE.md forbids launching a browser unless explicitly asked). Correctness rests on unit tests, typecheck and a successful web export. | open |  | 2026-08-22T13:45:25.255Z |  |
@@ -109,6 +109,14 @@ last_updated: 2026-08-23T10:07:32.713Z
 | 95 | 04 | deviation | apps/api/test/schema-parity.e2e-spec.ts |  | WR-14 addressed: the RIR-range removal was correct and user-approved, and no-migration is this repo's convention (drizzle-kit push, no ./drizzle directory, db:verify as the gate) — recorded next to the columns in session.ts. The real gap was detectability: schema-parity's session_exercise required-column list omitted target_rir and target_rest_seconds, so a database predating the push passed every test green. Added those plus a FORBIDDEN_COLUMNS gate across the three affected tables, verified failing against a deliberately staled database. | open |  | 2026-08-23T10:07:32.545Z |  |
 | 96 | 04 | unmet-truth | apps/mobile/lib/export/build-export-document.ts |  | WR-14 export half NOT actioned (apps/mobile was a concurrent agent's territory). Assessment: the finding is overstated — the manifest already carries app_version (CLIENT_VERSION) and exported_at so a shape change is detectable, and no importer exists anywhere in the repo (TrainingExport is referenced only by the two files producing it), so there is no round-trip to regress. An explicit schema_version field would still be a cheap improvement over relying on app_version as a proxy. Bears on PLAT-10. | open |  | 2026-08-23T10:07:32.629Z |  |
 | 97 | 04 | unmet-truth | apps/api/src/db/schema/program.ts |  | WR-15 assessed and deliberately NOT fixed — overstated. The push side already rejects a cycle target whose two parent chains disagree (resolveRoutineIdForCycleTarget returns conflict:true, op rejected not_owner), covered by program-sync.e2e-spec.ts:1172, so 04-07's pull-side single-chain walk is sound for anything written through applyBatch. Residual gap is out-of-band writers only, and none exist (the seed script never touches the table). The suggested fix — denormalise routine_id with composite FKs on both parents — is architectural: it appends to a synced table's wire contract and requires an apps/mobile local-schema change. A cheaper mitigation exists (add the cycle chain to the pull query in ops/powersync/sync-rules.yaml) but nothing in this repo validates that file — no test references it, no PowerSync service runs in the test path — so it needs live-service validation first. | open |  | 2026-08-23T10:07:32.713Z |  |
+| 98 | 04 | deviation | apps/mobile/lib/db/programs/cycles.ts |  | Time-off edit defect fixed, and 04-VERIFICATION's account of it was partly wrong: setCycleKind already read the row and threw duration-required, so a durationless time_off row was NEVER written from this path. The real defect was a silent no-op — the throw was swallowed into console.error, the chip did not change, and the form offered no duration input, so the control was dead. Replaced renameCycle/setCycleKind/setCycleDuration/readCycle with one atomic updateCycle running the same validateCycle gate as addCycle, so no intermediate row exists for a sync to observe. validateCycle hardened with Number.isInteger against NaN from a non-numeric duration string. | open |  | 2026-08-23T10:37:33.288Z |  |
+| 99 | 04 | deviation | apps/mobile/components/ExerciseSlotRow.tsx |  | WR-07 fixed, but the finding is overstated as written: the stepper does not destroy other overrides — a null in an override row means inherit, not cleared, and un-overriding one field by stepping back to the base value still works. The real defect is narrower: inside a cycle, decrementing at the floor silently converted 'override to the minimum' into 'inherit', a different intent than the user expressed. Fixed by disabling clear-to-null while a cycle is selected. | open |  | 2026-08-23T10:37:33.376Z |  |
+| 100 | 04 | deviation | apps/mobile/lib/programs/next-up.ts |  | WR-05's suggested fix (scope the history SQL to this routine) was NOT adopted: it would exclude sessions logged against since-deleted days and break the UI-SPEC Pitfall-5 fallback recorded at ledger entries 79/80. Fixed in the resolver instead by seeding the time-off countdown from countableHistory, the same list the position walk uses, so the two derivations cannot disagree about which sessions count. | open |  | 2026-08-23T10:37:33.458Z |  |
+| 101 | 04 | todo | apps/mobile/lib/programs/next-up.ts |  | lastLoggedDayIndex uses completedSessions rather than countableHistory (same class as WR-05, one function up), so a completed session logged against ANOTHER program's day yields findIndex -1 and silently resets the rotation to day one of the current program. Not fixed: from loadNextUp's data, 'a deleted day' and 'another program's day' are indistinguishable, and the UI-SPEC prescribes the reset for the first case. Needs routine ownership carried in the history query plus a spec decision on whether the two cases should diverge. | open |  | 2026-08-23T10:37:33.542Z |  |
+| 102 | 04 | deviation | apps/mobile/app/(tabs)/programs.tsx |  | WR-08 fixed by validating the routineId param through resolveLiveRoutineId, but a stale param is NOT cleared from the URL — the screen falls back to the active routine while the address bar still names the dead one, so a reload re-triggers the same fallback. Rewriting the user's URL on load is a navigation-behaviour change beyond the scope of a validation fix. | open |  | 2026-08-23T10:37:33.624Z |  |
+| 103 | 04 | unrun-verify | apps/mobile/components/DragHandle.web.tsx |  | WR-03's pointer capture is fixed against the DOM Pointer Events contract and unit-tested through a fake capture target, but has NOT been observed in a browser (CLAUDE.md forbids browser testing without an explicit request). Whether a real pointer leaving the handle mid-drag now stays captured is unverified in a live DOM. Compounds ledger entry 64: which of DragHandle.tsx / DragHandle.web.tsx Metro resolves into the web bundle was never conclusively confirmed — if the native file wins, this fix is inert. | open |  | 2026-08-23T10:37:33.707Z |  |
+| 104 | 04 | unrun-verify | apps/mobile/app/(tabs)/index.tsx |  | WR-04's useFocusEffect wiring is unverified as wiring: the mobile lockfile has no renderer (no @testing-library/react-native, no react-test-renderer), so readNextUp is tested by direct invocation and the focus subscription itself is proven only by typecheck. Note also the fix is refocus-driven, not reactive — a write made while Home is already foregrounded still will not appear until the tab is refocused. Genuine reactivity (a PowerSync watch) is a design change, not a warning-pass fix. | open |  | 2026-08-23T10:37:33.790Z |  |
+| 105 | 04 | deviation | apps/mobile/lib/db/powersync.ts |  | WR-10's transactions buy LOCAL atomicity plus one crud transaction per push (getNextCrudTransaction), so the server applies each group as one aggregate in one Postgres transaction. They do NOT buy atomic convergence against a concurrent push from another device — that remains row-level LWW and no client-side change can alter it. Recorded so a later reader does not mistake the wrapper for a cross-device guarantee. | open |  | 2026-08-23T10:37:33.873Z |  |
 
 ````json
 [
@@ -1055,10 +1063,10 @@ last_updated: 2026-08-23T10:07:32.713Z
     "file": "apps/mobile/lib/programs/next-up.ts",
     "line": null,
     "description": "skippedTimeOffCycleIds is computed and returned but nothing renders it. A time-off cycle synced with a null duration_days is silently walked past. Surfacing it needs a Home-card state the UI-SPEC does not define.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-22T13:45:24.415Z",
-    "resolved_at": null
+    "resolved_at": "2026-08-23T10:37:33.195Z"
   },
   {
     "id": 83,
@@ -1238,6 +1246,102 @@ last_updated: 2026-08-23T10:07:32.713Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-23T10:07:32.713Z",
+    "resolved_at": null
+  },
+  {
+    "id": 98,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/db/programs/cycles.ts",
+    "line": null,
+    "description": "Time-off edit defect fixed, and 04-VERIFICATION's account of it was partly wrong: setCycleKind already read the row and threw duration-required, so a durationless time_off row was NEVER written from this path. The real defect was a silent no-op — the throw was swallowed into console.error, the chip did not change, and the form offered no duration input, so the control was dead. Replaced renameCycle/setCycleKind/setCycleDuration/readCycle with one atomic updateCycle running the same validateCycle gate as addCycle, so no intermediate row exists for a sync to observe. validateCycle hardened with Number.isInteger against NaN from a non-numeric duration string.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:37:33.288Z",
+    "resolved_at": null
+  },
+  {
+    "id": 99,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/components/ExerciseSlotRow.tsx",
+    "line": null,
+    "description": "WR-07 fixed, but the finding is overstated as written: the stepper does not destroy other overrides — a null in an override row means inherit, not cleared, and un-overriding one field by stepping back to the base value still works. The real defect is narrower: inside a cycle, decrementing at the floor silently converted 'override to the minimum' into 'inherit', a different intent than the user expressed. Fixed by disabling clear-to-null while a cycle is selected.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:37:33.376Z",
+    "resolved_at": null
+  },
+  {
+    "id": 100,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/programs/next-up.ts",
+    "line": null,
+    "description": "WR-05's suggested fix (scope the history SQL to this routine) was NOT adopted: it would exclude sessions logged against since-deleted days and break the UI-SPEC Pitfall-5 fallback recorded at ledger entries 79/80. Fixed in the resolver instead by seeding the time-off countdown from countableHistory, the same list the position walk uses, so the two derivations cannot disagree about which sessions count.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:37:33.458Z",
+    "resolved_at": null
+  },
+  {
+    "id": 101,
+    "kind": "todo",
+    "phase": "04",
+    "file": "apps/mobile/lib/programs/next-up.ts",
+    "line": null,
+    "description": "lastLoggedDayIndex uses completedSessions rather than countableHistory (same class as WR-05, one function up), so a completed session logged against ANOTHER program's day yields findIndex -1 and silently resets the rotation to day one of the current program. Not fixed: from loadNextUp's data, 'a deleted day' and 'another program's day' are indistinguishable, and the UI-SPEC prescribes the reset for the first case. Needs routine ownership carried in the history query plus a spec decision on whether the two cases should diverge.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:37:33.542Z",
+    "resolved_at": null
+  },
+  {
+    "id": 102,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/app/(tabs)/programs.tsx",
+    "line": null,
+    "description": "WR-08 fixed by validating the routineId param through resolveLiveRoutineId, but a stale param is NOT cleared from the URL — the screen falls back to the active routine while the address bar still names the dead one, so a reload re-triggers the same fallback. Rewriting the user's URL on load is a navigation-behaviour change beyond the scope of a validation fix.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:37:33.624Z",
+    "resolved_at": null
+  },
+  {
+    "id": 103,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/components/DragHandle.web.tsx",
+    "line": null,
+    "description": "WR-03's pointer capture is fixed against the DOM Pointer Events contract and unit-tested through a fake capture target, but has NOT been observed in a browser (CLAUDE.md forbids browser testing without an explicit request). Whether a real pointer leaving the handle mid-drag now stays captured is unverified in a live DOM. Compounds ledger entry 64: which of DragHandle.tsx / DragHandle.web.tsx Metro resolves into the web bundle was never conclusively confirmed — if the native file wins, this fix is inert.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:37:33.707Z",
+    "resolved_at": null
+  },
+  {
+    "id": 104,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/app/(tabs)/index.tsx",
+    "line": null,
+    "description": "WR-04's useFocusEffect wiring is unverified as wiring: the mobile lockfile has no renderer (no @testing-library/react-native, no react-test-renderer), so readNextUp is tested by direct invocation and the focus subscription itself is proven only by typecheck. Note also the fix is refocus-driven, not reactive — a write made while Home is already foregrounded still will not appear until the tab is refocused. Genuine reactivity (a PowerSync watch) is a design change, not a warning-pass fix.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:37:33.790Z",
+    "resolved_at": null
+  },
+  {
+    "id": 105,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "apps/mobile/lib/db/powersync.ts",
+    "line": null,
+    "description": "WR-10's transactions buy LOCAL atomicity plus one crud transaction per push (getNextCrudTransaction), so the server applies each group as one aggregate in one Postgres transaction. They do NOT buy atomic convergence against a concurrent push from another device — that remains row-level LWW and no client-side change can alter it. Recorded so a later reader does not mistake the wrapper for a cross-device guarantee.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-23T10:37:33.873Z",
     "resolved_at": null
   }
 ]
