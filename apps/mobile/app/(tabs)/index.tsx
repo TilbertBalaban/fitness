@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { authClient } from '@/lib/auth-client';
 import { getPowerSync } from '@/lib/db/powersync';
 import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
 import type { ProgramCycle, ProgramDay, ProgramSlot } from '@/lib/db/programs/load-program';
@@ -168,6 +169,8 @@ function NextUpCard({
 
 export default function HomeScreen() {
   const router = useRouter();
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
   const [data, setData] = useState<NextUpData | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -176,7 +179,7 @@ export default function HomeScreen() {
 
     (async () => {
       try {
-        const loaded = await loadNextUp(getPowerSync());
+        const loaded = await loadNextUp(userId, getPowerSync());
         if (mounted) setData(loaded);
       } catch (error) {
         console.error('next up load failed', error);
@@ -187,7 +190,7 @@ export default function HomeScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [userId]);
 
   const nextUp = useMemo(
     () =>

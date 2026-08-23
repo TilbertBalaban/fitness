@@ -3,6 +3,10 @@
 // so its top-level `import { getPowerSync } from '@/lib/db/powersync'` never reaches that chain.
 jest.mock('../../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../../../lib/db/programs/next-up-query', () => ({ loadNextUp: jest.fn() }));
+// The Home card now reads the signed-in user id so loadNextUp can filter user_preference by it
+// (WR-02); authClient's better-auth/react ESM dist is one Jest cannot parse, same rationale as the
+// powersync mock above.
+jest.mock('../../../lib/auth-client', () => ({ authClient: { useSession: () => ({ data: null }) } }));
 
 import {
   deriveHomeScreenState,

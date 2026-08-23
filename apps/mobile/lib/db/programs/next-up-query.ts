@@ -2,7 +2,8 @@ import { and, eq, isNotNull } from 'drizzle-orm';
 import { captureCalendarDay } from '../../calendar-day';
 import type { SessionRecord } from '../../programs/next-up';
 import { getPowerSync, type WriteDb } from '../powersync';
-import { exerciseMuscleMapping, muscleGroup, routine, userPreference, workoutSession } from '../schema';
+import { exerciseMuscleMapping, muscleGroup, routine, workoutSession } from '../schema';
+import { loadActiveRoutineId } from './lifecycle';
 import { loadProgramTree, type ProgramCycle, type ProgramDay } from './load-program';
 
 export interface NextUpData {
@@ -28,12 +29,19 @@ const COMPLETED = 'completed';
 // without a database and this module stays testable without a renderer. Every read is one select
 // per table, assembled in memory — this is the screen the app opens on, and PITFALLS.md §13's N+1
 // shape is one nested loop away.
-export async function loadNextUp(db: WriteDb = getPowerSync()): Promise<NextUpData> {
+// The pointer read goes through loadActiveRoutineId rather than a second, unfiltered select. The
+// user_preference row's id IS the user id (04-04's option-a wire contract), so reading the table
+// with no WHERE returns whichever row SQLite happens to order first — which is the wrong account's
+// active program as soon as a local database outlives a user switch, and non-deterministic between
+// launches once two rows exist.
+export async function loadNextUp(userId: string | null, db: WriteDb = getPowerSync()): Promise<NextUpData> {
   const today = captureCalendarDay(new Date()).localDate;
 
-  const [preference] = await db.select({ activeRoutineId: userPreference.activeRoutineId }).from(userPreference);
-  const activeRoutineId = preference?.activeRoutineId ?? null;
-  // A fresh account's Home tab must not cost twelve queries to learn there is nothing to show.
+  // A fresh account's Home tab must not cost twelve queries to learn there is nothing to show, and
+  // a signed-out render must not read another account's pointer at all.
+  if (!userId) return { ...EMPTY, today };
+
+  const activeRoutineId = await loadActiveRoutineId(userId, db);
   if (!activeRoutineId) return { ...EMPTY, today };
 
   // Both halves of this check are reachable through ordinary sync ordering — the pointer is one
