@@ -16,7 +16,6 @@ const WORKOUT_NO_CYCLE = {
   kind: 'workout' as const,
   cycle: null,
   day: { id: 'd1', orderIndex: 1024, name: 'Push', isRestDay: false, slots: [] },
-  skippedTimeOffCycleIds: [],
 };
 
 const WORKOUT_WITH_CYCLE = {
@@ -28,18 +27,16 @@ const TIME_OFF = {
   kind: 'time-off' as const,
   cycle: { id: 'c2', name: 'Off', kind: 'time_off' as const, orderIndex: 2048, durationDays: 7 },
   daysRemaining: 3,
-  skippedTimeOffCycleIds: [],
 };
 
 const PROGRAM_COMPLETE = {
   kind: 'program-complete' as const,
   lastCycle: null,
-  skippedTimeOffCycleIds: [],
 };
 
-const NO_DAYS = { kind: 'no-days' as const, skippedTimeOffCycleIds: [] };
+const NO_DAYS = { kind: 'no-days' as const };
 
-const NO_ACTIVE_PROGRAM = { kind: 'no-active-program' as const, skippedTimeOffCycleIds: [] };
+const NO_ACTIVE_PROGRAM = { kind: 'no-active-program' as const };
 
 function slot(id: string, exerciseId: string, exerciseName: string, targets: Record<string, number | null> = {}) {
   return {

@@ -330,15 +330,26 @@ describe('resolveNextUp — time off', () => {
     expect(result).toMatchObject({ kind: 'time-off', daysRemaining: 7 });
   });
 
-  it('skips a time-off cycle with a null durationDays and reports the skip', () => {
+  // updateCycle makes this unwritable from the builder, but two devices reconciling routine_cycle
+  // by row-level LWW can still converge to it, so the walk must stay finite.
+  it('steps over a time-off cycle with a null durationDays rather than stalling on it', () => {
     const broken = cycle('off', 2048, 'time_off', null);
     const result = afterRotation('2026-01-04', [w1, broken, w2]);
     expect(result).toMatchObject({ kind: 'workout', cycle: w2, day: DAYS[0] });
-    expect(result.skippedTimeOffCycleIds).toEqual(['off']);
   });
 
-  it('reports no skips when every time-off cycle carries a duration', () => {
-    expect(afterRotation('2026-01-06').skippedTimeOffCycleIds).toEqual([]);
+  it('never resolves to a durationless time-off cycle, even when it is the only one left', () => {
+    const broken = cycle('off', 2048, 'time_off', null);
+    expect(afterRotation('2026-01-04', [w1, broken])).toMatchObject({ kind: 'program-complete' });
+  });
+
+  it('still honours a well-formed time-off cycle sitting after a durationless one', () => {
+    const broken = cycle('off', 2048, 'time_off', null);
+    const real = cycle('off2', 2560, 'time_off', 7);
+    expect(afterRotation('2026-01-04', [w1, broken, real, w2])).toMatchObject({
+      kind: 'time-off',
+      cycle: real,
+    });
   });
 
   it('resolves two consecutive time-off cycles to the first while it is active', () => {
