@@ -7,9 +7,9 @@ import { eq, inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { SYNC_PUSH_PATH, type SyncCrudOp } from '@fitness/api-contracts';
 import { db, pool } from '../src/db/drizzle.module';
-import { user, workoutSession, sessionExercise, loggedSet } from '../src/db/schema';
+import { user, userPreference, workoutSession, sessionExercise, loggedSet } from '../src/db/schema';
 import { SyncService } from '../src/sync/sync.service';
-import { generateCorpus } from '../src/seed/generate-corpus';
+import { ensureUserPreference, generateCorpus } from '../src/seed/generate-corpus';
 import { CORPUS_SHAPE, PERF_BUDGET } from '../src/seed/corpus-shape';
 
 config({ path: [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../../.env')] });
@@ -379,6 +379,22 @@ describe('Seeded-corpus performance budget (e2e)', () => {
     expect(thirty.result.applied).toHaveLength(30);
     expect(three.queryCount).toBe(1);
     expect(thirty.queryCount).toBe(three.queryCount);
+  });
+
+  // Pins the upsert arbiter to the primary key this statement writes. The row created by
+  // generateCorpus above already collides on both id and user_id, so a re-run must resolve rather
+  // than raise user_preference_pkey — the failure mode a mismatched arbiter is one schema tweak
+  // away from. Re-applies the pointer it already holds, so the corpus is unchanged afterwards.
+  it('re-runs ensureUserPreference against an existing row without duplicating it or violating the primary key', async () => {
+    const [before] = await db.select().from(userPreference).where(eq(userPreference.userId, corpusUserId));
+    expect(before.id).toBe(corpusUserId);
+    expect(before.activeRoutineId).not.toBeNull();
+
+    await ensureUserPreference(corpusUserId, before.activeRoutineId!);
+
+    const after = await db.select().from(userPreference).where(eq(userPreference.userId, corpusUserId));
+    expect(after).toHaveLength(1);
+    expect(after[0].activeRoutineId).toBe(before.activeRoutineId);
   });
 
   it('returns none of another user\'s rows when reading the corpus for one user', async () => {

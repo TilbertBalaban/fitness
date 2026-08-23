@@ -300,14 +300,17 @@ async function ensureRoutine(userId: string, routineId: string): Promise<void> {
 
 // Expresses "this seeded routine is the one being run" through the pointer, matching D-14's
 // structural rule: activation lives on user_preference.active_routine_id, never on routine.status.
-// id is deterministically the user's own id (option-a's wire contract) — upserted on user_id, not
-// inserted blind, since a real account's row (created by any future write path) must never be
-// duplicated by a corpus regeneration.
-async function ensureUserPreference(userId: string, routineId: string): Promise<void> {
+// id is deterministically the user's own id (option-a's wire contract) — upserted, not inserted
+// blind, since a real account's row (created by any future write path) must never be duplicated by
+// a corpus regeneration. The arbiter is id, the primary key this statement actually writes; a
+// re-run collides on the PK and on user_id's unique index simultaneously (both columns carry the
+// same value), and naming the non-PK index would leave the statement one schema tweak away from
+// failing on user_preference_pkey instead of resolving.
+export async function ensureUserPreference(userId: string, routineId: string): Promise<void> {
   await db.execute(sql`
     INSERT INTO user_preference (id, user_id, weight_unit, active_routine_id)
     VALUES (${userId}, ${userId}, 'kg', ${routineId})
-    ON CONFLICT (user_id) DO UPDATE SET active_routine_id = EXCLUDED.active_routine_id
+    ON CONFLICT (id) DO UPDATE SET active_routine_id = EXCLUDED.active_routine_id
   `);
 }
 
