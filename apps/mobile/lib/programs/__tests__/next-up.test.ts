@@ -501,3 +501,68 @@ describe('resolveNextUp — determinism and bounds', () => {
     }
   });
 });
+
+// WR-05: loadNextUp's history query is not scoped to the active routine, so it returns completed
+// sessions from every program the user has ever run. The countdown was seeded from that unfiltered
+// list while the rotation position was seeded from countableHistory — so opening an old program and
+// logging one session restarted the current program's time-off clock.
+describe('resolveNextUp — time off is not reset by another program (WR-05)', () => {
+  const w1 = cycle('w1', 1024, 'training');
+  const off = cycle('off', 2048, 'time_off', 7);
+  const w2 = cycle('w2', 3072, 'training');
+
+  // Three sessions in this routine on 2026-01-01..03, then one logged against a day that belongs to
+  // a different program entirely.
+  const OTHER_PROGRAM_DAY = 'other-program-day';
+
+  function withForeignSession(today: string, foreignDate: string) {
+    return resolveNextUp<TestDay, TestCycle>({
+      routine: ROUTINE,
+      days: DAYS,
+      cycles: [w1, off, w2],
+      history: [...rotationHistory(3), session('foreign', OTHER_PROGRAM_DAY, foreignDate)],
+      today,
+    });
+  }
+
+  it('measures elapsed time off from this program’s last session, not the most recent session overall', () => {
+    expect(withForeignSession('2026-01-06', '2026-01-05')).toMatchObject({
+      kind: 'time-off',
+      cycle: off,
+      daysRemaining: 4,
+    });
+  });
+
+  it('does not rewind a time-off cycle that has already elapsed', () => {
+    expect(withForeignSession('2026-01-11', '2026-01-10')).toMatchObject({
+      kind: 'workout',
+      cycle: w2,
+    });
+  });
+
+  it('agrees with the same history minus the foreign session', () => {
+    const withForeign = withForeignSession('2026-01-08', '2026-01-07');
+    const withoutForeign = resolveNextUp<TestDay, TestCycle>({
+      routine: ROUTINE,
+      days: DAYS,
+      cycles: [w1, off, w2],
+      history: rotationHistory(3),
+      today: '2026-01-08',
+    });
+
+    expect(withForeign).toMatchObject({ kind: 'time-off', daysRemaining: 2 });
+    expect(withoutForeign).toMatchObject({ kind: 'time-off', daysRemaining: 2 });
+  });
+
+  it('still measures from today when this program has no countable history at all', () => {
+    const result = resolveNextUp<TestDay, TestCycle>({
+      routine: ROUTINE,
+      days: DAYS,
+      cycles: [cycle('off', 512, 'time_off', 7), w1],
+      history: [session('foreign', OTHER_PROGRAM_DAY, '2025-12-01')],
+      today: '2026-01-01',
+    });
+
+    expect(result).toMatchObject({ kind: 'time-off', daysRemaining: 7 });
+  });
+});

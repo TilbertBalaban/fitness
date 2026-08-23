@@ -131,10 +131,14 @@ export function resolveNextUp<D extends PositionDay, C extends PositionCycle>({
   }
 
   const countable = countableHistory(history, orderedDays);
-  const completed = completedSessions(history);
-  const lastCompleted = completed[completed.length - 1];
+  // Both derivations read the same list. `history` is every completed session the device holds,
+  // including sessions logged against other programs, so seeding the countdown from it let one
+  // session in an old program restart the time-off clock in the current one. countableHistory
+  // already encodes "counts toward this program's position", and the two derivations must not
+  // disagree about which sessions those are.
+  const lastCountable = countable[countable.length - 1];
   let remaining = countable.length;
-  let elapsed = daysBetween(lastCompleted ? lastCompleted.localDate : today, today);
+  let elapsed = daysBetween(lastCountable ? lastCountable.localDate : today, today);
 
   for (const cycle of orderedCycles) {
     if (cycle.kind === 'time_off') {
