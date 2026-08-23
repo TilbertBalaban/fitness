@@ -1421,6 +1421,31 @@ describe('routine_exercise_cycle_target sync (e2e)', () => {
     expect(await tombstoneCount([routineExerciseId, cetId])).toBe(2);
   });
 
+  // The transitive three-level cascade (day -> exercise -> override). The shipped day-delete case
+  // seeds no override, so it asserts two tombstones and never three; nothing in CI watched the
+  // deepest, most fragile path in the override model until now (04-VERIFICATION.md).
+  it('deleting the day cascades two levels — the exercise AND its override are both gone and both tombstoned, three tombstones in all', async () => {
+    const cookie = await signUp('cet-day-cascade');
+    const { dayId, routineExerciseId, cycleId } = await seedRoutineDayExerciseCycle(cookie, 'cet-day-cascade');
+    const cetId = randomUUID();
+    const createRes = await push(cookie, [
+      routineExerciseCycleTargetOp(cetId, { routine_exercise_id: routineExerciseId, cycle_id: cycleId, target_sets: 4 }),
+    ]);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const deleteOp = routineDayOp(dayId, {}, 'DELETE');
+    const res = await push(cookie, [deleteOp]);
+    expect((res.body as SyncPushResponse).applied).toEqual([deleteOp.op_id]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await routineDayRow(dayId)).toBeUndefined();
+    expect(await routineExerciseRow(routineExerciseId)).toBeUndefined();
+    expect(await routineExerciseCycleTargetRow(cetId)).toBeUndefined();
+    expect(await tombstoneCount([dayId, routineExerciseId, cetId])).toBe(3);
+    // The cycle hangs off the routine, not the day — it must survive.
+    expect(await routineCycleRow(cycleId)).toBeDefined();
+  });
+
   // CR-04 (04-REVIEW.md). missing_parent is non-terminal, so the connector leaves the crud
   // transaction queued and PowerSync re-sends it forever. When the parent is permanently gone that
   // retry can never succeed, and because the queue is ordered nothing behind it uploads again
