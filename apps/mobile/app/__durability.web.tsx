@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
 import { SyncConnector } from '../lib/db/connector';
 import { addSessionExercise, logSet, startSession } from '../lib/db/log-set';
+import { previousSetReference } from '../lib/db/session-query';
 import {
   connectPowerSync,
   disconnectPowerSync,
   getPowerSync,
   getUploadQueueStats,
+  type WriteDb,
 } from '../lib/db/powersync';
 import {
   DURABILITY_HARNESS_GLOBAL,
@@ -22,16 +25,38 @@ import {
   readLoggedSetsRaw,
   readRawColumns,
   reopenTestPowerSync,
+  seedProgrammedSession,
   writeCatalogVersionSentinel,
+  type SeededProgrammedSession,
   type TestWriteDb,
 } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
+import { SessionModeProvider } from '../lib/session/session-mode';
+import { useThemeColors } from '../lib/theme-colors';
+
+// Any non-empty string works: workout_session.user_id is stamped server-side on sync push only
+// (see session-query.ts's loadLiveSession comment), so nothing this harness reads or writes ever
+// compares against this value — it exists purely to satisfy readWorkoutScreenData's signed-in
+// early-out.
+const WORKOUT_HARNESS_USER_ID = 'harness-user';
+
+function WorkoutHarnessScreen({ db, userId }: { db: WriteDb; userId: string }) {
+  const colors = useThemeColors();
+  const vm = useWorkoutScreen({ userId, db });
+
+  return (
+    <SessionModeProvider mode="live">
+      <WorkoutScreenView {...vm} colors={colors} />
+    </SessionModeProvider>
+  );
+}
 
 // A Playwright page drives this route through window[DURABILITY_HARNESS_GLOBAL] — see
-// e2e/durability.spec.ts. Every write goes through the real lib/db/log-set.ts helpers; this route
-// re-implements no insert.
+// e2e/durability.spec.ts and e2e/workout-screen.spec.ts. Every write goes through the real
+// lib/db/log-set.ts helpers; this route re-implements no insert.
 export default function DurabilityHarnessScreen() {
   const [ready, setReady] = useState(false);
+  const [workoutHarness, setWorkoutHarness] = useState<{ db: TestWriteDb } | null>(null);
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -58,10 +83,19 @@ export default function DurabilityHarnessScreen() {
         currentDb = openTestPowerSync();
         usingProductionDb = false;
       },
+      // Same as open(), but against a caller-chosen filename rather than a random per-call one —
+      // workout-screen.spec.ts's reload case needs the SAME underlying IndexedDB-backed database
+      // to still be there after a real page reload wipes every module-level JS variable, which
+      // only a fixed, caller-supplied filename makes possible.
+      async openWithFilename(dbFilename: string) {
+        currentDb = openTestPowerSync({ dbFilename });
+        usingProductionDb = false;
+      },
       async close() {
         await closeTestPowerSync();
         lastClosedDb = currentDb;
         currentDb = null;
+        setWorkoutHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -98,6 +132,12 @@ export default function DurabilityHarnessScreen() {
       },
       async readSets(sessionExerciseId: string) {
         return readLoggedSets(requireOpenDb(), sessionExerciseId);
+      },
+      // Delegates to the real previousSetReference against the currently open() database — the
+      // two-prior-sessions reload case (durability.spec.ts) proves the same tie-break the unit
+      // tests already cover, but through the real browser database instead of a fake.
+      async previousSetReference(input: Parameters<typeof previousSetReference>[0]) {
+        return previousSetReference(input, requireOpenDb());
       },
       async crudCount() {
         if (usingProductionDb) {
@@ -157,6 +197,22 @@ export default function DurabilityHarnessScreen() {
       async writeCatalogVersionSentinel(sentinel: string) {
         await writeCatalogVersionSentinel(sentinel);
       },
+      // Seeds a real program + starts a real session against the currently open() database, then
+      // flips React state to mount WorkoutHarnessScreen for the first time — the harness never
+      // renders the workout UI until there is a real session for it to load (workout-screen.spec.ts).
+      async seedWorkoutSession(): Promise<SeededProgrammedSession> {
+        const db = requireOpenDb();
+        const seeded = await seedProgrammedSession(db);
+        setWorkoutHarness({ db });
+        return seeded;
+      },
+      // Mounts WorkoutHarnessScreen against whichever database open()/openWithFilename() currently
+      // has open, WITHOUT seeding — the post-reload half of workout-screen.spec.ts's reload case,
+      // which must find the already-completed row loadLiveSession resolves, not a second one.
+      async openWorkoutScreen() {
+        const db = requireOpenDb();
+        setWorkoutHarness({ db });
+      },
     };
 
     setReady(true);
@@ -165,6 +221,7 @@ export default function DurabilityHarnessScreen() {
   return (
     <View>
       <Text testID="durability-harness-ready">{ready ? 'ready' : 'loading'}</Text>
+      {workoutHarness ? <WorkoutHarnessScreen db={workoutHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
     </View>
   );
 }
