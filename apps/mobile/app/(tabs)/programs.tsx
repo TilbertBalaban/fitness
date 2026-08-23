@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { CycleStrip } from '@/components/CycleStrip';
 import { DayDeck } from '@/components/DayDeck';
+import { ErrorBanner } from '@/components/ErrorBanner';
 import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
 import { ExerciseSlotRow } from '@/components/ExerciseSlotRow';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -20,11 +21,11 @@ import { useThemeColors } from '@/lib/theme-colors';
 import {
   addCycle,
   clearCycleTarget,
+  cycleErrorMessage,
   moveCycle,
   removeCycle,
-  renameCycle,
-  setCycleKind,
   setCycleTarget,
+  updateCycle,
   validateCycle,
 } from '@/lib/db/programs/cycles';
 import { addDay, addExercisesToDay, moveExercise, removeDay, removeExercise, renameDay } from '@/lib/db/programs/days';
@@ -98,6 +99,18 @@ const CYCLE_KIND_OPTIONS: { kind: CycleKind; label: string; defaultName: string 
   { kind: 'deload', label: 'Deload', defaultName: 'Deload' },
   { kind: 'time_off', label: 'Time off', defaultName: 'Time off' },
 ];
+
+// The "Days off" field is free text on both cycle forms. Empty is null — "this cycle has no length
+// of its own" — which validateCycle accepts for training/deload and rejects for time off. A
+// non-numeric string parses to NaN and validateCycle rejects it; nothing here silently coerces.
+export function parseCycleDuration(raw: string): number | null {
+  const trimmed = raw.trim();
+  return trimmed.length === 0 ? null : Number(trimmed);
+}
+
+export function cycleDurationFieldValue(durationDays: number | null | undefined): string {
+  return durationDays === null || durationDays === undefined ? '' : String(durationDays);
+}
 
 // A stale id — the selected cycle was deleted, or the user switched programs — degrades to the
 // base prescription rather than throwing. Selecting nothing and selecting something gone mean the
@@ -177,7 +190,12 @@ export default function ProgramsScreen() {
   const [cycleFormDuration, setCycleFormDuration] = useState('');
   const [cycleFormError, setCycleFormError] = useState<string | null>(null);
   const [editingCycleId, setEditingCycleId] = useState<string | null>(null);
-  const [cycleRenameValue, setCycleRenameValue] = useState('');
+  const [cycleEditName, setCycleEditName] = useState('');
+  // Kind and duration are staged, not written per tap: a cycle only becomes time off together with
+  // the length that makes it schedulable (see updateCycle).
+  const [cycleEditKind, setCycleEditKind] = useState<CycleKind>('training');
+  const [cycleEditDuration, setCycleEditDuration] = useState('');
+  const [cycleEditError, setCycleEditError] = useState<string | null>(null);
 
   // loadLibraryRoutines rather than loadRoutines: this screen needs progression_frozen for the
   // switch, and it needs archived_at so a pointer left behind on an archived program reads as
@@ -357,11 +375,14 @@ export default function ProgramsScreen() {
   const handleAddCycle = useCallback(async () => {
     if (!displayedRoutineId) return;
 
-    const durationDays = cycleFormDuration.trim().length === 0 ? null : Number(cycleFormDuration.trim());
-    const draft = { name: cycleFormName, kind: cycleFormKind, durationDays };
+    const draft = {
+      name: cycleFormName,
+      kind: cycleFormKind,
+      durationDays: parseCycleDuration(cycleFormDuration),
+    };
     const error = validateCycle(draft);
     if (error) {
-      setCycleFormError(error);
+      setCycleFormError(cycleErrorMessage(error));
       return;
     }
 
@@ -374,42 +395,52 @@ export default function ProgramsScreen() {
       setSelectedCycleId(id);
       await reloadTree(displayedRoutineId);
     } catch (caught) {
-      setCycleFormError(caught instanceof Error ? caught.message : 'name-required');
+      setCycleFormError(caught instanceof Error ? caught.message : 'Cycle could not be saved.');
     }
   }, [displayedRoutineId, cycleFormDuration, cycleFormKind, cycleFormName, reloadTree]);
 
   const handleEditCycle = useCallback(
     (cycleId: string) => {
+      const cycle = tree?.cycles.find((candidate) => candidate.id === cycleId);
       setEditingCycleId(cycleId);
       setCycleFormOpen(false);
-      setCycleRenameValue(tree?.cycles.find((cycle) => cycle.id === cycleId)?.name ?? '');
+      setCycleEditName(cycle?.name ?? '');
+      setCycleEditKind(cycle?.kind ?? 'training');
+      setCycleEditDuration(cycleDurationFieldValue(cycle?.durationDays));
+      setCycleEditError(null);
     },
     [tree],
   );
 
-  const handleRenameCycle = useCallback(async () => {
+  // One save for the whole cycle. A kind tap alone writes nothing, so "Make Time off" can no longer
+  // produce a cycle with no length — the same validateCycle gate the creation form clears.
+  const handleSaveCycleEdit = useCallback(async () => {
     if (!displayedRoutineId || !editingCycleId) return;
+
+    const draft = {
+      name: cycleEditName,
+      kind: cycleEditKind,
+      durationDays: parseCycleDuration(cycleEditDuration),
+    };
+    const error = validateCycle(draft);
+    if (error) {
+      setCycleEditError(cycleErrorMessage(error));
+      return;
+    }
+
     try {
-      await renameCycle(editingCycleId, cycleRenameValue);
+      await updateCycle(editingCycleId, draft);
       setEditingCycleId(null);
       await reloadTree(displayedRoutineId);
-    } catch (error) {
-      console.error('rename cycle failed', error);
+    } catch (caught) {
+      setCycleEditError(caught instanceof Error ? caught.message : 'Cycle could not be saved.');
     }
-  }, [displayedRoutineId, cycleRenameValue, editingCycleId, reloadTree]);
+  }, [displayedRoutineId, cycleEditDuration, cycleEditKind, cycleEditName, editingCycleId, reloadTree]);
 
-  const handleSetCycleKind = useCallback(
-    async (kind: CycleKind) => {
-      if (!displayedRoutineId || !editingCycleId) return;
-      try {
-        await setCycleKind(editingCycleId, kind);
-        await reloadTree(displayedRoutineId);
-      } catch (error) {
-        console.error('set cycle kind failed', error);
-      }
-    },
-    [displayedRoutineId, editingCycleId, reloadTree],
-  );
+  const handleSelectCycleEditKind = useCallback((kind: CycleKind) => {
+    setCycleEditKind(kind);
+    setCycleEditError(null);
+  }, []);
 
   const handleMoveCycle = useCallback(
     async (direction: -1 | 1) => {
@@ -635,21 +666,52 @@ export default function ProgramsScreen() {
 
               {editingCycleId ? (
                 <View className="gap-sm rounded-md bg-surface p-md">
-                  <TextField label="Cycle name" value={cycleRenameValue} onChangeText={setCycleRenameValue} />
-                  <PrimaryButton label="Save" onPress={handleRenameCycle} />
+                  <TextField
+                    label="Cycle name"
+                    value={cycleEditName}
+                    onChangeText={(value) => {
+                      setCycleEditName(value);
+                      setCycleEditError(null);
+                    }}
+                  />
                   <View className="flex-row flex-wrap gap-sm">
                     {CYCLE_KIND_OPTIONS.map((option) => (
                       <Pressable
                         key={option.kind}
-                        onPress={() => handleSetCycleKind(option.kind)}
+                        onPress={() => handleSelectCycleEditKind(option.kind)}
                         accessibilityRole="button"
+                        accessibilityState={{ selected: cycleEditKind === option.kind }}
                         accessibilityLabel={`Make ${option.label}`}
-                        className="items-center justify-center rounded-md border border-foreground-muted px-md"
+                        className={`items-center justify-center rounded-md border px-md ${
+                          cycleEditKind === option.kind ? 'border-accent' : 'border-foreground-muted'
+                        }`}
                         style={{ minWidth: 48, minHeight: 48 }}
                       >
-                        <Text className="text-label font-normal text-foreground-muted">{option.label}</Text>
+                        <Text
+                          className={`text-label font-normal ${
+                            cycleEditKind === option.kind ? 'text-accent' : 'text-foreground-muted'
+                          }`}
+                        >
+                          {option.label}
+                        </Text>
                       </Pressable>
                     ))}
+                  </View>
+                  {cycleEditKind === 'time_off' ? (
+                    <TextField
+                      label="Days off"
+                      value={cycleEditDuration}
+                      onChangeText={(value) => {
+                        setCycleEditDuration(value);
+                        setCycleEditError(null);
+                      }}
+                      keyboardType="number-pad"
+                      error={cycleEditError}
+                    />
+                  ) : null}
+                  {cycleEditKind !== 'time_off' && cycleEditError ? <ErrorBanner message={cycleEditError} /> : null}
+                  <PrimaryButton label="Save" onPress={handleSaveCycleEdit} />
+                  <View className="flex-row flex-wrap gap-sm">
                     <Pressable
                       onPress={() => handleMoveCycle(-1)}
                       accessibilityRole="button"

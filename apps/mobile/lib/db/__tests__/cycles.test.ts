@@ -2,13 +2,13 @@ import { eq } from 'drizzle-orm';
 import {
   addCycle,
   clearCycleTarget,
+  cycleErrorMessage,
   moveCycle,
   removeCycle,
-  renameCycle,
-  setCycleDuration,
-  setCycleKind,
   setCycleTarget,
+  updateCycle,
   validateCycle,
+  type CycleValidationError,
 } from '../programs/cycles';
 import { ORDER_INDEX_GAP } from '../programs/order-index';
 import { getPowerSync } from '../powersync';
@@ -99,6 +99,14 @@ describe('validateCycle', () => {
   it('rejects a duration below one day at the boundary', () => {
     expect(validateCycle({ name: 'Off', kind: 'time_off', durationDays: 0 })).toBe('duration-too-small');
     expect(validateCycle({ name: 'Off', kind: 'time_off', durationDays: 1 })).toBeNull();
+  });
+
+  // Number('abc') is NaN and every comparison against NaN is false, so a bare `< 1` guard would
+  // have let a mistyped Days off field through to the row.
+  it('rejects a non-integer duration rather than letting NaN slip past the comparison', () => {
+    expect(validateCycle({ name: 'Off', kind: 'time_off', durationDays: Number('abc') })).toBe('duration-too-small');
+    expect(validateCycle({ name: 'Off', kind: 'time_off', durationDays: 1.5 })).toBe('duration-too-small');
+    expect(validateCycle({ name: 'Week 1', kind: 'training', durationDays: Number('') })).toBe('duration-too-small');
   });
 });
 
@@ -194,19 +202,102 @@ describe('addCycle', () => {
   });
 });
 
-describe('renameCycle', () => {
-  it('trims, requires a non-empty name, and issues exactly one update', async () => {
+describe('cycleErrorMessage', () => {
+  it('maps every validation code to a sentence a user can act on', () => {
+    expect(cycleErrorMessage('name-required')).toBe('Cycle name is required.');
+    expect(cycleErrorMessage('unknown-kind')).toBe('Choose Training, Deload or Time off.');
+    expect(cycleErrorMessage('duration-required')).toBe('Time off needs a length in days.');
+    expect(cycleErrorMessage('duration-too-small')).toBe('Days off must be a whole number of at least 1.');
+  });
+
+  it('never returns the raw code', () => {
+    const codes: CycleValidationError[] = ['name-required', 'unknown-kind', 'duration-required', 'duration-too-small'];
+    for (const code of codes) expect(cycleErrorMessage(code)).not.toBe(code);
+  });
+});
+
+describe('updateCycle', () => {
+  it('writes name, kind and duration in exactly one update', async () => {
     const { db, calls } = fakeDb();
 
-    await renameCycle('c1', '  Accumulation  ', db);
+    await updateCycle('c1', { name: '  Accumulation  ', kind: 'deload', durationDays: null }, db);
 
     expect(calls.updates).toHaveLength(1);
     expect(calls.updates[0].table).toBe(routineCycle);
-    expect(calls.updates[0].values).toEqual({ name: 'Accumulation' });
+    expect(calls.updates[0].values).toEqual({ name: 'Accumulation', kind: 'deload', durationDays: null });
     expect(calls.updates[0].condition).toEqual(eq(routineCycle.id, 'c1'));
+  });
 
-    await expect(renameCycle('c1', '   ', db)).rejects.toThrow('name-required');
+  it('trims the name and requires it non-empty, matching addCycle', async () => {
+    const { db, calls } = fakeDb();
+
+    await expect(updateCycle('c1', { name: '   ', kind: 'training' }, db)).rejects.toThrow('name-required');
+    expect(calls.updates).toHaveLength(0);
+  });
+
+  // The Job-1 defect: the shipped Edit Cycle form wrote kind alone, so "Make Time off" produced a
+  // cycle resolveNextUp could only step over.
+  it('refuses to make a cycle time off without a duration, and writes nothing when it refuses', async () => {
+    const { db, calls } = fakeDb();
+
+    await expect(updateCycle('c1', { name: 'Off', kind: 'time_off', durationDays: null }, db)).rejects.toThrow(
+      'duration-required',
+    );
+    await expect(updateCycle('c1', { name: 'Off', kind: 'time_off' }, db)).rejects.toThrow('duration-required');
+    expect(calls.updates).toHaveLength(0);
+  });
+
+  it('writes the kind and the duration together, so no durationless time-off row ever exists', async () => {
+    const { db, calls } = fakeDb();
+
+    await updateCycle('c1', { name: 'Off', kind: 'time_off', durationDays: 7 }, db);
+
     expect(calls.updates).toHaveLength(1);
+    expect(calls.updates[0].values).toEqual({ name: 'Off', kind: 'time_off', durationDays: 7 });
+  });
+
+  it('rejects a duration below one day at the boundary', async () => {
+    const { db, calls } = fakeDb();
+
+    await expect(updateCycle('c1', { name: 'Off', kind: 'time_off', durationDays: 0 }, db)).rejects.toThrow(
+      'duration-too-small',
+    );
+    expect(calls.updates).toHaveLength(0);
+  });
+
+  it('rejects a non-numeric duration rather than writing NaN into the row', async () => {
+    const { db, calls } = fakeDb();
+
+    await expect(updateCycle('c1', { name: 'Off', kind: 'time_off', durationDays: Number('abc') }, db)).rejects.toThrow(
+      'duration-too-small',
+    );
+    await expect(updateCycle('c1', { name: 'Off', kind: 'time_off', durationDays: 1.5 }, db)).rejects.toThrow(
+      'duration-too-small',
+    );
+    expect(calls.updates).toHaveLength(0);
+  });
+
+  it('rejects a kind outside the shared tuple', async () => {
+    const { db, calls } = fakeDb();
+
+    await expect(updateCycle('c1', { name: 'X', kind: 'week' as never }, db)).rejects.toThrow('unknown-kind');
+    expect(calls.updates).toHaveLength(0);
+  });
+
+  it('clears a training cycle back to a null duration — its length is the rotation, not a number', async () => {
+    const { db, calls } = fakeDb();
+
+    await updateCycle('c1', { name: 'Week 1', kind: 'training', durationDays: null }, db);
+
+    expect(calls.updates[0].values).toEqual({ name: 'Week 1', kind: 'training', durationDays: null });
+  });
+
+  it('reads nothing before writing — the draft carries every column it needs', async () => {
+    const { db, calls } = fakeDb();
+
+    await updateCycle('c1', { name: 'Off', kind: 'time_off', durationDays: 7 }, db);
+
+    expect(calls.selects).toHaveLength(0);
   });
 
   describe('the database-injection seam (WINDOWS #23)', () => {
@@ -214,7 +305,7 @@ describe('renameCycle', () => {
       getPowerSyncMock.mockClear();
       const { db } = fakeDb();
 
-      await renameCycle('c1', 'Accumulation', db);
+      await updateCycle('c1', { name: 'Accumulation', kind: 'training' }, db);
 
       expect(getPowerSyncMock).not.toHaveBeenCalled();
     });
@@ -223,117 +314,7 @@ describe('renameCycle', () => {
       const { db, calls } = fakeDb();
       getPowerSyncMock.mockReturnValue(db);
 
-      await renameCycle('c1', 'Accumulation');
-
-      expect(calls.updates).toHaveLength(1);
-      expect(getPowerSyncMock).toHaveBeenCalled();
-    });
-  });
-});
-
-describe('setCycleKind', () => {
-  it('issues exactly one update for a deload', async () => {
-    const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'training', durationDays: null }]));
-
-    await setCycleKind('c1', 'deload', db);
-
-    expect(calls.updates).toHaveLength(1);
-    expect(calls.updates[0].values).toEqual({ kind: 'deload' });
-  });
-
-  it('refuses to make a durationless cycle time off, rather than leaving one behind', async () => {
-    const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'training', durationDays: null }]));
-
-    await expect(setCycleKind('c1', 'time_off', db)).rejects.toThrow('duration-required');
-    expect(calls.updates).toHaveLength(0);
-  });
-
-  it('allows time off once the cycle already carries a duration', async () => {
-    const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'training', durationDays: 7 }]));
-
-    await setCycleKind('c1', 'time_off', db);
-
-    expect(calls.updates).toHaveLength(1);
-    expect(calls.updates[0].values).toEqual({ kind: 'time_off' });
-  });
-
-  it('rejects a kind outside the shared tuple without reading or writing', async () => {
-    const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'training', durationDays: null }]));
-
-    await expect(setCycleKind('c1', 'week' as never, db)).rejects.toThrow('unknown-kind');
-    expect(calls.updates).toHaveLength(0);
-  });
-
-  describe('the database-injection seam (WINDOWS #23)', () => {
-    it('writes to an explicitly-passed database and never resolves getPowerSync', async () => {
-      getPowerSyncMock.mockClear();
-      const { db } = fakeDb(cycleRows([{ id: 'c1', kind: 'training', durationDays: null }]));
-
-      await setCycleKind('c1', 'deload', db);
-
-      expect(getPowerSyncMock).not.toHaveBeenCalled();
-    });
-
-    it('falls back to getPowerSync() when no database argument is passed', async () => {
-      const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'training', durationDays: null }]));
-      getPowerSyncMock.mockReturnValue(db);
-
-      await setCycleKind('c1', 'deload');
-
-      expect(calls.updates).toHaveLength(1);
-      expect(getPowerSyncMock).toHaveBeenCalled();
-    });
-  });
-});
-
-describe('setCycleDuration', () => {
-  it('issues exactly one update for a valid duration', async () => {
-    const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'time_off', durationDays: 7 }]));
-
-    await setCycleDuration('c1', 14, db);
-
-    expect(calls.updates).toHaveLength(1);
-    expect(calls.updates[0].values).toEqual({ durationDays: 14 });
-  });
-
-  it('rejects a duration below one day', async () => {
-    const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'time_off', durationDays: 7 }]));
-
-    await expect(setCycleDuration('c1', 0, db)).rejects.toThrow('duration-too-small');
-    expect(calls.updates).toHaveLength(0);
-  });
-
-  it('refuses to clear a time-off cycle back to a null duration', async () => {
-    const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'time_off', durationDays: 7 }]));
-
-    await expect(setCycleDuration('c1', null, db)).rejects.toThrow('duration-required');
-    expect(calls.updates).toHaveLength(0);
-  });
-
-  it('clears a training cycle back to a null duration — its length is the rotation, not a number', async () => {
-    const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'training', durationDays: 7 }]));
-
-    await setCycleDuration('c1', null, db);
-
-    expect(calls.updates).toHaveLength(1);
-    expect(calls.updates[0].values).toEqual({ durationDays: null });
-  });
-
-  describe('the database-injection seam (WINDOWS #23)', () => {
-    it('writes to an explicitly-passed database and never resolves getPowerSync', async () => {
-      getPowerSyncMock.mockClear();
-      const { db } = fakeDb(cycleRows([{ id: 'c1', kind: 'time_off', durationDays: 7 }]));
-
-      await setCycleDuration('c1', 14, db);
-
-      expect(getPowerSyncMock).not.toHaveBeenCalled();
-    });
-
-    it('falls back to getPowerSync() when no database argument is passed', async () => {
-      const { db, calls } = fakeDb(cycleRows([{ id: 'c1', kind: 'time_off', durationDays: 7 }]));
-      getPowerSyncMock.mockReturnValue(db);
-
-      await setCycleDuration('c1', 14);
+      await updateCycle('c1', { name: 'Accumulation', kind: 'training' });
 
       expect(calls.updates).toHaveLength(1);
       expect(getPowerSyncMock).toHaveBeenCalled();
