@@ -4,7 +4,9 @@ import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
 import { SyncConnector } from '../lib/db/connector';
 import { addSessionExercise, logSet, startSession } from '../lib/db/log-set';
 import { loadSessionPersonalRecords } from '../lib/db/personal-record';
-import { pauseSession, resumeSession } from '../lib/db/session-lifecycle';
+import { completeSession, discardSession, pauseSession, resumeSession } from '../lib/db/session-lifecycle';
+import { deleteSession, duplicateSession, renameSession } from '../lib/db/history-mutations';
+import { loadHistoryPage } from '../lib/db/history-query';
 import { previousSetReference } from '../lib/db/session-query';
 import {
   connectPowerSync,
@@ -26,6 +28,7 @@ import {
   readLoggedSets,
   readLoggedSetsRaw,
   readRawColumns,
+  readSessionExercisesRaw,
   readWorkoutSessionRaw,
   reopenTestPowerSync,
   seedPriorHeaviestSet,
@@ -146,8 +149,37 @@ export default function DurabilityHarnessScreen() {
       async resumeSession(input: { sessionId: string; now?: string }) {
         await resumeSession(input.sessionId, input.now ? new Date(input.now) : undefined, requireOpenDb());
       },
+      // 05-09's history e2e case: real session-lifecycle.ts writes, against the currently open()
+      // database, no stub — completeSession/discardSession are what makes a seeded session show up
+      // (or not) in loadHistoryPage's own status filter.
+      async completeSession(input: { sessionId: string; now?: string }) {
+        await completeSession(input.sessionId, input.now ? new Date(input.now) : undefined, requireOpenDb());
+      },
+      async discardSession(sessionId: string) {
+        await discardSession(sessionId, requireOpenDb());
+      },
       async readSessionRaw(sessionId: string) {
         return readWorkoutSessionRaw(sessionId);
+      },
+      async readSessionExercisesRaw(sessionId: string) {
+        return readSessionExercisesRaw(sessionId);
+      },
+      // Delegates to the real history-query.ts/history-mutations.ts (05-09) against the currently
+      // open() database — no stub, no duplicated query/mutation logic in the harness itself.
+      async loadHistoryPage(input: Parameters<typeof loadHistoryPage>[0]) {
+        return loadHistoryPage(input, requireOpenDb());
+      },
+      async renameSession(input: { sessionId: string; name: string | null }) {
+        await renameSession(input.sessionId, input.name, requireOpenDb());
+      },
+      async duplicateSession(input: { sourceSessionId: string; now?: string }) {
+        return duplicateSession(
+          { sourceSessionId: input.sourceSessionId, now: input.now ? new Date(input.now) : undefined },
+          requireOpenDb(),
+        );
+      },
+      async deleteSession(sessionId: string) {
+        await deleteSession(sessionId, requireOpenDb());
       },
       // Delegates to the real previousSetReference against the currently open() database — the
       // two-prior-sessions reload case (durability.spec.ts) proves the same tie-break the unit

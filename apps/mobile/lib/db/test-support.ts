@@ -427,10 +427,20 @@ export async function readWorkoutSessionRaw(sessionId: string): Promise<Record<s
     throw new Error('readWorkoutSessionRaw() called before openTestPowerSync()');
   }
   const rows = await rawDb.getAll<Record<string, unknown>>(
-    'SELECT id, started_at, paused_at, accumulated_paused_seconds, status FROM workout_session WHERE id = ?',
+    'SELECT id, name, started_at, paused_at, accumulated_paused_seconds, status FROM workout_session WHERE id = ?',
     [sessionId],
   );
   return rows[0] ?? null;
+}
+
+// 05-09's deleteSession e2e case (e2e/history.spec.ts): reads session_exercise rows raw, by
+// session id, so the assertion proves the row itself is gone rather than trusting a batched
+// read-path helper (which would filter removed_at and silently pass on an orphaned row too).
+export async function readSessionExercisesRaw(sessionId: string): Promise<Record<string, unknown>[]> {
+  if (!rawDb) {
+    throw new Error('readSessionExercisesRaw() called before openTestPowerSync()');
+  }
+  return rawDb.getAll<Record<string, unknown>>('SELECT * FROM session_exercise WHERE session_id = ?', [sessionId]);
 }
 
 // Connects the CURRENT isolated test-support.ts database directly — deliberately not routed
