@@ -1,4 +1,5 @@
 import {
+  computeSessionPrTypesBySetId,
   detectPrsForSession,
   loadPriorBestByExercise,
   loadSessionPersonalRecords,
@@ -96,12 +97,28 @@ function fakeDb(rows: FakeRows = {}) {
     insert: (table: unknown) => ({
       values: (values: Row) => {
         inserted.push({ table, values });
+        // Round-trips into the backing table so a second detectPrsForSession run (the correction
+        // affordance's re-run, LOG-19) sees what the first run wrote — required for the
+        // idempotency guard's own test below.
+        tables.get(table)?.[1].push(values);
         return Promise.resolve();
       },
     }),
   } as unknown as ReturnType<typeof getPowerSync>;
 
-  return { db, inserted, getSelectCount: (table: unknown) => selectCounts.get(table) ?? 0 };
+  return {
+    db,
+    inserted,
+    getSelectCount: (table: unknown) => selectCounts.get(table) ?? 0,
+    // Direct row mutation, bypassing db.insert/update entirely — used by the correction-affordance
+    // test below to simulate "a correction already landed" without needing an updateLoggedSet fake
+    // of its own; personal-record.ts never calls this, only the test does.
+    mutateRow: (table: unknown, id: string, patch: Row) => {
+      const [, tableRows] = tables.get(table) ?? [{}, []];
+      const row = tableRows.find((candidate) => candidate.id === id);
+      if (row) Object.assign(row, patch);
+    },
+  };
 }
 
 beforeEach(() => {
@@ -241,12 +258,62 @@ describe('detectPrsForSession (D-30)', () => {
     }
   });
 
+  it('does not double-record an already-written PR when re-run (LOG-19 correction re-detection)', async () => {
+    const { db, inserted } = fakeDb({
+      workoutSessionRows: [SESSION_ROW],
+      sessionExerciseRows: [{ id: 'se-1', sessionId: 's-1', exerciseId: 'ex-1', orderIndex: 0, removedAt: null }],
+      loggedSetRows: [
+        { id: 'ls-only', sessionExerciseId: 'se-1', setIndex: 1, setType: 'normal', weightKg: '80.000', reps: 5, completed: true, loggedAt: '2026-08-24T09:00:00.000Z' },
+      ],
+    });
+
+    await detectPrsForSession('s-1', 'user-1', db);
+    const firstRunCount = inserted.length;
+    expect(firstRunCount).toBeGreaterThan(0);
+
+    await detectPrsForSession('s-1', 'user-1', db);
+
+    expect(inserted).toHaveLength(firstRunCount);
+  });
+
   it('does nothing when the session id names no row', async () => {
     const { db, inserted } = fakeDb({ workoutSessionRows: [] });
 
     await detectPrsForSession('missing', 'user-1', db);
 
     expect(inserted).toHaveLength(0);
+  });
+});
+
+describe('computeSessionPrTypesBySetId (LOG-19 — the summary display never trusts stale rows)', () => {
+  it('stops reporting a PR type once a correction lowers the set below the prior best, without touching the durable row already written for the original value', async () => {
+    const { db, inserted, mutateRow } = fakeDb({
+      workoutSessionRows: [SESSION_ROW],
+      sessionExerciseRows: [
+        { id: 'se-1', sessionId: 's-1', exerciseId: 'ex-1', orderIndex: 0, removedAt: null },
+        { id: 'se-prior', sessionId: 's-prior', exerciseId: 'ex-1', orderIndex: 0, removedAt: null },
+      ],
+      loggedSetRows: [
+        { id: 'ls-prior', sessionExerciseId: 'se-prior', setIndex: 1, setType: 'normal', weightKg: '90.000', reps: 5, completed: true, loggedAt: '2026-08-20T09:00:00.000Z' },
+        { id: 'ls-1', sessionExerciseId: 'se-1', setIndex: 1, setType: 'normal', weightKg: '100.000', reps: 5, completed: true, loggedAt: '2026-08-24T09:05:00.000Z' },
+      ],
+    });
+
+    await detectPrsForSession('s-1', 'user-1', db);
+    const writtenForOriginalValue = inserted.filter((call) => call.values.loggedSetId === 'ls-1' && call.values.prType === 'heaviest_weight');
+    expect(writtenForOriginalValue).toHaveLength(1);
+
+    const beforeCorrection = await computeSessionPrTypesBySetId('s-1', db);
+    expect(beforeCorrection.get('ls-1')).toContain('heaviest_weight');
+
+    // Simulate the correction affordance's write: lower ls-1's weight below the prior best.
+    mutateRow(loggedSet, 'ls-1', { weightKg: '80.000' });
+
+    const afterCorrection = await computeSessionPrTypesBySetId('s-1', db);
+    expect(afterCorrection.get('ls-1') ?? []).not.toContain('heaviest_weight');
+
+    // The original write is untouched — detectPrsForSession never deletes or supersedes a row.
+    expect(writtenForOriginalValue).toHaveLength(1);
   });
 });
 

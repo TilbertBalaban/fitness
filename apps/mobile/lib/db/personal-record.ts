@@ -131,15 +131,21 @@ interface OrderedCandidate extends CandidateSet {
   loggedAt: string;
 }
 
-// Loads the session tree, loads each of its exercises' prior bests, then walks every set in
-// logged_at order, writing one personal_record row per DetectedPr through logPersonalRecord
-// (loggedSetId pointing at the exact set that achieved it) and folding that set into the in-memory
-// prior best before moving to the next set — so the prior best advances within the session, not
-// only between sessions. detectPrs/foldPriorBest already no-op on warm-up/incomplete/null-weight
-// sets, so every set is passed through rather than pre-filtered here.
-export async function detectPrsForSession(sessionId: string, userId: string | null, db: WriteDb = getPowerSync()): Promise<void> {
+interface SessionPrWalkStep {
+  candidate: OrderedCandidate;
+  detected: ReturnType<typeof detectPrs>;
+}
+
+// The one place a session's sets are walked in logged_at order against an advancing prior best —
+// shared by detectPrsForSession (which writes) and computeSessionPrTypesBySetId (a pure re-read,
+// LOG-19's correction affordance) so the two can never independently drift on what counts as a PR.
+// Loads the session tree, loads each of its exercises' prior bests from OTHER sessions, then folds
+// each candidate into the in-memory prior best immediately after evaluating it, so the prior best
+// advances WITHIN the session, not only between sessions. detectPrs/foldPriorBest already no-op on
+// warm-up/incomplete/null-weight sets, so every set is passed through rather than pre-filtered here.
+async function walkSessionPrs(sessionId: string, db: WriteDb): Promise<SessionPrWalkStep[]> {
   const tree = await loadSessionTree(sessionId, db);
-  if (!tree) return;
+  if (!tree) return [];
 
   const exerciseIds = [...new Set(tree.exercises.map((exercise) => exercise.exerciseId))];
   const priorBestByExerciseId = await loadPriorBestByExercise(exerciseIds, sessionId, db);
@@ -163,26 +169,68 @@ export async function detectPrsForSession(sessionId: string, userId: string | nu
     return a.loggedSetId < b.loggedSetId ? -1 : 1;
   });
 
+  const steps: SessionPrWalkStep[] = [];
   for (const candidate of candidates) {
     const priorBest = priorBestByExerciseId.get(candidate.exerciseId) ?? foldPriorBest([]);
-    const detected = detectPrs(candidate, priorBest);
-
-    for (const pr of detected) {
-      await logPersonalRecord(
-        {
-          userId,
-          exerciseId: candidate.exerciseId,
-          prType: pr.prType,
-          value: pr.value,
-          loggedSetId: candidate.loggedSetId,
-          achievedAt: new Date(candidate.loggedAt),
-        },
-        db,
-      );
-    }
-
+    steps.push({ candidate, detected: detectPrs(candidate, priorBest) });
     priorBestByExerciseId.set(candidate.exerciseId, mergePriorBest(priorBest, foldPriorBest([candidate])));
   }
+  return steps;
+}
+
+// Walks the session (see walkSessionPrs) and writes one personal_record row per DetectedPr
+// through logPersonalRecord, loggedSetId pointing at the exact set that achieved it. Idempotent:
+// the correction affordance (LOG-19) re-runs this after an edit, so a (logged_set_id, pr_type)
+// pair already written on a prior run is never written again — logPersonalRecord always inserts a
+// fresh row with no upsert of its own, so without this guard a second run would double-record
+// every still-valid PR. A row this function once wrote is never deleted or superseded here even
+// if a later correction invalidates it (Phase 10's recompute-on-history-edit territory) —
+// computeSessionPrTypesBySetId below is what keeps the SUMMARY's own display honest about that,
+// without touching this durable ledger.
+export async function detectPrsForSession(sessionId: string, userId: string | null, db: WriteDb = getPowerSync()): Promise<void> {
+  const steps = await walkSessionPrs(sessionId, db);
+  if (steps.length === 0) return;
+
+  const alreadyRecorded = new Set(
+    (await loadSessionPersonalRecords(sessionId, db))
+      .filter((record) => record.loggedSetId !== null)
+      .map((record) => `${record.loggedSetId}:${record.prType}`),
+  );
+
+  for (const { candidate, detected } of steps) {
+    for (const pr of detected) {
+      const key = `${candidate.loggedSetId}:${pr.prType}`;
+      if (!alreadyRecorded.has(key)) {
+        await logPersonalRecord(
+          {
+            userId,
+            exerciseId: candidate.exerciseId,
+            prType: pr.prType,
+            value: pr.value,
+            loggedSetId: candidate.loggedSetId,
+            achievedAt: new Date(candidate.loggedAt),
+          },
+          db,
+        );
+        alreadyRecorded.add(key);
+      }
+    }
+  }
+}
+
+// A pure re-read of "what would detectPrsForSession say right now" (LOG-19): the workout summary's
+// own badge display calls this — never the stored personal_record rows directly — so a correction
+// that lowers a set below the prior best makes its badge disappear on the very next render, without
+// this file ever deleting or superseding the durable row detectPrsForSession already wrote for the
+// original, higher value (that row stays exactly where it is, for Phase 9/10 to reconcile).
+export async function computeSessionPrTypesBySetId(sessionId: string, db: WriteDb = getPowerSync()): Promise<Map<string, PrType[]>> {
+  const steps = await walkSessionPrs(sessionId, db);
+  const result = new Map<string, PrType[]>();
+  for (const { candidate, detected } of steps) {
+    if (detected.length === 0) continue;
+    result.set(candidate.loggedSetId, detected.map((pr) => pr.prType));
+  }
+  return result;
 }
 
 export interface PersonalRecordRow {

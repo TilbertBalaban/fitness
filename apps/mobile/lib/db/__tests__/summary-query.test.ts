@@ -2,16 +2,16 @@ import { E1RM_MAX_VALID_REPS } from '@fitness/pr-rules';
 import { loadSessionSummary } from '../summary-query';
 import { getPowerSync } from '../powersync';
 import { loadExerciseNameMap } from '../programs/load-program';
-import { loadSessionPersonalRecords } from '../personal-record';
+import { computeSessionPrTypesBySetId } from '../personal-record';
 import { exerciseMuscleMapping, loggedSet, muscleGroup, sessionExercise, workoutSession } from '../schema';
 
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../programs/load-program', () => ({ loadExerciseNameMap: jest.fn() }));
-jest.mock('../personal-record', () => ({ loadSessionPersonalRecords: jest.fn() }));
+jest.mock('../personal-record', () => ({ computeSessionPrTypesBySetId: jest.fn() }));
 
 const getPowerSyncMock = getPowerSync as jest.MockedFunction<typeof getPowerSync>;
 const loadExerciseNameMapMock = loadExerciseNameMap as jest.MockedFunction<typeof loadExerciseNameMap>;
-const loadSessionPersonalRecordsMock = loadSessionPersonalRecords as jest.MockedFunction<typeof loadSessionPersonalRecords>;
+const computeSessionPrTypesBySetIdMock = computeSessionPrTypesBySetId as jest.MockedFunction<typeof computeSessionPrTypesBySetId>;
 
 type Row = Record<string, unknown>;
 type TableLike = Record<string, { name?: string } | undefined>;
@@ -111,7 +111,7 @@ const SESSION_ROW = {
 beforeEach(() => {
   getPowerSyncMock.mockReset();
   loadExerciseNameMapMock.mockResolvedValue(new Map([['ex-1', 'Bench Press'], ['ex-2', 'Squat']]));
-  loadSessionPersonalRecordsMock.mockResolvedValue([]);
+  computeSessionPrTypesBySetIdMock.mockResolvedValue(new Map());
 });
 
 describe('loadSessionSummary — missing session', () => {

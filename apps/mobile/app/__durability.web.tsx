@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
 import { SyncConnector } from '../lib/db/connector';
 import { addSessionExercise, logSet, startSession } from '../lib/db/log-set';
+import { loadSessionPersonalRecords } from '../lib/db/personal-record';
 import { pauseSession, resumeSession } from '../lib/db/session-lifecycle';
 import { previousSetReference } from '../lib/db/session-query';
 import {
@@ -27,9 +28,11 @@ import {
   readRawColumns,
   readWorkoutSessionRaw,
   reopenTestPowerSync,
+  seedPriorHeaviestSet,
   seedProgrammedSession,
   writeCatalogVersionSentinel,
   type SeededProgrammedSession,
+  type SeedPriorHeaviestSetInput,
   type TestWriteDb,
 } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
@@ -218,6 +221,19 @@ export default function DurabilityHarnessScreen() {
         const seeded = await seedProgrammedSession(db);
         setWorkoutHarness({ db });
         return seeded;
+      },
+      // A direct, minimal write of a completed prior session's single working set — see
+      // seedPriorHeaviestSet's own doc comment (test-support.ts) for why this bypasses
+      // startWorkoutFromProgram/logSet. Does not touch workoutHarness state; callers use this
+      // before seedWorkoutSession, not instead of it.
+      async seedPriorHeaviestSet(input: SeedPriorHeaviestSetInput) {
+        await seedPriorHeaviestSet(requireOpenDb(), input);
+      },
+      // Reads the DURABLE ledger (personal-record.ts's own written rows), not the summary's pure
+      // recompute — proving detectPrsForSession's write path actually fired, which the summary
+      // screen's own "New PR" badge alone cannot (that badge is a fresh recompute, LOG-19).
+      async readSessionPersonalRecords(sessionId: string) {
+        return loadSessionPersonalRecords(sessionId, requireOpenDb());
       },
       // Mounts WorkoutHarnessScreen against whichever database open()/openWithFilename() currently
       // has open, WITHOUT seeding — the post-reload half of workout-screen.spec.ts's reload case,

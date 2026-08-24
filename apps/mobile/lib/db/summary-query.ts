@@ -4,7 +4,7 @@ import { estimated1RM } from '@fitness/pr-rules';
 import { sortMuscleTargets, type MuscleTarget, type RawMuscleTarget } from '../catalog/exercise-detail';
 import { elapsedWorkoutSeconds } from '../rest-timer';
 import { loadExerciseNameMap } from './programs/load-program';
-import { loadSessionPersonalRecords } from './personal-record';
+import { computeSessionPrTypesBySetId } from './personal-record';
 import { getPowerSync, type WriteDb } from './powersync';
 import { exerciseMuscleMapping, loggedSet, muscleGroup, sessionExercise, workoutSession } from './schema';
 import type { LoggedSetRow } from './session-query';
@@ -41,7 +41,9 @@ export interface SessionSummary {
   durationSeconds: number;
   musclesTrained: MusclesTrained;
   breakdown: ExerciseBreakdown[];
-  personalRecordsBySetId: Record<string, PrType[]>;
+  // A pure re-derivation (LOG-19), not a read of the stored personal_record table — see
+  // computeSessionPrTypesBySetId's own doc comment in personal-record.ts.
+  personalRecordsBySetId: Map<string, PrType[]>;
 }
 
 interface MuscleMappingRow {
@@ -226,18 +228,18 @@ export async function loadSessionSummary(sessionId: string, userId: string | nul
 
   const musclesTrained = buildMusclesTrained(trainedExerciseIds, mappings, groups);
 
-  const personalRecords = await loadSessionPersonalRecords(sessionId, db);
-  const personalRecordsBySetId: Record<string, PrType[]> = {};
+  // A pure re-derivation of "what would detectPrsForSession say right now" (LOG-19), never a read
+  // of the stored personal_record rows directly — this is what keeps a corrected-away PR's badge
+  // from surviving on screen after the correction, without ever deleting or superseding the
+  // durable row detectPrsForSession wrote for the original value (personal-record.ts's own
+  // computeSessionPrTypesBySetId doc comment).
+  const personalRecordsBySetId = await computeSessionPrTypesBySetId(sessionId, db);
   const prTypesByExerciseId = new Map<string, Set<PrType>>();
-  for (const record of personalRecords) {
-    if (!record.loggedSetId) continue;
-    const prType = record.prType as PrType;
-    (personalRecordsBySetId[record.loggedSetId] ??= []).push(prType);
-
-    const exerciseId = exerciseIdBySetId.get(record.loggedSetId);
+  for (const [loggedSetId, prTypes] of personalRecordsBySetId) {
+    const exerciseId = exerciseIdBySetId.get(loggedSetId);
     if (!exerciseId) continue;
     const set = prTypesByExerciseId.get(exerciseId) ?? new Set<PrType>();
-    set.add(prType);
+    for (const prType of prTypes) set.add(prType);
     prTypesByExerciseId.set(exerciseId, set);
   }
   for (const row of breakdown) {
