@@ -57,10 +57,10 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [ ] **LOG-05**: User can enter weight and reps on an in-app numeric keypad that never obscures the value being edited
 - [ ] **LOG-06**: User can log RIR per set on a 0–6+ scale, and change it mid-workout
 - [ ] **LOG-07**: User can mark a set complete with one tap, and tap again to undo without entering an edit mode
-- [ ] **LOG-08**: User's rest timer starts automatically when a set is completed
-- [ ] **LOG-09**: User's rest timer keeps correct time and alerts them when the app is backgrounded or the screen is locked
-- [ ] **LOG-10**: User can extend or skip the rest timer, and view it full-screen
-- [ ] **LOG-11**: User sees a workout duration timer running for the session
+- [x] **LOG-08**: User's rest timer starts automatically when a set is completed
+- [x] **LOG-09**: User's rest timer keeps correct time and alerts them when the app is backgrounded or the screen is locked
+- [x] **LOG-10**: User can extend or skip the rest timer, and view it full-screen
+- [x] **LOG-11**: User sees a workout duration timer running for the session
 - [x] **LOG-12**: User can pause and resume a workout
 - [x] **LOG-13**: User auto-advances to the next exercise when its sets are complete, and can turn that off
 - [ ] **LOG-14**: User can add, swap, or remove exercises mid-workout
@@ -228,10 +228,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 | LOG-05 | Phase 5 — In-Gym Session Logging | Pending |
 | LOG-06 | Phase 5 — In-Gym Session Logging | Pending |
 | LOG-07 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-08 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-09 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-10 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-11 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-08 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-09 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-10 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-11 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-12 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-13 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-14 | Phase 5 — In-Gym Session Logging | Pending |
