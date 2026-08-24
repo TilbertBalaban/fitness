@@ -276,7 +276,7 @@ Plans:
   5. User can correct a mistake with a single tap-to-undo mid-workout, and can view, edit, duplicate, and backfill past workouts afterward
   6. User finishes to a summary showing muscles trained, PRs, and a per-exercise breakdown, and can correct entries from that screen
 
-**Plans**: 2/10 plans executed
+**Plans**: 5/10 plans executed
 
 Plans:
 
@@ -287,9 +287,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 05-03-PLAN.md — Sync apply path: `personal_record` wired as a singleton root, tuple-sourced validators, notes/pause/preference PATCH fields
-- [ ] 05-04-PLAN.md — `@fitness/pr-rules`: the four PR types, the estimated-1RM validity cutoff, and deterministic warm-up scaling
-- [ ] 05-05-PLAN.md — Rest and duration timers: persisted wall-clock target, `.web.ts` alert seam, header bar, full-screen extend/skip, honest permission degrade
+- [x] 05-03-PLAN.md — Sync apply path: `personal_record` wired as a singleton root, tuple-sourced validators, notes/pause/preference PATCH fields
+- [x] 05-04-PLAN.md — `@fitness/pr-rules`: the four PR types, the estimated-1RM validity cutoff, and deterministic warm-up scaling
+- [x] 05-05-PLAN.md — Rest and duration timers: persisted wall-clock target, `.web.ts` alert seam, header bar, full-screen extend/skip, honest permission degrade
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -473,7 +473,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
-| 5. In-Gym Session Logging | 2/10 | In Progress|  |
+| 5. In-Gym Session Logging | 5/10 | In Progress|  |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
 | 8. Progression Engine | 0/TBD | Not started | - |
