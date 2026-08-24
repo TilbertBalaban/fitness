@@ -64,6 +64,8 @@ const EXERCISE: SessionExerciseRow = {
   exerciseName: 'Bench Press',
   orderIndex: 0,
   supersetGroupId: null,
+  routineExerciseId: null,
+  notes: null,
   targetSets: 3,
   targetRepMin: 8,
   targetRepMax: 12,

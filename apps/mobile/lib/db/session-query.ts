@@ -1,4 +1,5 @@
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { WORKING_SET_TYPE } from '@fitness/api-contracts';
 import { getPowerSync, type WriteDb } from './powersync';
 import { loadExerciseNameMap } from './programs/load-program';
 import { loggedSet, sessionExercise, workoutSession } from './schema';
@@ -12,6 +13,8 @@ export interface SessionExerciseRow {
   exerciseName: string;
   orderIndex: number;
   supersetGroupId: string | null;
+  routineExerciseId: string | null;
+  notes: string | null;
   targetSets: number | null;
   targetRepMin: number | null;
   targetRepMax: number | null;
@@ -73,6 +76,10 @@ export async function loadSessionTree(
 
   if (!sessionRow) return null;
 
+  // removed_at IS NULL — a removed exercise (LOG-14/T-05-06-03) drops out of the live strip and
+  // pager here, the one read this whole session-query module funnels through for both; the finish
+  // summary and history detail (not yet built) read past this filter, per removeSessionExercise's
+  // own documented promise in session-mutations.ts.
   const exerciseRows = await db
     .select({
       id: sessionExercise.id,
@@ -80,6 +87,8 @@ export async function loadSessionTree(
       exerciseId: sessionExercise.exerciseId,
       orderIndex: sessionExercise.orderIndex,
       supersetGroupId: sessionExercise.supersetGroupId,
+      routineExerciseId: sessionExercise.routineExerciseId,
+      notes: sessionExercise.notes,
       targetSets: sessionExercise.targetSets,
       targetRepMin: sessionExercise.targetRepMin,
       targetRepMax: sessionExercise.targetRepMax,
@@ -87,7 +96,7 @@ export async function loadSessionTree(
       targetRestSeconds: sessionExercise.targetRestSeconds,
     })
     .from(sessionExercise)
-    .where(eq(sessionExercise.sessionId, sessionId))
+    .where(and(eq(sessionExercise.sessionId, sessionId), isNull(sessionExercise.removedAt)))
     .orderBy(sessionExercise.orderIndex);
 
   const sessionExerciseIds = exerciseRows.map((row) => row.id);
@@ -367,4 +376,32 @@ export async function previousSetReferencesForSession(
   }
 
   return result;
+}
+
+export interface DefaultWarmupWorkingWeightInput {
+  sessionExerciseId: string;
+  exerciseId: string;
+  beforeSessionId: string;
+  userId: string | null;
+}
+
+// The Warm-up sheet's working-weight default (LOG-17): the exercise's own first logged working
+// set in THIS session if one exists, else the D-16 cross-session same-position prefill
+// previousSetReference already resolves for set 1, else null (the sheet's own required-field
+// case). Never percentage/rounding arithmetic — this only resolves WHICH weight
+// @fitness/pr-rules's warmupSets() scales off.
+export async function defaultWarmupWorkingWeightKg(
+  { sessionExerciseId, exerciseId, beforeSessionId, userId }: DefaultWarmupWorkingWeightInput,
+  db: WriteDb = getPowerSync(),
+): Promise<string | null> {
+  const workingRows = await db
+    .select({ setIndex: loggedSet.setIndex, weightKg: loggedSet.weightKg })
+    .from(loggedSet)
+    .where(and(eq(loggedSet.sessionExerciseId, sessionExerciseId), eq(loggedSet.setType, WORKING_SET_TYPE)));
+
+  const [firstWorking] = workingRows.slice().sort((a, b) => a.setIndex - b.setIndex);
+  if (firstWorking?.weightKg) return firstWorking.weightKg;
+
+  const reference = await previousSetReference({ exerciseId, setIndex: 1, beforeSessionId, userId }, db);
+  return reference?.weightKg ?? null;
 }
