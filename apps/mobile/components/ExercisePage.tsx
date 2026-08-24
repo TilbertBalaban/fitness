@@ -1,8 +1,17 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
+import { WARMUP_SET_TYPE, type ResolvedTarget } from '@fitness/api-contracts';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
+import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
+import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
+import { ExercisePickerModal, type PickerCatalogRow } from './ExercisePickerModal';
 import type { KeypadField } from './NumericKeypad';
+import { NoteSheet } from './NoteSheet';
+import { RemoveExerciseDialog, SessionActionSheet, type SessionExerciseActionId } from './SessionActionSheet';
 import { SetRowView, type SetRowReference, type SetRowValues } from './SetRow';
+import { TargetsSheet } from './TargetsSheet';
 
 export interface ExercisePageSetRow {
   setId: string | null;
@@ -10,6 +19,11 @@ export interface ExercisePageSetRow {
   values: SetRowValues;
   reference: SetRowReference;
   completed: boolean;
+  // Optional: undefined rows render exactly as before this field existed. Populated by a caller
+  // that threads set_type through (workout.tsx does not yet — see 05-06-SUMMARY.md's documented
+  // integration gap); ExercisePageView never re-sorts by it, it only decides whether to render the
+  // leading "W" badge on a row the caller has already ordered warm-ups-first (RESEARCH Pitfall 2).
+  setType?: string;
 }
 
 export interface ExercisePageActiveField {
@@ -28,11 +42,30 @@ export interface ExercisePageViewProps {
   onCheckmarkPress: (setId: string | null) => void;
 }
 
+// A 14px circle, bg-secondary, muted Label glyph, ahead of the set-number column (05-UI-SPEC §Set
+// Row) — wraps SetRowView rather than reaching inside it, since SetRow.tsx (which owns the row's
+// own internal 24px set-number box) is outside this plan's file scope; the badge sits immediately
+// to the row's left, which reads identically to "ahead of the set-number column" without a second
+// component boundary needing modification.
+function renderWarmupBadge() {
+  return (
+    <View
+      accessibilityLabel="Warm-up set"
+      className="items-center justify-center rounded-full bg-secondary"
+      style={{ width: 14, height: 14, marginRight: 4 }}
+    >
+      <Text className="text-label font-normal text-foreground-muted" style={{ fontSize: 9, lineHeight: 12 }}>
+        W
+      </Text>
+    </View>
+  );
+}
+
 // Hook-free — direct-invocable by a test, matching CycleStripView/DayDeckView. `rows` arrives
 // pre-ordered by the caller (workout.tsx's buildSetRows sorts warm-ups ahead of working sets
 // regardless of raw set_index, per RESEARCH.md Pitfall 2) — this component only renders the order
-// it is given. `actionBarSlot` is a render-prop slot 05-06 fills with the Warm-up/Targets/Note
-// action bar (D-13); left undefined this task since those actions don't exist yet.
+// it is given, never re-sorts. `actionBarSlot` is the render-prop slot the stateful ExercisePage
+// wrapper below fills with the Warm-up/Targets/Note/overflow action bar and its sheets (D-13).
 export function ExercisePageView({ exerciseName, rows, activeField, colors, actionBarSlot, onFieldPress, onReferenceTap, onCheckmarkPress }: ExercisePageViewProps) {
   return (
     <View className="flex-1 bg-background">
@@ -40,27 +73,162 @@ export function ExercisePageView({ exerciseName, rows, activeField, colors, acti
         <Text className="mb-md text-heading font-semibold text-foreground">{exerciseName}</Text>
         {actionBarSlot ?? null}
         {rows.map((row) => (
-          <SetRowView
-            key={row.setId ?? `draft-${row.setIndex}`}
-            setIndex={row.setIndex}
-            values={row.values}
-            reference={row.reference}
-            completed={row.completed}
-            activeField={activeField && activeField.setId === row.setId ? activeField.field : null}
-            colors={colors}
-            onFieldPress={(field) => onFieldPress(row.setId, field, row.values[field])}
-            onReferenceTap={(field) => onReferenceTap(row.setId, field)}
-            onCheckmarkPress={() => onCheckmarkPress(row.setId)}
-          />
+          <View key={row.setId ?? `draft-${row.setIndex}`} className="flex-row items-center">
+            {row.setType === WARMUP_SET_TYPE ? renderWarmupBadge() : null}
+            <View className="flex-1">
+              <SetRowView
+                setIndex={row.setIndex}
+                values={row.values}
+                reference={row.reference}
+                completed={row.completed}
+                activeField={activeField && activeField.setId === row.setId ? activeField.field : null}
+                colors={colors}
+                onFieldPress={(field) => onFieldPress(row.setId, field, row.values[field])}
+                onReferenceTap={(field) => onReferenceTap(row.setId, field)}
+                onCheckmarkPress={() => onCheckmarkPress(row.setId)}
+              />
+            </View>
+          </View>
         ))}
       </ScrollView>
     </View>
   );
 }
 
-export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors'> {}
+type ActiveSheet = 'targets' | 'note' | 'session' | 'remove-confirm' | 'swap';
 
-export function ExercisePage(props: ExercisePageProps) {
+export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors' | 'actionBarSlot'> {
+  sessionExerciseId: string;
+  exerciseId: string;
+  targets: ResolvedTarget;
+  routineExerciseId: string | null;
+  cycleId: string | null;
+  hasNote: boolean;
+  noteText: string | null;
+  onExerciseChanged: () => void;
+}
+
+// The stateful wrapper: owns the action bar's local sheet-open state and wires every action-bar id
+// and overflow row to its sheet or mutation, per D-13 (05-06's own integration point). Not yet
+// consumed by workout.tsx — see 05-06-SUMMARY.md's "Known integration gap" — but a caller using
+// this component (rather than ExercisePageView directly) gets the fully-wired action bar and
+// overflow sheet with no further plumbing.
+export function ExercisePage({
+  sessionExerciseId,
+  exerciseId,
+  exerciseName,
+  targets,
+  routineExerciseId,
+  cycleId,
+  hasNote,
+  noteText,
+  onExerciseChanged,
+  rows,
+  activeField,
+  onFieldPress,
+  onReferenceTap,
+  onCheckmarkPress,
+}: ExercisePageProps) {
   const colors = useThemeColors();
-  return <ExercisePageView {...props} colors={colors} />;
+  const router = useRouter();
+  const [activeSheet, setActiveSheet] = useState<ActiveSheet | null>(null);
+
+  const closeSheet = () => setActiveSheet(null);
+
+  const handleActionPress = (id: ExerciseActionId) => {
+    if (id === 'targets') setActiveSheet('targets');
+    else if (id === 'note') setActiveSheet('note');
+    else if (id === 'overflow') setActiveSheet('session');
+    // 'warmup' has no wired sheet this plan — WarmupSheet/generateWarmupSets are blocked on the
+    // @fitness/pr-rules workspace dependency not yet declared for apps/mobile (dependency freeze
+    // this wave; see 05-06-SUMMARY.md). Left as a documented no-op rather than a silently-broken
+    // press.
+  };
+
+  const handleSessionAction = (id: SessionExerciseActionId) => {
+    if (id === 'remove') setActiveSheet('remove-confirm');
+    else if (id === 'swap') setActiveSheet('swap');
+    else if (id === 'info') {
+      closeSheet();
+      router.push({ pathname: '/exercises/[id]', params: { id: exerciseId } });
+    } else {
+      // 'reorder': no drag-and-drop reorder surface is specified anywhere in 05-UI-SPEC.md for
+      // this phase (E10 lists the row but defines no interaction) — reorderSessionExercises is
+      // built and tested as a mutation, but this row has no UI flow to drive it yet this phase.
+      closeSheet();
+    }
+  };
+
+  const handleConfirmRemove = async () => {
+    closeSheet();
+    await removeSessionExercise(sessionExerciseId);
+    onExerciseChanged();
+  };
+
+  const handleSwapPick = async (pickedRows: PickerCatalogRow[]) => {
+    closeSheet();
+    const picked = pickedRows[0];
+    if (!picked) return;
+    await swapSessionExercise({ sessionExerciseId, newExerciseId: picked.id });
+    onExerciseChanged();
+  };
+
+  const actionBarSlot = (
+    <>
+      <ExerciseActionBar hasNote={hasNote} warmupSetsEnabled onPress={handleActionPress} />
+
+      {activeSheet === 'targets' ? (
+        <TargetsSheet
+          sessionExerciseId={sessionExerciseId}
+          exerciseName={exerciseName}
+          initial={targets}
+          routineExerciseId={routineExerciseId}
+          cycleId={cycleId}
+          onDone={() => {
+            closeSheet();
+            onExerciseChanged();
+          }}
+          onCancel={closeSheet}
+        />
+      ) : null}
+
+      {activeSheet === 'note' ? (
+        <NoteSheet
+          level="exercise"
+          id={sessionExerciseId}
+          initialText={noteText}
+          onSaved={() => {
+            closeSheet();
+            onExerciseChanged();
+          }}
+          onCancel={closeSheet}
+        />
+      ) : null}
+
+      {activeSheet === 'session' ? (
+        <SessionActionSheet exerciseName={exerciseName} onSelect={handleSessionAction} onCancel={closeSheet} />
+      ) : null}
+
+      {activeSheet === 'remove-confirm' ? (
+        <RemoveExerciseDialog onConfirm={() => void handleConfirmRemove()} onCancel={closeSheet} />
+      ) : null}
+
+      {activeSheet === 'swap' ? (
+        <ExercisePickerModal dayName={`a replacement for ${exerciseName}`} onAdd={(picked) => void handleSwapPick(picked)} onCancel={closeSheet} />
+      ) : null}
+    </>
+  );
+
+  return (
+    <ExercisePageView
+      exerciseName={exerciseName}
+      rows={rows}
+      activeField={activeField}
+      colors={colors}
+      actionBarSlot={actionBarSlot}
+      onFieldPress={onFieldPress}
+      onReferenceTap={onReferenceTap}
+      onCheckmarkPress={onCheckmarkPress}
+    />
+  );
 }
