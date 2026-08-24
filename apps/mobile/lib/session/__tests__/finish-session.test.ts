@@ -15,7 +15,7 @@ beforeEach(() => {
 });
 
 describe('finishSession (D-32)', () => {
-  it('completes the session, cancels any scheduled rest alert, and navigates home', async () => {
+  it('completes the session, cancels any scheduled rest alert, and navigates to the finish summary carrying the session id', async () => {
     const push = jest.fn();
     const db = {} as never;
 
@@ -23,7 +23,7 @@ describe('finishSession (D-32)', () => {
 
     expect(completeSessionMock).toHaveBeenCalledWith('s-1', expect.any(Date), db);
     expect(cancelRestAlertMock).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith('/(tabs)');
+    expect(push).toHaveBeenCalledWith('/workout-summary?sessionId=s-1');
   });
 
   it('completes and cancels before navigating', async () => {

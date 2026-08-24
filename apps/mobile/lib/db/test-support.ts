@@ -166,6 +166,76 @@ export async function seedProgrammedSession(db: TestWriteDb): Promise<SeededProg
   };
 }
 
+export interface SeedPriorHeaviestSetInput {
+  exerciseId: string;
+  weightKg: string;
+  reps: number;
+}
+
+// Inserts a completed, PRIOR (already-finished, days-old) session with one working set for the
+// given exercise — not through startWorkoutFromProgram/logSet (both assume a session still being
+// built), but as a direct, minimal write of exactly the three rows loadPriorBestByExercise reads
+// (personal-record.ts): a workout_session, one session_exercise, one logged_set. This is what lets
+// e2e/workout-summary.spec.ts's PR badge assertion be a REAL PR (beats real prior history) rather
+// than a vacuous "first-ever set is always a PR" case.
+export async function seedPriorHeaviestSet(db: TestWriteDb, input: SeedPriorHeaviestSetInput): Promise<void> {
+  const sessionId = generateClientId();
+  const sessionExerciseId = generateClientId();
+  const loggedSetId = generateClientId();
+  const priorDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  await db.insert(workoutSession).values({
+    id: sessionId,
+    userId: null,
+    routineDayId: null,
+    equipmentProfileId: null,
+    startedAt: priorDate,
+    endedAt: priorDate,
+    status: 'completed',
+    deviceId: null,
+    timezone: 'UTC',
+    localDate: priorDate.slice(0, 10),
+    notes: null,
+    name: null,
+    pausedAt: null,
+    accumulatedPausedSeconds: 0,
+    restTargetAt: null,
+    serverSeq: null,
+  });
+
+  await db.insert(sessionExercise).values({
+    id: sessionExerciseId,
+    sessionId,
+    exerciseId: input.exerciseId,
+    orderIndex: 0,
+    supersetGroupId: null,
+    routineExerciseId: null,
+    targetSets: null,
+    targetRepMin: null,
+    targetRepMax: null,
+    targetRir: null,
+    targetRestSeconds: null,
+    notes: null,
+    removedAt: null,
+  });
+
+  await db.insert(loggedSet).values({
+    id: loggedSetId,
+    sessionExerciseId,
+    setIndex: 1,
+    setType: 'normal',
+    weightKg: input.weightKg,
+    reps: input.reps,
+    rir: null,
+    side: null,
+    completed: true,
+    parentSetId: null,
+    restTakenSeconds: null,
+    loggedAt: priorDate,
+    notes: null,
+  });
+}
+
 const WORKER_PATH = '/@powersync/worker.js';
 
 // Metro inlines process.env.EXPO_PUBLIC_DURABILITY_HARNESS at build time; this direct comparison
