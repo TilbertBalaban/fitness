@@ -50,7 +50,7 @@ export function WarmupSheetView({ weightText, weightUnit, count, saving, onChang
             accessibilityRole="button"
             accessibilityLabel="Add Warm-up Sets"
             className="items-center justify-center rounded-md bg-accent py-sm"
-            style={{ minHeight: 48, opacity: confirmDisabled ? 0.5 : 1 }}
+            style={{ minHeight: 48, opacity: confirmDisabled ? 0.6 : 1 }}
           >
             <Text className="text-body font-semibold text-white">Add Warm-up Sets</Text>
           </Pressable>
