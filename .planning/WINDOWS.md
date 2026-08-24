@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 91
+open_count: 93
 waived_count: 1
 fixed_count: 14
-total_count: 106
-last_updated: 2026-08-23T18:42:48.569Z
+total_count: 108
+last_updated: 2026-08-24T09:05:51.583Z
 ---
 
 # Broken Windows Ledger
@@ -121,6 +121,8 @@ last_updated: 2026-08-23T18:42:48.569Z
 | 107 | 05 | unrun-verify | apps/mobile/e2e/durability.spec.ts |  | Task 3 two-prior-sessions previousSetReference reload case written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested | open |  | 2026-08-23T18:42:41.654Z |  |
 | 108 | 05 | unrun-verify | apps/mobile/e2e/schema-redefinition.spec.ts |  | notes->harness_probe rename verified by re-reading the spec's literal replacements only; the schema-redefinition e2e suite itself was not re-run in this session (browser launch restricted) | open |  | 2026-08-23T18:42:44.927Z |  |
 | 109 | 05 | stub | apps/mobile/components/SetRow.tsx |  | Warm-up rows sort ahead of working rows and are excluded from strip/reference counts, but SetRow.tsx does not yet render 05-UI-SPEC's leading 14px W badge — out of Task 2's file scope, deferred to a later plan touching SetRow.tsx | open |  | 2026-08-23T18:42:48.569Z |  |
+| 110 | 05 | unrun-verify | apps/mobile/lib/rest-alert.ts |  | expo-notifications' scheduled DATE-trigger alert has not been observed to actually fire and be audible/visible while the app is fully backgrounded and the phone is locked, on a real iOS or Android device — no Xcode/Android SDK on this machine (D-10). Typecheck + doc-confirmed API usage only. Filed against ROADMAP Phase 999.1 per RESEARCH.md Pitfall 4. | open |  | 2026-08-24T09:05:39.209Z |  |
+| 111 | 05 | unrun-verify | apps/mobile/e2e/rest-timer.spec.ts |  | Rest timer e2e (Notification-constructed-at-target, hidden/visible recompute, +30s, Skip Rest, undo-cancels-alert, permission-denied degraded path) written against the durability Playwright project but not executed this session — CLAUDE.md forbids launching a browser unless explicitly requested. | open |  | 2026-08-24T09:05:51.583Z |  |
 
 ````json
 [
@@ -1394,6 +1396,30 @@ last_updated: 2026-08-23T18:42:48.569Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-23T18:42:48.569Z",
+    "resolved_at": null
+  },
+  {
+    "id": 110,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/lib/rest-alert.ts",
+    "line": null,
+    "description": "expo-notifications' scheduled DATE-trigger alert has not been observed to actually fire and be audible/visible while the app is fully backgrounded and the phone is locked, on a real iOS or Android device — no Xcode/Android SDK on this machine (D-10). Typecheck + doc-confirmed API usage only. Filed against ROADMAP Phase 999.1 per RESEARCH.md Pitfall 4.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T09:05:39.209Z",
+    "resolved_at": null
+  },
+  {
+    "id": 111,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/e2e/rest-timer.spec.ts",
+    "line": null,
+    "description": "Rest timer e2e (Notification-constructed-at-target, hidden/visible recompute, +30s, Skip Rest, undo-cancels-alert, permission-denied degraded path) written against the durability Playwright project but not executed this session — CLAUDE.md forbids launching a browser unless explicitly requested.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T09:05:51.583Z",
     "resolved_at": null
   }
 ]

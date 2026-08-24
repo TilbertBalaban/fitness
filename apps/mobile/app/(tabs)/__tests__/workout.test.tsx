@@ -78,7 +78,7 @@ describe('deriveWorkoutScreenState', () => {
     expect(
       deriveWorkoutScreenState({
         failed: false,
-        session: { session: { id: 's-1', routineDayId: null, status: 'in_progress', startedAt: 't' }, exercises: [], setsByExerciseId: {} },
+        session: { session: { id: 's-1', routineDayId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null }, exercises: [], setsByExerciseId: {} },
         nextUp: null,
       }),
     ).toBe('ready');
@@ -236,6 +236,9 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     canStartWorkout: false,
     nextUpHeading: null,
     weightUnit: 'kg',
+    headerTimer: null,
+    showNotificationPrompt: false,
+    showBackgroundAlertsOffNote: false,
     onStartWorkout: jest.fn(),
     onSelectExercise: jest.fn(),
     onIndexChange: jest.fn(),
@@ -245,6 +248,11 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     onKeypadPress: jest.fn(),
     onSubmitField: jest.fn(),
     onCheckmarkPress: jest.fn(),
+    onOpenRestTimer: jest.fn(),
+    onAllowNotifications: jest.fn(),
+    onDismissNotificationPrompt: jest.fn(),
+    onTurnOnNotifications: jest.fn(),
+    onDismissBackgroundAlertsOffNote: jest.fn(),
     ...overrides,
   };
 }
@@ -409,7 +417,7 @@ describe('WorkoutScreenView', () => {
 
 describe('readWorkoutScreenData', () => {
   it('resolves the weight unit only once a live session is found', async () => {
-    const session = { session: { id: 's-1', routineDayId: null, status: 'in_progress', startedAt: 't' }, exercises: [], setsByExerciseId: {} };
+    const session = { session: { id: 's-1', routineDayId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null }, exercises: [], setsByExerciseId: {} };
     const loadUnit = jest.fn().mockResolvedValue('lb');
     const result = await readWorkoutScreenData('user-1', {
       loadSession: jest.fn().mockResolvedValue(session),
