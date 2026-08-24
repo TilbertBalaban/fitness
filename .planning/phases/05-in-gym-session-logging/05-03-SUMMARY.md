@@ -181,6 +181,14 @@ None - no external service configuration required.
 - Notes, pause and preference PATCH support is ready for 05-04/05-05's client-side builders to consume — the wire contract (snake_case keys, narrow-PATCH semantics) matches `packages/api-contracts/src/session.ts`'s published shape.
 - No blockers for dependent plans in this wave; `@fitness/pr-rules` (05-04's Task 1) was read-only referenced in this plan's context, never imported (05-03 is transport-only, per the plan's explicit boundary).
 
+## Self-Check: PASSED
+
+All 7 claimed files found on disk (`apps/api/src/sync/patch-update-set.ts`, `apps/api/src/sync/sync.service.ts`,
+`packages/api-contracts/src/sync.ts`, `apps/api/test/personal-record-sync.e2e-spec.ts`,
+`apps/api/test/session-annotations-sync.e2e-spec.ts`, `.planning/WINDOWS.md`,
+`.planning/phases/05-in-gym-session-logging/deferred-items.md`). All 4 claimed commit hashes
+(`2befe3a`, `27492a1`, `6e0f8a2`, `26f5674`) found in `git log --oneline --all`.
+
 ---
 *Phase: 05-in-gym-session-logging*
 *Completed: 2026-08-24*
