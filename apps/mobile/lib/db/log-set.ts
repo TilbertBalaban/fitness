@@ -145,6 +145,10 @@ export interface UpdateLoggedSetInput {
   reps?: number;
   rir?: number | null;
   completed?: boolean;
+  // Added for 05-06's R7 set-number tap target: switching a row between the working and warm-up
+  // set_type values (the only two this phase's picker offers — Phase 7 wires the rest into the
+  // same tap target). Never renumbers set_index; changing type is not changing position.
+  setType?: string;
 }
 
 // Patches exactly the columns the caller names — never a blanket rewrite of the row. This is what
@@ -153,11 +157,12 @@ export interface UpdateLoggedSetInput {
 // single-field edit passes only that field, so `set_index`, and whichever of weight/reps/rir the
 // caller omitted, are never present in the SQL SET clause at all.
 export async function updateLoggedSet(input: UpdateLoggedSetInput, db: WriteDb = getPowerSync()): Promise<void> {
-  const patch: Partial<{ weightKg: string | null; reps: number; rir: number | null; completed: boolean }> = {};
+  const patch: Partial<{ weightKg: string | null; reps: number; rir: number | null; completed: boolean; setType: string }> = {};
   if (input.weight !== undefined) patch.weightKg = unitsContract.toCanonicalKg(input.weight.value, input.weight.unit);
   if (input.reps !== undefined) patch.reps = input.reps;
   if (input.rir !== undefined) patch.rir = input.rir;
   if (input.completed !== undefined) patch.completed = input.completed;
+  if (input.setType !== undefined) patch.setType = input.setType;
 
   if (Object.keys(patch).length === 0) return;
 
