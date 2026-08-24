@@ -276,7 +276,7 @@ Plans:
   5. User can correct a mistake with a single tap-to-undo mid-workout, and can view, edit, duplicate, and backfill past workouts afterward
   6. User finishes to a summary showing muscles trained, PRs, and a per-exercise breakdown, and can correct entries from that screen
 
-**Plans**: 7/10 plans executed
+**Plans**: 9/10 plans executed
 
 Plans:
 
@@ -298,8 +298,8 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3)*
 
-- [ ] 05-08-PLAN.md — Finish summary: muscles trained, PR detection and writes, per-exercise breakdown with e1RM, correct-from-summary
-- [ ] 05-09-PLAN.md — History tab: constant-cost paged list, rename, duplicate, delete
+- [x] 05-08-PLAN.md — Finish summary: muscles trained, PR detection and writes, per-exercise breakdown with e1RM, correct-from-summary
+- [x] 05-09-PLAN.md — History tab: constant-cost paged list, rename, duplicate, delete
 
 **Wave 5** *(blocked on Wave 4)*
 
@@ -473,7 +473,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
-| 5. In-Gym Session Logging | 7/10 | In Progress|  |
+| 5. In-Gym Session Logging | 9/10 | In Progress|  |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
 | 8. Progression Engine | 0/TBD | Not started | - |
