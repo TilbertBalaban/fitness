@@ -36,6 +36,9 @@ export interface LiveSessionRow {
   routineDayId: string | null;
   status: string;
   startedAt: string;
+  pausedAt: string | null;
+  accumulatedPausedSeconds: number;
+  restTargetAt: string | null;
 }
 
 export interface LiveSessionData {
@@ -61,6 +64,9 @@ export async function loadSessionTree(
       routineDayId: workoutSession.routineDayId,
       status: workoutSession.status,
       startedAt: workoutSession.startedAt,
+      pausedAt: workoutSession.pausedAt,
+      accumulatedPausedSeconds: workoutSession.accumulatedPausedSeconds,
+      restTargetAt: workoutSession.restTargetAt,
     })
     .from(workoutSession)
     .where(eq(workoutSession.id, sessionId));

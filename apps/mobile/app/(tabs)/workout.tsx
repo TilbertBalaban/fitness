@@ -1,6 +1,6 @@
 import { fromCanonicalKg, toCanonicalKg, type WeightUnit } from '@fitness/api-contracts';
 import { eq } from 'drizzle-orm';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -15,6 +15,8 @@ import { type SetRowReference, type SetRowValues } from '@/components/SetRow';
 import { countCompletedWorkingSets, ExerciseStripView, type ExerciseStripExercise } from '@/components/ExerciseStrip';
 import { clampPagerIndex, ExercisePagerView } from '@/components/ExercisePager';
 import { ExercisePageView } from '@/components/ExercisePage';
+import { BackgroundAlertsOffNote, NotificationPermissionPromptView } from '@/components/NotificationPermissionPrompt';
+import { RestTimerBar } from '@/components/RestTimerBar';
 import { authClient } from '@/lib/auth-client';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, startWorkoutFromProgram, updateLoggedSet } from '@/lib/db/log-set';
@@ -29,12 +31,22 @@ import {
   type PreviousSetReferenceMap,
   type SessionExerciseRow,
 } from '@/lib/db/session-query';
-import { userPreference } from '@/lib/db/schema';
+import { loggedSet, userPreference, workoutSession } from '@/lib/db/schema';
 import { resolveNextUp, type NextUp } from '@/lib/programs/next-up';
-import { SessionModeProvider } from '@/lib/session/session-mode';
+import {
+  cancelRestAlert,
+  getAlertPermission,
+  openAlertSettings,
+  requestAlertPermission,
+  scheduleRestAlert,
+  type AlertPermission,
+} from '@/lib/rest-alert';
+import { restTargetFrom } from '@/lib/rest-timer';
+import { SessionModeProvider, type SessionScreenMode } from '@/lib/session/session-mode';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 const DEFAULT_WEIGHT_UNIT: WeightUnit = 'kg';
+const LIVE_MODE: SessionScreenMode = 'live';
 
 export type WorkoutScreenState = 'error' | 'loading' | 'no-session' | 'ready';
 
@@ -222,6 +234,26 @@ export function buildSetRows(
   return rows;
 }
 
+// The set that currently "owns" the session's one outstanding rest target (D-26: rest is
+// one-per-session, never per-exercise) — the most recently completed working or warm-up set
+// across every exercise, honoring any not-yet-reloaded rowOverrides toggle. Null when no set has
+// completed yet, which is also the correct answer for "nothing to attribute rest_taken_seconds to".
+function findMostRecentCompletedSet(
+  liveSession: LiveSessionData | null,
+  rowOverrides: Record<string, RowOverride>,
+): LoggedSetRow | null {
+  if (!liveSession) return null;
+  let best: LoggedSetRow | null = null;
+  for (const rows of Object.values(liveSession.setsByExerciseId)) {
+    for (const row of rows) {
+      const completed = rowOverrides[row.id]?.completed ?? row.completed;
+      if (!completed) continue;
+      if (!best || row.loggedAt > best.loggedAt) best = row;
+    }
+  }
+  return best;
+}
+
 const WEIGHT_STEP_KG = 2.5;
 const WEIGHT_STEP_LB = 0.5;
 const INTEGER_STEP = 1;
@@ -229,6 +261,14 @@ const INTEGER_STEP = 1;
 export function stepAmountFor(field: KeypadField, weightUnit: WeightUnit): number {
   if (field !== 'weight') return INTEGER_STEP;
   return weightUnit === 'lb' ? WEIGHT_STEP_LB : WEIGHT_STEP_KG;
+}
+
+export interface HeaderTimerBarData {
+  sessionId: string;
+  startedAtMs: number;
+  accumulatedPausedSeconds: number;
+  pausedAtMs: number | null;
+  restTargetAtMs: number | null;
 }
 
 export interface WorkoutScreenViewProps {
@@ -244,6 +284,9 @@ export interface WorkoutScreenViewProps {
   canStartWorkout: boolean;
   nextUpHeading: string | null;
   weightUnit: WeightUnit;
+  headerTimer: HeaderTimerBarData | null;
+  showNotificationPrompt: boolean;
+  showBackgroundAlertsOffNote: boolean;
   onStartWorkout: () => void;
   onSelectExercise: (exerciseId: string) => void;
   onIndexChange: (index: number) => void;
@@ -253,6 +296,11 @@ export interface WorkoutScreenViewProps {
   onKeypadPress: (press: KeypadPress) => void;
   onSubmitField: () => void;
   onCheckmarkPress: (exerciseId: string, setId: string | null) => void;
+  onOpenRestTimer: () => void;
+  onAllowNotifications: () => void;
+  onDismissNotificationPrompt: () => void;
+  onTurnOnNotifications: () => void;
+  onDismissBackgroundAlertsOffNote: () => void;
 }
 
 // Hook-free — direct-invocable by Jest with no renderer, matching CycleStripView/DayDeckView.
@@ -275,6 +323,9 @@ export function WorkoutScreenView({
   canStartWorkout,
   nextUpHeading,
   weightUnit,
+  headerTimer,
+  showNotificationPrompt,
+  showBackgroundAlertsOffNote,
   onStartWorkout,
   onSelectExercise,
   onIndexChange,
@@ -284,6 +335,11 @@ export function WorkoutScreenView({
   onKeypadPress,
   onSubmitField,
   onCheckmarkPress,
+  onOpenRestTimer,
+  onAllowNotifications,
+  onDismissNotificationPrompt,
+  onTurnOnNotifications,
+  onDismissBackgroundAlertsOffNote,
 }: WorkoutScreenViewProps) {
   if (screenState === 'error') {
     return (
@@ -317,12 +373,29 @@ export function WorkoutScreenView({
             Build or activate a program, or start a one-off workout.
           </Text>
         )}
+        {showNotificationPrompt ? (
+          <NotificationPermissionPromptView onAllow={onAllowNotifications} onDismiss={onDismissNotificationPrompt} />
+        ) : null}
       </View>
     );
   }
 
   return (
     <View className="flex-1 bg-background">
+      {headerTimer ? (
+        <RestTimerBar
+          startedAtMs={headerTimer.startedAtMs}
+          accumulatedPausedSeconds={headerTimer.accumulatedPausedSeconds}
+          pausedAtMs={headerTimer.pausedAtMs}
+          restTargetAtMs={headerTimer.restTargetAtMs}
+          onPressRest={onOpenRestTimer}
+        />
+      ) : null}
+      {showBackgroundAlertsOffNote ? (
+        <View className="px-md pt-sm">
+          <BackgroundAlertsOffNote key={headerTimer?.sessionId} onTurnOn={onTurnOnNotifications} onDismiss={onDismissBackgroundAlertsOffNote} />
+        </View>
+      ) : null}
       <ExerciseStripView
         exercises={exercises}
         currentExerciseId={currentExerciseId}
@@ -367,6 +440,12 @@ export interface UseWorkoutScreenOptions {
   // this hook makes at the harness's isolated test database instead of the production singleton,
   // the same seam every db-accepting helper in this file already exposes.
   db?: WriteDb;
+  // Threaded explicitly rather than read through useSessionMode(): this hook's render happens in
+  // the WorkoutScreen component that CREATES the SessionModeProvider, not inside it, so the
+  // context is structurally unreachable from here. Every timer-scheduling call site below gates
+  // on this single typed value — never on session.status (D-32/R10) — exactly as if it had been
+  // read from context; only the plumbing differs.
+  mode?: SessionScreenMode;
 }
 
 export type WorkoutScreenViewModel = Omit<WorkoutScreenViewProps, 'colors'>;
@@ -374,7 +453,12 @@ export type WorkoutScreenViewModel = Omit<WorkoutScreenViewProps, 'colors'>;
 // The whole screen's state machine, extracted so __durability.web.tsx's workout-screen harness
 // mode can mount the exact same behaviour against its own database — the real WorkoutScreenView,
 // driven by real DOM clicks in a real browser, is what workout-screen.spec.ts proves (D-01).
-export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): WorkoutScreenViewModel {
+export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScreenOptions): WorkoutScreenViewModel {
+  // Resolved once, here, for the raw workout_session/logged_set updates this hook makes directly
+  // (rest-target and rest-taken-seconds writes) — every other write in this file goes through a
+  // db.ts helper that already defaults its own `db` parameter to getPowerSync(), so this is the
+  // one spot that needs its own resolved handle.
+  const writeDb = db ?? getPowerSync();
   const [read, setRead] = useState<WorkoutScreenReadResult | null>(null);
   const [activeField, setActiveField] = useState<ActiveFieldState | null>(null);
   const [draftValuesByExercise, setDraftValuesByExercise] = useState<Record<string, SetRowValues>>({});
@@ -382,8 +466,26 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
   const [starting, setStarting] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [referenceMap, setReferenceMap] = useState<PreviousSetReferenceMap>({});
+  const [notificationPermission, setNotificationPermission] = useState<AlertPermission>('undetermined');
+  const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
+  const [offNoteDismissedForSessionId, setOffNoteDismissedForSessionId] = useState<string | null>(null);
   const { width: pagerWidth } = useWindowDimensions();
+  const router = useRouter();
   const lastSessionIdRef = useRef<string | null>(null);
+
+  // A read, never a prompt (getAlertPermission never calls requestPermissionsAsync) — safe to
+  // re-check on every focus, including after the user changes the OS-level answer in Settings.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void getAlertPermission().then((permission) => {
+        if (active) setNotificationPermission(permission);
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   // Resets the pager back to the first exercise only when the open session's identity actually
   // changes (a fresh start, or a different device's session synced in) — not on every reload, or
@@ -453,6 +555,29 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
   const nextUp = read !== null && !('failed' in read) ? read.nextUp : null;
   const weightUnit = read !== null && !('failed' in read) ? read.weightUnit : DEFAULT_WEIGHT_UNIT;
   const screenState = deriveWorkoutScreenState({ failed, session: liveSession, nextUp });
+
+  const sessionRow = liveSession?.session ?? null;
+  // Every timer surface below is gated on `mode === LIVE_MODE`, never on session.status (R10) —
+  // in `editing`/`summary-correction` modes headerTimer is structurally null, so no scheduling
+  // call site in this hook is even reachable, matching D-32's "unreachable, not merely inactive"
+  // requirement for the live-session machinery.
+  const headerTimer: HeaderTimerBarData | null =
+    mode === LIVE_MODE && sessionRow
+      ? {
+          sessionId: sessionRow.id,
+          startedAtMs: new Date(sessionRow.startedAt).getTime(),
+          accumulatedPausedSeconds: sessionRow.accumulatedPausedSeconds,
+          pausedAtMs: sessionRow.pausedAt ? new Date(sessionRow.pausedAt).getTime() : null,
+          restTargetAtMs: sessionRow.restTargetAt ? new Date(sessionRow.restTargetAt).getTime() : null,
+        }
+      : null;
+  const showNotificationPrompt =
+    mode === LIVE_MODE && screenState === 'no-session' && notificationPermission === 'undetermined' && !notificationPromptDismissed;
+  const showBackgroundAlertsOffNote =
+    mode === LIVE_MODE &&
+    sessionRow !== null &&
+    (notificationPermission === 'denied' || notificationPermission === 'unsupported') &&
+    offNoteDismissedForSessionId !== sessionRow.id;
 
   const sessionExercises = liveSession?.exercises ?? [];
   const safeIndex = clampPagerIndex(currentIndex, sessionExercises.length);
@@ -626,6 +751,14 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
       const draftValues = draftValuesByExercise[exercise.id] ?? defaultDraftValues(exercise);
       // LOG-07: reps must hold a value to reach completed=true — rejected without writing.
       if (draftValues.reps === null || draftValues.reps === '') return;
+
+      const now = new Date();
+      const nowMs = now.getTime();
+      // D-26: the outstanding rest belongs to whichever set most recently completed, session-wide
+      // — a rest is one-per-session, never per-exercise, so this is not scoped to `exercise`.
+      const outstandingTargetAt = liveSession?.session.restTargetAt ?? null;
+      const previousCompletedSet = outstandingTargetAt !== null ? findMostRecentCompletedSet(liveSession, rowOverrides) : null;
+
       await logSet(
         {
           sessionExerciseId: exercise.id,
@@ -633,9 +766,32 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
           reps: Number(draftValues.reps),
           rir: draftValues.rir === null ? null : Number(draftValues.rir),
           completed: true,
+          now,
         },
         db,
       );
+
+      // The column already exists and, before this plan, was never written (D-26) — records the
+      // seconds actually elapsed between the previous set's completion and this one, independent
+      // of whatever the prescribed target was.
+      if (previousCompletedSet) {
+        const restTakenSeconds = Math.max(0, Math.round((nowMs - new Date(previousCompletedSet.loggedAt).getTime()) / 1000));
+        await writeDb.update(loggedSet).set({ restTakenSeconds }).where(eq(loggedSet.id, previousCompletedSet.id));
+      }
+
+      if (mode === LIVE_MODE && liveSession) {
+        const newTargetMs = restTargetFrom(nowMs, exercise.targetRestSeconds);
+        await writeDb
+          .update(workoutSession)
+          .set({ restTargetAt: newTargetMs === null ? null : new Date(newTargetMs).toISOString() })
+          .where(eq(workoutSession.id, liveSession.session.id));
+        if (newTargetMs !== null) {
+          await scheduleRestAlert(newTargetMs);
+        } else {
+          await cancelRestAlert();
+        }
+      }
+
       setActiveField(null);
       await reload();
       return;
@@ -647,6 +803,45 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
     const nextCompleted = !currentCompleted;
     await updateLoggedSet({ id: setId, completed: nextCompleted }, db);
     setRowOverrides((current) => ({ ...current, [setId]: { ...current[setId], completed: nextCompleted } }));
+
+    // D-27: undoing a completed set while its own timer is still running cancels the scheduled
+    // alert — only when this set is the one that currently owns the outstanding rest, not any
+    // arbitrary undo elsewhere in the session.
+    if (mode === LIVE_MODE && !nextCompleted && liveSession?.session.restTargetAt) {
+      const owner = findMostRecentCompletedSet(liveSession, rowOverrides);
+      if (owner?.id === setId) {
+        await writeDb.update(workoutSession).set({ restTargetAt: null }).where(eq(workoutSession.id, liveSession.session.id));
+        await cancelRestAlert();
+      }
+    }
+  }
+
+  function handleOpenRestTimer() {
+    if (!headerTimer) return;
+    router.push({
+      pathname: '/rest-timer',
+      params: {
+        sessionId: headerTimer.sessionId,
+        restTargetAtMs: headerTimer.restTargetAtMs !== null ? String(headerTimer.restTargetAtMs) : '',
+      },
+    });
+  }
+
+  async function handleAllowNotifications() {
+    await requestAlertPermission();
+    setNotificationPermission(await getAlertPermission());
+  }
+
+  function handleDismissNotificationPrompt() {
+    setNotificationPromptDismissed(true);
+  }
+
+  async function handleTurnOnNotifications() {
+    await openAlertSettings();
+  }
+
+  function handleDismissBackgroundAlertsOffNote() {
+    if (sessionRow) setOffNoteDismissedForSessionId(sessionRow.id);
   }
 
   const nextUpHeading =
@@ -664,6 +859,9 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
     canStartWorkout: nextUp?.kind === 'workout',
     nextUpHeading,
     weightUnit,
+    headerTimer,
+    showNotificationPrompt,
+    showBackgroundAlertsOffNote,
     onStartWorkout: () => void handleStartWorkout(),
     onSelectExercise: handleSelectExercise,
     onIndexChange: handleIndexChange,
@@ -673,6 +871,11 @@ export function useWorkoutScreen({ userId, db }: UseWorkoutScreenOptions): Worko
     onKeypadPress: handleKeypadPress,
     onSubmitField: () => void handleSubmitField(),
     onCheckmarkPress: (exerciseId, setId) => void handleCheckmarkPress(exerciseId, setId),
+    onOpenRestTimer: handleOpenRestTimer,
+    onAllowNotifications: () => void handleAllowNotifications(),
+    onDismissNotificationPrompt: handleDismissNotificationPrompt,
+    onTurnOnNotifications: () => void handleTurnOnNotifications(),
+    onDismissBackgroundAlertsOffNote: handleDismissBackgroundAlertsOffNote,
   };
 }
 
