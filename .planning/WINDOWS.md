@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 91
+open_count: 92
 waived_count: 1
 fixed_count: 14
-total_count: 106
-last_updated: 2026-08-23T18:42:48.569Z
+total_count: 107
+last_updated: 2026-08-24T08:59:58.809Z
 ---
 
 # Broken Windows Ledger
@@ -33,7 +33,7 @@ last_updated: 2026-08-23T18:42:48.569Z
 | 16 | 02 | unrun-verify | apps/mobile/lib/db/powersync.ts |  | @op-engineering/op-sqlite New-Architecture compatibility unverified — no Xcode/Android SDK on this machine (RESEARCH.md Open Question 2, precedented by Phase 1's native gaps) | open |  | 2026-08-17T07:22:21.574Z |  |
 | 17 | 02 | unrun-verify | apps/mobile/__tests__/offline-write.test.ts |  | AMENDED by plan 02-12: the web runtime is now exercised against a real engine — durability.spec.ts, schema-redefinition.spec.ts and sync.spec.ts all construct and drive a real @powersync/web database (real Worker, real WASM, real IndexedDB) inside a real Chromium browser, and sync.spec.ts drives it through the real production connector against a live PowerSync Service and Postgres. offline-write.test.ts's Jest-level fakes are unchanged, and native op-sqlite's local-write/crud-queue behavior is still entirely unexercised — no native runtime available on this machine (see WINDOWS #16). | open |  | 2026-08-17T07:22:29.262Z |  |
 | 18 | 02 | stub | apps/mobile/lib/db/id.ts |  | UUID generator is not cryptographically random (Math.random-based) — should be replaced with expo-crypto randomUUID() once cleared through a package-legitimacy checkpoint | open |  | 2026-08-17T08:03:39.888Z |  |
-| 19 | 02 | stub | apps/api/src/sync/sync.service.ts |  | AMENDED by plan 02-12: unchanged — the 9 tables (routine, routine_day, routine_exercise, equipment_profile, exercise, personal_record, body_metric, progress_photo, user_preference) still have no server-side apply path. What changed is that the boundary is now an explicit, tested contract rather than an unexercised claim: sync.spec.ts's real client-to-Postgres cases exercise the 3 wired tables (workout_session, session_exercise, logged_set) end to end against a real browser client, and the rejection of the other 9 as unknown_table is no longer a silent, unasserted behavior. | open |  | 2026-08-17T08:03:47.271Z |  |
+| 19 | 02 | stub | apps/api/src/sync/sync.service.ts |  | AMENDED by plan 05-03: stale — the "9 tables with no apply path" claim (as amended by 02-12) no longer holds. Of the original 9 (routine, routine_day, routine_exercise, equipment_profile, exercise, personal_record, body_metric, progress_photo, user_preference), Phase 4 wired routine, routine_day, routine_exercise, user_preference, routine_cycle and routine_exercise_cycle_target (six tables, the last two not present in the original 9), and 05-03 wires the seventh, personal_record — D-30 moved its apply path into Phase 5 so a PR logged on the gym floor survives to Postgres the same session it is achieved. Only equipment_profile (Phase 6), body_metric and progress_photo (Phase 12) remain unwired. A later reader should not re-solve a solved problem here. | open |  | 2026-08-17T08:03:47.271Z |  |
 | 20 | 02 | deviation | apps/api/src/sync/sync.service.ts | 120 | Sync push still coerces a missing/null weight_kg to string '0' (String(d.weight_kg ?? '0')) — a null-weighted local set would sync as zero, contradicting PLAT-08's never-coerce-to-zero invariant; owned by 02-03's file scope, not fixed here | fixed |  | 2026-08-17T08:31:50.032Z | 2026-08-17T16:14:50.171Z |
 | 21 | 02 | stub | apps/api/src/db/schema/session.ts | 91 | Postgres logged_set.weight_kg is still NOT NULL (only the local SQLite mirror was relaxed in 02-04) — a null-weighted bodyweight set cannot yet round-trip through sync; needs a migration + sync.service.ts fix before bodyweight-exercise UI ships | fixed |  | 2026-08-17T08:31:56.749Z | 2026-08-17T16:14:56.619Z |
 | 22 | 02 | unrun-verify | apps/mobile/lib/db/test-support.ts |  | Real PowerSync web database cannot be constructed under this Jest/Node sandbox: jest-environment-jsdom and fake-indexeddb are both absent from the lockfile (installing them is out of scope per the package-legitimacy gate); the RN-Web export condition Jest resolves under (customExportConditions includes react-native) forces @powersync/web's react_native_web dist build, which requires a real Worker global even with useWebWorker:false; the plain browser build also requires window.Worker for its default async/multi-tab path; the WASM sync-mode InMemoryVFS path hangs indefinitely (no companion browser context to service its synchronous cross-realm signaling); and forcing --experimental-vm-modules to satisfy the WASM loader's dynamic import() would require a project-wide Jest ESM migration, itself a Rule-4 architectural change out of plan 02-05's scope. crash-recovery.test.ts and schema-redefinition.test.ts (PLAT-07, roadmap criterion 4) could not be authored as real, passing suites against a live database; test-support.ts is written and typechecks against the real PowerSync/Drizzle types but is unexercised here. | fixed |  | 2026-08-17T09:05:25.013Z | 2026-08-17T16:14:56.834Z |
@@ -121,6 +121,7 @@ last_updated: 2026-08-23T18:42:48.569Z
 | 107 | 05 | unrun-verify | apps/mobile/e2e/durability.spec.ts |  | Task 3 two-prior-sessions previousSetReference reload case written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested | open |  | 2026-08-23T18:42:41.654Z |  |
 | 108 | 05 | unrun-verify | apps/mobile/e2e/schema-redefinition.spec.ts |  | notes->harness_probe rename verified by re-reading the spec's literal replacements only; the schema-redefinition e2e suite itself was not re-run in this session (browser launch restricted) | open |  | 2026-08-23T18:42:44.927Z |  |
 | 109 | 05 | stub | apps/mobile/components/SetRow.tsx |  | Warm-up rows sort ahead of working rows and are excluded from strip/reference counts, but SetRow.tsx does not yet render 05-UI-SPEC's leading 14px W badge — out of Task 2's file scope, deferred to a later plan touching SetRow.tsx | open |  | 2026-08-23T18:42:48.569Z |  |
+| 110 | 05 | unrun-verify | ops/powersync/sync-rules.yaml |  | personal_record's pull-side round trip (PowerSync Service delivering a pushed PR row to a second device) rests only on the already-shipped sync-rules.yaml SELECT query, not on an observed pull — the self-hosted PowerSync Service was not restarted against the current rules in this plan. A live cross-device pull needs that restart; deferred to ROADMAP Phase 999.1's native/cross-device UAT sweep. | open |  | 2026-08-24T08:59:58.809Z |  |
 
 ````json
 [
@@ -346,7 +347,7 @@ last_updated: 2026-08-23T18:42:48.569Z
     "phase": "02",
     "file": "apps/api/src/sync/sync.service.ts",
     "line": null,
-    "description": "AMENDED by plan 02-12: unchanged — the 9 tables (routine, routine_day, routine_exercise, equipment_profile, exercise, personal_record, body_metric, progress_photo, user_preference) still have no server-side apply path. What changed is that the boundary is now an explicit, tested contract rather than an unexercised claim: sync.spec.ts's real client-to-Postgres cases exercise the 3 wired tables (workout_session, session_exercise, logged_set) end to end against a real browser client, and the rejection of the other 9 as unknown_table is no longer a silent, unasserted behavior.",
+    "description": "AMENDED by plan 05-03: stale — the \"9 tables with no apply path\" claim (as amended by 02-12) no longer holds. Of the original 9 (routine, routine_day, routine_exercise, equipment_profile, exercise, personal_record, body_metric, progress_photo, user_preference), Phase 4 wired routine, routine_day, routine_exercise, user_preference, routine_cycle and routine_exercise_cycle_target (six tables, the last two not present in the original 9), and 05-03 wires the seventh, personal_record — D-30 moved its apply path into Phase 5 so a PR logged on the gym floor survives to Postgres the same session it is achieved. Only equipment_profile (Phase 6), body_metric and progress_photo (Phase 12) remain unwired. A later reader should not re-solve a solved problem here.",
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-17T08:03:47.271Z",
@@ -1394,6 +1395,18 @@ last_updated: 2026-08-23T18:42:48.569Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-23T18:42:48.569Z",
+    "resolved_at": null
+  },
+  {
+    "id": 110,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "ops/powersync/sync-rules.yaml",
+    "line": null,
+    "description": "personal_record's pull-side round trip (PowerSync Service delivering a pushed PR row to a second device) rests only on the already-shipped sync-rules.yaml SELECT query, not on an observed pull — the self-hosted PowerSync Service was not restarted against the current rules in this plan. A live cross-device pull needs that restart; deferred to ROADMAP Phase 999.1's native/cross-device UAT sweep.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T08:59:58.809Z",
     "resolved_at": null
   }
 ]
