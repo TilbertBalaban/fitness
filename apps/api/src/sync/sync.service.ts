@@ -553,7 +553,15 @@ function toPersonalRecordValues(
     id,
     userId,
     exerciseId: d.exercise_id ?? '',
-    prType: d.pr_type ?? '',
+    // Falls back to a real PR_TYPES member, never '' — Postgres validates the
+    // personal_record_pr_type_check CHECK constraint against the tentative INSERT row before it
+    // even determines there is a conflict to fall back to UPDATE for (unlike a foreign key, which
+    // is an AFTER trigger that never fires on that path), so a narrow PATCH naming only
+    // reconciled_at would otherwise throw a server_error on every existing row, not just insert an
+    // unvalidated one. patchAwareSet's onConflictDoUpdate `set` clause is what actually keeps this
+    // fallback off an existing row's stored value; this default only ever reaches storage on a
+    // genuine first insert, mirroring toRoutineCycleValues' kind ?? 'training' precedent.
+    prType: d.pr_type ?? 'heaviest_weight',
     value: normalizeRequiredDecimal(d.value),
     loggedSetId: d.logged_set_id ?? null,
     achievedAt: d.achieved_at ? new Date(d.achieved_at) : new Date(),

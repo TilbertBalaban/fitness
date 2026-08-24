@@ -44,7 +44,10 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // routine_day/routine_exercise one level below the root. 'routine_exercise_cycle_target' (04-07)
 // hangs off TWO parents at once — routine_exercise and routine_cycle — the deepest, only
 // dual-parent child in this schema; both parent chains must independently resolve to the same
-// routine before it applies (T-04-33).
+// routine before it applies (T-04-33). 'personal_record' (05-03) is a fifth singleton root,
+// alongside exercise/user_exercise_preference/user_preference — D-30 moved PR detection's write
+// path into Phase 5 so a PR logged on the gym floor survives to Postgres the same session it is
+// achieved; Phase 9 keeps browsing, retrospective reconciliation and cross-device authority.
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -57,20 +60,20 @@ export const PUSH_APPLIED_TABLES = [
   'user_preference',
   'routine_cycle',
   'routine_exercise_cycle_target',
+  'personal_record',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 
 // No apply path yet. Each table lands here until the phase that owns its validation rules and
 // conflict semantics builds one — moving an entry to PUSH_APPLIED_TABLES is a one-line change
 // when that phase ships. Verified against ROADMAP.md's phase ownership, not guessed:
-// equipment_profile is Phase 6 (Gym Profiles & Plate Math — GYM-01/02 own multi-gym config), and
-// personal_record is Phase 9 (Records & Client Analytics — ANLY-01 owns PR detection).
-// routine_day and routine_exercise moved to PUSH_APPLIED_TABLES in 04-02, and user_preference
-// moved in 04-04 (PROG-08 needed activation to sync before Phase 6 could exist) — Phase 4 no
-// longer owes either here.
+// equipment_profile is Phase 6 (Gym Profiles & Plate Math — GYM-01/02 own multi-gym config).
+// routine_day and routine_exercise moved to PUSH_APPLIED_TABLES in 04-02, user_preference moved
+// in 04-04 (PROG-08 needed activation to sync before Phase 6 could exist), and personal_record
+// moved in 05-03 (D-30 — the apply path could not wait for Phase 9) — Phase 4 no longer owes
+// either of its two here, and Phase 9 no longer owes personal_record.
 export const PUSH_DEFERRED_TABLES = [
   'equipment_profile', // Phase 6 — Gym Profiles & Plate Math
-  'personal_record', // Phase 9 — Records & Client Analytics
   'body_metric', // Phase 12 — Body Metrics & Dashboard
   'progress_photo', // Phase 12 — Body Metrics & Dashboard
 ] as const;
