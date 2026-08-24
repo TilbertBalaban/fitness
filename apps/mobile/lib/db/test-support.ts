@@ -349,6 +349,20 @@ export async function readAllLoggedSetsRaw(): Promise<Record<string, unknown>[]>
   return rawDb.getAll<Record<string, unknown>>('SELECT * FROM logged_set');
 }
 
+// 05-07's close/reopen recovery case (e2e/durability.spec.ts): the five columns pause/resume
+// accounting touches, read raw rather than through loadSessionTree so the assertion proves the row
+// itself survived, independent of any batched read-path helper's own correctness.
+export async function readWorkoutSessionRaw(sessionId: string): Promise<Record<string, unknown> | null> {
+  if (!rawDb) {
+    throw new Error('readWorkoutSessionRaw() called before openTestPowerSync()');
+  }
+  const rows = await rawDb.getAll<Record<string, unknown>>(
+    'SELECT id, started_at, paused_at, accumulated_paused_seconds, status FROM workout_session WHERE id = ?',
+    [sessionId],
+  );
+  return rows[0] ?? null;
+}
+
 // Connects the CURRENT isolated test-support.ts database directly — deliberately not routed
 // through apps/mobile/lib/db/powersync.ts's connectPowerSync/disconnectPowerSync, which are
 // hardwired to that module's own 'fitness.db' singleton. A schema-redefinition test needs to

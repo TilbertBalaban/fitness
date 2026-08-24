@@ -1,8 +1,8 @@
-import { fromCanonicalKg, toCanonicalKg, type WeightUnit } from '@fitness/api-contracts';
+import { fromCanonicalKg, toCanonicalKg, WORKING_SET_TYPE, type WeightUnit } from '@fitness/api-contracts';
 import { eq } from 'drizzle-orm';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import {
   applyKeypadPress,
@@ -15,13 +15,17 @@ import { type SetRowReference, type SetRowValues } from '@/components/SetRow';
 import { countCompletedWorkingSets, ExerciseStripView, type ExerciseStripExercise } from '@/components/ExerciseStrip';
 import { clampPagerIndex, ExercisePagerView } from '@/components/ExercisePager';
 import { ExercisePageView } from '@/components/ExercisePage';
+import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
 import { BackgroundAlertsOffNote, NotificationPermissionPromptView } from '@/components/NotificationPermissionPrompt';
 import { RestTimerBar } from '@/components/RestTimerBar';
+import { DiscardWorkoutDialog } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, startWorkoutFromProgram, updateLoggedSet } from '@/lib/db/log-set';
 import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
 import type { ProgramCycle, ProgramDay } from '@/lib/db/programs/load-program';
+import { loadWorkoutPreferences } from '@/lib/db/preferences';
+import { discardSession, pauseSession, resumeSession, startOneOffSession } from '@/lib/db/session-lifecycle';
 import {
   loadLiveSession,
   previousSetReferencesForSession,
@@ -32,6 +36,8 @@ import {
   type SessionExerciseRow,
 } from '@/lib/db/session-query';
 import { loggedSet, userPreference, workoutSession } from '@/lib/db/schema';
+import { finishSession } from '@/lib/session/finish-session';
+import { shouldAutoAdvance } from '@/lib/session/auto-advance';
 import { resolveNextUp, type NextUp } from '@/lib/programs/next-up';
 import {
   cancelRestAlert,
@@ -44,11 +50,22 @@ import {
 import { restTargetFrom } from '@/lib/rest-timer';
 import { SessionModeProvider, type SessionScreenMode } from '@/lib/session/session-mode';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
+import { formatTimeOffRemaining, nextUpHeading as formatNextUpHeading } from './index';
 
 const DEFAULT_WEIGHT_UNIT: WeightUnit = 'kg';
 const LIVE_MODE: SessionScreenMode = 'live';
 
-export type WorkoutScreenState = 'error' | 'loading' | 'no-session' | 'ready';
+// Six distinct no-session-through-ready states, not a single 'no-session' collapsing every
+// resolveNextUp kind into one — the Workout tab needs its own line for time-off and program-complete
+// (Task 1), not the "No active program" fallback those two are not.
+export type WorkoutScreenState =
+  | 'error'
+  | 'loading'
+  | 'no-program'
+  | 'time-off'
+  | 'program-complete'
+  | 'workout-available'
+  | 'ready';
 
 export interface WorkoutScreenStateInput {
   failed: boolean;
@@ -57,14 +74,28 @@ export interface WorkoutScreenStateInput {
 }
 
 // In the exact shape of deriveHomeScreenState (index.tsx): failed beats everything, `session`
-// staying null with `nextUp` still unresolved means the read has not landed yet, and `nextUp`
-// only ever gets resolved once `loadLiveSession` has confirmed there is no session to show instead.
+// staying null with `nextUp` still unresolved means the read has not landed yet, and `nextUp`'s own
+// kind resolves to the state that renders its own line — only once loadLiveSession has confirmed
+// there is no session to show instead.
 export function deriveWorkoutScreenState({ failed, session, nextUp }: WorkoutScreenStateInput): WorkoutScreenState {
   if (failed) return 'error';
   if (session !== null) return 'ready';
-  if (nextUp !== null) return 'no-session';
-  return 'loading';
+  if (nextUp === null) return 'loading';
+  switch (nextUp.kind) {
+    case 'workout':
+      return 'workout-available';
+    case 'time-off':
+      return 'time-off';
+    case 'program-complete':
+      return 'program-complete';
+    default:
+      return 'no-program';
+  }
 }
+
+// Every no-session-ish state (Task 1: "the one-off start action is available from BOTH no-session
+// states"/"keep the one-off start action available in both" the two resolveNextUp additions get).
+const ONE_OFF_ELIGIBLE_STATES: readonly WorkoutScreenState[] = ['no-program', 'time-off', 'program-complete', 'workout-available'];
 
 async function loadWeightUnit(userId: string, db = getPowerSync()): Promise<WeightUnit> {
   const [row] = await db
@@ -281,13 +312,23 @@ export interface WorkoutScreenViewProps {
   rowsByExercise: Record<string, ResolvedSetRow[]>;
   activeField: ActiveFieldState | null;
   starting: boolean;
-  canStartWorkout: boolean;
-  nextUpHeading: string | null;
+  // Replaces the old canStartWorkout/nextUpHeading pair (Task 1): the view derives every
+  // no-session-ish state's heading/body itself from the same NextUp value the screen already
+  // resolved, rather than the hook pre-flattening it into two loosely-typed strings/booleans.
+  nextUp: NextUp<ProgramDay, ProgramCycle> | null;
   weightUnit: WeightUnit;
   headerTimer: HeaderTimerBarData | null;
+  paused: boolean;
   showNotificationPrompt: boolean;
   showBackgroundAlertsOffNote: boolean;
+  showOneOffPicker: boolean;
+  showSessionMenu: boolean;
+  showDiscardConfirm: boolean;
   onStartWorkout: () => void;
+  onStartOneOff: () => void;
+  onGoToPrograms: () => void;
+  onAddOneOffExercises: (rows: PickerCatalogRow[]) => void;
+  onCancelOneOffPicker: () => void;
   onSelectExercise: (exerciseId: string) => void;
   onIndexChange: (index: number) => void;
   onAddExercise: () => void;
@@ -301,6 +342,12 @@ export interface WorkoutScreenViewProps {
   onDismissNotificationPrompt: () => void;
   onTurnOnNotifications: () => void;
   onDismissBackgroundAlertsOffNote: () => void;
+  onToggleSessionMenu: () => void;
+  onPauseResume: () => void;
+  onRequestDiscard: () => void;
+  onConfirmDiscard: () => void;
+  onCancelDiscard: () => void;
+  onFinishWorkout: () => void;
 }
 
 // Hook-free — direct-invocable by Jest with no renderer, matching CycleStripView/DayDeckView.
@@ -310,6 +357,45 @@ export interface WorkoutScreenViewProps {
 // independently-tested component boundaries composed here as real JSX — a test that needs to see
 // inside one of them calls it directly with the props this view handed it, the same technique
 // established for SetRowView/NumericKeypadView/PrimaryButton in the tracer task.
+// Task 1's no-session-ish states each render one heading/body pair, then — per the plan text
+// ("the one-off start action is available from BOTH no-session states"/"keep the one-off start
+// action available in both") — the shared one-off action beneath every one of them. A plain
+// function call embedded directly in the parent's JSX, not a nested <NoSessionBody /> element —
+// this workspace's no-renderer test walker only sees a props.children tree, never invokes a
+// component boundary, so a second component here would be invisible to WorkoutScreenView.test's
+// direct-invocation assertions (the same "SetField" -> "renderSetField" fix 05-01 established).
+function renderNoSessionBody(screenState: WorkoutScreenState, nextUp: NextUp<ProgramDay, ProgramCycle> | null) {
+  if (screenState === 'workout-available' && nextUp?.kind === 'workout') {
+    return <Text className="text-heading font-semibold text-foreground">{formatNextUpHeading(nextUp)}</Text>;
+  }
+  if (screenState === 'time-off' && nextUp?.kind === 'time-off') {
+    return (
+      <>
+        <Text className="text-heading font-semibold text-foreground">{formatNextUpHeading(nextUp)}</Text>
+        <Text className="text-body font-normal text-foreground-muted">{formatTimeOffRemaining(nextUp.daysRemaining)}</Text>
+      </>
+    );
+  }
+  if (screenState === 'program-complete') {
+    return (
+      <>
+        <Text className="text-heading font-semibold text-foreground">Block complete</Text>
+        <Text className="text-body font-normal text-foreground-muted">
+          You have finished every cycle in this program. Start it again or build a new one.
+        </Text>
+      </>
+    );
+  }
+  return (
+    <>
+      <Text className="text-heading font-semibold text-foreground">No active program</Text>
+      <Text className="text-body font-normal text-foreground-muted">
+        Build or activate a program, or start a one-off workout.
+      </Text>
+    </>
+  );
+}
+
 export function WorkoutScreenView({
   screenState,
   colors,
@@ -320,13 +406,20 @@ export function WorkoutScreenView({
   rowsByExercise,
   activeField,
   starting,
-  canStartWorkout,
-  nextUpHeading,
+  nextUp,
   weightUnit,
   headerTimer,
+  paused,
   showNotificationPrompt,
   showBackgroundAlertsOffNote,
+  showOneOffPicker,
+  showSessionMenu,
+  showDiscardConfirm,
   onStartWorkout,
+  onStartOneOff,
+  onGoToPrograms,
+  onAddOneOffExercises,
+  onCancelOneOffPicker,
   onSelectExercise,
   onIndexChange,
   onAddExercise,
@@ -340,7 +433,17 @@ export function WorkoutScreenView({
   onDismissNotificationPrompt,
   onTurnOnNotifications,
   onDismissBackgroundAlertsOffNote,
+  onToggleSessionMenu,
+  onPauseResume,
+  onRequestDiscard,
+  onConfirmDiscard,
+  onCancelDiscard,
+  onFinishWorkout,
 }: WorkoutScreenViewProps) {
+  if (showOneOffPicker) {
+    return <ExercisePickerModal dayName="this workout" onAdd={onAddOneOffExercises} onCancel={onCancelOneOffPicker} />;
+  }
+
   if (screenState === 'error') {
     return (
       <View className="mt-xl gap-sm px-lg">
@@ -360,19 +463,33 @@ export function WorkoutScreenView({
     );
   }
 
-  if (screenState === 'no-session') {
+  if (screenState !== 'ready') {
     return (
       <View className="mt-xl gap-md px-lg">
-        <Text className="text-heading font-semibold text-foreground">
-          {canStartWorkout ? (nextUpHeading ?? 'Start today’s workout') : 'No active program'}
-        </Text>
-        {canStartWorkout ? (
+        {renderNoSessionBody(screenState, nextUp)}
+        {screenState === 'workout-available' ? (
           <PrimaryButton label="Start Workout" onPress={onStartWorkout} submitting={starting} />
-        ) : (
-          <Text className="text-body font-normal text-foreground-muted">
-            Build or activate a program, or start a one-off workout.
-          </Text>
-        )}
+        ) : null}
+        {screenState === 'no-program' ? (
+          <Pressable
+            onPress={onGoToPrograms}
+            accessibilityRole="button"
+            accessibilityLabel="Browse Programs"
+            style={{ minHeight: 48, justifyContent: 'center', alignSelf: 'flex-start' }}
+          >
+            <Text className="text-body font-normal text-accent">Browse Programs</Text>
+          </Pressable>
+        ) : null}
+        {ONE_OFF_ELIGIBLE_STATES.includes(screenState) ? (
+          <Pressable
+            onPress={onStartOneOff}
+            accessibilityRole="button"
+            accessibilityLabel="Start a one-off workout"
+            style={{ minHeight: 48, justifyContent: 'center', alignSelf: 'flex-start' }}
+          >
+            <Text className="text-body font-normal text-accent">Start a one-off workout</Text>
+          </Pressable>
+        ) : null}
         {showNotificationPrompt ? (
           <NotificationPermissionPromptView onAllow={onAllowNotifications} onDismiss={onDismissNotificationPrompt} />
         ) : null}
@@ -390,6 +507,41 @@ export function WorkoutScreenView({
           restTargetAtMs={headerTimer.restTargetAtMs}
           onPressRest={onOpenRestTimer}
         />
+      ) : null}
+      {headerTimer ? (
+        <View className="flex-row items-center justify-between px-md py-sm">
+          <View>
+            <Pressable
+              onPress={onToggleSessionMenu}
+              accessibilityRole="button"
+              accessibilityLabel="Session menu"
+              style={{ minHeight: 48, minWidth: 48, justifyContent: 'center' }}
+            >
+              <Text className="text-body font-normal text-foreground">Menu</Text>
+            </Pressable>
+            {showSessionMenu ? (
+              <View className="mt-sm gap-sm rounded-md border border-foreground-muted bg-surface p-sm">
+                <Pressable
+                  onPress={onPauseResume}
+                  accessibilityRole="button"
+                  accessibilityLabel={paused ? 'Resume' : 'Pause'}
+                  style={{ minHeight: 48, justifyContent: 'center' }}
+                >
+                  <Text className="text-body font-normal text-foreground">{paused ? 'Resume' : 'Pause'}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={onRequestDiscard}
+                  accessibilityRole="button"
+                  accessibilityLabel="Discard"
+                  style={{ minHeight: 48, justifyContent: 'center' }}
+                >
+                  <Text className="text-body font-normal text-destructive">Discard</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+          <PrimaryButton label="Finish Workout" onPress={onFinishWorkout} />
+        </View>
       ) : null}
       {showBackgroundAlertsOffNote ? (
         <View className="px-md pt-sm">
@@ -430,6 +582,12 @@ export function WorkoutScreenView({
           onSubmit={onSubmitField}
         />
       ) : null}
+
+      {showDiscardConfirm ? (
+        <Modal transparent animationType="fade" onRequestClose={onCancelDiscard}>
+          <DiscardWorkoutDialog onConfirm={onConfirmDiscard} onCancel={onCancelDiscard} />
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -469,6 +627,10 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   const [notificationPermission, setNotificationPermission] = useState<AlertPermission>('undetermined');
   const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
   const [offNoteDismissedForSessionId, setOffNoteDismissedForSessionId] = useState<string | null>(null);
+  const [oneOffPickerOpen, setOneOffPickerOpen] = useState(false);
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [autoAdvanceEnabled, setAutoAdvanceEnabled] = useState(true);
   const { width: pagerWidth } = useWindowDimensions();
   const router = useRouter();
   const lastSessionIdRef = useRef<string | null>(null);
@@ -485,6 +647,22 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
         active = false;
       };
     }, []),
+  );
+
+  // Task 3 (LOG-13): the auto-advance toggle, read on every focus like the permission above — a
+  // change made in Profile's workout settings must take effect the next time this tab regains
+  // focus, not only on a fresh mount.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!userId) return undefined;
+      void loadWorkoutPreferences(userId, db).then((preferences) => {
+        if (active) setAutoAdvanceEnabled(preferences.autoAdvanceEnabled);
+      });
+      return () => {
+        active = false;
+      };
+    }, [userId, db]),
   );
 
   // Resets the pager back to the first exercise only when the open session's identity actually
@@ -572,7 +750,10 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
         }
       : null;
   const showNotificationPrompt =
-    mode === LIVE_MODE && screenState === 'no-session' && notificationPermission === 'undetermined' && !notificationPromptDismissed;
+    mode === LIVE_MODE &&
+    ONE_OFF_ELIGIBLE_STATES.includes(screenState) &&
+    notificationPermission === 'undetermined' &&
+    !notificationPromptDismissed;
   const showBackgroundAlertsOffNote =
     mode === LIVE_MODE &&
     sessionRow !== null &&
@@ -627,6 +808,30 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     } finally {
       setStarting(false);
     }
+  }
+
+  // LOG-02/D-33: opens the unmodified ExercisePickerModal in multi-select, from every no-session
+  // state (a user with an active program may still want an unplanned session).
+  function handleStartOneOff() {
+    setOneOffPickerOpen(true);
+  }
+
+  function handleCancelOneOffPicker() {
+    setOneOffPickerOpen(false);
+  }
+
+  async function handleAddOneOffExercises(rows: PickerCatalogRow[]) {
+    if (rows.length === 0) {
+      setOneOffPickerOpen(false);
+      return;
+    }
+    await startOneOffSession({ exerciseIds: rows.map((row) => row.id) }, db);
+    setOneOffPickerOpen(false);
+    await reload();
+  }
+
+  function handleGoToPrograms() {
+    router.push('/programs/library');
   }
 
   function handleSelectExercise(exerciseId: string) {
@@ -792,6 +997,22 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
         }
       }
 
+      // LOG-13: the draft's own completion is always a WORKING set (a warm-up is created by a
+      // different flow entirely, never through the trailing draft row) — gated on the typed
+      // SessionScreenMode value, never session.status (D-32/R10).
+      if (mode === LIVE_MODE) {
+        const exerciseIndex = sessionExercises.findIndex((candidate) => candidate.id === exercise.id);
+        const setsAfter = [...existingSets, { setType: WORKING_SET_TYPE, completed: true }];
+        const nextIndex = shouldAutoAdvance({
+          sets: setsAfter.map((row) => ({ setType: row.setType, completed: row.completed })),
+          enabled: autoAdvanceEnabled,
+          currentIndex: exerciseIndex,
+          exerciseCount: sessionExercises.length,
+          completedSetType: WORKING_SET_TYPE,
+        });
+        if (nextIndex !== null) setCurrentIndex(nextIndex);
+      }
+
       setActiveField(null);
       await reload();
       return;
@@ -803,6 +1024,24 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     const nextCompleted = !currentCompleted;
     await updateLoggedSet({ id: setId, completed: nextCompleted }, db);
     setRowOverrides((current) => ({ ...current, [setId]: { ...current[setId], completed: nextCompleted } }));
+
+    // LOG-13: only a transition INTO completed can trigger auto-advance — unchecking a row never
+    // moves the pager.
+    if (mode === LIVE_MODE && nextCompleted) {
+      const exerciseIndex = sessionExercises.findIndex((candidate) => candidate.id === exercise.id);
+      const setsAfter = existingSets.map((candidate) => ({
+        setType: candidate.setType,
+        completed: candidate.id === setId ? true : (rowOverrides[candidate.id]?.completed ?? candidate.completed),
+      }));
+      const nextIndex = shouldAutoAdvance({
+        sets: setsAfter,
+        enabled: autoAdvanceEnabled,
+        currentIndex: exerciseIndex,
+        exerciseCount: sessionExercises.length,
+        completedSetType: row.setType,
+      });
+      if (nextIndex !== null) setCurrentIndex(nextIndex);
+    }
 
     // D-27: undoing a completed set while its own timer is still running cancels the scheduled
     // alert — only when this set is the one that currently owns the outstanding rest, not any
@@ -844,8 +1083,45 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     if (sessionRow) setOffNoteDismissedForSessionId(sessionRow.id);
   }
 
-  const nextUpHeading =
-    nextUp && nextUp.kind === 'workout' ? (nextUp.cycle ? `${nextUp.day.name} · ${nextUp.cycle.name}` : nextUp.day.name) : null;
+  function handleToggleSessionMenu() {
+    setSessionMenuOpen((current) => !current);
+  }
+
+  // D-29: pause/resume live on this menu, not the action bar — a deliberate act, distinct from and
+  // sharing no state with force-quit recovery.
+  async function handlePauseResume() {
+    if (!liveSession) return;
+    setSessionMenuOpen(false);
+    if (liveSession.session.pausedAt !== null) {
+      await resumeSession(liveSession.session.id, new Date(), db);
+    } else {
+      await pauseSession(liveSession.session.id, new Date(), db);
+    }
+    await reload();
+  }
+
+  function handleRequestDiscard() {
+    setSessionMenuOpen(false);
+    setDiscardConfirmOpen(true);
+  }
+
+  function handleCancelDiscard() {
+    setDiscardConfirmOpen(false);
+  }
+
+  // D-28: discard is a status transition behind an explicit destructive confirmation, never a row
+  // delete — everything already logged stays exactly where it is.
+  async function handleConfirmDiscard() {
+    if (!liveSession) return;
+    setDiscardConfirmOpen(false);
+    await discardSession(liveSession.session.id, db);
+    router.push('/(tabs)');
+  }
+
+  async function handleFinishWorkout() {
+    if (!liveSession) return;
+    await finishSession(liveSession.session.id, router, db);
+  }
 
   return {
     screenState,
@@ -856,13 +1132,20 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     rowsByExercise,
     activeField,
     starting,
-    canStartWorkout: nextUp?.kind === 'workout',
-    nextUpHeading,
+    nextUp,
     weightUnit,
     headerTimer,
+    paused: sessionRow !== null && sessionRow.pausedAt !== null,
     showNotificationPrompt,
     showBackgroundAlertsOffNote,
+    showOneOffPicker: oneOffPickerOpen,
+    showSessionMenu: sessionMenuOpen,
+    showDiscardConfirm: discardConfirmOpen,
     onStartWorkout: () => void handleStartWorkout(),
+    onStartOneOff: handleStartOneOff,
+    onGoToPrograms: handleGoToPrograms,
+    onAddOneOffExercises: (rows) => void handleAddOneOffExercises(rows),
+    onCancelOneOffPicker: handleCancelOneOffPicker,
     onSelectExercise: handleSelectExercise,
     onIndexChange: handleIndexChange,
     onAddExercise: handleAddExercise,
@@ -876,6 +1159,12 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     onDismissNotificationPrompt: handleDismissNotificationPrompt,
     onTurnOnNotifications: () => void handleTurnOnNotifications(),
     onDismissBackgroundAlertsOffNote: handleDismissBackgroundAlertsOffNote,
+    onToggleSessionMenu: handleToggleSessionMenu,
+    onPauseResume: () => void handlePauseResume(),
+    onRequestDiscard: handleRequestDiscard,
+    onConfirmDiscard: () => void handleConfirmDiscard(),
+    onCancelDiscard: handleCancelDiscard,
+    onFinishWorkout: () => void handleFinishWorkout(),
   };
 }
 

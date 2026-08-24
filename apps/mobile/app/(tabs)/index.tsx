@@ -3,10 +3,12 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { WorkoutInProgressBanner } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
 import { getPowerSync } from '@/lib/db/powersync';
 import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
 import type { ProgramCycle, ProgramDay, ProgramSlot } from '@/lib/db/programs/load-program';
+import { discardSession, loadInProgressSessionSummary, type InProgressSessionSummary } from '@/lib/db/session-lifecycle';
 import { resolveNextUp, type NextUp } from '@/lib/programs/next-up';
 
 const SKELETON_ROW_COUNT = 3;
@@ -185,12 +187,33 @@ export async function readNextUp(
   }
 }
 
+export type InProgressRead = { data: InProgressSessionSummary | null } | { failed: true };
+
+// D-28's cost constraint lives here, not just in the render: a signed-out call never reaches
+// `load` at all, mirroring readNextUp's own guard-before-read shape and making the guard a unit
+// test rather than a runtime assumption. A rejection (the E8 backstop UI-state) is reported
+// distinctly from "no session" so the caller can tell the two apart even though this app's chosen
+// rendering for both collapses to the same "banner absent" outcome (see HomeScreen below).
+export async function readInProgressSession(
+  userId: string | null,
+  load: (id: string) => Promise<InProgressSessionSummary | null> = (id) => loadInProgressSessionSummary(id, getPowerSync()),
+): Promise<InProgressRead> {
+  if (!userId) return { data: null };
+  try {
+    return { data: await load(userId) };
+  } catch (error) {
+    console.error('in-progress session load failed', error);
+    return { failed: true };
+  }
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
   const [data, setData] = useState<NextUpData | null>(null);
   const [failed, setFailed] = useState(false);
+  const [inProgress, setInProgress] = useState<InProgressSessionSummary | null>(null);
 
   // On focus, not on mount. Both tabs stay mounted in a tab navigator, so a mount-only read meant
   // activating a program on the Programs tab left Home reading "No active program" until the app
@@ -212,6 +235,28 @@ export default function HomeScreen() {
         }
         setData(result.data);
         setFailed(false);
+      })();
+
+      return () => {
+        active = false;
+      };
+    }, [userId]),
+  );
+
+  // A second, independent focus read — the in-progress banner is not part of deriveHomeScreenState
+  // (the next-up card's own error/loading/no-program/ready machine) and must not gate or be gated
+  // by it: a failed next-up read must not hide a real in-progress session, and vice versa.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      void (async () => {
+        const result = await readInProgressSession(userId);
+        if (!active) return;
+        // A query failure (the E8 backstop) is a deliberate, pinned choice to render identically to
+        // "no in-progress session" — the banner's absence either way, never a second error surface
+        // stacked above the next-up card's own.
+        setInProgress('failed' in result ? null : result.data);
       })();
 
       return () => {
@@ -242,6 +287,22 @@ export default function HomeScreen() {
       contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 32 }}
     >
       <View className="mt-xl gap-lg">
+        {inProgress ? (
+          <WorkoutInProgressBanner
+            session={{
+              id: inProgress.id,
+              startedAtMs: new Date(inProgress.startedAt).getTime(),
+              accumulatedPausedSeconds: inProgress.accumulatedPausedSeconds,
+              pausedAtMs: inProgress.pausedAt ? new Date(inProgress.pausedAt).getTime() : null,
+            }}
+            onResume={() => router.push('/(tabs)/workout')}
+            onDiscard={async () => {
+              await discardSession(inProgress.id);
+              setInProgress(null);
+            }}
+          />
+        ) : null}
+
         {screenState === 'error' ? (
           <View className="gap-sm">
             <CardHeading>{"Your program couldn't load"}</CardHeading>

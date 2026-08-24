@@ -4,6 +4,10 @@
 jest.mock('../../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../../../lib/db/programs/next-up-query', () => ({ loadNextUp: jest.fn() }));
 jest.mock('../../../lib/auth-client', () => ({ authClient: { useSession: () => ({ data: null }) } }));
+// workout.tsx composes the unmodified ExercisePickerModal for the one-off flow (Task 1); its own
+// top-level imports reach the exercises screen/authClient the same way ExercisePickerModal.test.tsx
+// already documents — mocked before the screen import for the same reason.
+jest.mock('../../exercises', () => ({ loadCatalogRows: jest.fn() }));
 
 import type { ReactElement, ReactNode } from 'react';
 import { Pressable, Text } from 'react-native';
@@ -13,6 +17,8 @@ import { SetRowView } from '../../../components/SetRow';
 import { ExerciseStripView } from '../../../components/ExerciseStrip';
 import { ExercisePagerView } from '../../../components/ExercisePager';
 import { ExercisePageView } from '../../../components/ExercisePage';
+import { ExercisePickerModal } from '../../../components/ExercisePickerModal';
+import { DiscardWorkoutDialog } from '../../../components/WorkoutInProgressBanner';
 import {
   WorkoutScreenView,
   buildSetRows,
@@ -84,8 +90,27 @@ describe('deriveWorkoutScreenState', () => {
     ).toBe('ready');
   });
 
-  it('is no-session once loadLiveSession confirmed there is none and nextUp resolved', () => {
-    expect(deriveWorkoutScreenState({ failed: false, session: null, nextUp: { kind: 'no-active-program' } })).toBe('no-session');
+  it('is no-program when nothing is active', () => {
+    expect(deriveWorkoutScreenState({ failed: false, session: null, nextUp: { kind: 'no-active-program' } })).toBe('no-program');
+  });
+
+  it('is no-program when the program has no days', () => {
+    expect(deriveWorkoutScreenState({ failed: false, session: null, nextUp: { kind: 'no-days' } })).toBe('no-program');
+  });
+
+  it('is workout-available for a programmed workout day', () => {
+    const nextUp = { kind: 'workout' as const, cycle: null, day: { id: 'd1', orderIndex: 0, name: 'Push', isRestDay: false, slots: [] } };
+    expect(deriveWorkoutScreenState({ failed: false, session: null, nextUp })).toBe('workout-available');
+  });
+
+  it('is time-off on a scheduled off day', () => {
+    const nextUp = { kind: 'time-off' as const, cycle: { id: 'c1', name: 'Off', kind: 'time_off' as const, orderIndex: 0, durationDays: 7 }, daysRemaining: 3 };
+    expect(deriveWorkoutScreenState({ failed: false, session: null, nextUp })).toBe('time-off');
+  });
+
+  it('is program-complete once every cycle has been trained', () => {
+    const nextUp = { kind: 'program-complete' as const, lastCycle: null };
+    expect(deriveWorkoutScreenState({ failed: false, session: null, nextUp })).toBe('program-complete');
   });
 });
 
@@ -233,13 +258,20 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     rowsByExercise: { 'se-1': buildSetRows([], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null) },
     activeField: null,
     starting: false,
-    canStartWorkout: false,
-    nextUpHeading: null,
+    nextUp: null,
     weightUnit: 'kg',
     headerTimer: null,
+    paused: false,
     showNotificationPrompt: false,
     showBackgroundAlertsOffNote: false,
+    showOneOffPicker: false,
+    showSessionMenu: false,
+    showDiscardConfirm: false,
     onStartWorkout: jest.fn(),
+    onStartOneOff: jest.fn(),
+    onGoToPrograms: jest.fn(),
+    onAddOneOffExercises: jest.fn(),
+    onCancelOneOffPicker: jest.fn(),
     onSelectExercise: jest.fn(),
     onIndexChange: jest.fn(),
     onAddExercise: jest.fn(),
@@ -253,9 +285,30 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     onDismissNotificationPrompt: jest.fn(),
     onTurnOnNotifications: jest.fn(),
     onDismissBackgroundAlertsOffNote: jest.fn(),
+    onToggleSessionMenu: jest.fn(),
+    onPauseResume: jest.fn(),
+    onRequestDiscard: jest.fn(),
+    onConfirmDiscard: jest.fn(),
+    onCancelDiscard: jest.fn(),
+    onFinishWorkout: jest.fn(),
     ...overrides,
   };
 }
+
+const WORKOUT_NEXT_UP = {
+  kind: 'workout' as const,
+  cycle: null,
+  day: { id: 'd1', orderIndex: 0, name: 'Push', isRestDay: false, slots: [] },
+};
+
+const TIME_OFF_NEXT_UP = {
+  kind: 'time-off' as const,
+  cycle: { id: 'c1', name: 'Off', kind: 'time_off' as const, orderIndex: 0, durationDays: 7 },
+  daysRemaining: 3,
+};
+
+const PROGRAM_COMPLETE_NEXT_UP = { kind: 'program-complete' as const, lastCycle: null };
+const NO_ACTIVE_PROGRAM_NEXT_UP = { kind: 'no-active-program' as const };
 
 // ExercisePagerView renders its pages through react-native-tab-view's TabView, which our
 // no-renderer walker never invokes (TabView's scenes come from calling renderScene, not from a
@@ -280,10 +333,10 @@ describe('WorkoutScreenView', () => {
     expect(findByType(result, Text)).toHaveLength(0);
   });
 
-  it('a startable no-session state renders PrimaryButton wired to onStartWorkout', () => {
+  it('workout-available renders PrimaryButton wired to onStartWorkout', () => {
     const onStartWorkout = jest.fn();
     const result = WorkoutScreenView(
-      baseViewProps({ screenState: 'no-session', canStartWorkout: true, nextUpHeading: 'Push', onStartWorkout }),
+      baseViewProps({ screenState: 'workout-available', nextUp: WORKOUT_NEXT_UP, onStartWorkout }),
     );
     const [button] = findByType(result, PrimaryButton);
 
@@ -293,9 +346,67 @@ describe('WorkoutScreenView', () => {
     expect(onStartWorkout).toHaveBeenCalledTimes(1);
   });
 
-  it('a non-startable no-session state renders no PrimaryButton', () => {
-    const result = WorkoutScreenView(baseViewProps({ screenState: 'no-session', canStartWorkout: false }));
+  it('no-program renders the exact copywriting-contract heading and body, and no PrimaryButton', () => {
+    const result = WorkoutScreenView(baseViewProps({ screenState: 'no-program', nextUp: NO_ACTIVE_PROGRAM_NEXT_UP }));
     expect(findByType(result, PrimaryButton)).toHaveLength(0);
+    const text = flatText(result);
+    expect(text).toContain('No active program');
+    expect(text).toContain('Build or activate a program, or start a one-off workout.');
+  });
+
+  it('no-program renders a Browse Programs link wired to onGoToPrograms', () => {
+    const onGoToPrograms = jest.fn();
+    const result = WorkoutScreenView(baseViewProps({ screenState: 'no-program', nextUp: NO_ACTIVE_PROGRAM_NEXT_UP, onGoToPrograms }));
+    const [link] = findByType(result, Pressable).filter((el) => el.props.accessibilityLabel === 'Browse Programs');
+    (link.props.onPress as () => void)();
+    expect(onGoToPrograms).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders its own line for time-off rather than falling through to No active program', () => {
+    const result = WorkoutScreenView(baseViewProps({ screenState: 'time-off', nextUp: TIME_OFF_NEXT_UP }));
+    const text = flatText(result);
+    expect(text).toContain("You're on scheduled time off.");
+    expect(text).not.toContain('No active program');
+  });
+
+  it('renders its own line for program-complete rather than falling through to No active program', () => {
+    const result = WorkoutScreenView(baseViewProps({ screenState: 'program-complete', nextUp: PROGRAM_COMPLETE_NEXT_UP }));
+    const text = flatText(result);
+    expect(text).toContain('Block complete');
+    expect(text).not.toContain('No active program');
+  });
+
+  it.each(['no-program', 'time-off', 'program-complete', 'workout-available'] as const)(
+    'the one-off start action is present in the %s no-session state',
+    (screenState) => {
+      const onStartOneOff = jest.fn();
+      const result = WorkoutScreenView(
+        baseViewProps({
+          screenState,
+          nextUp:
+            screenState === 'time-off' ? TIME_OFF_NEXT_UP : screenState === 'program-complete' ? PROGRAM_COMPLETE_NEXT_UP : screenState === 'workout-available' ? WORKOUT_NEXT_UP : NO_ACTIVE_PROGRAM_NEXT_UP,
+          onStartOneOff,
+        }),
+      );
+      const [link] = findByType(result, Pressable).filter((el) => el.props.accessibilityLabel === 'Start a one-off workout');
+      expect(link).toBeDefined();
+      (link.props.onPress as () => void)();
+      expect(onStartOneOff).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('renders the ExercisePickerModal in place of everything else when showOneOffPicker is true', () => {
+    const onAddOneOffExercises = jest.fn();
+    const onCancelOneOffPicker = jest.fn();
+    const result = WorkoutScreenView(
+      baseViewProps({ screenState: 'error', showOneOffPicker: true, onAddOneOffExercises, onCancelOneOffPicker }),
+    ) as ReactElement<{ onAdd: (rows: unknown[]) => void; onCancel: () => void }>;
+
+    expect(result.type).toBe(ExercisePickerModal);
+    result.props.onAdd([]);
+    expect(onAddOneOffExercises).toHaveBeenCalledWith([]);
+    result.props.onCancel();
+    expect(onCancelOneOffPicker).toHaveBeenCalledTimes(1);
   });
 
   it('renders the exercise strip with one chip per session exercise', () => {
@@ -405,6 +516,62 @@ describe('WorkoutScreenView', () => {
 
     expect(findByType(withoutKeypad, NumericKeypadView)).toHaveLength(0);
     expect(findByType(withKeypad, NumericKeypadView)).toHaveLength(1);
+  });
+
+  const HEADER_TIMER = { sessionId: 's-1', startedAtMs: 0, accumulatedPausedSeconds: 0, pausedAtMs: null, restTargetAtMs: null };
+
+  it('renders a Finish Workout primary CTA wired to onFinishWorkout in the live session', () => {
+    const onFinishWorkout = jest.fn();
+    const result = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, onFinishWorkout }));
+    const [button] = findByType(result, PrimaryButton).filter((el) => el.props.label === 'Finish Workout');
+    expect(button).toBeDefined();
+    (button.props.onPress as () => void)();
+    expect(onFinishWorkout).toHaveBeenCalledTimes(1);
+  });
+
+  it('the session menu is closed by default and opens on toggle, showing Pause when not paused', () => {
+    const onToggleSessionMenu = jest.fn();
+    const closed = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, showSessionMenu: false, onToggleSessionMenu }));
+    expect(flatText(closed)).not.toContain('Discard');
+
+    const open = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, showSessionMenu: true, paused: false }));
+    const text = flatText(open);
+    expect(text).toContain('Pause');
+    expect(text).not.toContain('Resume');
+    expect(text).toContain('Discard');
+  });
+
+  it('the session menu shows Resume once the session is paused', () => {
+    const open = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, showSessionMenu: true, paused: true }));
+    expect(flatText(open)).toContain('Resume');
+  });
+
+  it('the session menu Discard row opens the discard confirmation, never writes directly', () => {
+    const onRequestDiscard = jest.fn();
+    const result = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, showSessionMenu: true, onRequestDiscard }));
+    const [discardButton] = findByType(result, Pressable).filter((el) => el.props.accessibilityLabel === 'Discard');
+    (discardButton.props.onPress as () => void)();
+    expect(onRequestDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the Discard Workout confirmation dialog only when showDiscardConfirm is true', () => {
+    const withoutConfirm = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, showDiscardConfirm: false }));
+    const withConfirm = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, showDiscardConfirm: true }));
+    expect(findByType(withoutConfirm, DiscardWorkoutDialog)).toHaveLength(0);
+    expect(findByType(withConfirm, DiscardWorkoutDialog)).toHaveLength(1);
+  });
+
+  it('the discard dialog wires onConfirm/onCancel through to onConfirmDiscard/onCancelDiscard', () => {
+    const onConfirmDiscard = jest.fn();
+    const onCancelDiscard = jest.fn();
+    const result = WorkoutScreenView(
+      baseViewProps({ headerTimer: HEADER_TIMER, showDiscardConfirm: true, onConfirmDiscard, onCancelDiscard }),
+    );
+    const [dialog] = findByType(result, DiscardWorkoutDialog);
+    (dialog.props.onConfirm as () => void)();
+    (dialog.props.onCancel as () => void)();
+    expect(onConfirmDiscard).toHaveBeenCalledTimes(1);
+    expect(onCancelDiscard).toHaveBeenCalledTimes(1);
   });
 
   it('calls no hook — direct-invocable with no renderer', () => {

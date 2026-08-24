@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
 import { SyncConnector } from '../lib/db/connector';
 import { addSessionExercise, logSet, startSession } from '../lib/db/log-set';
+import { pauseSession, resumeSession } from '../lib/db/session-lifecycle';
 import { previousSetReference } from '../lib/db/session-query';
 import {
   connectPowerSync,
@@ -24,6 +25,7 @@ import {
   readLoggedSets,
   readLoggedSetsRaw,
   readRawColumns,
+  readWorkoutSessionRaw,
   reopenTestPowerSync,
   seedProgrammedSession,
   writeCatalogVersionSentinel,
@@ -132,6 +134,17 @@ export default function DurabilityHarnessScreen() {
       },
       async readSets(sessionExerciseId: string) {
         return readLoggedSets(requireOpenDb(), sessionExerciseId);
+      },
+      // 05-07's pause/resume recovery case (e2e/durability.spec.ts): real session-lifecycle.ts
+      // writes against the currently open() database, no stub.
+      async pauseSession(input: { sessionId: string; now?: string }) {
+        await pauseSession(input.sessionId, input.now ? new Date(input.now) : undefined, requireOpenDb());
+      },
+      async resumeSession(input: { sessionId: string; now?: string }) {
+        await resumeSession(input.sessionId, input.now ? new Date(input.now) : undefined, requireOpenDb());
+      },
+      async readSessionRaw(sessionId: string) {
+        return readWorkoutSessionRaw(sessionId);
       },
       // Delegates to the real previousSetReference against the currently open() database — the
       // two-prior-sessions reload case (durability.spec.ts) proves the same tie-break the unit

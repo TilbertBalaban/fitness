@@ -1,9 +1,9 @@
 ---
 schema_version: 1
-open_count: 100
+open_count: 103
 waived_count: 1
 fixed_count: 14
-total_count: 115
+total_count: 118
 last_updated: 2026-08-24T15:15:40.631Z
 ---
 
@@ -130,6 +130,9 @@ last_updated: 2026-08-24T15:15:40.631Z
 | 116 | 05 | deviation | apps/mobile/components/SessionActionSheet.tsx |  | The overflow sheet's Reorder row has no drag-and-drop UI flow this phase: 05-UI-SPEC.md's E10 lists Reorder as one of the four fixed rows but specifies no interaction for it (no drag surface is defined anywhere in the phase's UI-SPEC for the exercise strip or a reorder screen), so ExercisePage.tsx's handleSessionAction dismisses the sheet on 'reorder' as a documented no-op. reorderSessionExercises itself is implemented and unit-tested (contiguous order_index over non-removed rows) — only the UI trigger is missing, pending a UI-SPEC amendment or a follow-up plan that defines the drag surface. | open |  | 2026-08-24T15:15:28.184Z |  |
 | 117 | 05 | deviation | apps/mobile/components/ExercisePage.tsx |  | The overflow sheet's Swap action reuses the unmodified Phase 4 ExercisePickerModal (multi-select) rather than the shipped SwapSuggestionList component, resolving a contradiction inside 05-06-PLAN.md's own Task 3 action text ('Swap opens SwapSuggestionList backed by smart-swap.ts' vs. 'this sheet's Swap action... open the unmodified Phase 4 ExercisePickerModal'). SwapSuggestionList's rows are Links that navigate to /exercises/[id] for read-only browsing, not swap-execution capable without modification, and 'reuse ExercisePickerModal through its existing props, do NOT modify it' was the more specific, actionable, unmodified-reuse-consistent instruction. Only the first picked exercise is used as the swap target; the modal's own copy ('Add exercises to {dayName}') was not written for a swap context and reads slightly oddly ('Add exercises to a replacement for {exerciseName}') since ExercisePickerModal is out of this plan's file scope to fix. Flagged as a minor UX rough edge, not a functional defect — swapSessionExercise itself is fully implemented and unit-tested. | open |  | 2026-08-24T15:15:34.805Z |  |
 | 118 | 05 | deviation | apps/mobile/components/NoteSheet.tsx |  | NoteSheet supports all three note levels (set/exercise/session) and setNote writes all three columns independently, but this plan wires only the exercise-level entry point (the action bar's Note button) — 05-UI-SPEC.md's Per-Exercise Action Bar section defines no set-level or session-level note trigger for this phase. Set/session-level notes are a tested, reusable capability with no UI surface yet; a future plan can add a long-press-on-set-row or session-header trigger without touching NoteSheet.tsx or session-mutations.ts. | open |  | 2026-08-24T15:15:40.631Z |  |
+| 119 | 05 | unrun-verify | apps/mobile/e2e/durability.spec.ts |  | Recovery case (warm-ups + two completed working sets + an open pause) extended into the durability suite but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- durability.spec.ts. | open |  | 2026-08-24T15:17:18.929Z |  |
+| 120 | 05 | unrun-verify | apps/mobile/e2e/session-lifecycle.spec.ts |  | Pause/resume header-bar freeze, finish-stamps-completed, and discard-confirmation-then-write cases written against the durability Playwright project but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- session-lifecycle.spec.ts. | open |  | 2026-08-24T15:17:23.564Z |  |
+| 121 | 999.1 | unrun-verify | apps/mobile/lib/db/session-lifecycle.ts |  | Native-only observations for 05-07: pause behaviour under a real OS backgrounding event, and Home/Workout tab focus-effect semantics on a physical iOS/Android device, cannot be observed on this machine (no Xcode, no Android SDK, D-10). Deferred to the Phase 999.1 native/cross-device UAT sweep. | open |  | 2026-08-24T15:17:30.385Z |  |
 
 ````json
 [
@@ -1511,6 +1514,42 @@ last_updated: 2026-08-24T15:15:40.631Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-24T15:15:40.631Z",
+    "resolved_at": null
+  },
+  {
+    "id": 119,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/e2e/durability.spec.ts",
+    "line": null,
+    "description": "Recovery case (warm-ups + two completed working sets + an open pause) extended into the durability suite but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- durability.spec.ts.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T15:17:18.929Z",
+    "resolved_at": null
+  },
+  {
+    "id": 120,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/e2e/session-lifecycle.spec.ts",
+    "line": null,
+    "description": "Pause/resume header-bar freeze, finish-stamps-completed, and discard-confirmation-then-write cases written against the durability Playwright project but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- session-lifecycle.spec.ts.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T15:17:23.564Z",
+    "resolved_at": null
+  },
+  {
+    "id": 121,
+    "kind": "unrun-verify",
+    "phase": "999.1",
+    "file": "apps/mobile/lib/db/session-lifecycle.ts",
+    "line": null,
+    "description": "Native-only observations for 05-07: pause behaviour under a real OS backgrounding event, and Home/Workout tab focus-effect semantics on a physical iOS/Android device, cannot be observed on this machine (no Xcode, no Android SDK, D-10). Deferred to the Phase 999.1 native/cross-device UAT sweep.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T15:17:30.385Z",
     "resolved_at": null
   }
 ]
