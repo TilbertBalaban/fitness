@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 102
+open_count: 105
 waived_count: 1
 fixed_count: 17
-total_count: 120
-last_updated: 2026-08-24T15:46:03.332Z
+total_count: 123
+last_updated: 2026-08-24T16:27:14.738Z
 ---
 
 # Broken Windows Ledger
@@ -135,6 +135,9 @@ last_updated: 2026-08-24T15:46:03.332Z
 | 121 | 999.1 | unrun-verify | apps/mobile/lib/db/session-lifecycle.ts |  | Native-only observations for 05-07: pause behaviour under a real OS backgrounding event, and Home/Workout tab focus-effect semantics on a physical iOS/Android device, cannot be observed on this machine (no Xcode, no Android SDK, D-10). Deferred to the Phase 999.1 native/cross-device UAT sweep. | open |  | 2026-08-24T15:17:30.385Z |  |
 | 122 | 05 | unrun-verify | apps/mobile/e2e/workout-screen.spec.ts |  | The mid-session-add-exercise case (adding via the strip's Add Exercise chip and asserting the strip grows by one chip) was written per 05-06-PLAN.md Task 3's acceptance criteria but not executed this session per the project's browser-testing-only-on-request rule; needs a real pnpm --filter mobile test:e2e:durability run to confirm the ExercisePickerModal getPowerSync()/harness database routing (useProductionDb) actually surfaces catalog rows to select. | open |  | 2026-08-24T15:45:52.808Z |  |
 | 123 | 05 | deviation | apps/mobile/app/(tabs)/workout.tsx |  | cycleId is passed as null for every exercise in ExercisePageData: no schema column persists which program cycle a live session started from (workout_session/session_exercise have no cycle_id), so TargetsSheet's write-back path (writeBackTargets/resolveWriteBackTarget) always resolves to the base routine_exercise row for a programmed exercise rather than a cycle-specific routine_exercise_cycle_target override, until cycle identity is threaded through startWorkoutFromProgram/session creation. | open |  | 2026-08-24T15:46:03.332Z |  |
+| 124 | 05 | unrun-verify | apps/mobile/e2e/history.spec.ts |  | View/rename/duplicate/delete a past workout, plus discarded-session-hidden, written against the real @powersync/web engine but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- history.spec.ts. | open |  | 2026-08-24T16:26:58.531Z |  |
+| 125 | 999.1 | unrun-verify | apps/mobile/components/SessionHistoryRow.tsx |  | Native FlashList recycling behaviour on the new SessionHistoryRow (the same failure class the ExerciseImageTile WINDOWS entry recorded in Phase 3) cannot be observed on this machine (no Xcode, no Android SDK). Deferred to the Phase 999.1 native/cross-device UAT sweep. | open |  | 2026-08-24T16:27:06.639Z |  |
+| 126 | 05 | deviation | apps/mobile/e2e/history.spec.ts |  | 05-09-PLAN.md Task 3's e2e prose says duplicating a row makes 'a fourth row appear' in History, but duplicateSession funnels through startSession (D-33), which always creates the copy in_progress — and Task 1's own shown/hidden rule excludes in-progress sessions from History. The copy therefore does NOT appear as a fourth History row; it surfaces on the Workout tab instead. history.spec.ts asserts the correct (in-progress, absent from loadHistoryPage) behavior rather than the plan's literal prose, which contradicts must_haves established earlier in the same plan. | open |  | 2026-08-24T16:27:14.738Z |  |
 
 ````json
 [
@@ -1576,6 +1579,42 @@ last_updated: 2026-08-24T15:46:03.332Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-24T15:46:03.332Z",
+    "resolved_at": null
+  },
+  {
+    "id": 124,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/e2e/history.spec.ts",
+    "line": null,
+    "description": "View/rename/duplicate/delete a past workout, plus discarded-session-hidden, written against the real @powersync/web engine but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- history.spec.ts.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T16:26:58.531Z",
+    "resolved_at": null
+  },
+  {
+    "id": 125,
+    "kind": "unrun-verify",
+    "phase": "999.1",
+    "file": "apps/mobile/components/SessionHistoryRow.tsx",
+    "line": null,
+    "description": "Native FlashList recycling behaviour on the new SessionHistoryRow (the same failure class the ExerciseImageTile WINDOWS entry recorded in Phase 3) cannot be observed on this machine (no Xcode, no Android SDK). Deferred to the Phase 999.1 native/cross-device UAT sweep.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T16:27:06.639Z",
+    "resolved_at": null
+  },
+  {
+    "id": 126,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/e2e/history.spec.ts",
+    "line": null,
+    "description": "05-09-PLAN.md Task 3's e2e prose says duplicating a row makes 'a fourth row appear' in History, but duplicateSession funnels through startSession (D-33), which always creates the copy in_progress — and Task 1's own shown/hidden rule excludes in-progress sessions from History. The copy therefore does NOT appear as a fourth History row; it surfaces on the Workout tab instead. history.spec.ts asserts the correct (in-progress, absent from loadHistoryPage) behavior rather than the plan's literal prose, which contradicts must_haves established earlier in the same plan.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T16:27:14.738Z",
     "resolved_at": null
   }
 ]
