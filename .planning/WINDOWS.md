@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 105
+open_count: 106
 waived_count: 1
 fixed_count: 17
-total_count: 123
-last_updated: 2026-08-24T16:27:14.738Z
+total_count: 124
+last_updated: 2026-08-24T18:47:51.143Z
 ---
 
 # Broken Windows Ledger
@@ -138,6 +138,7 @@ last_updated: 2026-08-24T16:27:14.738Z
 | 124 | 05 | unrun-verify | apps/mobile/e2e/history.spec.ts |  | View/rename/duplicate/delete a past workout, plus discarded-session-hidden, written against the real @powersync/web engine but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- history.spec.ts. | open |  | 2026-08-24T16:26:58.531Z |  |
 | 125 | 999.1 | unrun-verify | apps/mobile/components/SessionHistoryRow.tsx |  | Native FlashList recycling behaviour on the new SessionHistoryRow (the same failure class the ExerciseImageTile WINDOWS entry recorded in Phase 3) cannot be observed on this machine (no Xcode, no Android SDK). Deferred to the Phase 999.1 native/cross-device UAT sweep. | open |  | 2026-08-24T16:27:06.639Z |  |
 | 126 | 05 | deviation | apps/mobile/e2e/history.spec.ts |  | 05-09-PLAN.md Task 3's e2e prose says duplicating a row makes 'a fourth row appear' in History, but duplicateSession funnels through startSession (D-33), which always creates the copy in_progress — and Task 1's own shown/hidden rule excludes in-progress sessions from History. The copy therefore does NOT appear as a fourth History row; it surfaces on the Workout tab instead. history.spec.ts asserts the correct (in-progress, absent from loadHistoryPage) behavior rather than the plan's literal prose, which contradicts must_haves established earlier in the same plan. | open |  | 2026-08-24T16:27:14.738Z |  |
+| 127 | 05 | unrun-verify | apps/mobile/e2e/workout-summary.spec.ts |  | Workout-summary e2e (finish a session, assert trained muscles, PR rows and per-exercise e1RM breakdown, then correct a number before dismissing) written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- workout-summary.spec.ts. | open |  | 2026-08-24T18:47:51.143Z |  |
 
 ````json
 [
@@ -1615,6 +1616,18 @@ last_updated: 2026-08-24T16:27:14.738Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-24T16:27:14.738Z",
+    "resolved_at": null
+  },
+  {
+    "id": 127,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/e2e/workout-summary.spec.ts",
+    "line": null,
+    "description": "Workout-summary e2e (finish a session, assert trained muscles, PR rows and per-exercise e1RM breakdown, then correct a number before dismissing) written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- workout-summary.spec.ts.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T18:47:51.143Z",
     "resolved_at": null
   }
 ]

@@ -67,8 +67,8 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [ ] **LOG-15**: User can adjust targets mid-workout for this session only or persistently
 - [x] **LOG-16**: User can attach notes at set, exercise, and session level
 - [x] **LOG-17**: User can add auto-calculated warm-up sets scaled off the working weight, and toggle the behavior off
-- [ ] **LOG-18**: User sees a workout summary on finishing: muscles trained, PRs achieved, and a per-exercise breakdown with estimated 1RM
-- [ ] **LOG-19**: User can correct entries directly from the summary screen before dismissing it
+- [x] **LOG-18**: User sees a workout summary on finishing: muscles trained, PRs achieved, and a per-exercise breakdown with estimated 1RM
+- [x] **LOG-19**: User can correct entries directly from the summary screen before dismissing it
 - [ ] **LOG-20**: User can view, edit, rename, duplicate, and delete past workouts
 - [ ] **LOG-21**: User can backfill training history by editing a past workout's date and time
 - [x] **LOG-22**: User's workout is attributed to the calendar day it was logged in, regardless of timezone or a late-night finish
@@ -238,8 +238,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | LOG-15 | Phase 5 — In-Gym Session Logging | Pending |
 | LOG-16 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-17 | Phase 5 — In-Gym Session Logging | Complete |
-| LOG-18 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-19 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-18 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-19 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-20 | Phase 5 — In-Gym Session Logging | Pending |
 | LOG-21 | Phase 5 — In-Gym Session Logging | Pending |
 | GYM-01 | Phase 6 — Gym Profiles & Plate Math | Pending |
