@@ -26,6 +26,7 @@ import {
   deriveWorkoutScreenState,
   readWorkoutScreenData,
   stepAmountFor,
+  type ExercisePageData,
   type WorkoutScreenViewProps,
 } from '../workout';
 import type { LoggedSetRow, SessionExerciseRow } from '../../../lib/db/session-query';
@@ -249,6 +250,18 @@ describe('buildSetRows', () => {
   });
 });
 
+const PAGE_DATA: ExercisePageData = {
+  sessionExerciseId: 'se-1',
+  exerciseId: 'ex-1',
+  sessionId: 's-1',
+  userId: 'user-1',
+  targets: { targetSets: 3, targetRepMin: 8, targetRepMax: 12, targetRir: 2, targetRestSeconds: 90 },
+  routineExerciseId: 're-1',
+  cycleId: null,
+  hasNote: false,
+  noteText: null,
+};
+
 function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): WorkoutScreenViewProps {
   return {
     screenState: 'ready',
@@ -258,6 +271,7 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     currentIndex: 0,
     pagerWidth: 375,
     rowsByExercise: { 'se-1': buildSetRows([], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null) },
+    pageDataByExercise: { 'se-1': PAGE_DATA },
     activeField: null,
     starting: false,
     nextUp: null,
@@ -267,6 +281,7 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     showNotificationPrompt: false,
     showBackgroundAlertsOffNote: false,
     showOneOffPicker: false,
+    showAddExercisePicker: false,
     showSessionMenu: false,
     showDiscardConfirm: false,
     onStartWorkout: jest.fn(),
@@ -277,6 +292,9 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     onSelectExercise: jest.fn(),
     onIndexChange: jest.fn(),
     onAddExercise: jest.fn(),
+    onConfirmAddExercise: jest.fn(),
+    onCancelAddExercisePicker: jest.fn(),
+    onExerciseChanged: jest.fn(),
     onFieldPress: jest.fn(),
     onReferenceTap: jest.fn(),
     onKeypadPress: jest.fn(),
@@ -317,10 +335,23 @@ const NO_ACTIVE_PROGRAM_NEXT_UP = { kind: 'no-active-program' as const };
 // props.children tree) — so reaching what a given exercise's page actually renders means calling
 // the pager's own renderExercise prop by hand, exactly the "opaque nested component" pattern the
 // tracer task established for SetRowView/NumericKeypadView/PrimaryButton.
+//
+// renderExercise now returns a stateful <ExercisePage> element (05-06's wiring), not
+// <ExercisePageView> directly — per this codebase's own convention (TargetsSheet.test.tsx et al.),
+// a stateful wrapper is never direct-invoked (it calls useState/useThemeColors/useRouter). What
+// this helper actually needs to prove — the SetRowView interaction chain — lives entirely in the
+// pass-through props ExercisePage forwards unmodified to its own internal ExercisePageView call
+// (rows/activeField/exerciseName/onFieldPress/onReferenceTap/onCheckmarkPress), so those are read
+// straight off the raw <ExercisePage> element and fed into ExercisePageView here, with the same
+// COLORS fixture every other hook-free view in this file already uses standing in for the
+// useThemeColors() resolution ExercisePage would have supplied.
 function renderCurrentExercisePage(result: ReactNode, exercise: { id: string; name: string; completedWorkingSets: number; targetSets: number }) {
   const [pager] = findByType(result, ExercisePagerView);
   const pageElement = (pager.props.renderExercise as (ex: typeof exercise) => AnyElement)(exercise);
-  return ExercisePageView(pageElement.props as unknown as Parameters<typeof ExercisePageView>[0]);
+  const { exerciseName, rows, activeField, onFieldPress, onReferenceTap, onCheckmarkPress } = pageElement.props as unknown as Parameters<
+    typeof ExercisePageView
+  >[0];
+  return ExercisePageView({ exerciseName, rows, activeField, onFieldPress, onReferenceTap, onCheckmarkPress, colors: COLORS, actionBarSlot: undefined });
 }
 
 describe('WorkoutScreenView', () => {

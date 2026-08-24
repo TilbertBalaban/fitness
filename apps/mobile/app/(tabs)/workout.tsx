@@ -1,4 +1,4 @@
-import { fromCanonicalKg, toCanonicalKg, WORKING_SET_TYPE, type WeightUnit } from '@fitness/api-contracts';
+import { fromCanonicalKg, toCanonicalKg, WORKING_SET_TYPE, type ResolvedTarget, type WeightUnit } from '@fitness/api-contracts';
 import { eq } from 'drizzle-orm';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
@@ -14,7 +14,7 @@ import {
 import { type SetRowReference, type SetRowValues } from '@/components/SetRow';
 import { countCompletedWorkingSets, ExerciseStripView, type ExerciseStripExercise } from '@/components/ExerciseStrip';
 import { clampPagerIndex, ExercisePagerView } from '@/components/ExercisePager';
-import { ExercisePageView } from '@/components/ExercisePage';
+import { ExercisePage } from '@/components/ExercisePage';
 import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
 import { BackgroundAlertsOffNote, NotificationPermissionPromptView } from '@/components/NotificationPermissionPrompt';
 import { RestTimerBar } from '@/components/RestTimerBar';
@@ -25,6 +25,7 @@ import { logSet, startWorkoutFromProgram, updateLoggedSet } from '@/lib/db/log-s
 import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
 import type { ProgramCycle, ProgramDay } from '@/lib/db/programs/load-program';
 import { loadWorkoutPreferences } from '@/lib/db/preferences';
+import { addExerciseToSession } from '@/lib/db/session-mutations';
 import { discardSession, pauseSession, resumeSession, startOneOffSession } from '@/lib/db/session-lifecycle';
 import {
   loadLiveSession,
@@ -184,6 +185,9 @@ export interface ResolvedSetRow {
   values: SetRowValues;
   reference: SetRowReference;
   completed: boolean;
+  // Omitted on the trailing draft row (always a working entry) — ExercisePageView only checks
+  // this for the warm-up badge/ordering, never infers set type from position (RESEARCH Pitfall 2).
+  setType?: string;
 }
 
 interface BuildSetRowsActiveField {
@@ -199,6 +203,37 @@ export interface BuildSetRowsReferenceContext {
 }
 
 const EMPTY_REFERENCE_CONTEXT: BuildSetRowsReferenceContext = { sessionExerciseId: '', referenceMap: {} };
+
+// Everything ExercisePage's action bar and sheets (05-06) need beyond the SetRowView-facing props
+// WorkoutScreenView already threads through — one entry per live (non-removed) session_exercise,
+// built 1:1 with the `exercises` strip list, so a lookup miss should never happen in practice.
+export interface ExercisePageData {
+  sessionExerciseId: string;
+  exerciseId: string;
+  sessionId: string;
+  userId: string | null;
+  targets: ResolvedTarget;
+  routineExerciseId: string | null;
+  // Never persisted anywhere a live session can recover it after start (no cycle_id column on
+  // workout_session or session_exercise) — write-back therefore always resolves to the base
+  // routine_exercise row for a programmed exercise until cycle identity is threaded through
+  // session creation. See WINDOWS #119.
+  cycleId: string | null;
+  hasNote: boolean;
+  noteText: string | null;
+}
+
+const EMPTY_PAGE_DATA: ExercisePageData = {
+  sessionExerciseId: '',
+  exerciseId: '',
+  sessionId: '',
+  userId: null,
+  targets: { targetSets: null, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+  routineExerciseId: null,
+  cycleId: null,
+  hasNote: false,
+  noteText: null,
+};
 
 function resolveReference(
   sessionExerciseId: string,
@@ -251,7 +286,7 @@ export function buildSetRows(
 
     const reference = resolveReference(referenceContext.sessionExerciseId, row.setIndex, referenceContext.referenceMap, weightUnit);
 
-    return { setId: row.id, setIndex: row.setIndex, values, reference, completed };
+    return { setId: row.id, setIndex: row.setIndex, values, reference, completed, setType: row.setType };
   });
 
   let draft = draftValues;
@@ -310,6 +345,7 @@ export interface WorkoutScreenViewProps {
   currentIndex: number;
   pagerWidth: number;
   rowsByExercise: Record<string, ResolvedSetRow[]>;
+  pageDataByExercise: Record<string, ExercisePageData>;
   activeField: ActiveFieldState | null;
   starting: boolean;
   // Replaces the old canStartWorkout/nextUpHeading pair (Task 1): the view derives every
@@ -322,6 +358,7 @@ export interface WorkoutScreenViewProps {
   showNotificationPrompt: boolean;
   showBackgroundAlertsOffNote: boolean;
   showOneOffPicker: boolean;
+  showAddExercisePicker: boolean;
   showSessionMenu: boolean;
   showDiscardConfirm: boolean;
   onStartWorkout: () => void;
@@ -332,6 +369,9 @@ export interface WorkoutScreenViewProps {
   onSelectExercise: (exerciseId: string) => void;
   onIndexChange: (index: number) => void;
   onAddExercise: () => void;
+  onConfirmAddExercise: (rows: PickerCatalogRow[]) => void;
+  onCancelAddExercisePicker: () => void;
+  onExerciseChanged: () => void;
   onFieldPress: (exerciseId: string, setId: string | null, field: KeypadField, currentValue: string | null) => void;
   onReferenceTap: (exerciseId: string, setId: string | null, field: 'weight' | 'reps') => void;
   onKeypadPress: (press: KeypadPress) => void;
@@ -404,6 +444,7 @@ export function WorkoutScreenView({
   currentIndex,
   pagerWidth,
   rowsByExercise,
+  pageDataByExercise,
   activeField,
   starting,
   nextUp,
@@ -413,6 +454,7 @@ export function WorkoutScreenView({
   showNotificationPrompt,
   showBackgroundAlertsOffNote,
   showOneOffPicker,
+  showAddExercisePicker,
   showSessionMenu,
   showDiscardConfirm,
   onStartWorkout,
@@ -423,6 +465,9 @@ export function WorkoutScreenView({
   onSelectExercise,
   onIndexChange,
   onAddExercise,
+  onConfirmAddExercise,
+  onCancelAddExercisePicker,
+  onExerciseChanged,
   onFieldPress,
   onReferenceTap,
   onKeypadPress,
@@ -560,17 +605,30 @@ export function WorkoutScreenView({
         index={currentIndex}
         onIndexChange={onIndexChange}
         width={pagerWidth}
-        renderExercise={(exercise) => (
-          <ExercisePageView
-            exerciseName={exercise.name}
-            rows={rowsByExercise[exercise.id] ?? []}
-            activeField={activeField && activeField.exerciseId === exercise.id ? { setId: activeField.setId, field: activeField.field } : null}
-            colors={colors}
-            onFieldPress={(setId, field, currentValue) => onFieldPress(exercise.id, setId, field, currentValue)}
-            onReferenceTap={(setId, field) => onReferenceTap(exercise.id, setId, field)}
-            onCheckmarkPress={(setId) => onCheckmarkPress(exercise.id, setId)}
-          />
-        )}
+        renderExercise={(exercise) => {
+          const pageData = pageDataByExercise[exercise.id] ?? EMPTY_PAGE_DATA;
+          return (
+            <ExercisePage
+              exerciseName={exercise.name}
+              rows={rowsByExercise[exercise.id] ?? []}
+              activeField={activeField && activeField.exerciseId === exercise.id ? { setId: activeField.setId, field: activeField.field } : null}
+              sessionExerciseId={pageData.sessionExerciseId}
+              exerciseId={pageData.exerciseId}
+              sessionId={pageData.sessionId}
+              userId={pageData.userId}
+              weightUnit={weightUnit}
+              targets={pageData.targets}
+              routineExerciseId={pageData.routineExerciseId}
+              cycleId={pageData.cycleId}
+              hasNote={pageData.hasNote}
+              noteText={pageData.noteText}
+              onExerciseChanged={onExerciseChanged}
+              onFieldPress={(setId, field, currentValue) => onFieldPress(exercise.id, setId, field, currentValue)}
+              onReferenceTap={(setId, field) => onReferenceTap(exercise.id, setId, field)}
+              onCheckmarkPress={(setId) => onCheckmarkPress(exercise.id, setId)}
+            />
+          );
+        }}
       />
 
       {activeField ? (
@@ -586,6 +644,12 @@ export function WorkoutScreenView({
       {showDiscardConfirm ? (
         <Modal transparent animationType="fade" onRequestClose={onCancelDiscard}>
           <DiscardWorkoutDialog onConfirm={onConfirmDiscard} onCancel={onCancelDiscard} />
+        </Modal>
+      ) : null}
+
+      {showAddExercisePicker ? (
+        <Modal animationType="slide" onRequestClose={onCancelAddExercisePicker}>
+          <ExercisePickerModal dayName="this workout" onAdd={onConfirmAddExercise} onCancel={onCancelAddExercisePicker} />
         </Modal>
       ) : null}
     </View>
@@ -628,6 +692,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
   const [offNoteDismissedForSessionId, setOffNoteDismissedForSessionId] = useState<string | null>(null);
   const [oneOffPickerOpen, setOneOffPickerOpen] = useState(false);
+  const [addExercisePickerOpen, setAddExercisePickerOpen] = useState(false);
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [autoAdvanceEnabled, setAutoAdvanceEnabled] = useState(true);
@@ -778,6 +843,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   });
 
   const rowsByExercise: Record<string, ResolvedSetRow[]> = {};
+  const pageDataByExercise: Record<string, ExercisePageData> = {};
   for (const exercise of sessionExercises) {
     const existingSets = liveSession?.setsByExerciseId[exercise.id] ?? [];
     const draftValues = draftValuesByExercise[exercise.id] ?? defaultDraftValues(exercise);
@@ -786,6 +852,23 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
       sessionExerciseId: exercise.id,
       referenceMap,
     });
+    pageDataByExercise[exercise.id] = {
+      sessionExerciseId: exercise.id,
+      exerciseId: exercise.exerciseId,
+      sessionId: sessionRow?.id ?? '',
+      userId,
+      targets: {
+        targetSets: exercise.targetSets,
+        targetRepMin: exercise.targetRepMin,
+        targetRepMax: exercise.targetRepMax,
+        targetRir: exercise.targetRir,
+        targetRestSeconds: exercise.targetRestSeconds,
+      },
+      routineExerciseId: exercise.routineExerciseId,
+      cycleId: null,
+      hasNote: exercise.notes !== null,
+      noteText: exercise.notes,
+    };
   }
 
   async function handleStartWorkout() {
@@ -846,8 +929,31 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     setCurrentIndex(clampPagerIndex(index, sessionExercises.length));
   }
 
+  // LOG-14: opens the same unmodified Phase 4 ExercisePickerModal the strip's trailing add chip
+  // and the overflow sheet's Swap action both reuse, in multi-select mode.
   function handleAddExercise() {
-    // No-op this task — 05-06 wires this to ExercisePickerModal in multi-select mode.
+    setAddExercisePickerOpen(true);
+  }
+
+  function handleCancelAddExercisePicker() {
+    setAddExercisePickerOpen(false);
+  }
+
+  async function handleConfirmAddExercise(rows: PickerCatalogRow[]) {
+    if (!liveSession || rows.length === 0) {
+      setAddExercisePickerOpen(false);
+      return;
+    }
+    await addExerciseToSession({ sessionId: liveSession.session.id, exerciseIds: rows.map((row) => row.id) }, db);
+    setAddExercisePickerOpen(false);
+    await reload();
+  }
+
+  // Shared by every ExercisePage instance's action-bar sheets (targets/note/warmup/swap/remove) —
+  // each already closes its own sheet before calling this; a single reload picks up whichever
+  // session-scoped write just landed.
+  function handleExerciseChanged() {
+    void reload();
   }
 
   function handleFieldPress(exerciseId: string, setId: string | null, field: KeypadField, currentValue: string | null) {
@@ -1130,6 +1236,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     currentIndex: safeIndex,
     pagerWidth,
     rowsByExercise,
+    pageDataByExercise,
     activeField,
     starting,
     nextUp,
@@ -1139,6 +1246,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     showNotificationPrompt,
     showBackgroundAlertsOffNote,
     showOneOffPicker: oneOffPickerOpen,
+    showAddExercisePicker: addExercisePickerOpen,
     showSessionMenu: sessionMenuOpen,
     showDiscardConfirm: discardConfirmOpen,
     onStartWorkout: () => void handleStartWorkout(),
@@ -1149,6 +1257,9 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     onSelectExercise: handleSelectExercise,
     onIndexChange: handleIndexChange,
     onAddExercise: handleAddExercise,
+    onConfirmAddExercise: (rows) => void handleConfirmAddExercise(rows),
+    onCancelAddExercisePicker: handleCancelAddExercisePicker,
+    onExerciseChanged: handleExerciseChanged,
     onFieldPress: handleFieldPress,
     onReferenceTap: (exerciseId, setId, field) => void handleReferenceTap(exerciseId, setId, field),
     onKeypadPress: handleKeypadPress,
