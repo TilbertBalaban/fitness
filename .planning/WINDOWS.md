@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 94
+open_count: 100
 waived_count: 1
 fixed_count: 14
-total_count: 109
-last_updated: 2026-08-24T09:05:51.583Z
+total_count: 115
+last_updated: 2026-08-24T15:15:40.631Z
 ---
 
 # Broken Windows Ledger
@@ -124,6 +124,12 @@ last_updated: 2026-08-24T09:05:51.583Z
 | 110 | 05 | unrun-verify | apps/mobile/lib/rest-alert.ts |  | expo-notifications' scheduled DATE-trigger alert has not been observed to actually fire and be audible/visible while the app is fully backgrounded and the phone is locked, on a real iOS or Android device — no Xcode/Android SDK on this machine (D-10). Typecheck + doc-confirmed API usage only. Filed against ROADMAP Phase 999.1 per RESEARCH.md Pitfall 4. | open |  | 2026-08-24T09:05:39.209Z |  |
 | 111 | 05 | unrun-verify | apps/mobile/e2e/rest-timer.spec.ts |  | Rest timer e2e (Notification-constructed-at-target, hidden/visible recompute, +30s, Skip Rest, undo-cancels-alert, permission-denied degraded path) written against the durability Playwright project but not executed this session — CLAUDE.md forbids launching a browser unless explicitly requested. | open |  | 2026-08-24T09:05:51.583Z |  |
 | 112 | 05 | unrun-verify | ops/powersync/sync-rules.yaml |  | personal_record's pull-side round trip (PowerSync Service delivering a pushed PR row to a second device) rests only on the already-shipped sync-rules.yaml SELECT query, not on an observed pull — the self-hosted PowerSync Service was not restarted against the current rules in this plan. A live cross-device pull needs that restart; deferred to ROADMAP Phase 999.1's native/cross-device UAT sweep. | open |  | 2026-08-24T08:59:58.809Z |  |
+| 113 | 05 | deviation | apps/mobile/lib/db/session-mutations.ts |  | WarmupSheet.tsx and generateWarmupSets (05-06-PLAN.md Task 2) are not implemented this session: they require importing warmupSets from the @fitness/pr-rules workspace package, which apps/mobile/package.json does not yet declare as a dependency. Adding it needs a package.json edit plus pnpm install, both explicitly forbidden by this wave's seam-ownership dependency freeze (05-06 dispatch: 'If you believe you need a new dependency, HALT and report'). The package itself is real and already built by 05-04 specifically for 05-06's consumption (see 05-04-SUMMARY.md). Needs a human decision to add the workspace dependency, then a follow-up plan to land WarmupSheet.tsx + generateWarmupSets + the WarmupSheet.test.tsx-equivalent coverage. | open |  | 2026-08-24T15:15:01.136Z |  |
+| 114 | 05 | deviation | apps/mobile/components/ExercisePage.tsx |  | The stateful ExercisePage wrapper (action bar + Targets/Note/overflow sheets, wired per D-13) is not reachable from the live workout screen this wave: apps/mobile/app/(tabs)/workout.tsx renders ExercisePageView directly (never the ExercisePage wrapper this plan built) and is owned by the concurrent 05-07 worktree this wave, so 05-06 could not wire sessionExerciseId/exerciseId/targets/hasNote/noteText/routineExerciseId/cycleId/onExerciseChanged into it, add the setType field to workout.tsx's ResolvedSetRow rows (so the new warm-up 'W' badge has data to render), or wire the ExerciseStrip's onAddExercise placeholder to ExercisePickerModal (workout.tsx's own comment says 05-06 wires this, but the wave's seam-ownership dispatch explicitly forbids editing workout.tsx). All new components/mutations are built, typechecked and unit-tested via direct invocation; the remaining work is exclusively wiring workout.tsx to use ExercisePage instead of ExercisePageView, and threading the listed props through useWorkoutScreen. A follow-up plan (or 05-10, which already touches workout.tsx for session-mode integration) should close this gap. | open |  | 2026-08-24T15:15:15.819Z |  |
+| 115 | 05 | deviation | apps/mobile/e2e/workout-screen.spec.ts |  | No new mid-session add/swap/remove/reorder e2e case was added to workout-screen.spec.ts this session. Task 3's acceptance criterion calls for a case adding an exercise mid-session and asserting the strip grows by one chip, but the strip's Add chip is wired to workout.tsx's onAddExercise handler, which is a documented no-op this wave (see WINDOWS #114) — an e2e case against that flow would fail for a reason unrelated to this plan's own code, so none was authored. Existing e2e cases were left untouched per this session's CLAUDE.md browser-testing prohibition (no browser/e2e run performed). Needs authoring once WINDOWS #114's workout.tsx wiring gap closes. | open |  | 2026-08-24T15:15:22.016Z |  |
+| 116 | 05 | deviation | apps/mobile/components/SessionActionSheet.tsx |  | The overflow sheet's Reorder row has no drag-and-drop UI flow this phase: 05-UI-SPEC.md's E10 lists Reorder as one of the four fixed rows but specifies no interaction for it (no drag surface is defined anywhere in the phase's UI-SPEC for the exercise strip or a reorder screen), so ExercisePage.tsx's handleSessionAction dismisses the sheet on 'reorder' as a documented no-op. reorderSessionExercises itself is implemented and unit-tested (contiguous order_index over non-removed rows) — only the UI trigger is missing, pending a UI-SPEC amendment or a follow-up plan that defines the drag surface. | open |  | 2026-08-24T15:15:28.184Z |  |
+| 117 | 05 | deviation | apps/mobile/components/ExercisePage.tsx |  | The overflow sheet's Swap action reuses the unmodified Phase 4 ExercisePickerModal (multi-select) rather than the shipped SwapSuggestionList component, resolving a contradiction inside 05-06-PLAN.md's own Task 3 action text ('Swap opens SwapSuggestionList backed by smart-swap.ts' vs. 'this sheet's Swap action... open the unmodified Phase 4 ExercisePickerModal'). SwapSuggestionList's rows are Links that navigate to /exercises/[id] for read-only browsing, not swap-execution capable without modification, and 'reuse ExercisePickerModal through its existing props, do NOT modify it' was the more specific, actionable, unmodified-reuse-consistent instruction. Only the first picked exercise is used as the swap target; the modal's own copy ('Add exercises to {dayName}') was not written for a swap context and reads slightly oddly ('Add exercises to a replacement for {exerciseName}') since ExercisePickerModal is out of this plan's file scope to fix. Flagged as a minor UX rough edge, not a functional defect — swapSessionExercise itself is fully implemented and unit-tested. | open |  | 2026-08-24T15:15:34.805Z |  |
+| 118 | 05 | deviation | apps/mobile/components/NoteSheet.tsx |  | NoteSheet supports all three note levels (set/exercise/session) and setNote writes all three columns independently, but this plan wires only the exercise-level entry point (the action bar's Note button) — 05-UI-SPEC.md's Per-Exercise Action Bar section defines no set-level or session-level note trigger for this phase. Set/session-level notes are a tested, reusable capability with no UI surface yet; a future plan can add a long-press-on-set-row or session-header trigger without touching NoteSheet.tsx or session-mutations.ts. | open |  | 2026-08-24T15:15:40.631Z |  |
 
 ````json
 [
@@ -1433,6 +1439,78 @@ last_updated: 2026-08-24T09:05:51.583Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-24T08:59:58.809Z",
+    "resolved_at": null
+  },
+  {
+    "id": 113,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/lib/db/session-mutations.ts",
+    "line": null,
+    "description": "WarmupSheet.tsx and generateWarmupSets (05-06-PLAN.md Task 2) are not implemented this session: they require importing warmupSets from the @fitness/pr-rules workspace package, which apps/mobile/package.json does not yet declare as a dependency. Adding it needs a package.json edit plus pnpm install, both explicitly forbidden by this wave's seam-ownership dependency freeze (05-06 dispatch: 'If you believe you need a new dependency, HALT and report'). The package itself is real and already built by 05-04 specifically for 05-06's consumption (see 05-04-SUMMARY.md). Needs a human decision to add the workspace dependency, then a follow-up plan to land WarmupSheet.tsx + generateWarmupSets + the WarmupSheet.test.tsx-equivalent coverage.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T15:15:01.136Z",
+    "resolved_at": null
+  },
+  {
+    "id": 114,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/components/ExercisePage.tsx",
+    "line": null,
+    "description": "The stateful ExercisePage wrapper (action bar + Targets/Note/overflow sheets, wired per D-13) is not reachable from the live workout screen this wave: apps/mobile/app/(tabs)/workout.tsx renders ExercisePageView directly (never the ExercisePage wrapper this plan built) and is owned by the concurrent 05-07 worktree this wave, so 05-06 could not wire sessionExerciseId/exerciseId/targets/hasNote/noteText/routineExerciseId/cycleId/onExerciseChanged into it, add the setType field to workout.tsx's ResolvedSetRow rows (so the new warm-up 'W' badge has data to render), or wire the ExerciseStrip's onAddExercise placeholder to ExercisePickerModal (workout.tsx's own comment says 05-06 wires this, but the wave's seam-ownership dispatch explicitly forbids editing workout.tsx). All new components/mutations are built, typechecked and unit-tested via direct invocation; the remaining work is exclusively wiring workout.tsx to use ExercisePage instead of ExercisePageView, and threading the listed props through useWorkoutScreen. A follow-up plan (or 05-10, which already touches workout.tsx for session-mode integration) should close this gap.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T15:15:15.819Z",
+    "resolved_at": null
+  },
+  {
+    "id": 115,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/e2e/workout-screen.spec.ts",
+    "line": null,
+    "description": "No new mid-session add/swap/remove/reorder e2e case was added to workout-screen.spec.ts this session. Task 3's acceptance criterion calls for a case adding an exercise mid-session and asserting the strip grows by one chip, but the strip's Add chip is wired to workout.tsx's onAddExercise handler, which is a documented no-op this wave (see WINDOWS #114) — an e2e case against that flow would fail for a reason unrelated to this plan's own code, so none was authored. Existing e2e cases were left untouched per this session's CLAUDE.md browser-testing prohibition (no browser/e2e run performed). Needs authoring once WINDOWS #114's workout.tsx wiring gap closes.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T15:15:22.016Z",
+    "resolved_at": null
+  },
+  {
+    "id": 116,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/components/SessionActionSheet.tsx",
+    "line": null,
+    "description": "The overflow sheet's Reorder row has no drag-and-drop UI flow this phase: 05-UI-SPEC.md's E10 lists Reorder as one of the four fixed rows but specifies no interaction for it (no drag surface is defined anywhere in the phase's UI-SPEC for the exercise strip or a reorder screen), so ExercisePage.tsx's handleSessionAction dismisses the sheet on 'reorder' as a documented no-op. reorderSessionExercises itself is implemented and unit-tested (contiguous order_index over non-removed rows) — only the UI trigger is missing, pending a UI-SPEC amendment or a follow-up plan that defines the drag surface.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T15:15:28.184Z",
+    "resolved_at": null
+  },
+  {
+    "id": 117,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/components/ExercisePage.tsx",
+    "line": null,
+    "description": "The overflow sheet's Swap action reuses the unmodified Phase 4 ExercisePickerModal (multi-select) rather than the shipped SwapSuggestionList component, resolving a contradiction inside 05-06-PLAN.md's own Task 3 action text ('Swap opens SwapSuggestionList backed by smart-swap.ts' vs. 'this sheet's Swap action... open the unmodified Phase 4 ExercisePickerModal'). SwapSuggestionList's rows are Links that navigate to /exercises/[id] for read-only browsing, not swap-execution capable without modification, and 'reuse ExercisePickerModal through its existing props, do NOT modify it' was the more specific, actionable, unmodified-reuse-consistent instruction. Only the first picked exercise is used as the swap target; the modal's own copy ('Add exercises to {dayName}') was not written for a swap context and reads slightly oddly ('Add exercises to a replacement for {exerciseName}') since ExercisePickerModal is out of this plan's file scope to fix. Flagged as a minor UX rough edge, not a functional defect — swapSessionExercise itself is fully implemented and unit-tested.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T15:15:34.805Z",
+    "resolved_at": null
+  },
+  {
+    "id": 118,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/components/NoteSheet.tsx",
+    "line": null,
+    "description": "NoteSheet supports all three note levels (set/exercise/session) and setNote writes all three columns independently, but this plan wires only the exercise-level entry point (the action bar's Note button) — 05-UI-SPEC.md's Per-Exercise Action Bar section defines no set-level or session-level note trigger for this phase. Set/session-level notes are a tested, reusable capability with no UI surface yet; a future plan can add a long-press-on-set-row or session-header trigger without touching NoteSheet.tsx or session-mutations.ts.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T15:15:40.631Z",
     "resolved_at": null
   }
 ]
