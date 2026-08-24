@@ -8,6 +8,9 @@ import {
   ROUTINE_STATUSES as ROUTINE_STATUS_TUPLE,
   WEIGHT_UNITS as WEIGHT_UNIT_TUPLE,
   CYCLE_KINDS as CYCLE_KIND_TUPLE,
+  WORKOUT_SESSION_STATUSES,
+  SET_TYPES as SET_TYPE_TUPLE,
+  PR_TYPES as PR_TYPE_TUPLE,
   type SyncCrudOp,
   type SyncPushResponse,
   type SyncRejectionReason,
@@ -25,6 +28,7 @@ import {
   routineCycle,
   routineExerciseCycleTarget,
   userPreference,
+  personalRecord,
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { classifyTransactionError } from './rejection-reason';
@@ -40,6 +44,7 @@ import {
   EXERCISE_PATCH_FIELDS,
   LOGGED_SET_PATCH_FIELDS,
   patchAwareSet,
+  PERSONAL_RECORD_PATCH_FIELDS,
   ROUTINE_CYCLE_PATCH_FIELDS,
   ROUTINE_DAY_PATCH_FIELDS,
   ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS,
@@ -51,6 +56,7 @@ import {
   WORKOUT_SESSION_PATCH_FIELDS,
   type ExerciseValues,
   type LoggedSetValues,
+  type PersonalRecordValues,
   type RoutineCycleValues,
   type RoutineDayValues,
   type RoutineExerciseCycleTargetValues,
@@ -74,6 +80,7 @@ const TABLE_MAP = {
   user_preference: userPreference,
   routine_cycle: routineCycle,
   routine_exercise_cycle_target: routineExerciseCycleTarget,
+  personal_record: personalRecord,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -94,7 +101,14 @@ const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 // for reads, never a sync-parent relationship; user_preference.active_routine_id is a cross-table
 // pointer checked separately below, never a sync-parent relationship either). Every branch below
 // keys off this set rather than repeating three string comparisons (RESEARCH.md Pattern 2).
-const SINGLETON_ROOT_TYPES = new Set<string>(['exercise', 'user_exercise_preference', 'user_preference']);
+// personal_record (05-03) is a fifth singleton root: it owns no synced children and is never
+// referenced as a parent by another synced op, the same reasoning exercise/user_preference carry.
+const SINGLETON_ROOT_TYPES = new Set<string>([
+  'exercise',
+  'user_exercise_preference',
+  'user_preference',
+  'personal_record',
+]);
 
 // An aggregate root owns synced children and is looked up in its own table; a singleton root
 // (SINGLETON_ROOT_TYPES) owns none; everything else chains to a root through rootFamilyOf.
@@ -113,6 +127,7 @@ const ROOT_TABLE_BY_TYPE = {
   exercise: exercise,
   user_exercise_preference: userExercisePreference,
   user_preference: userPreference,
+  personal_record: personalRecord,
 } as const;
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
@@ -171,13 +186,18 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   // dual-parent rank in this schema, so both of its parents apply before it regardless of the
   // order the crud queue delivered them.
   routine_exercise_cycle_target: 3,
+  personal_record: 0,
 };
 
-const SESSION_STATUSES = new Set(['in_progress', 'completed', 'discarded']);
-const SET_TYPES = new Set(['normal', 'warmup', 'drop', 'myorep', 'partial', 'failure', 'amrap']);
 const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // Built from the shared @fitness/api-contracts tuples, never retyped literals, so the
 // client-facing invalid_field rejection and the Postgres CHECK constraint can never drift apart.
+// SESSION_STATUSES/SET_TYPES/PR_TYPES used to be retyped literal Sets — SESSION_STATUSES was
+// missing 'paused' entirely, which is what makes D-29's pause writable through sync at all now
+// that it is sourced from the tuple instead.
+const SESSION_STATUSES = new Set<string>(WORKOUT_SESSION_STATUSES);
+const SET_TYPES = new Set<string>(SET_TYPE_TUPLE);
+const PR_TYPES = new Set<string>(PR_TYPE_TUPLE);
 const LOAD_TYPES = new Set<string>(LOAD_TYPE_TUPLE);
 const EQUIPMENT_TYPES = new Set<string>(EQUIPMENT_TYPE_TUPLE);
 const MOVEMENT_PATTERNS = new Set<string>(MOVEMENT_PATTERN_TUPLE);
@@ -194,6 +214,11 @@ interface WorkoutSessionOpData {
   device_id?: string | null;
   timezone?: string;
   local_date?: string;
+  notes?: string | null;
+  name?: string | null;
+  paused_at?: string | null;
+  accumulated_paused_seconds?: number;
+  rest_target_at?: string | null;
 }
 
 interface SessionExerciseOpData {
@@ -207,6 +232,8 @@ interface SessionExerciseOpData {
   target_rep_max?: number | null;
   target_rir?: number | null;
   target_rest_seconds?: number | null;
+  notes?: string | null;
+  removed_at?: string | null;
 }
 
 interface LoggedSetOpData {
@@ -221,6 +248,7 @@ interface LoggedSetOpData {
   parent_set_id?: string | null;
   rest_taken_seconds?: number | null;
   logged_at?: string;
+  notes?: string | null;
 }
 
 interface ExerciseOpData {
@@ -262,9 +290,20 @@ interface UserPreferenceOpData {
   weight_unit?: string;
   default_equipment_profile_id?: string | null;
   active_routine_id?: string | null;
+  auto_advance_enabled?: boolean;
+  warmup_sets_enabled?: boolean;
   // Never read — accepted only so a present user_id key does not crash the presence check in
   // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
   user_id?: unknown;
+}
+
+interface PersonalRecordOpData {
+  exercise_id?: string;
+  pr_type?: string;
+  value?: string | number | null;
+  logged_set_id?: string | null;
+  achieved_at?: string;
+  reconciled_at?: string | null;
 }
 
 interface RoutineDayOpData {
@@ -306,6 +345,14 @@ interface RoutineExerciseCycleTargetOpData {
   target_rest_seconds?: number | null;
 }
 
+// An empty string and an absent/null key both mean "no note" and must collapse onto the same
+// stored representation (SQL NULL) — otherwise the same intent renders as two different values
+// depending on which code path produced it.
+function normalizeNotes(value: string | null | undefined): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  return value;
+}
+
 function toWorkoutSessionValues(id: string, userId: string, data: Record<string, unknown> | null | undefined): WorkoutSessionValues {
   const d = (data ?? {}) as WorkoutSessionOpData;
   const startedAt = d.started_at ? new Date(d.started_at) : new Date();
@@ -323,6 +370,11 @@ function toWorkoutSessionValues(id: string, userId: string, data: Record<string,
     // longer clobber a real client-supplied timezone with this default (LOG-22).
     timezone: d.timezone ?? 'UTC',
     localDate: d.local_date ?? startedAt.toISOString().slice(0, 10),
+    notes: normalizeNotes(d.notes),
+    name: d.name ?? null,
+    pausedAt: d.paused_at ? new Date(d.paused_at) : null,
+    accumulatedPausedSeconds: d.accumulated_paused_seconds ?? 0,
+    restTargetAt: d.rest_target_at ? new Date(d.rest_target_at) : null,
   };
 }
 
@@ -340,6 +392,8 @@ function toSessionExerciseValues(id: string, sessionId: string, data: Record<str
     targetRepMax: d.target_rep_max ?? null,
     targetRir: d.target_rir ?? null,
     targetRestSeconds: d.target_rest_seconds ?? null,
+    notes: normalizeNotes(d.notes),
+    removedAt: d.removed_at ? new Date(d.removed_at) : null,
   };
 }
 
@@ -366,6 +420,7 @@ function toLoggedSetValues(id: string, sessionExerciseId: string, data: Record<s
     parentSetId: d.parent_set_id ?? null,
     restTakenSeconds: d.rest_taken_seconds ?? null,
     loggedAt: d.logged_at ? new Date(d.logged_at) : new Date(),
+    notes: normalizeNotes(d.notes),
   };
 }
 
@@ -469,6 +524,48 @@ function toUserPreferenceValues(
     weightUnit: d.weight_unit ?? 'kg',
     defaultEquipmentProfileId: d.default_equipment_profile_id ?? null,
     activeRoutineId: d.active_routine_id ?? null,
+    autoAdvanceEnabled: d.auto_advance_enabled ?? true,
+    warmupSetsEnabled: d.warmup_sets_enabled ?? true,
+  };
+}
+
+// value is the one field that never becomes a binary float across a lifetime of aggregation
+// (D-04, mirroring normalizeWeightKg) — absent/null is defence in depth behind hasInvalidField's
+// isNonNegativeDecimalOrNull check, never expected on a legitimate PUT since the column is NOT
+// NULL; '0' is a safe fallback that the client-side builder (05-04) never actually produces.
+function normalizeRequiredDecimal(value: string | number | null | undefined): string {
+  return value === undefined || value === null ? '0' : String(value);
+}
+
+// userId always comes from the authenticated session argument, never from data.user_id — a PUT
+// naming another user's id in its payload is stored against the pusher's own id regardless
+// (T-05-03-01, mirrored from toUserExercisePreferenceValues). Unlike that function, personal_record
+// has no reparenting hazard to guard: exerciseId is client-owned data on this table, not identity —
+// a PR pointing at a different exercise is a different fact about the same achievement, not a
+// takeover of another row.
+function toPersonalRecordValues(
+  id: string,
+  userId: string,
+  data: Record<string, unknown> | null | undefined,
+): PersonalRecordValues {
+  const d = (data ?? {}) as PersonalRecordOpData;
+  return {
+    id,
+    userId,
+    exerciseId: d.exercise_id ?? '',
+    // Falls back to a real PR_TYPES member, never '' — Postgres validates the
+    // personal_record_pr_type_check CHECK constraint against the tentative INSERT row before it
+    // even determines there is a conflict to fall back to UPDATE for (unlike a foreign key, which
+    // is an AFTER trigger that never fires on that path), so a narrow PATCH naming only
+    // reconciled_at would otherwise throw a server_error on every existing row, not just insert an
+    // unvalidated one. patchAwareSet's onConflictDoUpdate `set` clause is what actually keeps this
+    // fallback off an existing row's stored value; this default only ever reaches storage on a
+    // genuine first insert, mirroring toRoutineCycleValues' kind ?? 'training' precedent.
+    prType: d.pr_type ?? 'heaviest_weight',
+    value: normalizeRequiredDecimal(d.value),
+    loggedSetId: d.logged_set_id ?? null,
+    achievedAt: d.achieved_at ? new Date(d.achieved_at) : new Date(),
+    reconciledAt: d.reconciled_at ? new Date(d.reconciled_at) : null,
   };
 }
 
@@ -573,6 +670,19 @@ function isNonNegativeIntegerOrNull(value: unknown): boolean {
   return value === null || isNonNegativeInteger(value);
 }
 
+// notes/name — free text, checked only when present; absent and null both mean "leave/clear",
+// which normalizeNotes (not this validator) is responsible for collapsing onto one representation.
+function isValidOptionalStringOrNull(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string';
+}
+
+// paused_at/rest_target_at/removed_at/achieved_at — checked only when present; an explicit null
+// is valid (clears the column), a non-ISO string is not.
+function isValidOptionalIsoOrNull(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
 // session_exercise.exercise_id is a NOT NULL foreign key (apps/api/src/db/schema/session.ts) —
 // unlike every other field here, absent is invalid the same as empty, because toSessionExerciseValues'
 // `d.exercise_id ?? ''` fallback would otherwise insert or (via the unconditional onConflictDoUpdate
@@ -587,6 +697,8 @@ function isInvalidSessionExercise(data: SessionExerciseOpData): boolean {
   if (data.target_rep_max !== undefined && !isNonNegativeIntegerOrNull(data.target_rep_max)) return true;
   if (data.target_rir !== undefined && !isNonNegativeIntegerOrNull(data.target_rir)) return true;
   if (data.target_rest_seconds !== undefined && !isNonNegativeIntegerOrNull(data.target_rest_seconds)) return true;
+  if (!isValidOptionalStringOrNull(data.notes)) return true;
+  if (!isValidOptionalIsoOrNull(data.removed_at)) return true;
   return false;
 }
 
@@ -656,22 +768,32 @@ function hasInvalidField(op: SyncCrudOp): boolean {
   const data = (op.data ?? {}) as Record<string, unknown>;
 
   if (op.type === 'workout_session') {
-    if (data.status !== undefined && !(typeof data.status === 'string' && SESSION_STATUSES.has(data.status))) {
+    const d = data as WorkoutSessionOpData;
+    if (d.status !== undefined && !(typeof d.status === 'string' && SESSION_STATUSES.has(d.status))) {
       return true;
     }
-    if (data.local_date !== undefined && !(typeof data.local_date === 'string' && LOCAL_DATE_RE.test(data.local_date))) {
+    if (d.local_date !== undefined && !(typeof d.local_date === 'string' && LOCAL_DATE_RE.test(d.local_date))) {
+      return true;
+    }
+    if (!isValidOptionalStringOrNull(d.notes)) return true;
+    if (!isValidOptionalStringOrNull(d.name)) return true;
+    if (!isValidOptionalIsoOrNull(d.paused_at)) return true;
+    if (!isValidOptionalIsoOrNull(d.rest_target_at)) return true;
+    if (d.accumulated_paused_seconds !== undefined && !isNonNegativeInteger(d.accumulated_paused_seconds)) {
       return true;
     }
     return false;
   }
 
   if (op.type === 'logged_set') {
-    if (data.weight_kg !== undefined && !isNonNegativeDecimalOrNull(data.weight_kg)) return true;
-    if (data.reps !== undefined && !isNonNegativeInteger(data.reps)) return true;
-    if (data.set_index !== undefined && !isNonNegativeInteger(data.set_index)) return true;
-    if (data.set_type !== undefined && !(typeof data.set_type === 'string' && SET_TYPES.has(data.set_type))) {
+    const d = data as LoggedSetOpData;
+    if (d.weight_kg !== undefined && !isNonNegativeDecimalOrNull(d.weight_kg)) return true;
+    if (d.reps !== undefined && !isNonNegativeInteger(d.reps)) return true;
+    if (d.set_index !== undefined && !isNonNegativeInteger(d.set_index)) return true;
+    if (d.set_type !== undefined && !(typeof d.set_type === 'string' && SET_TYPES.has(d.set_type))) {
       return true;
     }
+    if (!isValidOptionalStringOrNull(d.notes)) return true;
     return false;
   }
 
@@ -757,6 +879,19 @@ function hasInvalidField(op: SyncCrudOp): boolean {
     ) {
       return true;
     }
+    if (d.auto_advance_enabled !== undefined && typeof d.auto_advance_enabled !== 'boolean') return true;
+    if (d.warmup_sets_enabled !== undefined && typeof d.warmup_sets_enabled !== 'boolean') return true;
+    return false;
+  }
+
+  if (op.type === 'personal_record') {
+    const d = data as PersonalRecordOpData;
+    if (d.pr_type !== undefined && !(typeof d.pr_type === 'string' && PR_TYPES.has(d.pr_type))) return true;
+    if (d.value !== undefined && !isNonNegativeDecimalOrNull(d.value)) return true;
+    if (d.exercise_id !== undefined && !(typeof d.exercise_id === 'string' && d.exercise_id.length > 0)) {
+      return true;
+    }
+    if (!isValidOptionalIsoOrNull(d.achieved_at)) return true;
     return false;
   }
 
@@ -1269,6 +1404,7 @@ export class SyncService {
     const routineRootIds = rootIdsByRootType.get('routine') ?? [];
     const exerciseRootIds = rootIdsByRootType.get('exercise') ?? [];
     const userExercisePreferenceRootIds = rootIdsByRootType.get('user_exercise_preference') ?? [];
+    const personalRecordRootIds = rootIdsByRootType.get('personal_record') ?? [];
 
     const existingRoots = workoutSessionRootIds.length
       ? await this.db
@@ -1312,6 +1448,15 @@ export class SyncService {
     const dbExerciseIdByUserExercisePreferenceId = new Map(
       existingUserExercisePreferenceRoots.map((row) => [row.id, row.exerciseId]),
     );
+    // personal_record.userId is NOT NULL (unlike exercise.userId), so this table follows the
+    // workout_session/routine ownership shape, not exercise's nullable-owner special case — a
+    // personal_record row is either owned by someone or does not exist yet, never owned by no one.
+    const existingPersonalRecordRoots = personalRecordRootIds.length
+      ? await this.db
+          .select({ id: personalRecord.id, userId: personalRecord.userId })
+          .from(personalRecord)
+          .where(inArray(personalRecord.id, personalRecordRootIds))
+      : [];
     // Keyed by aggregateKey, not by the bare id, for the same reason the aggregate map is: two
     // roots of different types sharing one id would otherwise overwrite each other here and hand
     // one aggregate the other's owner.
@@ -1321,6 +1466,10 @@ export class SyncService {
       ...existingExerciseRoots.map((row): [string, string | null] => [aggregateKey('exercise', row.id), row.userId]),
       ...existingUserExercisePreferenceRoots.map((row): [string, string | null] => [
         aggregateKey('user_exercise_preference', row.id),
+        row.userId,
+      ]),
+      ...existingPersonalRecordRoots.map((row): [string, string | null] => [
+        aggregateKey('personal_record', row.id),
         row.userId,
       ]),
     ]);
@@ -1577,7 +1726,9 @@ export class SyncService {
                                     resolveCycleIdForCycleTarget(op.id) ?? '',
                                     op.data,
                                   )
-                                : toUserPreferenceValues(op.id, userId, op.data);
+                                : op.type === 'personal_record'
+                                  ? toPersonalRecordValues(op.id, userId, op.data)
+                                  : toUserPreferenceValues(op.id, userId, op.data);
 
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
@@ -1715,6 +1866,23 @@ export class SyncService {
                 set: { ...patchAwareSet(op, routineValues, ROUTINE_PATCH_FIELDS), serverSeq: nextSeq },
               })
               .returning({ serverSeq: routine.serverSeq });
+            const seqValue = BigInt(serverSeq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else if (op.type === 'personal_record') {
+            // personal_record — a fifth singleton root (SINGLETON_ROOT_TYPES, 05-03), inserted/
+            // upserted the same shape as user_exercise_preference/routine: server_seq on insert and
+            // on the conflict set, since a singleton root carries its own server_seq like any other
+            // aggregate root.
+            const nextSeq = sql`nextval('sync_seq')`;
+            const personalRecordValues = values as PersonalRecordValues;
+            const [{ serverSeq }] = await tx
+              .insert(personalRecord)
+              .values({ ...personalRecordValues, serverSeq: nextSeq })
+              .onConflictDoUpdate({
+                target: personalRecord.id,
+                set: { ...patchAwareSet(op, personalRecordValues, PERSONAL_RECORD_PATCH_FIELDS), serverSeq: nextSeq },
+              })
+              .returning({ serverSeq: personalRecord.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           } else {

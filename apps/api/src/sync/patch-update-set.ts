@@ -15,6 +15,11 @@ export interface WorkoutSessionValues {
   deviceId: string | null;
   timezone: string;
   localDate: string;
+  notes: string | null;
+  name: string | null;
+  pausedAt: Date | null;
+  accumulatedPausedSeconds: number;
+  restTargetAt: Date | null;
 }
 
 export interface SessionExerciseValues {
@@ -29,6 +34,8 @@ export interface SessionExerciseValues {
   targetRepMax: number | null;
   targetRir: number | null;
   targetRestSeconds: number | null;
+  notes: string | null;
+  removedAt: Date | null;
 }
 
 export interface LoggedSetValues {
@@ -44,6 +51,7 @@ export interface LoggedSetValues {
   parentSetId: string | null;
   restTakenSeconds: number | null;
   loggedAt: Date;
+  notes: string | null;
 }
 
 export interface ExerciseValues {
@@ -92,6 +100,22 @@ export interface UserPreferenceValues {
   weightUnit: string;
   defaultEquipmentProfileId: string | null;
   activeRoutineId: string | null;
+  autoAdvanceEnabled: boolean;
+  warmupSetsEnabled: boolean;
+}
+
+// value is typed string, not number, for the same reason weightKg is: Drizzle surfaces numeric
+// as a string, and a value that never becomes a binary float cannot accumulate conversion error
+// across a lifetime of aggregation (D-04).
+export interface PersonalRecordValues {
+  id: string;
+  userId: string;
+  exerciseId: string;
+  prType: string;
+  value: string;
+  loggedSetId: string | null;
+  achievedAt: Date;
+  reconciledAt: Date | null;
 }
 
 export interface RoutineDayValues {
@@ -165,6 +189,11 @@ export const WORKOUT_SESSION_PATCH_FIELDS: PatchFieldMap<WorkoutSessionValues> =
   deviceId: 'device_id',
   timezone: 'timezone',
   localDate: 'local_date',
+  notes: 'notes',
+  name: 'name',
+  pausedAt: 'paused_at',
+  accumulatedPausedSeconds: 'accumulated_paused_seconds',
+  restTargetAt: 'rest_target_at',
 };
 
 export const SESSION_EXERCISE_PATCH_FIELDS: PatchFieldMap<SessionExerciseValues> = {
@@ -179,6 +208,8 @@ export const SESSION_EXERCISE_PATCH_FIELDS: PatchFieldMap<SessionExerciseValues>
   targetRepMax: 'target_rep_max',
   targetRir: 'target_rir',
   targetRestSeconds: 'target_rest_seconds',
+  notes: 'notes',
+  removedAt: 'removed_at',
 };
 
 export const LOGGED_SET_PATCH_FIELDS: PatchFieldMap<LoggedSetValues> = {
@@ -194,6 +225,7 @@ export const LOGGED_SET_PATCH_FIELDS: PatchFieldMap<LoggedSetValues> = {
   parentSetId: 'parent_set_id',
   restTakenSeconds: 'rest_taken_seconds',
   loggedAt: 'logged_at',
+  notes: 'notes',
 };
 
 // id/userId/isCustom/source are set once at insert and never client-patchable — ownership,
@@ -262,6 +294,22 @@ export const USER_PREFERENCE_PATCH_FIELDS: PatchFieldMap<UserPreferenceValues> =
   weightUnit: 'weight_unit',
   defaultEquipmentProfileId: 'default_equipment_profile_id',
   activeRoutineId: 'active_routine_id',
+  autoAdvanceEnabled: 'auto_advance_enabled',
+  warmupSetsEnabled: 'warmup_sets_enabled',
+};
+
+// id/userId are server-derived and written unconditionally, mirroring toUserExercisePreferenceValues'
+// ownership guarantee (T-05-03-01): userId always comes from the authenticated session, never from
+// data.user_id. Every other field is genuinely client-owned and maps to its own wire key.
+export const PERSONAL_RECORD_PATCH_FIELDS: PatchFieldMap<PersonalRecordValues> = {
+  id: null,
+  userId: null,
+  exerciseId: 'exercise_id',
+  prType: 'pr_type',
+  value: 'value',
+  loggedSetId: 'logged_set_id',
+  achievedAt: 'achieved_at',
+  reconciledAt: 'reconciled_at',
 };
 
 // id/routineId are written unconditionally because both are server-derived: routineId comes from

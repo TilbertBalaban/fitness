@@ -1,9 +1,9 @@
 ---
 schema_version: 1
-open_count: 93
+open_count: 94
 waived_count: 1
 fixed_count: 14
-total_count: 108
+total_count: 109
 last_updated: 2026-08-24T09:05:51.583Z
 ---
 
@@ -123,6 +123,7 @@ last_updated: 2026-08-24T09:05:51.583Z
 | 109 | 05 | stub | apps/mobile/components/SetRow.tsx |  | Warm-up rows sort ahead of working rows and are excluded from strip/reference counts, but SetRow.tsx does not yet render 05-UI-SPEC's leading 14px W badge — out of Task 2's file scope, deferred to a later plan touching SetRow.tsx | open |  | 2026-08-23T18:42:48.569Z |  |
 | 110 | 05 | unrun-verify | apps/mobile/lib/rest-alert.ts |  | expo-notifications' scheduled DATE-trigger alert has not been observed to actually fire and be audible/visible while the app is fully backgrounded and the phone is locked, on a real iOS or Android device — no Xcode/Android SDK on this machine (D-10). Typecheck + doc-confirmed API usage only. Filed against ROADMAP Phase 999.1 per RESEARCH.md Pitfall 4. | open |  | 2026-08-24T09:05:39.209Z |  |
 | 111 | 05 | unrun-verify | apps/mobile/e2e/rest-timer.spec.ts |  | Rest timer e2e (Notification-constructed-at-target, hidden/visible recompute, +30s, Skip Rest, undo-cancels-alert, permission-denied degraded path) written against the durability Playwright project but not executed this session — CLAUDE.md forbids launching a browser unless explicitly requested. | open |  | 2026-08-24T09:05:51.583Z |  |
+| 112 | 05 | unrun-verify | ops/powersync/sync-rules.yaml |  | personal_record's pull-side round trip (PowerSync Service delivering a pushed PR row to a second device) rests only on the already-shipped sync-rules.yaml SELECT query, not on an observed pull — the self-hosted PowerSync Service was not restarted against the current rules in this plan. A live cross-device pull needs that restart; deferred to ROADMAP Phase 999.1's native/cross-device UAT sweep. | open |  | 2026-08-24T08:59:58.809Z |  |
 
 ````json
 [
@@ -1420,6 +1421,18 @@ last_updated: 2026-08-24T09:05:51.583Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-24T09:05:51.583Z",
+    "resolved_at": null
+  },
+  {
+    "id": 112,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "ops/powersync/sync-rules.yaml",
+    "line": null,
+    "description": "personal_record's pull-side round trip (PowerSync Service delivering a pushed PR row to a second device) rests only on the already-shipped sync-rules.yaml SELECT query, not on an observed pull — the self-hosted PowerSync Service was not restarted against the current rules in this plan. A live cross-device pull needs that restart; deferred to ROADMAP Phase 999.1's native/cross-device UAT sweep.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-24T08:59:58.809Z",
     "resolved_at": null
   }
 ]

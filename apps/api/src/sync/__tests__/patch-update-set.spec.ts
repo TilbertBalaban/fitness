@@ -27,6 +27,7 @@ function loggedSetValues(overrides: Partial<LoggedSetValues> = {}): LoggedSetVal
     parentSetId: null,
     restTakenSeconds: null,
     loggedAt: new Date('2026-06-15T20:00:00Z'),
+    notes: null,
     ...overrides,
   };
 }
@@ -43,6 +44,11 @@ function workoutSessionValues(overrides: Partial<WorkoutSessionValues> = {}): Wo
     deviceId: 'phone-1',
     timezone: 'America/New_York',
     localDate: '2026-06-15',
+    notes: null,
+    name: null,
+    pausedAt: null,
+    accumulatedPausedSeconds: 0,
+    restTargetAt: null,
     ...overrides,
   };
 }
@@ -60,6 +66,8 @@ function sessionExerciseValues(overrides: Partial<SessionExerciseValues> = {}): 
     targetRepMax: null,
     targetRir: null,
     targetRestSeconds: null,
+    notes: null,
+    removedAt: null,
     ...overrides,
   };
 }
@@ -199,6 +207,11 @@ describe('patchAwareSet', () => {
         device_id: 'phone-2',
         timezone: 'UTC',
         local_date: '2026-06-16',
+        notes: 'Felt strong today',
+        name: 'Push Day',
+        paused_at: '2026-06-16T00:30:00Z',
+        accumulated_paused_seconds: 90,
+        rest_target_at: '2026-06-16T00:32:00Z',
       },
     });
     const result = patchAwareSet(patchOp, values, WORKOUT_SESSION_PATCH_FIELDS);
@@ -220,6 +233,8 @@ describe('patchAwareSet', () => {
         target_rep_max: 10,
         target_rir: 3,
         target_rest_seconds: 180,
+        notes: 'Elbow felt tight',
+        removed_at: '2026-06-16T00:00:00Z',
       },
     });
     const result = patchAwareSet(patchOp, values, SESSION_EXERCISE_PATCH_FIELDS);
@@ -240,6 +255,7 @@ describe('patchAwareSet', () => {
         parent_set_id: 'set-0',
         rest_taken_seconds: 60,
         logged_at: '2026-06-16T00:00:00Z',
+        notes: 'Bar felt heavy',
       },
     });
     const result = patchAwareSet(patchOp, values, LOGGED_SET_PATCH_FIELDS);
