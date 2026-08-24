@@ -114,7 +114,7 @@ export function formatSlotSummary(draft: TargetDraft): string {
   return `${displayOrDash(targetSets)} sets · ${displayOrDash(targetRepMin)}–${displayOrDash(targetRepMax)} reps · ${displayOrDash(targetRir)} RIR · ${restDisplay} rest`;
 }
 
-interface TargetStepperProps {
+export interface TargetStepperProps {
   label: string;
   displayValue: string;
   colors: ThemeColors;
@@ -134,7 +134,9 @@ interface TargetStepperProps {
 // invocation of ExerciseSlotRowView in a test never does (no renderer in this worktree's
 // lockfile). Calling this function inline embeds its returned Pressables straight into the parent
 // tree, where a children-based findByType traversal can see them.
-function renderTargetStepper({
+// Exported for 05-06's TargetsSheet, which reuses this exact stepper anatomy verbatim rather than
+// re-styling it (05-UI-SPEC.md "Per-Exercise Action Bar" — Targets sheet).
+export function renderTargetStepper({
   label,
   displayValue,
   colors,
