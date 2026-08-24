@@ -15,10 +15,15 @@ function baseProps(overrides: Partial<HistoryScreenViewProps> = {}): HistoryScre
     state: 'ready',
     rows: [],
     colors: COLORS,
+    overlay: null,
     onRowPress: jest.fn(),
     onOverflowPress: jest.fn(),
     onEndReached: jest.fn(),
     onAddPastWorkout: jest.fn(),
+    onSheetSelect: jest.fn(),
+    onCancelOverlay: jest.fn(),
+    onConfirmRename: jest.fn(),
+    onConfirmDelete: jest.fn(),
     ...overrides,
   };
 }
@@ -70,23 +75,55 @@ describe('HistoryScreenView — error state', () => {
   });
 });
 
-describe('HistoryScreenView — ready state', () => {
-  it('renders a FlashList with the page rows and no separate empty/error chrome', () => {
-    const rows: HistoryPage['rows'] = [
-      {
-        id: 's1',
-        name: 'Leg Day',
-        localDate: '2026-01-05',
-        startedAt: '2026-01-05T10:00:00.000Z',
-        endedAt: '2026-01-05T11:00:00.000Z',
-        accumulatedPausedSeconds: 0,
-        exerciseCount: 4,
-        completedSetCount: 12,
-      },
-    ];
-    const element = HistoryScreenView(baseProps({ state: 'ready', rows }));
-    const flashList = element.props.children;
+const SAMPLE_ROW: HistoryPage['rows'][number] = {
+  id: 's1',
+  name: 'Leg Day',
+  localDate: '2026-01-05',
+  startedAt: '2026-01-05T10:00:00.000Z',
+  endedAt: '2026-01-05T11:00:00.000Z',
+  accumulatedPausedSeconds: 0,
+  exerciseCount: 4,
+  completedSetCount: 12,
+};
 
-    expect(flashList.props.data).toBe(rows);
+describe('HistoryScreenView — ready state', () => {
+  it('renders a FlashList with the page rows and no overlay by default', () => {
+    const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW] }));
+    const [flashList, sheetOverlay, renameOverlay, deleteOverlay] = element.props.children;
+
+    expect(flashList.props.data).toEqual([SAMPLE_ROW]);
+    expect(sheetOverlay).toBeNull();
+    expect(renameOverlay).toBeNull();
+    expect(deleteOverlay).toBeNull();
+  });
+
+  it('opens the action sheet in a transparent Modal when overlay.kind is "sheet"', () => {
+    const element = HistoryScreenView(
+      baseProps({ state: 'ready', rows: [SAMPLE_ROW], overlay: { kind: 'sheet', sessionId: 's1' } }),
+    );
+    const [, sheetModal] = element.props.children;
+
+    expect(sheetModal.props.transparent).toBe(true);
+    expect(sheetModal.props.children.props.sessionLabel).toBe('Leg Day');
+  });
+
+  it('opens the rename dialog with the row’s current name as the initial value', () => {
+    const element = HistoryScreenView(
+      baseProps({ state: 'ready', rows: [SAMPLE_ROW], overlay: { kind: 'rename', sessionId: 's1' } }),
+    );
+    const [, , renameModal] = element.props.children;
+
+    expect(renameModal.props.children.props.initialValue).toBe('Leg Day');
+  });
+
+  it('opens the delete confirmation dialog', () => {
+    const onConfirmDelete = jest.fn();
+    const element = HistoryScreenView(
+      baseProps({ state: 'ready', rows: [SAMPLE_ROW], overlay: { kind: 'delete', sessionId: 's1' }, onConfirmDelete }),
+    );
+    const [, , , deleteModal] = element.props.children;
+
+    deleteModal.props.children.props.onConfirm();
+    expect(onConfirmDelete).toHaveBeenCalledTimes(1);
   });
 });
