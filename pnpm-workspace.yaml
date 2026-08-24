@@ -37,7 +37,10 @@ minimumReleaseAgeExclude:
   - '@nestjs/platform-express@11.1.29'
   - '@nestjs/testing@11.1.29'
   - expo-asset@57.0.10
-  - expo-constants@57.0.10
+  - expo-constants@57.0.10 || 57.0.14
   - expo-router@57.0.12
   - expo-server@57.0.2
   - expo@57.0.12
+  - '@expo/image-utils@0.11.5'
+  - '@expo/require-utils@57.0.5'
+  - expo-notifications@57.0.14
