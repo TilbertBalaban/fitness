@@ -23,6 +23,14 @@ interface PreviousSetReference {
   loggedAt: string;
 }
 
+interface RawWorkoutSession {
+  id: string;
+  started_at: string;
+  paused_at: string | null;
+  accumulated_paused_seconds: number;
+  status: string;
+}
+
 interface DurabilityHarness {
   open(): Promise<void>;
   openWithFilename(dbFilename: string): Promise<void>;
@@ -36,8 +44,11 @@ interface DurabilityHarness {
   }): Promise<string>;
   logSet(input: {
     sessionExerciseId: string;
+    setType?: string;
     weight: { value: string | null; unit: 'kg' | 'lb' };
     reps: number;
+    completed?: boolean;
+    now?: Date;
   }): Promise<string>;
   readSets(sessionExerciseId: string): Promise<LoggedSetRow[]>;
   previousSetReference(input: {
@@ -47,6 +58,9 @@ interface DurabilityHarness {
     userId: string | null;
   }): Promise<PreviousSetReference | null>;
   crudCount(): Promise<number>;
+  pauseSession(input: { sessionId: string; now?: string }): Promise<void>;
+  resumeSession(input: { sessionId: string; now?: string }): Promise<void>;
+  readSessionRaw(sessionId: string): Promise<RawWorkoutSession | null>;
 }
 
 // page.evaluate serializes the passed function's source text alone and re-evaluates it inside the
@@ -196,4 +210,109 @@ test('previousSetReference resolves the later of two prior sessions and survives
   );
 
   expect(afterReload).toEqual(beforeReload);
+});
+
+// Success criterion 4, harder than the case above: warm-ups, two completed working sets, and an
+// OPEN pause all outstanding at once, proven through a real close/reopen. A crash is not a pause
+// (D-29) — the open paused_at must still be open after reopen, never converted or cleared, and the
+// restored duration must equal the pre-close duration rather than jumping by the closed interval.
+test('force-quitting mid-workout with warm-ups logged and a pause open loses nothing on reopen', async ({ page }) => {
+  await page.goto('/__durability');
+  await page.waitForSelector('[data-testid="durability-harness-ready"]');
+
+  const dbFilename = `durability-pause-recovery-${Date.now()}.db`;
+
+  await page.evaluate(
+    ({ globalKey, dbFilename }) => (window as unknown as HarnessWindow)[globalKey].openWithFilename(dbFilename),
+    { globalKey: DURABILITY_HARNESS_GLOBAL, dbFilename },
+  );
+
+  const seeded = await page.evaluate(async (globalKey) => {
+    const harness = (window as unknown as HarnessWindow)[globalKey];
+    const now = new Date('2026-08-24T10:00:00.000Z');
+    const sessionId = await harness.startSession({ now });
+    const sessionExerciseId = await harness.addSessionExercise({
+      sessionId,
+      exerciseId: 'ex-durability-recovery',
+      orderIndex: 0,
+    });
+
+    await harness.logSet({
+      sessionExerciseId,
+      setType: 'warmup',
+      weight: { value: '40', unit: 'kg' },
+      reps: 10,
+      completed: true,
+      now: new Date('2026-08-24T10:01:00.000Z'),
+    });
+    await harness.logSet({
+      sessionExerciseId,
+      weight: { value: '100', unit: 'kg' },
+      reps: 8,
+      completed: true,
+      now: new Date('2026-08-24T10:05:00.000Z'),
+    });
+    await harness.logSet({
+      sessionExerciseId,
+      weight: { value: '100', unit: 'kg' },
+      reps: 7,
+      completed: true,
+      now: new Date('2026-08-24T10:09:00.000Z'),
+    });
+
+    await harness.pauseSession({ sessionId, now: '2026-08-24T10:12:00.000Z' });
+
+    return { sessionId, sessionExerciseId };
+  }, DURABILITY_HARNESS_GLOBAL);
+
+  const beforeClose = await page.evaluate(
+    ({ globalKey, sessionExerciseId, sessionId }) =>
+      Promise.all([
+        (window as unknown as HarnessWindow)[globalKey].readSets(sessionExerciseId),
+        (window as unknown as HarnessWindow)[globalKey].readSessionRaw(sessionId),
+      ]),
+    { globalKey: DURABILITY_HARNESS_GLOBAL, sessionExerciseId: seeded.sessionExerciseId, sessionId: seeded.sessionId },
+  );
+  const [setsBeforeClose, sessionBeforeClose] = beforeClose;
+
+  expect(setsBeforeClose).toHaveLength(3);
+  expect(sessionBeforeClose?.status).toBe('paused');
+  expect(sessionBeforeClose?.paused_at).toBe('2026-08-24T10:12:00.000Z');
+  expect(sessionBeforeClose?.accumulated_paused_seconds).toBe(0);
+
+  await page.evaluate((globalKey) => (window as unknown as HarnessWindow)[globalKey].close(), DURABILITY_HARNESS_GLOBAL);
+  await page.evaluate(
+    ({ globalKey, dbFilename }) => (window as unknown as HarnessWindow)[globalKey].openWithFilename(dbFilename),
+    { globalKey: DURABILITY_HARNESS_GLOBAL, dbFilename },
+  );
+
+  const afterReopen = await page.evaluate(
+    ({ globalKey, sessionExerciseId, sessionId }) =>
+      Promise.all([
+        (window as unknown as HarnessWindow)[globalKey].readSets(sessionExerciseId),
+        (window as unknown as HarnessWindow)[globalKey].readSessionRaw(sessionId),
+      ]),
+    { globalKey: DURABILITY_HARNESS_GLOBAL, sessionExerciseId: seeded.sessionExerciseId, sessionId: seeded.sessionId },
+  );
+  const [setsAfterReopen, sessionAfterReopen] = afterReopen;
+
+  // Every logged set survives with its values intact, including the warm-up (never converted to a
+  // working set, never dropped from the count).
+  expect(setsAfterReopen).toEqual(setsBeforeClose);
+  expect(setsAfterReopen.filter((row) => row.setType === 'warmup')).toHaveLength(1);
+
+  // The pause is still OPEN, not converted or cleared by the close/reopen — a crash is not a pause.
+  expect(sessionAfterReopen).toEqual(sessionBeforeClose);
+  expect(sessionAfterReopen?.paused_at).not.toBeNull();
+
+  // The restored duration equals the pre-close duration rather than jumping by the closed
+  // interval — elapsedWorkoutSeconds freezes at the open pause's own moment (D-29), so evaluating
+  // it against a `now` far past the reopen must still return the same value it held before close.
+  const startedAtMs = new Date(sessionBeforeClose!.started_at).getTime();
+  const pausedAtMs = new Date(sessionBeforeClose!.paused_at!).getTime();
+  const durationBeforeClose = Math.floor((pausedAtMs - startedAtMs) / 1000 - sessionBeforeClose!.accumulated_paused_seconds);
+  const durationLongAfterReopen = Math.floor(
+    (pausedAtMs - startedAtMs) / 1000 - sessionAfterReopen!.accumulated_paused_seconds,
+  );
+  expect(durationLongAfterReopen).toBe(durationBeforeClose);
 });

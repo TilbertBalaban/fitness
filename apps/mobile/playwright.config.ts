@@ -22,6 +22,7 @@ export default defineConfig({
         'catalog-load.spec.ts',
         'workout-screen.spec.ts',
         'rest-timer.spec.ts',
+        'session-lifecycle.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },
