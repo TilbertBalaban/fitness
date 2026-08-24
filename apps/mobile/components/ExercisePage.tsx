@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
-import { WARMUP_SET_TYPE, type ResolvedTarget } from '@fitness/api-contracts';
+import { WARMUP_SET_TYPE, type ResolvedTarget, type WeightUnit } from '@fitness/api-contracts';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
@@ -12,6 +12,7 @@ import { NoteSheet } from './NoteSheet';
 import { RemoveExerciseDialog, SessionActionSheet, type SessionExerciseActionId } from './SessionActionSheet';
 import { SetRowView, type SetRowReference, type SetRowValues } from './SetRow';
 import { TargetsSheet } from './TargetsSheet';
+import { WarmupSheet } from './WarmupSheet';
 
 export interface ExercisePageSetRow {
   setId: string | null;
@@ -95,11 +96,14 @@ export function ExercisePageView({ exerciseName, rows, activeField, colors, acti
   );
 }
 
-type ActiveSheet = 'targets' | 'note' | 'session' | 'remove-confirm' | 'swap';
+type ActiveSheet = 'targets' | 'note' | 'session' | 'remove-confirm' | 'swap' | 'warmup';
 
 export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors' | 'actionBarSlot'> {
   sessionExerciseId: string;
   exerciseId: string;
+  sessionId: string;
+  userId: string | null;
+  weightUnit: WeightUnit;
   targets: ResolvedTarget;
   routineExerciseId: string | null;
   cycleId: string | null;
@@ -116,6 +120,9 @@ export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors' 
 export function ExercisePage({
   sessionExerciseId,
   exerciseId,
+  sessionId,
+  userId,
+  weightUnit,
   exerciseName,
   targets,
   routineExerciseId,
@@ -139,10 +146,10 @@ export function ExercisePage({
     if (id === 'targets') setActiveSheet('targets');
     else if (id === 'note') setActiveSheet('note');
     else if (id === 'overflow') setActiveSheet('session');
-    // 'warmup' has no wired sheet this plan — WarmupSheet/generateWarmupSets are blocked on the
-    // @fitness/pr-rules workspace dependency not yet declared for apps/mobile (dependency freeze
-    // this wave; see 05-06-SUMMARY.md). Left as a documented no-op rather than a silently-broken
-    // press.
+    // Tapping Warm-up opens the same sheet whether or not a ladder already exists for this
+    // exercise (05-UI-SPEC): WarmupSheet's own defaulting logic and generateWarmupSets's own
+    // delete-then-insert semantics are what make a second tap a regenerate, not a second sheet.
+    else if (id === 'warmup') setActiveSheet('warmup');
   };
 
   const handleSessionAction = (id: SessionExerciseActionId) => {
@@ -198,6 +205,21 @@ export function ExercisePage({
           id={sessionExerciseId}
           initialText={noteText}
           onSaved={() => {
+            closeSheet();
+            onExerciseChanged();
+          }}
+          onCancel={closeSheet}
+        />
+      ) : null}
+
+      {activeSheet === 'warmup' ? (
+        <WarmupSheet
+          sessionExerciseId={sessionExerciseId}
+          exerciseId={exerciseId}
+          liveSessionId={sessionId}
+          userId={userId}
+          weightUnit={weightUnit}
+          onDone={() => {
             closeSheet();
             onExerciseChanged();
           }}

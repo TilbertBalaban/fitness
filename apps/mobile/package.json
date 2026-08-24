@@ -17,6 +17,7 @@
     "@better-auth/expo": "1.6.26",
     "@expo/vector-icons": "^15.1.1",
     "@fitness/api-contracts": "workspace:*",
+    "@fitness/pr-rules": "workspace:*",
     "@op-engineering/op-sqlite": "^18.0.0",
     "@powersync/common": "^2.1.0",
     "@powersync/drizzle-driver": "^0.8.0",

@@ -1,5 +1,7 @@
+import { warmupSets } from '@fitness/pr-rules';
 import {
   addExerciseToSession,
+  generateWarmupSets,
   removeSessionExercise,
   reorderSessionExercises,
   resolveWriteBackTarget,
@@ -393,6 +395,73 @@ describe('reorderSessionExercises', () => {
     expect(byId.get('se-3')).toBe(0);
     expect(byId.get('se-1')).toBe(1);
     expect(byId.get('se-2')).toBe(2);
+  });
+});
+
+describe('generateWarmupSets — deterministic, durable, idempotent (LOG-17)', () => {
+  it('a first call inserts exactly the rows warmupSets() returns, each warm-up-typed and incomplete', async () => {
+    const store = inMemoryDb();
+
+    const ids = await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+
+    const expected = warmupSets(100);
+    expect(ids).toHaveLength(expected.length);
+    const rows = store.rowsOf(loggedSet);
+    expect(rows).toHaveLength(expected.length);
+    rows.forEach((row, index) => {
+      expect(row.setType).toBe('warmup');
+      expect(row.completed).toBe(false);
+      expect(Number(row.weightKg)).toBeCloseTo(expected[index].weightKg);
+      expect(row.reps).toBe(expected[index].reps);
+    });
+  });
+
+  it('a second call for the same exercise regenerates rather than appends, and a completed warm-up row survives', async () => {
+    const store = inMemoryDb();
+
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+    // Mark one generated row as completed, as if the user actually did it.
+    const [firstGenerated] = store.rowsOf(loggedSet);
+    firstGenerated.completed = true;
+
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 120 }, store.db);
+
+    const expected = warmupSets(120);
+    const rows = store.rowsOf(loggedSet);
+    // The completed row from the first generation survives untouched, plus the new ladder.
+    expect(rows.filter((row) => row.completed === true)).toHaveLength(1);
+    expect(rows.filter((row) => row.completed === false)).toHaveLength(expected.length);
+  });
+
+  it('a partially-written generation converges to the full ladder on re-run', async () => {
+    const store = inMemoryDb();
+    // Simulate an interrupted first generation: only one row of the ladder made it in.
+    store.seed(loggedSet, {
+      id: 'ls-partial',
+      sessionExerciseId: 'se-1',
+      setIndex: 1,
+      setType: 'warmup',
+      completed: false,
+      weightKg: '40',
+      reps: 10,
+    });
+
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+
+    const expected = warmupSets(100);
+    const rows = store.rowsOf(loggedSet).filter((row) => row.setType === 'warmup');
+    expect(rows).toHaveLength(expected.length);
+  });
+
+  it('writes no rows for a null or zero working weight', async () => {
+    const store = inMemoryDb();
+
+    const idsForNull = await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: null }, store.db);
+    const idsForZero = await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 0 }, store.db);
+
+    expect(idsForNull).toHaveLength(0);
+    expect(idsForZero).toHaveLength(0);
+    expect(store.rowsOf(loggedSet)).toHaveLength(0);
   });
 });
 

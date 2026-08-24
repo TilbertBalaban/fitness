@@ -1,5 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { isEmptyOverride, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
+import { isEmptyOverride, WARMUP_SET_TYPE, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
+import { warmupSets } from '@fitness/pr-rules';
 import { addSessionExercise, logSet } from './log-set';
 import { getPowerSync, type WriteDb } from './powersync';
 import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from './schema';
@@ -188,6 +189,49 @@ export async function removeSessionExercise(sessionExerciseId: string, db: Write
     .update(sessionExercise)
     .set({ removedAt: new Date().toISOString() })
     .where(eq(sessionExercise.id, sessionExerciseId));
+}
+
+export interface GenerateWarmupSetsInput {
+  sessionExerciseId: string;
+  workingWeightKg: number | null;
+  roundingIncrementKg?: number;
+}
+
+// LOG-17: deletes the exercise's existing UNCOMPLETED warm-up rows, then inserts one logged_set
+// row per warmupSets() entry through the existing logSet helper — a second tap regenerates rather
+// than appends, so an exercise can never end up with two ladders; a completed warm-up row from an
+// earlier generation is left alone, since the user did it. Writes no percentage or rounding
+// arithmetic itself — @fitness/pr-rules's warmupSets() is the only source of the ladder.
+export async function generateWarmupSets(
+  { sessionExerciseId, workingWeightKg, roundingIncrementKg }: GenerateWarmupSetsInput,
+  db: WriteDb = getPowerSync(),
+): Promise<string[]> {
+  await db
+    .delete(loggedSet)
+    .where(
+      and(
+        eq(loggedSet.sessionExerciseId, sessionExerciseId),
+        eq(loggedSet.setType, WARMUP_SET_TYPE),
+        eq(loggedSet.completed, false),
+      ),
+    );
+
+  const ladder = warmupSets(workingWeightKg, roundingIncrementKg);
+  const ids: string[] = [];
+  for (const set of ladder) {
+    const id = await logSet(
+      {
+        sessionExerciseId,
+        setType: WARMUP_SET_TYPE,
+        weight: { value: String(set.weightKg), unit: 'kg' },
+        reps: set.reps,
+        completed: false,
+      },
+      db,
+    );
+    ids.push(id);
+  }
+  return ids;
 }
 
 // Rewrites order_index across the session's non-removed rows in one pass, in the order the caller

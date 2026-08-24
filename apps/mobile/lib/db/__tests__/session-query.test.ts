@@ -1,4 +1,10 @@
-import { loadLiveSession, loadSessionTree, previousSetReference, previousSetReferencesForSession } from '../session-query';
+import {
+  defaultWarmupWorkingWeightKg,
+  loadLiveSession,
+  loadSessionTree,
+  previousSetReference,
+  previousSetReferencesForSession,
+} from '../session-query';
 import { getPowerSync } from '../powersync';
 import { loadExerciseNameMap } from '../programs/load-program';
 import { loggedSet, sessionExercise, workoutSession } from '../schema';
@@ -483,5 +489,68 @@ describe('previousSetReferencesForSession', () => {
     const result = await previousSetReferencesForSession('s-current', db);
 
     expect(result['se-current:1']).toBeUndefined();
+  });
+});
+
+describe('defaultWarmupWorkingWeightKg — the Warm-up sheet’s default resolution order (LOG-17)', () => {
+  it('prefers the exercise’s own first logged working set in this session, by set_index, over a heavier later one', async () => {
+    const db = fakeReferenceDb({
+      sessionExerciseRows: [EXERCISE_A_SE_CURRENT],
+      loggedSetRows: [
+        { id: 'ls-cur-2', sessionExerciseId: 'se-current', setIndex: 2, setType: 'normal', weightKg: '105.000', reps: 8, loggedAt: 't2' },
+        { id: 'ls-cur-1', sessionExerciseId: 'se-current', setIndex: 1, setType: 'normal', weightKg: '100.000', reps: 8, loggedAt: 't1' },
+      ],
+    });
+
+    const result = await defaultWarmupWorkingWeightKg(
+      { sessionExerciseId: 'se-current', exerciseId: 'ex-a', beforeSessionId: 's-current', userId: 'user-1' },
+      db,
+    );
+
+    expect(result).toBe('100.000');
+  });
+
+  it('falls back to the D-16 cross-session history prefill when no working set has been logged yet', async () => {
+    const db = fakeReferenceDb({
+      sessionExerciseRows: [EXERCISE_A_SE_CURRENT, EXERCISE_A_SE_PRIOR_1],
+      workoutSessionRows: [SESSION_PRIOR_1],
+      loggedSetRows: [
+        { id: 'ls-prior-1', sessionExerciseId: 'se-prior-1', setIndex: 1, setType: 'normal', weightKg: '90.000', reps: 8, loggedAt: 't1' },
+      ],
+    });
+
+    const result = await defaultWarmupWorkingWeightKg(
+      { sessionExerciseId: 'se-current', exerciseId: 'ex-a', beforeSessionId: 's-current', userId: 'user-1' },
+      db,
+    );
+
+    expect(result).toBe('90.000');
+  });
+
+  it('resolves null (the sheet’s own required-field case) with neither a current working set nor prior history', async () => {
+    const db = fakeReferenceDb({ sessionExerciseRows: [EXERCISE_A_SE_CURRENT] });
+
+    const result = await defaultWarmupWorkingWeightKg(
+      { sessionExerciseId: 'se-current', exerciseId: 'ex-a', beforeSessionId: 's-current', userId: 'user-1' },
+      db,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('ignores a warm-up row already logged this session when looking for a working-set default', async () => {
+    const db = fakeReferenceDb({
+      sessionExerciseRows: [EXERCISE_A_SE_CURRENT],
+      loggedSetRows: [
+        { id: 'ls-warmup', sessionExerciseId: 'se-current', setIndex: 1, setType: 'warmup', weightKg: '40.000', reps: 10, loggedAt: 't1' },
+      ],
+    });
+
+    const result = await defaultWarmupWorkingWeightKg(
+      { sessionExerciseId: 'se-current', exerciseId: 'ex-a', beforeSessionId: 's-current', userId: 'user-1' },
+      db,
+    );
+
+    expect(result).toBeNull();
   });
 });
