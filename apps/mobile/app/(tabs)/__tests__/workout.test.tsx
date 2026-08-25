@@ -87,7 +87,7 @@ describe('deriveWorkoutScreenState', () => {
     expect(
       deriveWorkoutScreenState({
         failed: false,
-        session: { session: { id: 's-1', routineDayId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null, timezone: 'UTC', localDate: '2026-08-20' }, exercises: [], setsByExerciseId: {} },
+        session: { session: { id: 's-1', routineDayId: null, cycleId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null, timezone: 'UTC', localDate: '2026-08-20' }, exercises: [], setsByExerciseId: {} },
         nextUp: null,
       }),
     ).toBe('ready');

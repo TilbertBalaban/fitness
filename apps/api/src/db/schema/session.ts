@@ -30,6 +30,11 @@ export const workoutSession = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     routineDayId: text('routine_day_id'),
+    // Traceability-pointer, same rationale as routine_day_id and session_exercise's own
+    // routine_exercise_id below: no FK, no index. A historical session naming the program cycle it
+    // was started in must never block that cycle's own editing lifecycle. Stamped exactly once
+    // inside startSession (D-06's stamp-once pattern) and never re-derived on a read path (LOG-15).
+    cycleId: text('cycle_id'),
     equipmentProfileId: text('equipment_profile_id'),
     startedAt: timestamp('started_at').notNull(),
     endedAt: timestamp('ended_at'),

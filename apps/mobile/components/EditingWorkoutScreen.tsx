@@ -319,7 +319,7 @@ export function useEditingWorkoutScreen({ sessionId, userId, db }: UseEditingWor
         targetRestSeconds: exercise.targetRestSeconds,
       },
       routineExerciseId: exercise.routineExerciseId,
-      cycleId: null,
+      cycleId: session?.session.cycleId ?? null,
       hasNote: exercise.notes !== null,
       noteText: exercise.notes,
     };

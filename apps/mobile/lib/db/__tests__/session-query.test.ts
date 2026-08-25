@@ -98,6 +98,7 @@ function fakeSessionDb(rows: FakeRows) {
 }
 
 const SESSION_ROW = { id: 's-1', routineDayId: 'd-1', status: 'in_progress', startedAt: '2026-08-20T10:00:00.000Z' };
+const SESSION_ROW_WITH_CYCLE = { ...SESSION_ROW, cycleId: 'cycle-1' };
 
 beforeEach(() => {
   loadExerciseNameMapMock.mockResolvedValue(new Map());
@@ -181,6 +182,16 @@ describe('loadSessionTree', () => {
     await loadSessionTree('s-1', db);
 
     expect(getPowerSyncMock).not.toHaveBeenCalled();
+  });
+
+  // LOG-15: the session's stored cycle id is read back exactly as startSession stamped it, so a
+  // restored session resolves write-back against the cycle it actually started in.
+  it('returns the stored cycleId on the session row', async () => {
+    const { db } = fakeSessionDb({ sessionRows: [SESSION_ROW_WITH_CYCLE] });
+
+    const result = await loadSessionTree('s-1', db);
+
+    expect(result?.session.cycleId).toBe('cycle-1');
   });
 });
 

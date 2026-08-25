@@ -44,6 +44,7 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
   workout_session: [
     'id',
     'user_id',
+    'cycle_id',
     'started_at',
     'timezone',
     'local_date',

@@ -94,6 +94,7 @@ function userPreferenceOp(id: string, data: Record<string, unknown>, op: SyncCru
 
 interface WorkoutSessionRow {
   routine_day_id: string | null;
+  cycle_id: string | null;
   equipment_profile_id: string | null;
   started_at: string;
   ended_at: string | null;
@@ -110,7 +111,7 @@ interface WorkoutSessionRow {
 
 async function readWorkoutSession(id: string): Promise<WorkoutSessionRow> {
   const { rows } = await pg.query(
-    `SELECT routine_day_id, equipment_profile_id, started_at::text AS started_at,
+    `SELECT routine_day_id, cycle_id, equipment_profile_id, started_at::text AS started_at,
             ended_at::text AS ended_at, status, device_id, timezone, local_date::text AS local_date,
             notes, name, paused_at::text AS paused_at, accumulated_paused_seconds,
             rest_target_at::text AS rest_target_at
@@ -413,6 +414,39 @@ describe('session annotations sync (e2e) — notes, pause, preferences', () => {
       const badRes = await push(cookie, [badOp]);
       expect((badRes.body as SyncPushResponse).rejected).toEqual([{ op_id: badOp.op_id, reason: 'invalid_field' }]);
       expect((await readWorkoutSession(sessionId)).status).toBe('paused');
+    });
+  });
+
+  describe('LOG-15: workout_session.cycle_id', () => {
+    it('a push naming cycle_id on workout_session stores it, and the applied server apply path stays scoped by the authenticated session', async () => {
+      const { cookie } = await signUp('cycle-id');
+      const sessionId = randomUUID();
+      const cycleOp = workoutSessionOp(sessionId, {
+        started_at: new Date('2026-06-15T20:00:00Z').toISOString(),
+        status: 'in_progress',
+        timezone: 'UTC',
+        local_date: '2026-06-15',
+        cycle_id: 'cycle-abc',
+      });
+      const res = await push(cookie, [cycleOp]);
+      expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+      expect((await readWorkoutSession(sessionId)).cycle_id).toBe('cycle-abc');
+    });
+
+    it('a push naming a non-string, non-null cycle_id is rejected invalid_field', async () => {
+      const { cookie } = await signUp('cycle-id-invalid');
+      const { sessionId } = await seedWorkoutSessionAndExercise(cookie, {
+        started_at: new Date('2026-06-15T20:00:00Z').toISOString(),
+        status: 'in_progress',
+        timezone: 'UTC',
+        local_date: '2026-06-15',
+      });
+
+      const badOp = workoutSessionOp(sessionId, { cycle_id: 42 }, 'PATCH');
+      const badRes = await push(cookie, [badOp]);
+      expect((badRes.body as SyncPushResponse).rejected).toEqual([{ op_id: badOp.op_id, reason: 'invalid_field' }]);
+      expect((await readWorkoutSession(sessionId)).cycle_id).toBeNull();
     });
   });
 

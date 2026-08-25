@@ -8,6 +8,10 @@ import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise
 
 export interface StartSessionInput {
   routineDayId?: string | null;
+  // The program cycle this session was started against, stamped once here and never rewritten by
+  // any read path (LOG-15, D-06's stamp-once pattern). Absent/null means a one-off or backfilled
+  // session with no cycle.
+  cycleId?: string | null;
   equipmentProfileId?: string | null;
   deviceId?: string | null;
   now?: Date;
@@ -30,6 +34,7 @@ export async function startSession(
   await db.insert(workoutSession).values({
     id,
     routineDayId: input.routineDayId ?? null,
+    cycleId: input.cycleId ?? null,
     equipmentProfileId: input.equipmentProfileId ?? null,
     startedAt: startedAt.toISOString(),
     endedAt: null,
@@ -234,7 +239,10 @@ export async function startWorkoutFromProgram(
   input: StartWorkoutFromProgramInput,
   db: WriteDb = getPowerSync(),
 ): Promise<string> {
-  const sessionId = await startSession({ routineDayId: input.routineDayId, now: input.now }, db);
+  const sessionId = await startSession(
+    { routineDayId: input.routineDayId, cycleId: input.cycleId, now: input.now },
+    db,
+  );
 
   const ordered = [...input.slots].sort((a, b) => a.orderIndex - b.orderIndex);
   for (const slot of ordered) {
