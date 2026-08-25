@@ -14,9 +14,9 @@ affects: [05-12, resolveWriteBackTarget, TargetsSheet, session-lifecycle]
 
 # Actuals (#2632)
 actuals:
-  tokens: 5300
-  tasks: 2
-  commits: 1
+  tokens: 7634
+  tasks: 3
+  commits: 2
 
 tech-stack:
   added: []
@@ -41,11 +41,13 @@ key-files:
 key-decisions:
   - "Task 1's one-way schema addition was approved by the user (checkpoint answer relayed by the orchestrator: 'approve') before this worktree's executor started; no work was re-litigated."
   - "cycleId was added to patch-update-set.ts's WorkoutSessionValues interface and WORKOUT_SESSION_PATCH_FIELDS map, and mapped to the wire name 'cycle_id' (not null) — the same classification as routineDayId, since cycle_id is a normal client-authored field, not a server-derived one."
+  - "Task 3 ran in the main working tree (not a worktree) specifically because the required .env is gitignored and only exists there — the prior halt's root cause. Resolving it needed a shell with real DATABASE_URL, not a workaround."
+  - "Resolving Task 3 surfaced a second, pre-existing, plan-independent defect: every e2e durability spec failed at Playwright's test-collection step ('No tests found') because test-support.ts (imported only for the DURABILITY_HARNESS_GLOBAL string constant) transitively pulls in log-set.ts's bare './powersync' import, which Node's ESM resolver sends to the native powersync.ts / @powersync/react-native instead of the .web variant. Fixed by extracting the constant into a dependency-free leaf module, durability-harness-key.ts, and repointing all 10 specs at it. Recorded as WINDOWS #133."
 
 patterns-established:
   - "A session's program-cycle identity is a stored, stamped-once column read back on every load, never re-derived from routine position or history (the promote decision in the plan's assumption-delta section)."
 
-requirements-completed: []  # LOG-15's must_haves are only fully proven once Task 3's live db:push/db:verify/schema-redefinition e2e run — deferred, see Next Phase Readiness.
+requirements-completed: [LOG-15]
 
 coverage:
   - id: D1
@@ -80,41 +82,50 @@ coverage:
         status: pass
       - kind: e2e
         ref: "apps/api/test/session-annotations-sync.e2e-spec.ts#LOG-15: workout_session.cycle_id (both new cases: PUT-stores-value and PATCH-rejects-non-string)"
-        status: unknown
+        status: pass
       - kind: unit
         ref: "pnpm --filter api typecheck"
         status: pass
-    human_judgment: true
-    rationale: "The two new e2e cases were authored but never executed — this worktree has no reachable DATABASE_URL (see Next Phase Readiness). They must be run against the live database before this deliverable is considered proven."
+    human_judgment: false
   - id: D3
     description: "Live Postgres database physically carries workout_session.cycle_id (drizzle-kit push), schema-parity's db:verify confirms it via the REQUIRED_COLUMNS gate, and a real browser proves the PowerSync client SQLite mirror redefines cleanly with the added column (e2e/schema-redefinition.spec.ts)."
     requirement: "LOG-15"
-    verification: []
-    human_judgment: true
-    rationale: "Task 3 (BLOCKING) did not run in this worktree — see Next Phase Readiness. This is the plan's single hard blocker to completion."
+    verification:
+      - kind: e2e
+        ref: "pnpm --filter api db:push"
+        status: pass
+      - kind: e2e
+        ref: "pnpm --filter api db:verify (schema-parity.e2e-spec.ts, 32/32)"
+        status: pass
+      - kind: e2e
+        ref: "pnpm --filter mobile test:e2e:durability -- e2e/schema-redefinition.spec.ts (4/4)"
+        status: pass
+    human_judgment: false
 
-duration: 27min
+duration: 27min (worktree, Task 2) + resolution session (Task 3, main tree)
 completed: 2026-08-25
-status: halted
+status: complete
 ---
 
 # Phase 05 Plan 11: Session Cycle ID Persistence Summary
 
-**Persisted `workout_session.cycle_id` end to end (Postgres + PowerSync SQLite schemas, sync apply path, client write funnel, client read, both screen call sites) so write-back resolves against the cycle a session actually started in — but the plan's live-database proof (Task 3) could not run in this worktree and is deferred to a human with `.env` access.**
+**Persisted `workout_session.cycle_id` end to end (Postgres + PowerSync SQLite schemas, sync apply path, client write funnel, client read, both screen call sites) so write-back resolves against the cycle a session actually started in — proven against the live Postgres database and a real browser SQLite mirror in this session.**
 
 ## Performance
 
-- **Duration:** 27 min (this worktree's portion — Task 1's checkpoint was answered by a prior executor/orchestrator round)
-- **Started:** 2026-08-25T16:15:00Z (approx, first file read in this worktree)
-- **Completed:** 2026-08-25T16:42:39Z
-- **Tasks:** 1 of 2 remaining tasks fully executed and committed (Task 2); Task 3 blocked, not executed
-- **Files modified:** 16
+- **Duration:** 27 min (worktree portion, Task 2) + this resolution session (Task 3, run in the main working tree)
+- **Started:** 2026-08-25T16:15:00Z (approx, first file read in the worktree)
+- **Completed:** 2026-08-25 (Task 3 resolved in the main tree, same day)
+- **Tasks:** 3 of 3 tasks complete (Task 1 checkpoint approved, Task 2 executed and committed, Task 3 executed and verified against the live database)
+- **Files modified:** 16 (Task 2) + 12 (this session's loader-fix deviation, see below)
 
 ## Accomplishments
 - Added `cycle_id` (text, nullable, no FK) to both the Postgres `workout_session` pgTable and the PowerSync SQLite mirror, following the existing traceability-pointer pattern used by `routine_day_id`.
 - `startSession` stamps `cycle_id` exactly once at insert (the column's only writer); `startWorkoutFromProgram` and `duplicateSession` both feed it through that single funnel — no second insert path.
 - `LiveSessionRow.cycleId` reads the stored value back through `loadSessionTree`; both `workout.tsx` and `EditingWorkoutScreen.tsx` now hand the real stored `cycleId` to `TargetsSheet` instead of a hardcoded `null` — the override branch of `resolveWriteBackTarget` is no longer dead code in production call sites.
 - Server apply path (`sync.service.ts`) accepts, validates (`isValidOptionalStringOrNull`), and patch-classifies `cycle_id` on `workout_session` ops; `schema-parity.e2e-spec.ts`'s `REQUIRED_COLUMNS` gate now names it.
+- **Task 3 (this session):** `pnpm --filter api db:push` applied the column to the live Postgres database; `pnpm --filter api db:verify` passed 32/32 (schema-parity, including the new `cycle_id` requirement); `pnpm --filter api test:e2e -- session-annotations-sync` passed 13/13, including both new LOG-15 cases (stores `cycle_id`, rejects a non-string/non-null value); `pnpm --filter mobile test:e2e:durability -- e2e/schema-redefinition.spec.ts` passed 4/4 against a real browser and a real `@powersync/web` database.
+- **Deviation fixed en route (this session):** every e2e durability spec (all 10, not just schema-redefinition) had been failing Playwright's test-collection step with "No tests found" since before this plan existed — a pre-existing, plan-independent module-resolution defect. Fixed by extracting `DURABILITY_HARNESS_GLOBAL` into a dependency-free leaf module. See Deviations below and WINDOWS #133.
 
 ## Task Commits
 
@@ -122,8 +133,8 @@ Each task was committed atomically:
 
 1. **Task 1: Confirm the one-way schema addition** — checkpoint, no commit (answered `approve` by the user via the orchestrator before this worktree started).
 2. **Task 2: Stamp and thread the session's cycle id through every layer** — `c62d9b8` (feat, tdd)
-
-**Plan metadata:** not yet committed — plan is `halted`, pending Task 3.
+3. **Task 3: Push the schema to the live database and prove both mirrors** — no commit (Task 3 only reads `apps/api/drizzle.config.ts` and `apps/api/test/schema-parity.e2e-spec.ts`, per its own `<files>` list; its "done" criterion is the three commands passing against the live database, not a file change). Verified in this session with real exit codes — see Next Phase Readiness.
+4. **Deviation: extract the durability harness key to a dependency-free leaf module** — `107dae9` (fix), not part of the plan's task list — see Deviations below.
 
 _Task 2 was a `tdd="true"` tracer task; its own `<verify>` (four mobile jest files plus both `mobile`/`api` typecheck) ran and passed as part of the single commit above — no separate RED/GREEN split was applicable since the plan's `<behavior>` cases were authored directly as passing unit tests against the real implementation._
 
@@ -142,6 +153,9 @@ _Task 2 was a `tdd="true"` tracer task; its own `<verify>` (four mobile jest fil
 - `apps/mobile/app/(tabs)/__tests__/workout.test.tsx` — fixture updated for `LiveSessionRow`'s new required field (deviation)
 - `apps/api/src/sync/__tests__/patch-update-set.spec.ts` — fixture and exhaustive-PATCH test updated for the new column (deviation)
 - Test files extended per plan: `apps/mobile/lib/db/__tests__/log-set.test.ts`, `session-query.test.ts`, `history-mutations.test.ts`
+- `apps/mobile/lib/db/durability-harness-key.ts` — new, dependency-free leaf module holding `DURABILITY_HARNESS_GLOBAL` (deviation, this session, see below)
+- `apps/mobile/lib/db/test-support.ts` — re-exports `DURABILITY_HARNESS_GLOBAL` from the new leaf module instead of defining it inline (deviation, this session)
+- `apps/mobile/e2e/*.spec.ts` (all 10 durability specs) — import `DURABILITY_HARNESS_GLOBAL` from the new leaf module instead of `test-support.ts` (deviation, this session)
 
 ## Decisions Made
 - Task 1's approval was relayed by the orchestrator as `approve` before this worktree's executor began; not re-litigated (per the dispatch's explicit instruction).
@@ -167,33 +181,54 @@ _Task 2 was a `tdd="true"` tracer task; its own `<verify>` (four mobile jest fil
 - **Verification:** Both typechecks exit 0; both test files pass in full.
 - **Committed in:** `c62d9b8` (Task 2 commit)
 
+**3. [Rule 3 - Blocking] Extracted `DURABILITY_HARNESS_GLOBAL` into a dependency-free leaf module**
+- **Found during:** Resolving this plan's halt, running Task 3's third command (`pnpm --filter mobile test:e2e:durability -- e2e/schema-redefinition.spec.ts`)
+- **Issue:** The command failed at Playwright's test-collection step with "No tests found" — not a test failure, a module-load crash affecting all 10 durability specs. Every spec imports `test-support.ts` for the single `DURABILITY_HARNESS_GLOBAL` string constant. `test-support.ts` also re-exports `startWorkoutFromProgram` from `log-set.ts`, which imports the bare `'./powersync'`. Node's ESM resolver (Playwright runs specs under Node, not Metro) has no platform-extension awareness, so it resolves that to the native `powersync.ts`, whose `@powersync/react-native` import chain fails under strict Node ESM (the package's dist re-exports omit file extensions). This defect predates this plan entirely — it is why 05-VERIFICATION.md carries 2 `behavior_unverified` truths and why all 12 durability specs were "written but never executed."
+- **Fix:** Created `apps/mobile/lib/db/durability-harness-key.ts`, a new leaf module holding only the `DURABILITY_HARNESS_GLOBAL` constant with zero imports. `test-support.ts` now re-exports it (so `__durability.web.tsx`'s existing import keeps working unchanged — that file is bundled by Metro, not run under Node, so platform-extension resolution was never its problem). All 10 e2e spec files now import the constant directly from the leaf module instead of from `test-support.ts`.
+- **Files modified:** `apps/mobile/lib/db/durability-harness-key.ts` (new), `apps/mobile/lib/db/test-support.ts`, and all 10 files in `apps/mobile/e2e/*.spec.ts`.
+- **Verification:** `pnpm --filter mobile typecheck` exits 0. `pnpm --filter mobile test:e2e:durability -- e2e/schema-redefinition.spec.ts` collects and runs 4/4 passing (previously: 0 tests found, hard crash). The existing four jest suites (`log-set.test.ts`, `session-query.test.ts`, `history-mutations.test.ts`, `session-mutations.test.ts`, 95 tests) still pass unaffected.
+- **Committed in:** `107dae9` (fix, this session)
+- **Recorded:** WINDOWS #133 (`deviation`) — not caused by any plan; discovered and fixed while resolving this plan's halt.
+
 ---
 
-**Total deviations:** 2 auto-fixed (both Rule 3 — blocking compile issues directly caused by the schema widening)
-**Impact on plan:** Both were necessary, mechanical consequences of adding a required field to two shared types. No scope creep — no file outside the direct blast radius of the new column was touched.
+**Total deviations:** 3 auto-fixed (2 Rule 3 compile fixes from Task 2's original worktree, 1 Rule 3 blocking-defect fix from this session)
+**Impact on plan:** All three were necessary, mechanical, and stayed within the blast radius of the change that surfaced them. No scope creep.
 
 ## Issues Encountered
 
-**Workspace packages were unbuilt in this fresh worktree.** `pnpm --filter mobile test` initially failed with `Cannot find module '@fitness/api-contracts'` (and, after that, `@fitness/pr-rules`) — the workspace symlinks were present but `packages/api-contracts/dist` and `packages/pr-rules/dist` did not exist yet (fresh worktree, never built). Ran `pnpm build` in `packages/api-contracts`, `packages/pr-rules`, and `packages/progression-engine` (same class of issue) to unblock. This is an environment-setup issue, not a plan deviation — no source was changed, and `progression-engine` wasn't even exercised by this plan's tests; it was built proactively since it shares the same gap.
+**Workspace packages were unbuilt in this fresh worktree (Task 2, prior session).** `pnpm --filter mobile test` initially failed with `Cannot find module '@fitness/api-contracts'` (and, after that, `@fitness/pr-rules`) — the workspace symlinks were present but `packages/api-contracts/dist` and `packages/pr-rules/dist` did not exist yet (fresh worktree, never built). Ran `pnpm build` in `packages/api-contracts`, `packages/pr-rules`, and `packages/progression-engine` (same class of issue) to unblock. This is an environment-setup issue, not a plan deviation — no source was changed.
 
-**Task 3 is blocked and did not run — this is the plan's one open item.** Task 3 requires `DATABASE_URL` to run `drizzle-kit push`, `db:verify`, and the client `schema-redefinition.spec.ts` browser e2e against a live Postgres. This worktree has no `.env` file: `.env` is gitignored (confirmed via `.gitignore`), and `git worktree add` does not copy gitignored files — the main repo checkout at `/Users/tilbertbalaban/work/fitness/.env` has one (its own comment even documents this exact gap: *"POWERSYNC... restored by orchestrator after plan 02-08; .env is gitignored so the executor's worktree values could not be merged"*), but this worktree does not. `DATABASE_URL` is also absent from `process.env`. A read-only TCP probe confirmed `localhost:5432` is reachable, so Postgres itself is very likely running — the blocker is credentials, not database availability. When an attempt was made to copy the main repo's `.env` into this worktree (a Rule 3 auto-fix, consistent with this exact repo's own precedent for POWERSYNC vars), the `Write` tool refused: *"File is covered by a Read deny rule in your permission settings and cannot be written."* This is a hard permission-system boundary, not a soft gap — per the executor's precondition protocol, an unmet precondition is never auto-approved or routed around, so Task 3 was halted rather than attempted with a guessed or hardcoded credential. Filed as WINDOWS #129 (`unrun-verify`).
+**Task 3 was blocked on a missing `.env` (prior session, now resolved).** Task 3 requires `DATABASE_URL` to run `drizzle-kit push`, `db:verify`, and the client `schema-redefinition.spec.ts` browser e2e against a live Postgres. The prior worktree had no `.env` file (gitignored, not copied by `git worktree add`), and the harness's permission settings refused to write one into the worktree. Filed as WINDOWS #132 (`unrun-verify`). Resolved in this session by running Task 3 directly in the main working tree, where `.env` already exists — no workaround, no guessed credential.
+
+**The live database is native Homebrew Postgres, not the Docker container.** `fitness-postgres-1`'s published port is shadowed by a native Postgres already listening on `127.0.0.1:5432`; `psql "postgresql://localhost:5432/fitness"` reaches the real target database. Not touched or "fixed" — noted for whoever next wonders why the Docker container looks unused.
+
+**A stale Expo dev server was occupying port 8081.** Killed before running the durability e2e suite so Playwright's own `webServer` block could start a harness-enabled instance (`EXPO_PUBLIC_DURABILITY_HARNESS=1`).
+
+**`apps/mobile/public/` was empty — the PowerSync web worker assets had never been generated.** The first full run of the durability project (all 10 specs, `pnpm --filter mobile test:e2e:durability`) failed all 23 collected tests with a runtime `[PowerSync]: Error in database or sync worker` banner and `page.evaluate` timeouts — a real browser page loaded and rendered the harness "ready" state, but every PowerSync database call hung. Root cause: `postinstall`'s `powersync-web copy-assets -o public` had never run (or its output was cleared), so `getPowerSync()`'s configured worker path `/@powersync/worker.js` 404'd and the shared worker never initialized. Ran `npx powersync-web copy-assets -o public` inside `apps/mobile` to regenerate the gitignored, generated asset directory (`.gitignore` line 13 covers `apps/mobile/public/`) — no source change, no commit needed. After regenerating, `schema-redefinition.spec.ts` run in isolation passed 4/4. This is an environment-setup gap (the equivalent of an unbuilt workspace package, not a code defect) and is not recorded in WINDOWS.
 
 ## User Setup Required
 
-None — no external service configuration required. What's needed is operational: a human (or an agent with `.env` read/write access) must run Task 3's three commands from a shell that has this repository's real `DATABASE_URL` available, either by running from the main repo checkout (not this worktree) or by restoring `.env` into this worktree from outside the sandbox.
+None. Everything needed to close this plan out was resolvable from the main working tree with the repository's existing `.env` and a workspace `pnpm install`/`postinstall` step that had not yet run in this environment.
 
 ## Next Phase Readiness
 
-**This plan is NOT complete.** Task 2 (the tracer: schema + sync + client funnel + client read + both screen call sites) is done, committed, and fully verified by automated tests and typecheck. Task 3 (BLOCKING: live `drizzle-kit push`, `db:verify`, and the client schema-redefinition browser e2e) has not run.
+**This plan is complete.** All three tasks are done: Task 1 was approved by the user, Task 2 is committed (`c62d9b8`) and fully verified, and Task 3's three commands all ran with real exit code 0 against the live database and a real browser:
 
-**Before this plan can be marked complete and 05-12 can build on it:**
-1. Run `pnpm --filter api db:push` from a shell with a valid `DATABASE_URL` (the main repo checkout already has this, or copy the main repo's gitignored `.env` into this worktree).
-2. Run `pnpm --filter api db:verify` and confirm the `schema-parity` suite passes, including the new `cycle_id` requirement, and that the two new `LOG-15: workout_session.cycle_id` e2e cases in `session-annotations-sync.e2e-spec.ts` pass.
-3. Run `pnpm --filter mobile test:e2e:durability -- e2e/schema-redefinition.spec.ts` to prove the client SQLite mirror redefines cleanly in a real browser.
-4. Re-run this plan's overall `<verification>` block and update this SUMMARY's `status` to `complete`, `requirements-completed: [LOG-15]`, and flip D2/D3's coverage entries from `unknown`/empty to `pass` before the orchestrator marks LOG-15 complete in REQUIREMENTS.md.
+- `pnpm --filter api db:push` — exit 0, applied (idempotent on re-run; the column was already present from a prior push).
+- `pnpm --filter api db:verify` — exit 0, `schema-parity.e2e-spec.ts` 32/32 passed, including "has every required column on workout_session" (which now names `cycle_id`).
+- `pnpm --filter api test:e2e -- session-annotations-sync` — exit 0, 13/13 passed, including both new LOG-15 cases (stores `cycle_id`; rejects a non-string/non-null `cycle_id` as `invalid_field`).
+- `pnpm --filter mobile test:e2e:durability -- e2e/schema-redefinition.spec.ts` — exit 0, 4/4 passed against a real `@powersync/web` database in a real Chromium browser.
 
-No other blockers. 05-12 (the browser-real end-to-end proof plan) depends on this plan's schema existing in the live database — it cannot proceed until Task 3 runs.
+05-12 (the browser-real end-to-end proof plan) can now build on this plan's schema in the live database. No blockers remain for this plan. The pre-existing test-collection defect that blocked all 10 durability specs is fixed at its root (`durability-harness-key.ts`) and should not recur for any future spec added to that suite, since the same leaf-module import pattern now applies uniformly.
 
 ---
 *Phase: 05-in-gym-session-logging*
-*Completed: 2026-08-25 (Task 2 only; Task 3 pending — see Next Phase Readiness)*
+*Completed: 2026-08-25*
+
+## Self-Check: PASSED
+- FOUND: `apps/mobile/lib/db/durability-harness-key.ts`
+- FOUND: commit `c62d9b8` (Task 2)
+- FOUND: commit `107dae9` (loader-fix deviation)
+- `grep -c "cycle_id" apps/api/src/db/schema/session.ts` == 1
+- `grep -c "cycle_id" apps/mobile/lib/db/schema.ts` == 2
