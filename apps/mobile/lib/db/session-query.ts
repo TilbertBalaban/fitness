@@ -37,6 +37,11 @@ export interface LoggedSetRow {
 export interface LiveSessionRow {
   id: string;
   routineDayId: string | null;
+  // The program cycle this session was started against, read back exactly as startSession stamped
+  // it — never recomputed here (LOG-15, D-06). Feeds TargetsSheet's write-back resolution at both
+  // screen call sites so a restored session (force-quit, relaunch) still resolves against the
+  // cycle it actually started in.
+  cycleId: string | null;
   status: string;
   startedAt: string;
   pausedAt: string | null;
@@ -69,6 +74,7 @@ export async function loadSessionTree(
     .select({
       id: workoutSession.id,
       routineDayId: workoutSession.routineDayId,
+      cycleId: workoutSession.cycleId,
       status: workoutSession.status,
       startedAt: workoutSession.startedAt,
       pausedAt: workoutSession.pausedAt,

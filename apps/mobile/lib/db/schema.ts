@@ -10,6 +10,7 @@ export const workoutSession = sqliteTable('workout_session', {
   id: text('id').primaryKey(),
   userId: text('user_id'),
   routineDayId: text('routine_day_id'),
+  cycleId: text('cycle_id'),
   equipmentProfileId: text('equipment_profile_id'),
   startedAt: text('started_at').notNull(),
   endedAt: text('ended_at'),

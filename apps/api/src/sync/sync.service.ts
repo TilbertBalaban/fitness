@@ -207,6 +207,7 @@ const CYCLE_KINDS = new Set<string>(CYCLE_KIND_TUPLE);
 
 interface WorkoutSessionOpData {
   routine_day_id?: string | null;
+  cycle_id?: string | null;
   equipment_profile_id?: string | null;
   started_at?: string;
   ended_at?: string | null;
@@ -360,6 +361,7 @@ function toWorkoutSessionValues(id: string, userId: string, data: Record<string,
     id,
     userId,
     routineDayId: d.routine_day_id ?? null,
+    cycleId: d.cycle_id ?? null,
     equipmentProfileId: d.equipment_profile_id ?? null,
     startedAt,
     endedAt: d.ended_at ? new Date(d.ended_at) : null,
@@ -783,6 +785,7 @@ function hasInvalidField(op: SyncCrudOp): boolean {
     }
     if (!isValidOptionalStringOrNull(d.notes)) return true;
     if (!isValidOptionalStringOrNull(d.name)) return true;
+    if (!isValidOptionalStringOrNull(d.cycle_id)) return true;
     if (!isValidOptionalIsoOrNull(d.paused_at)) return true;
     if (!isValidOptionalIsoOrNull(d.rest_target_at)) return true;
     if (d.accumulated_paused_seconds !== undefined && !isNonNegativeInteger(d.accumulated_paused_seconds)) {

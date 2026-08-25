@@ -8,6 +8,7 @@ export interface WorkoutSessionValues {
   id: string;
   userId: string;
   routineDayId: string | null;
+  cycleId: string | null;
   equipmentProfileId: string | null;
   startedAt: Date;
   endedAt: Date | null;
@@ -182,6 +183,7 @@ export const WORKOUT_SESSION_PATCH_FIELDS: PatchFieldMap<WorkoutSessionValues> =
   id: null,
   userId: null,
   routineDayId: 'routine_day_id',
+  cycleId: 'cycle_id',
   equipmentProfileId: 'equipment_profile_id',
   startedAt: 'started_at',
   endedAt: 'ended_at',

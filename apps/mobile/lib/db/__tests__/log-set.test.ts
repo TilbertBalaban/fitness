@@ -1,10 +1,17 @@
 import { and, eq } from 'drizzle-orm';
-import { addSessionExercise, logSet, setSessionDate, startSession } from '../log-set';
+import { addSessionExercise, logSet, setSessionDate, startSession, startWorkoutFromProgram } from '../log-set';
 import { captureCalendarDay } from '../../calendar-day';
 import { getPowerSync } from '../powersync';
 import { removeDay, removeExercise } from '../programs/days';
 import { setExerciseTargets } from '../programs/targets';
-import { routine, routineDay, routineExercise, routineExerciseCycleTarget, sessionExercise } from '../schema';
+import {
+  routine,
+  routineDay,
+  routineExercise,
+  routineExerciseCycleTarget,
+  sessionExercise,
+  workoutSession,
+} from '../schema';
 
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../id', () => ({ generateClientId: jest.fn(() => 'fixed-id') }));
@@ -187,6 +194,93 @@ describe('startSession — the database-injection seam (WINDOWS #23)', () => {
     expect(values.startedAt).toBe(now.toISOString());
     expect(values.localDate).toBe(captureCalendarDay(now).localDate);
     expect(values.timezone).toBe(captureCalendarDay(now).timezone);
+  });
+});
+
+// D-15/LOG-15: cycle_id is stamped exactly once, here, and never rewritten on a read path —
+// the single-writer property resolveWriteBackTarget's override branch depends on.
+describe('startSession — stamps cycle_id (LOG-15)', () => {
+  it('writes the given cycleId to the inserted row', async () => {
+    const insertedValuesSpy = jest.fn();
+    const explicitDb = fakeDb(insertedValuesSpy);
+
+    await startSession({ cycleId: 'cycle-1' }, explicitDb);
+
+    expect(insertedValuesSpy.mock.calls[0][0].cycleId).toBe('cycle-1');
+  });
+
+  it('writes a null cycleId for a one-off session with no cycle', async () => {
+    const insertedValuesSpy = jest.fn();
+    const explicitDb = fakeDb(insertedValuesSpy);
+
+    await startSession({}, explicitDb);
+
+    expect(insertedValuesSpy.mock.calls[0][0].cycleId).toBeNull();
+  });
+});
+
+// The single funnel over startSession + addSessionExercise (D-33) must hand the same cycle id to
+// both, so the stored identity on workout_session and the prescription snapshot on every
+// session_exercise row can never disagree (LOG-15).
+function fakeProgramDb() {
+  const insertedByTable = new Map<unknown, Record<string, unknown>[]>();
+  const cycleTargetSelectConditions: unknown[] = [];
+
+  const db = {
+    select: () => ({
+      from: (table: unknown) => ({
+        where: (condition: unknown) => {
+          if (table === routineExerciseCycleTarget) cycleTargetSelectConditions.push(condition);
+          return Promise.resolve([]);
+        },
+      }),
+    }),
+    insert: (table: unknown) => ({
+      values: (values: Record<string, unknown>) => {
+        const rows = insertedByTable.get(table) ?? [];
+        rows.push(values);
+        insertedByTable.set(table, rows);
+        return Promise.resolve();
+      },
+    }),
+  } as unknown as ReturnType<typeof getPowerSync>;
+
+  return { db, insertedByTable, cycleTargetSelectConditions };
+}
+
+function cycleIdOfCondition(condition: unknown): unknown {
+  const equalities: { column: string; value: unknown }[] = [];
+  collectEqualities(condition, equalities);
+  return equalities.find((entry) => entry.column === 'cycle_id')?.value;
+}
+
+describe('startWorkoutFromProgram — threads cycleId to the session and every exercise (LOG-15)', () => {
+  it('passes the same cycleId to the session insert and to the prescription lookup for every slot', async () => {
+    const { db, insertedByTable, cycleTargetSelectConditions } = fakeProgramDb();
+
+    await startWorkoutFromProgram(
+      {
+        routineDayId: 'rd-1',
+        cycleId: 'cycle-1',
+        slots: [
+          { routineExerciseId: 're-1', exerciseId: 'ex-1', orderIndex: 0 },
+          { routineExerciseId: 're-2', exerciseId: 'ex-2', orderIndex: 1 },
+        ],
+      },
+      db,
+    );
+
+    const sessionRows = insertedByTable.get(workoutSession) ?? [];
+    expect(sessionRows).toHaveLength(1);
+    expect(sessionRows[0].cycleId).toBe('cycle-1');
+
+    const exerciseRows = insertedByTable.get(sessionExercise) ?? [];
+    expect(exerciseRows).toHaveLength(2);
+
+    expect(cycleTargetSelectConditions).toHaveLength(2);
+    for (const condition of cycleTargetSelectConditions) {
+      expect(cycleIdOfCondition(condition)).toBe('cycle-1');
+    }
   });
 });
 

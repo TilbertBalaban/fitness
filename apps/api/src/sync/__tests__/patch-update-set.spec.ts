@@ -37,6 +37,7 @@ function workoutSessionValues(overrides: Partial<WorkoutSessionValues> = {}): Wo
     id: 'sess-1',
     userId: 'user-1',
     routineDayId: 'rd-1',
+    cycleId: null,
     equipmentProfileId: 'ep-1',
     startedAt: new Date('2026-06-15T20:00:00Z'),
     endedAt: null,
@@ -200,6 +201,7 @@ describe('patchAwareSet', () => {
       id: 'sess-1',
       data: {
         routine_day_id: 'rd-2',
+        cycle_id: 'cycle-2',
         equipment_profile_id: 'ep-2',
         started_at: '2026-06-16T00:00:00Z',
         ended_at: '2026-06-16T01:00:00Z',

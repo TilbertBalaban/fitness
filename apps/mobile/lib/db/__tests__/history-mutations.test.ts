@@ -168,10 +168,11 @@ describe('renameSession', () => {
   });
 });
 
-function seedSourceSession(store: ReturnType<typeof inMemoryDb>, sessionId: string) {
+function seedSourceSession(store: ReturnType<typeof inMemoryDb>, sessionId: string, cycleId: string | null = null) {
   store.seed(workoutSession, {
     id: sessionId,
     routineDayId: null,
+    cycleId,
     equipmentProfileId: null,
     deviceId: null,
     status: 'completed',
@@ -290,6 +291,28 @@ describe('duplicateSession — copies the prescription, not the performance (LOG
     await duplicateSession({ sourceSessionId: 'src-ws' }, store.db);
 
     expect(store.getTransactionCount()).toBe(1);
+  });
+
+  // LOG-15: the new session must resolve write-back against the same cycle the original did — a
+  // duplicated programmed workout carries its source's cycle id forward, never drops it.
+  it('carries the source session’s cycleId onto the new session', async () => {
+    const store = inMemoryDb();
+    seedSourceSession(store, 'src-ws', 'cycle-1');
+
+    const newSessionId = await duplicateSession({ sourceSessionId: 'src-ws' }, store.db);
+
+    const newSessionRow = store.rowsOf(workoutSession).find((row) => row.id === newSessionId);
+    expect(newSessionRow?.cycleId).toBe('cycle-1');
+  });
+
+  it('carries a null cycleId onto the new session when the source has none', async () => {
+    const store = inMemoryDb();
+    seedSourceSession(store, 'src-ws', null);
+
+    const newSessionId = await duplicateSession({ sourceSessionId: 'src-ws' }, store.db);
+
+    const newSessionRow = store.rowsOf(workoutSession).find((row) => row.id === newSessionId);
+    expect(newSessionRow?.cycleId).toBeNull();
   });
 });
 

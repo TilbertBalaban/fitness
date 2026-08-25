@@ -73,6 +73,7 @@ export async function duplicateSession(
   const [source] = await db
     .select({
       routineDayId: workoutSession.routineDayId,
+      cycleId: workoutSession.cycleId,
       equipmentProfileId: workoutSession.equipmentProfileId,
       deviceId: workoutSession.deviceId,
     })
@@ -85,6 +86,7 @@ export async function duplicateSession(
     const newSessionId = await startSession(
       {
         routineDayId: source?.routineDayId ?? null,
+        cycleId: source?.cycleId ?? null,
         equipmentProfileId: source?.equipmentProfileId ?? null,
         deviceId: source?.deviceId ?? null,
         now,

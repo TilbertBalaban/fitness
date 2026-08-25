@@ -735,7 +735,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
         targetRestSeconds: exercise.targetRestSeconds,
       },
       routineExerciseId: exercise.routineExerciseId,
-      cycleId: null,
+      cycleId: sessionRow?.cycleId ?? null,
       hasNote: exercise.notes !== null,
       noteText: exercise.notes,
     };
