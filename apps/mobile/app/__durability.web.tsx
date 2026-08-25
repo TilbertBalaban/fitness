@@ -29,16 +29,21 @@ import {
   readAllLoggedSetsRaw,
   readCatalogTableCounts,
   readCatalogVersionRaw,
+  readCycleTargetRaw,
   readLoggedSets,
   readLoggedSetsRaw,
   readRawColumns,
+  readRoutineExerciseCycleTargetsRaw,
+  readRoutineExerciseRaw,
   readSessionExercisesRaw,
   readWorkoutSessionRaw,
   reopenTestPowerSync,
   seedPriorHeaviestSet,
   seedProgrammedSession,
+  seedProgrammedSessionWithCycle,
   writeCatalogVersionSentinel,
   type SeededProgrammedSession,
+  type SeededProgrammedSessionWithCycle,
   type SeedPriorHeaviestSetInput,
   type TestWriteDb,
 } from '../lib/db/test-support';
@@ -268,6 +273,24 @@ export default function DurabilityHarnessScreen() {
         const seeded = await seedProgrammedSession(db);
         setWorkoutHarness({ db });
         return seeded;
+      },
+      // 05-12's D-15 write-back proof: same seed-then-mount shape as seedWorkoutSession, but
+      // against seedProgrammedSessionWithCycle's program (one override row on the first routine
+      // exercise, none on the second) — see test-support.ts's own doc comment.
+      async seedWorkoutSessionWithCycle(): Promise<SeededProgrammedSessionWithCycle> {
+        const db = requireOpenDb();
+        const seeded = await seedProgrammedSessionWithCycle(db);
+        setWorkoutHarness({ db });
+        return seeded;
+      },
+      async readRoutineExercise(routineExerciseId: string) {
+        return readRoutineExerciseRaw(routineExerciseId);
+      },
+      async readCycleTarget(cycleTargetId: string) {
+        return readCycleTargetRaw(cycleTargetId);
+      },
+      async readCycleTargetsForRoutineExercise(routineExerciseId: string) {
+        return readRoutineExerciseCycleTargetsRaw(routineExerciseId);
       },
       // A direct, minimal write of a completed prior session's single working set — see
       // seedPriorHeaviestSet's own doc comment (test-support.ts) for why this bypasses

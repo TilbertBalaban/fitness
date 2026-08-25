@@ -166,6 +166,103 @@ export async function seedProgrammedSession(db: TestWriteDb): Promise<SeededProg
   };
 }
 
+export interface SeededProgrammedSessionWithCycle extends SeededProgrammedSession {
+  cycleId: string;
+  cycleTargetId: string;
+}
+
+// The override value routineExerciseIds[0]'s routine_exercise_cycle_target row carries for
+// targetSets — deliberately distinct from SEEDED_TARGETS[0].targetSets (3), so a spec reading
+// target_sets back can tell at a glance which row it came from (05-12, D-15's write-back proof).
+const CYCLE_TARGET_SETS_OVERRIDE = 5;
+
+// Same shape as seedProgrammedSession — one routine, one day, two routine_exercises, funnelled
+// through the same startWorkoutFromProgram call — plus one routine_cycle row and one
+// routine_exercise_cycle_target row overriding targetSets for the FIRST routine exercise only.
+// The second routine exercise deliberately gets no override row, so a single seeded program
+// exercises both branches of resolveWriteBackTarget/resolvePrescriptionForCycle (override ?? base).
+// Exercise ids are distinct from seedProgrammedSession's own ('ex-workout-harness-cycle-*') purely
+// so the two seed helpers' fixtures never look interchangeable in a future spec that seeds both in
+// the same suite run.
+export async function seedProgrammedSessionWithCycle(db: TestWriteDb): Promise<SeededProgrammedSessionWithCycle> {
+  const routineId = generateClientId();
+  const routineDayId = generateClientId();
+  const cycleId = generateClientId();
+  const cycleTargetId = generateClientId();
+  const routineExerciseIds = [generateClientId(), generateClientId()];
+  const exerciseIds = ['ex-workout-harness-cycle-1', 'ex-workout-harness-cycle-2'];
+
+  await db.insert(routine).values({
+    id: routineId,
+    userId: null,
+    name: 'Harness Program',
+    goal: null,
+    status: 'ready',
+    progressionFrozen: false,
+    source: 'user',
+    createdFromTemplateId: null,
+    archivedAt: null,
+  });
+
+  await db.insert(routineDay).values({
+    id: routineDayId,
+    routineId,
+    orderIndex: 1024,
+    name: 'Push',
+    isRestDay: false,
+  });
+
+  await db.insert(routineCycle).values({
+    id: cycleId,
+    routineId,
+    orderIndex: 1024,
+    name: 'Cycle A',
+    kind: 'training',
+    durationDays: null,
+  });
+
+  for (const [index, routineExerciseId] of routineExerciseIds.entries()) {
+    await db.insert(routineExercise).values({
+      id: routineExerciseId,
+      routineDayId,
+      exerciseId: exerciseIds[index],
+      orderIndex: (index + 1) * 1024,
+      supersetGroupId: null,
+      progressionSchemeId: null,
+      notes: null,
+      ...SEEDED_TARGETS[index],
+    });
+  }
+
+  await db.insert(routineExerciseCycleTarget).values({
+    id: cycleTargetId,
+    routineExerciseId: routineExerciseIds[0],
+    cycleId,
+    targetSets: CYCLE_TARGET_SETS_OVERRIDE,
+    targetRepMin: null,
+    targetRepMax: null,
+    targetRir: null,
+    targetRestSeconds: null,
+  });
+
+  const slots: StartWorkoutFromProgramSlot[] = routineExerciseIds.map((routineExerciseId, index) => ({
+    routineExerciseId,
+    exerciseId: exerciseIds[index],
+    orderIndex: (index + 1) * 1024,
+  }));
+
+  const sessionId = await startWorkoutFromProgram({ routineDayId, cycleId, slots }, db);
+
+  return {
+    sessionId,
+    routineId,
+    routineDayId,
+    cycleId,
+    cycleTargetId,
+    exercises: slots,
+  };
+}
+
 export interface SeedPriorHeaviestSetInput {
   exerciseId: string;
   weightKg: string;
@@ -437,6 +534,47 @@ export async function readSessionExercisesRaw(sessionId: string): Promise<Record
     throw new Error('readSessionExercisesRaw() called before openTestPowerSync()');
   }
   return rawDb.getAll<Record<string, unknown>>('SELECT * FROM session_exercise WHERE session_id = ?', [sessionId]);
+}
+
+// 05-12's D-15 write-back proof (e2e/target-write-back.spec.ts): reads the base routine_exercise
+// row's own columns raw, by id, so the spec can prove that row was left untouched (the override
+// branch) or moved (the base branch) independent of any typed drizzle read path.
+export async function readRoutineExerciseRaw(routineExerciseId: string): Promise<Record<string, unknown> | null> {
+  if (!rawDb) {
+    throw new Error('readRoutineExerciseRaw() called before openTestPowerSync()');
+  }
+  const rows = await rawDb.getAll<Record<string, unknown>>('SELECT * FROM routine_exercise WHERE id = ?', [
+    routineExerciseId,
+  ]);
+  return rows[0] ?? null;
+}
+
+// Reads a single routine_exercise_cycle_target row by its own surrogate id — used when the spec
+// already knows the override row's id (seedProgrammedSessionWithCycle returns it for the first
+// routine exercise's seeded override).
+export async function readCycleTargetRaw(cycleTargetId: string): Promise<Record<string, unknown> | null> {
+  if (!rawDb) {
+    throw new Error('readCycleTargetRaw() called before openTestPowerSync()');
+  }
+  const rows = await rawDb.getAll<Record<string, unknown>>(
+    'SELECT * FROM routine_exercise_cycle_target WHERE id = ?',
+    [cycleTargetId],
+  );
+  return rows[0] ?? null;
+}
+
+// Reads every routine_exercise_cycle_target row for a given routine exercise, by its natural key
+// rather than a surrogate id — what the spec's "no override row exists" case needs to prove a
+// write-back never inserted one for the second routine exercise, which has no cycleTargetId to
+// look up by id in the first place.
+export async function readRoutineExerciseCycleTargetsRaw(routineExerciseId: string): Promise<Record<string, unknown>[]> {
+  if (!rawDb) {
+    throw new Error('readRoutineExerciseCycleTargetsRaw() called before openTestPowerSync()');
+  }
+  return rawDb.getAll<Record<string, unknown>>(
+    'SELECT * FROM routine_exercise_cycle_target WHERE routine_exercise_id = ?',
+    [routineExerciseId],
+  );
 }
 
 // Connects the CURRENT isolated test-support.ts database directly — deliberately not routed
