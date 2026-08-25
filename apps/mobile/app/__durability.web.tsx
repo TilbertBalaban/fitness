@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
+import { startBackfilledSession } from './(tabs)/history';
+import { EditingWorkoutRoute } from '../components/EditingWorkoutScreen';
 import { SyncConnector } from '../lib/db/connector';
-import { addSessionExercise, logSet, startSession } from '../lib/db/log-set';
+import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib/db/log-set';
 import { loadSessionPersonalRecords } from '../lib/db/personal-record';
 import { completeSession, discardSession, pauseSession, resumeSession } from '../lib/db/session-lifecycle';
 import { deleteSession, duplicateSession, renameSession } from '../lib/db/history-mutations';
 import { loadHistoryPage } from '../lib/db/history-query';
 import { previousSetReference } from '../lib/db/session-query';
+import { loadNextUp } from '../lib/db/programs/next-up-query';
+import { resolveNextUp } from '../lib/programs/next-up';
 import {
   connectPowerSync,
   disconnectPowerSync,
@@ -59,12 +63,22 @@ function WorkoutHarnessScreen({ db, userId }: { db: WriteDb; userId: string }) {
   );
 }
 
+// 05-10's editing-mode e2e case (session-edit.spec.ts): mounts EditingWorkoutRoute — the exact
+// component workout.tsx renders when a sessionId route param resolves to `editing` — against a
+// named session in the currently open() database, rather than the harness re-implementing any
+// piece of the editing screen's own wiring.
+function EditingWorkoutHarnessScreen({ db, userId, sessionId }: { db: WriteDb; userId: string; sessionId: string }) {
+  const colors = useThemeColors();
+  return <EditingWorkoutRoute sessionId={sessionId} userId={userId} colors={colors} db={db} />;
+}
+
 // A Playwright page drives this route through window[DURABILITY_HARNESS_GLOBAL] — see
 // e2e/durability.spec.ts and e2e/workout-screen.spec.ts. Every write goes through the real
 // lib/db/log-set.ts helpers; this route re-implements no insert.
 export default function DurabilityHarnessScreen() {
   const [ready, setReady] = useState(false);
   const [workoutHarness, setWorkoutHarness] = useState<{ db: TestWriteDb } | null>(null);
+  const [editingHarness, setEditingHarness] = useState<{ db: TestWriteDb; sessionId: string } | null>(null);
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -104,6 +118,7 @@ export default function DurabilityHarnessScreen() {
         lastClosedDb = currentDb;
         currentDb = null;
         setWorkoutHarness(null);
+        setEditingHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -274,6 +289,34 @@ export default function DurabilityHarnessScreen() {
         const db = requireOpenDb();
         setWorkoutHarness({ db });
       },
+      // 05-10's editing-mode e2e case: real setSessionDate against the currently open() database —
+      // the single deliberate exception to D-06 (Task 1), no stub.
+      async setSessionDate(input: { sessionId: string; date: string; timezone: string }) {
+        await setSessionDate(input.sessionId, new Date(input.date), input.timezone, requireOpenDb());
+      },
+      // Real startBackfilledSession (history.tsx's own data layer) against the currently open()
+      // database — the third D-33 funnel entry point, no stub.
+      async startBackfilledSession(input: { date: string; timezone: string; exerciseIds: string[] }) {
+        return startBackfilledSession(
+          { date: new Date(input.date), timezone: input.timezone, exerciseIds: input.exerciseIds },
+          requireOpenDb(),
+        );
+      },
+      // Mounts EditingWorkoutRoute — the real editing-mode component workout.tsx itself renders —
+      // against a named session in the currently open() database, without seeding.
+      async openEditWorkoutScreen(sessionId: string) {
+        const db = requireOpenDb();
+        setEditingHarness({ db, sessionId });
+      },
+      // resolveNextUp's own coherence check (Phase 4 D-20), read straight off the currently open()
+      // database — proves rotation self-heals from local_date after a backfill with no cursor to
+      // repair, the same two real functions workout.tsx's own read path composes.
+      async resolveNextUpKind(userId: string) {
+        const db = requireOpenDb();
+        const data = await loadNextUp(userId, db);
+        const next = resolveNextUp({ routine: data.routine, days: data.days, cycles: data.cycles, history: data.history, today: data.today });
+        return next.kind;
+      },
     };
 
     setReady(true);
@@ -283,6 +326,9 @@ export default function DurabilityHarnessScreen() {
     <View>
       <Text testID="durability-harness-ready">{ready ? 'ready' : 'loading'}</Text>
       {workoutHarness ? <WorkoutHarnessScreen db={workoutHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
+      {editingHarness ? (
+        <EditingWorkoutHarnessScreen db={editingHarness.db} userId={WORKOUT_HARNESS_USER_ID} sessionId={editingHarness.sessionId} />
+      ) : null}
     </View>
   );
 }

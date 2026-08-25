@@ -9,17 +9,47 @@ import {
   type HistoryRowActionId,
 } from '@/components/HistoryActionSheet';
 import { SessionHistoryRow } from '@/components/SessionHistoryRow';
+import { SessionDateField } from '@/components/SessionDateField';
+import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
 import { authClient } from '@/lib/auth-client';
-import type { WriteDb } from '@/lib/db/powersync';
+import { captureCalendarDay } from '@/lib/calendar-day';
+import { addSessionExercise, setSessionDate, startSession } from '@/lib/db/log-set';
+import { completeSession } from '@/lib/db/session-lifecycle';
+import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { historyRowLabel, loadHistoryPage, type HistoryPage, type HistorySessionRow } from '@/lib/db/history-query';
 import { deleteSession, duplicateSession, renameSession } from '@/lib/db/history-mutations';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 const PAGE_SIZE = 25;
-// 05-10 reads this flag from the workout route to open it in `editing` mode for a new past-dated
-// session (D-32/D-33) — this plan only renders the entry point and navigates with it.
-const ADD_PAST_WORKOUT_ROUTE = '/(tabs)/workout?addPast=1';
 const WORKOUT_TAB_ROUTE = '/(tabs)/workout';
+
+export interface StartBackfilledSessionInput {
+  date: Date;
+  timezone: string;
+  exerciseIds: string[];
+}
+
+// D-33's third funnel entry point: the SAME startSession log-set.ts's other two callers use, then
+// setSessionDate (Task 1) to move it onto the chosen day, then addSessionExercise per selected
+// exercise with no routine linkage — never a second `insert(workoutSession)` anywhere in this file.
+// Completed immediately (not left `in_progress`): a freshly backfilled session must resolve to
+// `editing` mode the instant the user lands on it (resolveSessionScreenMode reads status, and
+// `in_progress` would incorrectly route it to the live screen instead) — the same reason a
+// finished workout, not a running one, is what "add a workout you already did" actually means.
+export async function startBackfilledSession(
+  { date, timezone, exerciseIds }: StartBackfilledSessionInput,
+  db: WriteDb = getPowerSync(),
+): Promise<string> {
+  const sessionId = await startSession({}, db);
+  await setSessionDate(sessionId, date, timezone, db);
+  await completeSession(sessionId, date, db);
+
+  for (const [index, exerciseId] of exerciseIds.entries()) {
+    await addSessionExercise({ sessionId, exerciseId, orderIndex: index }, db);
+  }
+
+  return sessionId;
+}
 
 export type HistoryScreenState = 'error' | 'loading' | 'empty' | 'ready';
 
@@ -38,22 +68,32 @@ export function deriveHistoryScreenState({ failed, page }: HistoryScreenStateInp
 }
 
 // Which overlay (if any) is open, and which row it belongs to — a discriminated union rather than
-// three independent booleans/ids, so "sheet and rename open at once" is unrepresentable.
+// independent booleans/ids, so two overlays can never be open at once by construction.
 export type HistoryOverlay =
   | { kind: 'sheet'; sessionId: string }
   | { kind: 'rename'; sessionId: string }
   | { kind: 'delete'; sessionId: string }
   | null;
 
+// The add-a-past-workout wizard's own step, separate from HistoryOverlay: it is reachable from
+// both the populated top-level action and the empty-state affordance, neither of which names a row.
+export type AddPastWorkoutStep = 'date' | 'exercises' | null;
+
 export interface HistoryScreenViewProps {
   state: HistoryScreenState;
   rows: HistorySessionRow[];
   colors: ThemeColors;
   overlay: HistoryOverlay;
+  addPastStep: AddPastWorkoutStep;
+  addPastLocalDate: string;
   onRowPress: (sessionId: string) => void;
   onOverflowPress: (sessionId: string) => void;
   onEndReached: () => void;
   onAddPastWorkout: () => void;
+  onPendingDateChange: (date: Date, timezone: string) => void;
+  onConfirmAddPastDate: () => void;
+  onCancelAddPast: () => void;
+  onConfirmAddPastExercises: (rows: PickerCatalogRow[]) => void;
   onSheetSelect: (action: HistoryRowActionId) => void;
   onCancelOverlay: () => void;
   onConfirmRename: (name: string) => void;
@@ -64,14 +104,71 @@ export interface HistoryScreenViewProps {
 // no loading state for the already-local first page (R6), so 'loading' renders an empty screen
 // rather than a skeleton — this local read resolves near-instantly and the tab must never flash a
 // spinner for it.
+// The add-a-past-workout wizard's own two modals, layered above whichever state (empty or ready)
+// exposes the entry point — a shared render so neither branch below duplicates the step logic.
+function renderAddPastWorkoutModals({
+  addPastStep,
+  addPastLocalDate,
+  onPendingDateChange,
+  onConfirmAddPastDate,
+  onCancelAddPast,
+  onConfirmAddPastExercises,
+}: Pick<HistoryScreenViewProps, 'addPastStep' | 'addPastLocalDate' | 'onPendingDateChange' | 'onConfirmAddPastDate' | 'onCancelAddPast' | 'onConfirmAddPastExercises'>) {
+  return (
+    <>
+      {addPastStep === 'date' ? (
+        <Modal transparent animationType="fade" onRequestClose={onCancelAddPast}>
+          <View className="flex-1 items-center justify-center bg-background/80 px-lg">
+            <View className="w-full max-w-[400px] gap-md rounded-md bg-surface p-lg">
+              <Text className="text-heading font-semibold text-foreground">Add a Past Workout</Text>
+              <SessionDateField localDate={addPastLocalDate} onChange={onPendingDateChange} />
+              <View className="flex-row justify-end gap-sm">
+                <Pressable
+                  onPress={onCancelAddPast}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                  style={{ minWidth: 48, minHeight: 48, justifyContent: 'center' }}
+                >
+                  <Text className="text-body font-normal text-foreground-muted">Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={onConfirmAddPastDate}
+                  accessibilityRole="button"
+                  accessibilityLabel="Next"
+                  style={{ minWidth: 48, minHeight: 48, justifyContent: 'center', alignItems: 'center' }}
+                  className="rounded-md bg-accent px-md py-sm"
+                >
+                  <Text className="text-body font-semibold text-background">Next</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      {addPastStep === 'exercises' ? (
+        <Modal animationType="slide" onRequestClose={onCancelAddPast}>
+          <ExercisePickerModal dayName="this workout" onAdd={onConfirmAddPastExercises} onCancel={onCancelAddPast} />
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
 export function HistoryScreenView({
   state,
   rows,
   overlay,
+  addPastStep,
+  addPastLocalDate,
   onRowPress,
   onOverflowPress,
   onEndReached,
   onAddPastWorkout,
+  onPendingDateChange,
+  onConfirmAddPastDate,
+  onCancelAddPast,
+  onConfirmAddPastExercises,
   onSheetSelect,
   onCancelOverlay,
   onConfirmRename,
@@ -103,6 +200,8 @@ export function HistoryScreenView({
         >
           <Text className="text-body font-normal text-accent">Add a Past Workout</Text>
         </Pressable>
+
+        {renderAddPastWorkoutModals({ addPastStep, addPastLocalDate, onPendingDateChange, onConfirmAddPastDate, onCancelAddPast, onConfirmAddPastExercises })}
       </View>
     );
   }
@@ -111,6 +210,17 @@ export function HistoryScreenView({
 
   return (
     <View className="flex-1 bg-background">
+      <View className="flex-row justify-end px-lg pt-md">
+        <Pressable
+          onPress={onAddPastWorkout}
+          accessibilityRole="button"
+          accessibilityLabel="Add a Past Workout"
+          style={{ minHeight: 48, justifyContent: 'center' }}
+        >
+          <Text className="text-body font-normal text-accent">Add a Past Workout</Text>
+        </Pressable>
+      </View>
+
       <FlashList
         data={state === 'ready' ? rows : []}
         keyExtractor={(row) => row.id}
@@ -148,6 +258,8 @@ export function HistoryScreenView({
           <DeleteWorkoutDialog onConfirm={onConfirmDelete} onCancel={onCancelOverlay} />
         </Modal>
       ) : null}
+
+      {renderAddPastWorkoutModals({ addPastStep, addPastLocalDate, onPendingDateChange, onConfirmAddPastDate, onCancelAddPast, onConfirmAddPastExercises })}
     </View>
   );
 }
@@ -157,18 +269,11 @@ export interface UseHistoryScreenOptions {
   db?: WriteDb;
 }
 
-export interface HistoryScreenViewModel {
-  state: HistoryScreenState;
-  rows: HistorySessionRow[];
-  overlay: HistoryOverlay;
-  onRowPress: (sessionId: string) => void;
-  onOverflowPress: (sessionId: string) => void;
-  onEndReached: () => void;
-  onAddPastWorkout: () => void;
-  onSheetSelect: (action: HistoryRowActionId) => void;
-  onCancelOverlay: () => void;
-  onConfirmRename: (name: string) => void;
-  onConfirmDelete: () => void;
+export type HistoryScreenViewModel = Omit<HistoryScreenViewProps, 'colors'>;
+
+function todayPendingBackfill(): { date: Date; timezone: string } {
+  const date = new Date();
+  return { date, timezone: captureCalendarDay(date).timezone };
 }
 
 export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): HistoryScreenViewModel {
@@ -177,6 +282,8 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
   const [failed, setFailed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [overlay, setOverlay] = useState<HistoryOverlay>(null);
+  const [addPastStep, setAddPastStep] = useState<AddPastWorkoutStep>(null);
+  const [pendingBackfill, setPendingBackfill] = useState(todayPendingBackfill);
 
   // On focus, not on mount — matches Home's own readNextUp effect (index.tsx): a session finished
   // on another tab (Workout) must not leave History showing a stale page until the app restarts.
@@ -227,6 +334,14 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
       if (action === 'view') {
         setOverlay(null);
         router.push(`/workout-summary?sessionId=${sessionId}`);
+        return;
+      }
+      if (action === 'edit') {
+        // Navigates to the SAME workout route the live screen renders, carrying the session id —
+        // resolveSessionScreenMode (session-mode.tsx) resolves it to `editing` mode, never a
+        // separate history editor (D-32, LOG-20).
+        setOverlay(null);
+        router.push(`${WORKOUT_TAB_ROUTE}?sessionId=${sessionId}`);
         return;
       }
       if (action === 'rename') {
@@ -294,14 +409,61 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
     })();
   }, [overlay, db]);
 
+  // The add-a-past-workout wizard (D-33): step 1 picks the date (defaulting to today, changeable
+  // through SessionDateField), step 2 picks exercises through the unmodified ExercisePickerModal —
+  // then startBackfilledSession funnels through the one session-creation path and the screen
+  // navigates straight into the editing screen with the date already chosen.
+  const handleAddPastWorkout = useCallback(() => {
+    setPendingBackfill(todayPendingBackfill());
+    setAddPastStep('date');
+  }, []);
+
+  const handlePendingDateChange = useCallback((date: Date, timezone: string) => {
+    setPendingBackfill({ date, timezone });
+  }, []);
+
+  const handleConfirmAddPastDate = useCallback(() => {
+    setAddPastStep('exercises');
+  }, []);
+
+  const handleCancelAddPast = useCallback(() => {
+    setAddPastStep(null);
+  }, []);
+
+  const handleConfirmAddPastExercises = useCallback(
+    (rows: PickerCatalogRow[]) => {
+      setAddPastStep(null);
+      if (rows.length === 0) return;
+
+      void (async () => {
+        try {
+          const sessionId = await startBackfilledSession(
+            { date: pendingBackfill.date, timezone: pendingBackfill.timezone, exerciseIds: rows.map((row) => row.id) },
+            db,
+          );
+          router.push(`${WORKOUT_TAB_ROUTE}?sessionId=${sessionId}`);
+        } catch (error) {
+          console.error('backfill session failed', error);
+        }
+      })();
+    },
+    [pendingBackfill, db, router],
+  );
+
   return {
     state: deriveHistoryScreenState({ failed, page }),
     rows: page?.rows ?? [],
     overlay,
+    addPastStep,
+    addPastLocalDate: captureCalendarDay(pendingBackfill.date, pendingBackfill.timezone).localDate,
     onRowPress: (sessionId) => router.push(`/workout-summary?sessionId=${sessionId}`),
     onOverflowPress: (sessionId) => setOverlay({ kind: 'sheet', sessionId }),
     onEndReached: handleEndReached,
-    onAddPastWorkout: () => router.push(ADD_PAST_WORKOUT_ROUTE),
+    onAddPastWorkout: handleAddPastWorkout,
+    onPendingDateChange: handlePendingDateChange,
+    onConfirmAddPastDate: handleConfirmAddPastDate,
+    onCancelAddPast: handleCancelAddPast,
+    onConfirmAddPastExercises: handleConfirmAddPastExercises,
     onSheetSelect: handleSheetSelect,
     onCancelOverlay: () => setOverlay(null),
     onConfirmRename: handleConfirmRename,

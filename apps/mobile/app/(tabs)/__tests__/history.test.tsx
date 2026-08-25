@@ -16,10 +16,16 @@ function baseProps(overrides: Partial<HistoryScreenViewProps> = {}): HistoryScre
     rows: [],
     colors: COLORS,
     overlay: null,
+    addPastStep: null,
+    addPastLocalDate: '2026-08-18',
     onRowPress: jest.fn(),
     onOverflowPress: jest.fn(),
     onEndReached: jest.fn(),
     onAddPastWorkout: jest.fn(),
+    onPendingDateChange: jest.fn(),
+    onConfirmAddPastDate: jest.fn(),
+    onCancelAddPast: jest.fn(),
+    onConfirmAddPastExercises: jest.fn(),
     onSheetSelect: jest.fn(),
     onCancelOverlay: jest.fn(),
     onConfirmRename: jest.fn(),
@@ -87,9 +93,20 @@ const SAMPLE_ROW: HistoryPage['rows'][number] = {
 };
 
 describe('HistoryScreenView — ready state', () => {
+  it('renders a top-level Add a Past Workout action wired to onAddPastWorkout', () => {
+    const onAddPastWorkout = jest.fn();
+    const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW], onAddPastWorkout }));
+    const [header] = element.props.children;
+    const addAffordance = header.props.children;
+
+    expect(addAffordance.props.accessibilityLabel).toBe('Add a Past Workout');
+    addAffordance.props.onPress();
+    expect(onAddPastWorkout).toHaveBeenCalledTimes(1);
+  });
+
   it('renders a FlashList with the page rows and no overlay by default', () => {
     const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW] }));
-    const [flashList, sheetOverlay, renameOverlay, deleteOverlay] = element.props.children;
+    const [, flashList, sheetOverlay, renameOverlay, deleteOverlay] = element.props.children;
 
     expect(flashList.props.data).toEqual([SAMPLE_ROW]);
     expect(sheetOverlay).toBeNull();
@@ -101,7 +118,7 @@ describe('HistoryScreenView — ready state', () => {
     const element = HistoryScreenView(
       baseProps({ state: 'ready', rows: [SAMPLE_ROW], overlay: { kind: 'sheet', sessionId: 's1' } }),
     );
-    const [, sheetModal] = element.props.children;
+    const [, , sheetModal] = element.props.children;
 
     expect(sheetModal.props.transparent).toBe(true);
     expect(sheetModal.props.children.props.sessionLabel).toBe('Leg Day');
@@ -111,7 +128,7 @@ describe('HistoryScreenView — ready state', () => {
     const element = HistoryScreenView(
       baseProps({ state: 'ready', rows: [SAMPLE_ROW], overlay: { kind: 'rename', sessionId: 's1' } }),
     );
-    const [, , renameModal] = element.props.children;
+    const [, , , renameModal] = element.props.children;
 
     expect(renameModal.props.children.props.initialValue).toBe('Leg Day');
   });
@@ -121,9 +138,28 @@ describe('HistoryScreenView — ready state', () => {
     const element = HistoryScreenView(
       baseProps({ state: 'ready', rows: [SAMPLE_ROW], overlay: { kind: 'delete', sessionId: 's1' }, onConfirmDelete }),
     );
-    const [, , , deleteModal] = element.props.children;
+    const [, , , , deleteModal] = element.props.children;
 
     deleteModal.props.children.props.onConfirm();
     expect(onConfirmDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the add-a-past-workout date step with SessionDateField wired to the pending date', () => {
+    const onConfirmAddPastDate = jest.fn();
+    const element = HistoryScreenView(
+      baseProps({ state: 'ready', rows: [SAMPLE_ROW], addPastStep: 'date', addPastLocalDate: '2026-08-10' }),
+    );
+    const [, , , , , addPastModals] = element.props.children;
+    const [dateModal] = addPastModals.props.children;
+
+    expect(dateModal).not.toBeNull();
+  });
+
+  it('opens the ExercisePickerModal for the exercises step', () => {
+    const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW], addPastStep: 'exercises' }));
+    const [, , , , , addPastModals] = element.props.children;
+    const [, exercisesModal] = addPastModals.props.children;
+
+    expect(exercisesModal).not.toBeNull();
   });
 });
