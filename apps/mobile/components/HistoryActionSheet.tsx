@@ -12,7 +12,7 @@ const GLYPH_COLORS: Record<'light' | 'dark', { foreground: string; destructive: 
   dark: { foreground: 'rgb(250, 250, 250)', destructive: 'rgb(239, 68, 68)' },
 };
 
-export type HistoryRowActionId = 'view' | 'rename' | 'duplicate' | 'delete';
+export type HistoryRowActionId = 'view' | 'edit' | 'rename' | 'duplicate' | 'delete';
 
 export interface HistoryRowAction {
   id: HistoryRowActionId;
@@ -22,10 +22,13 @@ export interface HistoryRowAction {
 }
 
 // A fixed constant, not a computed list — mirrors SESSION_EXERCISE_ACTIONS (SessionActionSheet.tsx)
-// verbatim. 05-10 appends an Edit row to this same array, which is why LOG-20's four actions are a
-// list rather than four literal rows (UI-SPEC E11 populated backstop, resolved here).
+// verbatim. 05-10's Edit row is an append, exactly what 05-09 built this as a list to allow
+// (UI-SPEC E11 populated backstop, resolved here). Edit navigates to the workout route carrying
+// the session id, which resolveSessionScreenMode (session-mode.tsx) resolves to `editing` mode —
+// the same screen that logged the workout, not a separate history editor (D-32, LOG-20).
 export const HISTORY_ROW_ACTIONS: HistoryRowAction[] = [
   { id: 'view', label: 'View', icon: 'eye-outline' },
+  { id: 'edit', label: 'Edit', icon: 'create-outline' },
   { id: 'rename', label: 'Rename', icon: 'pencil-outline' },
   { id: 'duplicate', label: 'Duplicate', icon: 'copy-outline' },
   { id: 'delete', label: 'Delete', icon: 'trash-outline', destructive: true },

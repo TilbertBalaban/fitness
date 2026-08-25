@@ -87,7 +87,7 @@ describe('deriveWorkoutScreenState', () => {
     expect(
       deriveWorkoutScreenState({
         failed: false,
-        session: { session: { id: 's-1', routineDayId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null }, exercises: [], setsByExerciseId: {} },
+        session: { session: { id: 's-1', routineDayId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null, timezone: 'UTC', localDate: '2026-08-20' }, exercises: [], setsByExerciseId: {} },
         nextUp: null,
       }),
     ).toBe('ready');
@@ -617,7 +617,7 @@ describe('WorkoutScreenView', () => {
 
 describe('readWorkoutScreenData', () => {
   it('resolves the weight unit only once a live session is found', async () => {
-    const session = { session: { id: 's-1', routineDayId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null }, exercises: [], setsByExerciseId: {} };
+    const session = { session: { id: 's-1', routineDayId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null, timezone: 'UTC', localDate: '2026-08-20' }, exercises: [], setsByExerciseId: {} };
     const loadUnit = jest.fn().mockResolvedValue('lb');
     const result = await readWorkoutScreenData('user-1', {
       loadSession: jest.fn().mockResolvedValue(session),

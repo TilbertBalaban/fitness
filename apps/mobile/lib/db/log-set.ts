@@ -13,8 +13,12 @@ export interface StartSessionInput {
   now?: Date;
 }
 
-// Stamps timezone and local_date once, here, from the device's IANA zone (LOG-22) — nothing else
-// in this codebase ever writes those two columns, and no read path recomputes them (PITFALLS §12).
+// Stamps timezone and local_date once, here, from the device's IANA zone (LOG-22) at creation.
+// `setSessionDate` below is the single deliberate exception permitted to rewrite them afterwards —
+// choosing or editing a session's date (LOG-21) is exactly the case D-06's stamp-once rule cannot
+// serve. A second writer of these two columns anywhere else in this codebase is a defect: every
+// read path (History's ordering, rotation's resolveNextUp) assumes exactly these two functions
+// ever touch them, and a third writer reopens the timezone bug PITFALLS §12 already fixed once.
 export async function startSession(
   input: StartSessionInput = {},
   db: WriteDb = getPowerSync(),
@@ -31,8 +35,8 @@ export async function startSession(
     endedAt: null,
     status: 'in_progress',
     deviceId: input.deviceId ?? null,
-    timezone,
-    localDate,
+    timezone: timezone,
+    localDate: localDate,
   });
 
   return id;
@@ -239,4 +243,24 @@ export async function startWorkoutFromProgram(
   }
 
   return sessionId;
+}
+
+// The single deliberate exception to D-06's stamp-once rule (D-33, PITFALLS §12): rewrites
+// started_at, timezone and local_date together, in one write, through the SAME captureCalendarDay
+// derivation startSession uses — never a second, inline timezone computation. All three columns
+// move as a unit because they must agree with each other: started_at without the recalculated
+// calendar pair would sort a session under one day while every read of local_date (History's
+// ordering, resolveNextUp's rotation) still attributes it to another.
+export async function setSessionDate(
+  sessionId: string,
+  date: Date,
+  timezone: string,
+  db: WriteDb = getPowerSync(),
+): Promise<void> {
+  const { timezone: resolvedTimezone, localDate } = captureCalendarDay(date, timezone);
+
+  await db
+    .update(workoutSession)
+    .set({ startedAt: date.toISOString(), timezone: resolvedTimezone, localDate: localDate })
+    .where(eq(workoutSession.id, sessionId));
 }

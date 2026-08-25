@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 106
+open_count: 109
 waived_count: 1
 fixed_count: 17
-total_count: 124
-last_updated: 2026-08-24T18:47:51.143Z
+total_count: 127
+last_updated: 2026-08-25T06:53:04.949Z
 ---
 
 # Broken Windows Ledger
@@ -139,6 +139,9 @@ last_updated: 2026-08-24T18:47:51.143Z
 | 125 | 999.1 | unrun-verify | apps/mobile/components/SessionHistoryRow.tsx |  | Native FlashList recycling behaviour on the new SessionHistoryRow (the same failure class the ExerciseImageTile WINDOWS entry recorded in Phase 3) cannot be observed on this machine (no Xcode, no Android SDK). Deferred to the Phase 999.1 native/cross-device UAT sweep. | open |  | 2026-08-24T16:27:06.639Z |  |
 | 126 | 05 | deviation | apps/mobile/e2e/history.spec.ts |  | 05-09-PLAN.md Task 3's e2e prose says duplicating a row makes 'a fourth row appear' in History, but duplicateSession funnels through startSession (D-33), which always creates the copy in_progress — and Task 1's own shown/hidden rule excludes in-progress sessions from History. The copy therefore does NOT appear as a fourth History row; it surfaces on the Workout tab instead. history.spec.ts asserts the correct (in-progress, absent from loadHistoryPage) behavior rather than the plan's literal prose, which contradicts must_haves established earlier in the same plan. | open |  | 2026-08-24T16:27:14.738Z |  |
 | 127 | 05 | unrun-verify | apps/mobile/e2e/workout-summary.spec.ts |  | Workout-summary e2e (finish a session, assert trained muscles, PR rows and per-exercise e1RM breakdown, then correct a number before dismissing) written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- workout-summary.spec.ts. | open |  | 2026-08-24T18:47:51.143Z |  |
+| 128 | 05 | unrun-verify | apps/mobile/e2e/session-edit.spec.ts |  | session-edit.spec.ts (05-10) written and typechecked but not executed — browser-testing-only-on-request. Needs pnpm --filter mobile test:e2e:durability -- session-edit.spec.ts. | open |  | 2026-08-25T06:52:48.979Z |  |
+| 129 | 05 | unrun-verify | apps/mobile/components/SessionDateField.tsx |  | Native date-picker presentation (the calendar grid's on-device rendering) and native OS font-scale wrapping on the editing header (formatEditingHeader) are unverifiable on this machine — no Xcode/Android SDK/simulator available. Deferred to ROADMAP Phase 999.1's native/cross-device sweep. | open |  | 2026-08-25T06:52:59.973Z |  |
+| 130 | 05 | unmet-truth | apps/mobile/lib/db/test-support.ts | 187 | D-33's single-funnel claim ('exactly one insert(workoutSession) in apps/mobile/') holds for production code (log-set.ts's startSession is the only real creation path) but a pre-existing test-only seeding helper, seedPriorHeaviestSet (predates 05-10, used by workout-summary.spec.ts's real-PR fixture), performs a second, direct insert(workoutSession) to seed a days-old prior session outside any funnel. Out of scope for 05-10 (not caused by this plan's changes); left as-is per the scope-boundary rule. | open |  | 2026-08-25T06:53:04.949Z |  |
 
 ````json
 [
@@ -1628,6 +1631,42 @@ last_updated: 2026-08-24T18:47:51.143Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-24T18:47:51.143Z",
+    "resolved_at": null
+  },
+  {
+    "id": 128,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/e2e/session-edit.spec.ts",
+    "line": null,
+    "description": "session-edit.spec.ts (05-10) written and typechecked but not executed — browser-testing-only-on-request. Needs pnpm --filter mobile test:e2e:durability -- session-edit.spec.ts.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-25T06:52:48.979Z",
+    "resolved_at": null
+  },
+  {
+    "id": 129,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": "apps/mobile/components/SessionDateField.tsx",
+    "line": null,
+    "description": "Native date-picker presentation (the calendar grid's on-device rendering) and native OS font-scale wrapping on the editing header (formatEditingHeader) are unverifiable on this machine — no Xcode/Android SDK/simulator available. Deferred to ROADMAP Phase 999.1's native/cross-device sweep.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-25T06:52:59.973Z",
+    "resolved_at": null
+  },
+  {
+    "id": 130,
+    "kind": "unmet-truth",
+    "phase": "05",
+    "file": "apps/mobile/lib/db/test-support.ts",
+    "line": 187,
+    "description": "D-33's single-funnel claim ('exactly one insert(workoutSession) in apps/mobile/') holds for production code (log-set.ts's startSession is the only real creation path) but a pre-existing test-only seeding helper, seedPriorHeaviestSet (predates 05-10, used by workout-summary.spec.ts's real-PR fixture), performs a second, direct insert(workoutSession) to seed a days-old prior session outside any funnel. Out of scope for 05-10 (not caused by this plan's changes); left as-is per the scope-boundary rule.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-25T06:53:04.949Z",
     "resolved_at": null
   }
 ]

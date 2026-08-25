@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm';
-import { addSessionExercise, logSet, startSession } from '../log-set';
+import { addSessionExercise, logSet, setSessionDate, startSession } from '../log-set';
+import { captureCalendarDay } from '../../calendar-day';
 import { getPowerSync } from '../powersync';
 import { removeDay, removeExercise } from '../programs/days';
 import { setExerciseTargets } from '../programs/targets';
@@ -92,6 +93,67 @@ describe('startSession — the database-injection seam (WINDOWS #23)', () => {
 
     expect(insertedValuesSpy).toHaveBeenCalledTimes(1);
     expect(getPowerSyncMock).not.toHaveBeenCalled();
+  });
+
+  it('takes no date-override parameter and stamps started_at/timezone/local_date from the clock it was given', async () => {
+    const insertedValuesSpy = jest.fn();
+    const explicitDb = fakeDb(insertedValuesSpy);
+    const now = new Date('2026-08-20T10:00:00.000Z');
+
+    await startSession({ now }, explicitDb);
+
+    const [values] = insertedValuesSpy.mock.calls[0];
+    expect(values.startedAt).toBe(now.toISOString());
+    expect(values.localDate).toBe(captureCalendarDay(now).localDate);
+    expect(values.timezone).toBe(captureCalendarDay(now).timezone);
+  });
+});
+
+function fakeUpdateDb(setSpy: jest.Mock) {
+  return {
+    update: () => ({
+      set: (patch: Record<string, unknown>) => {
+        setSpy(patch);
+        return { where: () => Promise.resolve() };
+      },
+    }),
+  } as unknown as ReturnType<typeof getPowerSync>;
+}
+
+describe('setSessionDate — the single deliberate exception to D-06 (D-33, PITFALLS §12)', () => {
+  it('rewrites started_at, timezone and local_date together, matching captureCalendarDay for the supplied date and zone', async () => {
+    const setSpy = jest.fn();
+    const db = fakeUpdateDb(setSpy);
+    const date = new Date('2026-08-10T15:00:00.000Z');
+
+    await setSessionDate('s-1', date, 'America/New_York', db);
+
+    expect(setSpy).toHaveBeenCalledTimes(1);
+    const [patch] = setSpy.mock.calls[0];
+    const expected = captureCalendarDay(date, 'America/New_York');
+    expect(patch.startedAt).toBe(date.toISOString());
+    expect(patch.timezone).toBe(expected.timezone);
+    expect(patch.localDate).toBe(expected.localDate);
+  });
+
+  it('produces the local_date of the supplied IANA zone, not the device’s current one', async () => {
+    const setSpy = jest.fn();
+    const db = fakeUpdateDb(setSpy);
+    // Near midnight UTC: Auckland (UTC+12/+13) is already the next calendar day while Los Angeles
+    // (UTC-7/-8) is still the previous one — the same instant must resolve to two different
+    // local_date values depending on which zone is passed, proving no device-zone fallback leaks in.
+    const date = new Date('2026-08-10T23:30:00.000Z');
+
+    await setSessionDate('s-1', date, 'Pacific/Auckland', db);
+    const aucklandLocalDate = setSpy.mock.calls[0][0].localDate;
+
+    setSpy.mockClear();
+    await setSessionDate('s-1', date, 'America/Los_Angeles', db);
+    const laLocalDate = setSpy.mock.calls[0][0].localDate;
+
+    expect(aucklandLocalDate).not.toBe(laLocalDate);
+    expect(aucklandLocalDate).toBe(captureCalendarDay(date, 'Pacific/Auckland').localDate);
+    expect(laLocalDate).toBe(captureCalendarDay(date, 'America/Los_Angeles').localDate);
   });
 });
 
