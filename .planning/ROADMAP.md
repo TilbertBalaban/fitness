@@ -276,7 +276,7 @@ Plans:
   5. User can correct a mistake with a single tap-to-undo mid-workout, and can view, edit, duplicate, and backfill past workouts afterward
   6. User finishes to a summary showing muscles trained, PRs, and a per-exercise breakdown, and can correct entries from that screen
 
-**Plans**: 10/10 plans executed
+**Plans**: 16 plans (10/16 executed — 05-11…05-16 are gap-closure plans from `/gsd-verify-work`'s `gaps_found`)
 
 Plans:
 
@@ -304,6 +304,29 @@ Plans:
 **Wave 5** *(blocked on Wave 4)*
 
 - [x] 05-10-PLAN.md — Editing mode with the live machinery structurally unreachable, and backfilling a past workout to a chosen date
+
+**Gap closure** *(from 05-VERIFICATION.md: `gaps_found`, 12/16 must-haves verified)*
+
+**Wave 1**
+
+- [ ] 05-11-PLAN.md — Tracer: persist `workout_session.cycle_id` end-to-end (both schemas, sync apply path, start funnel, both screen call sites) with a [BLOCKING] live schema push — LOG-15
+- [ ] 05-13-PLAN.md — UI-SPEC amendment for the three unspecified surfaces (set-row long-press note, Session Note menu row, reorder drag sheet) plus the seal-blocking COVERAGE.md — LOG-14, LOG-16
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 05-12-PLAN.md — Browser-real proof that write-back targets the cycle override, not the base row, and survives a reload — LOG-15
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 05-14-PLAN.md — Set-level long-press and Session Note triggers, the relocated warm-up "W" badge, and a three-level notes spec — LOG-16
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 05-15-PLAN.md — ReorderExercisesSheet, transactional and idempotent reorder, font-scale-aware drop arithmetic, drag spec — LOG-14
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 05-16-PLAN.md — Execute the full Playwright durability project (12 specs, never run before), fix real failures, close WINDOWS #109/#116/#118/#123 — LOG-14, LOG-15, LOG-16
 
 ### Phase 6: Gym Profiles & Plate Math
 
