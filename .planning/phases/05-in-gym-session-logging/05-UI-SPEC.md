@@ -267,6 +267,111 @@ Extends Phase 1's R1–R3 and Phase 4's R4–R6 (all still binding: wrap-and-gro
 
 ---
 
+## Amendment A — Gap-Closure Surfaces (2026-08-25)
+
+Gap closure identified three surfaces that shipped no written contract: the set-row note trigger,
+the session-level note trigger, and the exercise reorder interaction (E10 lists Reorder as one of
+four fixed rows and specifies nothing for it). This amendment is additive only — no existing
+section is rewritten, and the only edits to E1–E11 are the single row each added to E4 and E7
+below. 05-14 and 05-15 implement against A.1/A.2 and A.3 respectively.
+
+### A.1 — Set Row note affordance (amends Set Row / E4)
+
+- A **long press anywhere on a set row** opens `NoteSheet` at `level: 'set'` for that
+  `logged_set`. Default `delayLongPress` (500 ms) — no custom delay.
+- **Coexistence with the existing tap targets:** the row's press targets are nested (set-number,
+  three field Pressables, each field's inner reference Pressable, checkmark), and a nested
+  `Pressable` swallows a gesture from its parent — so the same `onLongPress` handler is attached
+  to every one of those press targets as well as the row container, rather than to the container
+  alone. `onPress` still fires only when the press was not a long press, so tap-to-autofill
+  (D-17) and tap-to-complete (D-19) are unchanged: no delay is introduced on any existing tap,
+  and no existing single-tap affordance is placed behind a disambiguation window.
+- **Accessibility:** a long press is unavailable to a screen-reader user, so every row press
+  target additionally declares an `accessibilityActions` entry `{ name: 'note', label: 'Add note' }`
+  handled by `onAccessibilityAction` and routed to the same handler. The row's own
+  `accessibilityHint` reads **"Long press to add a note"**.
+- **Note-present tell:** a set row whose `logged_set.notes` is non-null renders a 6px `bg-accent`
+  dot immediately before the checkmark column, matching E6's Note-button badge treatment exactly
+  (same size, same colour, same "does this already have a note" question) — the only new visual
+  element on the row. A row with no note renders no dot and no reserved gap.
+- **Modes:** available in `live` and `editing`. **Not** available in `summary-correction` — the
+  summary's expanded correction rows are a distinct, numeric-correction-only surface (E9), and
+  adding a note affordance there is out of scope for this run; state this explicitly rather than
+  leaving it implicit (D-32/R10).
+- E4's UI Considerations table below gains one row: `Note present / absent | explicit | A row
+  with a note shows a 6px bg-accent dot before the checkmark; a row without one shows nothing and
+  reserves no gap. Long press opens NoteSheet at level 'set'; the accessibility action 'Add note'
+  is the non-gestural equivalent.`
+
+### A.2 — Session Note row (amends Active Workout screen / E7)
+
+- The session `Menu` popover `workout.tsx` already renders gains a third row, **"Session Note"**,
+  between Pause/Resume and Discard, opening `NoteSheet` at `level: 'session'` for the
+  `workout_session` row. Same 48×48 row geometry and same `text-foreground` treatment as the
+  Pause/Resume row; Discard stays last and stays `text-destructive`, so the destructive action is
+  never adjacent to the newly-added benign one.
+- Selecting it closes the menu before the sheet opens (the menu is a popover, not a stack).
+- **Modes:** `live` only, because the Menu itself is only rendered in `live` mode (it hangs off
+  the header-timer region, which `editing` mode replaces with the session's date per the Session
+  Modes table, and `summary-correction` has its own layout). LOG-16's three levels are all
+  reachable in `live`; `editing` and `summary-correction` expose the exercise-level note only.
+  State this scope explicitly.
+- A session that already has a note shows the same 6px `bg-accent` dot trailing the row's label.
+- E7's UI Considerations table below gains one row: `Session menu | explicit | The Menu popover
+  renders exactly three rows in live mode — Pause/Resume, Session Note, Discard — fixed arity, no
+  conditional hiding; Discard stays last and destructive-coloured.`
+
+### A.3 — Reorder Exercises sheet (new surface, resolves E10's unspecified Reorder row)
+
+A new component `ReorderExercisesSheet`, opened by `SessionActionSheet`'s existing Reorder row.
+`SESSION_EXERCISE_ACTIONS` keeps its fixed arity of four — Reorder stops being a no-op, it does
+not become a fifth row.
+
+- **Shape:** the same overlay + `ScrollView` card as `SessionActionSheet`/`RemoveExerciseDialog`
+  (`bg-background/80` overlay, `max-w-[400px]`, `rounded-md bg-surface p-lg`), heading
+  **"Reorder Exercises"**, a vertical list of every non-removed session exercise in current
+  `order_index` order, and a single trailing **"Done"** button (same Cancel-row geometry the
+  sibling sheets use, but labelled Done since every drag has already been committed).
+- **Row anatomy:** exercise name (Body, wrap-and-grow per R4) over its completion fraction
+  (`3/4`, Label, muted — the same fraction the exercise strip shows, warm-ups excluded from the
+  denominator), with a trailing `DragHandle` (the shipped Phase 4 component: 48×48,
+  `reorder-three-outline`, `accessibilityLabel` `Reorder {name}`). The `.web.tsx` sibling resolves
+  automatically — no `Platform.OS` branch (D-08).
+- **Drag arithmetic:** reuses `reorder-drag.ts`'s `computeDropTarget`/`neighboursForIndex`
+  verbatim. Because R4 forbids clipping, a row at large OS font scale grows past
+  `SLOT_ROW_HEIGHT` (72), which would make a fixed-constant drop calculation progressively wrong;
+  the sheet therefore measures its first row's laid-out height via `onLayout` and passes it as the
+  drag unit, falling back to `SLOT_ROW_HEIGHT` before first layout. `computeDropTarget` gains an
+  optional `rowHeight` parameter defaulting to `SLOT_ROW_HEIGHT`, so Phase 4's existing callers are
+  untouched.
+- **Handle visibility:** the handle renders only when the sheet lists two or more exercises,
+  reusing Phase 4's own `exercise-count >= 2` rule (04-UI-SPEC's D-23 amendment) rather than
+  inventing a second rule.
+- **Commit:** on drop, the sheet computes the new ordered id array and calls
+  `reorderSessionExercises(sessionId, orderedIds)`; the list re-renders from the returned order.
+  Removed exercises (`removed_at` non-null) are neither listed nor renumbered.
+- **Modes:** available in `live` and `editing` — both render exercise pages through `ExercisePage`
+  and therefore both reach `SessionActionSheet`. Not available in `summary-correction`, which has
+  no overflow sheet. State this explicitly (D-32/R10).
+- **Copy:** heading **"Reorder Exercises"**; empty body **"No exercises to reorder"** with
+  **"Add an exercise from the workout screen to get started."**; confirm **"Done"**. Added to the
+  Copywriting Contract table as a new row below. No streak, nudge or shaming framing (P3).
+
+**Reorder Exercises copy — added to the Copywriting Contract table:**
+
+| Element | Copy |
+|---------|------|
+| Reorder Exercises sheet | Heading: **"Reorder Exercises"** · Empty heading: **"No exercises to reorder"** / body: "Add an exercise from the workout screen to get started." · confirm **"Done"** |
+
+**Backstop accounting (no silent drops).** The existing `### Backstop Summary — planner action
+required` lists six unresolved backstops. Of those, **E4 Set Row — Error / failure** is in scope
+for this gap-closure run (05-14 touches E4) and is carried forward as a `backstop` must-have
+there. The other five — E8 Home In-Progress Banner error, E9 Workout Summary empty and error,
+E11 History tab populated and partial — name surfaces this run does not touch and remain **open
+and unresolved after gap closure**; see the appended line in the Backstop Summary below.
+
+---
+
 ## Screen & Component Inventory
 
 | Surface | File | Decision refs | Notes |
@@ -299,7 +404,7 @@ heuristic cue-match — E1's and E2's prose tripped only one cue each and were c
 Empty-state and error-state **copy** is not restated here — it lives in **Copywriting Contract**
 and is referenced by the rows below.
 
-**Coverage:** 80 applicable · 80 resolved (74 explicit, 6 backstop) · 0 unresolved
+**Coverage:** 98 applicable · 98 resolved (92 explicit, 6 backstop) · 0 unresolved
 
 A **backstop** row is a real gap: the contract does not fix it, so the planner must wire a held-out
 UI-state test rather than assume a rendering. At verify time an unwired backstop routes to
@@ -356,6 +461,7 @@ UI-state test rather than assume a rendering. At verify time an unwired backstop
 | Overflow / truncation | explicit | The row never clips, never scrolls horizontally, and never shrinks a neighbouring column below its content minimum: the set-number column is fixed at 24px, the checkmark at 48px (glyph-only, not text-scaled), and the three field columns flex:1 and grow the row's height at large font scale (R4). |
 | Zero / one / many | explicit | No plural copy on the row; a one-set exercise renders a single row identically to any row in a many-set exercise. Warm-up rows carry a leading 'W' badge and are excluded from the strip's completion fraction regardless of count. |
 | Long text | explicit | Values wrap-and-grow per R4 — the column widens and the row's height grows; 'No previous' and '—' are the only text strings and both are short and fixed. |
+| Note present / absent | explicit | A row with a note shows a 6px bg-accent dot before the checkmark; a row without one shows nothing and reserves no gap. Long press opens NoteSheet at level 'set'; the accessibility action 'Add note' is the non-gestural equivalent. |
 
 ### E5 — Numeric Keypad
 
@@ -401,6 +507,7 @@ UI-state test rather than assume a rendering. At verify time an unwired backstop
 | Overflow / truncation | explicit | Set rows scroll vertically within the exercise page, the strip scrolls horizontally, and the header bar and keypad are non-scrolling flex siblings — so neither ever overlaps the scroll region. |
 | Zero / one / many | explicit | A one-exercise session renders a single strip chip and a single pager page with no pager-affordance change; many exercises scroll the strip horizontally. No plural copy appears anywhere on the screen. |
 | Long text | explicit | R4 wrap-and-grow applies to every text surface here; the 'Editing {Weekday, Month D}' date line wraps to a second line rather than truncating. |
+| Session menu | explicit | The Menu popover renders exactly three rows in live mode — Pause/Resume, Session Note, Discard — fixed arity, no conditional hiding; Discard stays last and destructive-coloured. |
 
 ### E8 — Home In-Progress Banner
 
@@ -462,6 +569,38 @@ UI-state test rather than assume a rendering. At verify time an unwired backstop
 | Zero / one / many | explicit | Zero renders the empty state above; one and many render the same list with no plural copy. |
 | Long text | explicit | R4 wrap-and-grow applies — session labels and dates never truncate or ellipsise. |
 
+### E12 — Reorder Exercises Sheet
+
+*Element kinds:* `list-collection`, `interactive-control`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | A session whose every exercise was removed lists nothing and shows the empty copy ('No exercises to reorder' / 'Add an exercise from the workout screen to get started.') with Done still enabled — never a dead end, mirroring E11's rule. |
+| Loading / in-flight | explicit | None — reads already-loaded session state (R6). |
+| Error / failure | explicit | No async failure of its own; a failed `reorderSessionExercises` write leaves the list at its last committed order and the sheet stays open. |
+| Populated / happy path | explicit | One row per non-removed exercise in `order_index` order, name over fraction, trailing 48×48 handle. |
+| Partial / incomplete | explicit | Partially-completed exercises show their real `N/M` fraction and are fully draggable — completion never gates reordering. |
+| Overflow / truncation | explicit | The card scrolls internally at its `max-h-full`; rows never clip and the list never scrolls horizontally. |
+| Zero / one / many | explicit | Zero renders the empty copy; one renders a single row with no handle, since a one-element list has nowhere to go; many scroll internally — no plural copy anywhere. |
+| Long text | explicit | Names wrap and grow the row per R4; the drag unit is the measured row height, so growth stays consistent with the drop arithmetic. |
+| Large OS font scale | explicit | Rows grow rather than clip, the 48×48 handle floor is held, and the measured-row-height rule above keeps a one-row drag equal to a one-position move. |
+
+### E13 — Session Menu
+
+*Element kinds:* `list-collection`, `interactive-control`, `static-content`
+
+| State | Verification | Contract |
+|-------|--------------|----------|
+| Empty / no data | explicit | Never empty — fixed three-row constant (Pause/Resume, Session Note, Discard), never conditionally hidden. |
+| Loading / in-flight | explicit | None — the menu is pure local UI opened from already-loaded session state (R6). |
+| Error / failure | explicit | No async failure of its own; inherits the parent Active Workout screen's error state. |
+| Populated / happy path | explicit | Three rows, fixed arity, matching the Pause/Resume row's 48×48 geometry and `text-foreground` treatment; Discard stays last and `text-destructive`. |
+| Partial / incomplete | explicit | The row set is constant and every row is always actionable; the only per-item variable state is the Session Note row's 6px bg-accent dot when a note already exists. |
+| Overflow / truncation | explicit | Fixed three-row popover; at large OS font scale it grows in height and scrolls internally rather than clipping a row (R4). |
+| Zero / one / many | explicit | Fixed arity of three rows — arity never varies, so there is no zero or one case and no plural copy. |
+| Long text | explicit | Row labels wrap-and-grow per R4; no truncation. |
+| Large OS font scale | explicit | Rows grow in height rather than clipping; the 48×48 floor is held for every row at any scale. |
+
 ### Backstop Summary — planner action required
 
 - **E4 Set Row — Error / failure:** What a set row shows if its local write fails is not specified — D-01 guarantees the write succeeds offline, and sync failure is deliberately not surfaced on the row. Needs a held-out UI-state test asserting the row's rendering on an unrecoverable local write failure.
@@ -470,6 +609,8 @@ UI-state test rather than assume a rendering. At verify time an unwired backstop
 - **E9 Workout Summary — Error / failure:** What the summary shows if PR detection or e1RM computation throws is not specified. Needs a held-out UI-state test asserting the breakdown still renders its sets/reps/weight/volume line with the e1RM cell degraded, rather than failing the whole screen.
 - **E11 History tab — Populated / happy path:** The history session-row anatomy — what each past-workout row shows, and where view/edit/duplicate/delete hang off it — is not specified in this UI-SPEC. Needs a held-out visual test once the planner fixes the row contract.
 - **E11 History tab — Partial / incomplete:** How a partially-logged past session renders in the history list (whether an abandoned session is shown, hidden, or marked) is not specified. Needs a held-out UI-state test pinning it.
+- **Gap-closure disposition (2026-08-25):** E4 Set Row — Error / failure is carried forward as a backstop must-have for 05-14 (in scope this run). The remaining five backstops — E8 Home In-Progress Banner Error/failure, E9 Workout Summary Empty/no data and Error/failure, E11 History tab Populated/happy path and Partial/incomplete — name surfaces outside this gap-closure run's four confirmed gaps and remain **open and unresolved after gap closure**.
+
 ## Registry Safety
 
 | Registry | Blocks Used | Safety Gate |
