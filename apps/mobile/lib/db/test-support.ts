@@ -243,15 +243,11 @@ const WORKER_PATH = '/@powersync/worker.js';
 // harness route's window-attach branch from a production export with the flag unset (T-02-30).
 export const DURABILITY_HARNESS_ENABLED = process.env.EXPO_PUBLIC_DURABILITY_HARNESS === '1';
 
-// The ternary, not a bare string literal, is load-bearing: an unconditional
-// `export const DURABILITY_HARNESS_GLOBAL = '__fitnessDurability'` would survive in a production
-// bundle regardless of the flag, because __durability.web.tsx imports this module unconditionally
-// for its other (always-real) exports — the string constant itself is not behind any branch.
-// Terser folds this literal-boolean ternary at build time, so the '__fitnessDurability' branch is
-// eliminated from the compiled output whenever the flag is unset, exactly as the window-attach
-// branch in __durability.web.tsx is.
-export const DURABILITY_HARNESS_GLOBAL =
-  process.env.EXPO_PUBLIC_DURABILITY_HARNESS === '1' ? '__fitnessDurability' : '';
+// Re-exported from a dependency-free leaf module: e2e spec files need only this string constant
+// and import it under Playwright's Node process, which has no platform-extension resolution and
+// would otherwise be dragged through this file's own '@powersync/react-native'-importing chain.
+// See durability-harness-key.ts for the full rationale.
+export { DURABILITY_HARNESS_GLOBAL } from './durability-harness-key';
 
 let rawDb: PowerSyncDatabase | null = null;
 let dbFilename: string | null = null;

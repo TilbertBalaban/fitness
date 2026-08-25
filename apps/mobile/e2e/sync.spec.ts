@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
-import { DURABILITY_HARNESS_GLOBAL } from '../lib/db/test-support';
+import { DURABILITY_HARNESS_GLOBAL } from '../lib/db/durability-harness-key';
 
 // Same shared throwaway password apps/api's own e2e suites already use
 // (apps/api/test/sync-push.e2e-spec.ts's PASSWORD constant) — never a real credential, never

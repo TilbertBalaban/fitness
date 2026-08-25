@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { DURABILITY_HARNESS_GLOBAL } from '../lib/db/test-support';
+import { DURABILITY_HARNESS_GLOBAL } from '../lib/db/durability-harness-key';
 
 interface RawWorkoutSession {
   id: string;
