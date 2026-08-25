@@ -276,7 +276,7 @@ Plans:
   5. User can correct a mistake with a single tap-to-undo mid-workout, and can view, edit, duplicate, and backfill past workouts afterward
   6. User finishes to a summary showing muscles trained, PRs, and a per-exercise breakdown, and can correct entries from that screen
 
-**Plans**: 16 plans (10/16 executed — 05-11…05-16 are gap-closure plans from `/gsd-verify-work`'s `gaps_found`)
+**Plans**: 12/16 plans executed (10/16 executed — 05-11…05-16 are gap-closure plans from `/gsd-verify-work`'s `gaps_found`)
 
 Plans:
 
@@ -309,8 +309,8 @@ Plans:
 
 **Wave 1**
 
-- [ ] 05-11-PLAN.md — Tracer: persist `workout_session.cycle_id` end-to-end (both schemas, sync apply path, start funnel, both screen call sites) with a [BLOCKING] live schema push — LOG-15
-- [ ] 05-13-PLAN.md — UI-SPEC amendment for the three unspecified surfaces (set-row long-press note, Session Note menu row, reorder drag sheet) plus the seal-blocking COVERAGE.md — LOG-14, LOG-16
+- [x] 05-11-PLAN.md — Tracer: persist `workout_session.cycle_id` end-to-end (both schemas, sync apply path, start funnel, both screen call sites) with a [BLOCKING] live schema push — LOG-15
+- [x] 05-13-PLAN.md — UI-SPEC amendment for the three unspecified surfaces (set-row long-press note, Session Note menu row, reorder drag sheet) plus the seal-blocking COVERAGE.md — LOG-14, LOG-16
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -496,7 +496,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
-| 5. In-Gym Session Logging | 10/10 | In Progress|  |
+| 5. In-Gym Session Logging | 12/16 | In Progress|  |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
 | 8. Progression Engine | 0/TBD | Not started | - |
