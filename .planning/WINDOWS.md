@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 109
+open_count: 110
 waived_count: 1
 fixed_count: 17
-total_count: 127
-last_updated: 2026-08-25T06:53:04.949Z
+total_count: 128
+last_updated: 2026-08-25T07:35:52.441Z
 ---
 
 # Broken Windows Ledger
@@ -142,6 +142,7 @@ last_updated: 2026-08-25T06:53:04.949Z
 | 128 | 05 | unrun-verify | apps/mobile/e2e/session-edit.spec.ts |  | session-edit.spec.ts (05-10) written and typechecked but not executed — browser-testing-only-on-request. Needs pnpm --filter mobile test:e2e:durability -- session-edit.spec.ts. | open |  | 2026-08-25T06:52:48.979Z |  |
 | 129 | 05 | unrun-verify | apps/mobile/components/SessionDateField.tsx |  | Native date-picker presentation (the calendar grid's on-device rendering) and native OS font-scale wrapping on the editing header (formatEditingHeader) are unverifiable on this machine — no Xcode/Android SDK/simulator available. Deferred to ROADMAP Phase 999.1's native/cross-device sweep. | open |  | 2026-08-25T06:52:59.973Z |  |
 | 130 | 05 | unmet-truth | apps/mobile/lib/db/test-support.ts | 187 | D-33's single-funnel claim ('exactly one insert(workoutSession) in apps/mobile/') holds for production code (log-set.ts's startSession is the only real creation path) but a pre-existing test-only seeding helper, seedPriorHeaviestSet (predates 05-10, used by workout-summary.spec.ts's real-PR fixture), performs a second, direct insert(workoutSession) to seed a days-old prior session outside any funnel. Out of scope for 05-10 (not caused by this plan's changes); left as-is per the scope-boundary rule. | open |  | 2026-08-25T06:53:04.949Z |  |
+| 131 | 05 | deviation | apps/mobile/lib/db/schema.ts,apps/api/src/db/schema/session.ts |  | CR-02 review-fix intentionally did not add a unique (session_exercise_id, set_index) constraint to either schema, though REVIEW.md's fix suggestion mentioned it as a belt-and-suspenders option. The db.transaction wrap around logSet's select-max-then-insert (log-set.ts) already closes the race at its source. Adding the unique constraint would require a live Postgres db:push (explicitly out of scope for the review-fix agent) and PowerSync schema-versioning verification on the SQLite mirror (untested here). Revisit if a future finding shows the transaction-only fix insufficient. | open |  | 2026-08-25T07:35:52.441Z |  |
 
 ````json
 [
@@ -1667,6 +1668,18 @@ last_updated: 2026-08-25T06:53:04.949Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-25T06:53:04.949Z",
+    "resolved_at": null
+  },
+  {
+    "id": 131,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/lib/db/schema.ts,apps/api/src/db/schema/session.ts",
+    "line": null,
+    "description": "CR-02 review-fix intentionally did not add a unique (session_exercise_id, set_index) constraint to either schema, though REVIEW.md's fix suggestion mentioned it as a belt-and-suspenders option. The db.transaction wrap around logSet's select-max-then-insert (log-set.ts) already closes the race at its source. Adding the unique constraint would require a live Postgres db:push (explicitly out of scope for the review-fix agent) and PowerSync schema-versioning verification on the SQLite mirror (untested here). Revisit if a future finding shows the transaction-only fix insufficient.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-25T07:35:52.441Z",
     "resolved_at": null
   }
 ]
