@@ -134,6 +134,15 @@ None - no external service configuration required. This plan writes two markdown
 - `api-coverage.verify-pre` no longer blocks the Phase 5 seal.
 - The five out-of-scope backstops (E8 Home banner error, E9 Workout Summary empty/error, E11 History row anatomy/partial) remain explicitly open in the Backstop Summary — not this run's scope, and not silently dropped.
 
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/05-in-gym-session-logging/05-UI-SPEC.md`
+- FOUND: `.planning/phases/05-in-gym-session-logging/COVERAGE.md`
+- FOUND: `.planning/phases/05-in-gym-session-logging/05-13-SUMMARY.md`
+- FOUND: commit `ab1c030` (Task 1)
+- FOUND: commit `e826afa` (Task 2)
+- FOUND: commit `c76a56e` (this SUMMARY.md)
+
 ---
 *Phase: 05-in-gym-session-logging*
 *Completed: 2026-08-25*
