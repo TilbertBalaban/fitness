@@ -177,7 +177,7 @@ export async function loadSessionSummary(sessionId: string, userId: string | nul
   }
 
   const trainedExerciseIds = new Set<string>();
-  const exerciseIdBySetId = new Map<string, string>();
+  const sessionExerciseIdBySetId = new Map<string, string>();
   const breakdown: ExerciseBreakdown[] = [];
 
   for (const exercise of exerciseRows) {
@@ -195,7 +195,7 @@ export async function loadSessionSummary(sessionId: string, userId: string | nul
     let bestE1rm: number | null = null;
 
     for (const set of workingCompleted) {
-      exerciseIdBySetId.set(set.id, exercise.exerciseId);
+      sessionExerciseIdBySetId.set(set.id, exercise.id);
       totalReps += set.reps;
 
       if (set.weightKg === null) continue;
@@ -234,16 +234,16 @@ export async function loadSessionSummary(sessionId: string, userId: string | nul
   // durable row detectPrsForSession wrote for the original value (personal-record.ts's own
   // computeSessionPrTypesBySetId doc comment).
   const personalRecordsBySetId = await computeSessionPrTypesBySetId(sessionId, db);
-  const prTypesByExerciseId = new Map<string, Set<PrType>>();
+  const prTypesBySessionExerciseId = new Map<string, Set<PrType>>();
   for (const [loggedSetId, prTypes] of personalRecordsBySetId) {
-    const exerciseId = exerciseIdBySetId.get(loggedSetId);
-    if (!exerciseId) continue;
-    const set = prTypesByExerciseId.get(exerciseId) ?? new Set<PrType>();
+    const sessionExerciseId = sessionExerciseIdBySetId.get(loggedSetId);
+    if (!sessionExerciseId) continue;
+    const set = prTypesBySessionExerciseId.get(sessionExerciseId) ?? new Set<PrType>();
     for (const prType of prTypes) set.add(prType);
-    prTypesByExerciseId.set(exerciseId, set);
+    prTypesBySessionExerciseId.set(sessionExerciseId, set);
   }
   for (const row of breakdown) {
-    row.prTypes = [...(prTypesByExerciseId.get(row.exerciseId) ?? [])];
+    row.prTypes = [...(prTypesBySessionExerciseId.get(row.sessionExerciseId) ?? [])];
   }
 
   const durationSeconds = elapsedWorkoutSeconds({

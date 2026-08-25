@@ -1,4 +1,5 @@
 import { E1RM_MAX_VALID_REPS } from '@fitness/pr-rules';
+import type { PrType } from '@fitness/api-contracts';
 import { loadSessionSummary } from '../summary-query';
 import { getPowerSync } from '../powersync';
 import { loadExerciseNameMap } from '../programs/load-program';
@@ -193,6 +194,30 @@ describe('loadSessionSummary — constant query cost (PITFALLS §13)', () => {
     await loadSessionSummary('s-1', 'user-1', large.db);
 
     expect(small.getSelectCount()).toBe(large.getSelectCount());
+  });
+});
+
+describe('loadSessionSummary — PR badge attribution by session_exercise (CR-03)', () => {
+  it('attributes a PR only to the session_exercise instance that earned it, not every instance sharing the exerciseId', async () => {
+    const { db } = fakeDb({
+      workoutSessionRows: [SESSION_ROW],
+      sessionExerciseRows: [
+        { id: 'se-slot-1', sessionId: 's-1', exerciseId: 'ex-1', orderIndex: 0, removedAt: null },
+        { id: 'se-slot-5', sessionId: 's-1', exerciseId: 'ex-1', orderIndex: 4, removedAt: null },
+      ],
+      loggedSetRows: [
+        { id: 'ls-slot-1', sessionExerciseId: 'se-slot-1', setIndex: 1, setType: 'normal', weightKg: '60.000', reps: 5, rir: 2, completed: true, loggedAt: '2026-08-24T09:05:00.000Z' },
+        { id: 'ls-slot-5', sessionExerciseId: 'se-slot-5', setIndex: 1, setType: 'normal', weightKg: '100.000', reps: 5, rir: 0, completed: true, loggedAt: '2026-08-24T09:45:00.000Z' },
+      ],
+    });
+    computeSessionPrTypesBySetIdMock.mockResolvedValue(new Map<string, PrType[]>([['ls-slot-5', ['heaviest_weight']]]));
+
+    const result = await loadSessionSummary('s-1', 'user-1', db);
+
+    const slotOne = result?.breakdown.find((row) => row.sessionExerciseId === 'se-slot-1');
+    const slotFive = result?.breakdown.find((row) => row.sessionExerciseId === 'se-slot-5');
+    expect(slotOne?.prTypes).toEqual([]);
+    expect(slotFive?.prTypes).toEqual(['heaviest_weight']);
   });
 });
 
