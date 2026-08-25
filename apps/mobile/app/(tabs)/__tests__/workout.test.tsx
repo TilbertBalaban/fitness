@@ -230,6 +230,30 @@ describe('buildSetRows', () => {
     expect(rows.map((row) => row.setId)).toEqual(['ls-warmup', 'ls-1', null]);
   });
 
+  // WR-01: a warm-up regenerated after working sets already exist gets logSet-assigned indices
+  // above the working sets' (log-set.ts's max(set_index) + 1), even though orderForDisplay still
+  // buckets it first for rendering — so the draft row's own index must track the highest raw
+  // set_index present, not existingSets.length, or its previousSetReference lookup keys against
+  // the wrong historical set for this position.
+  it('computes the trailing draft set_index from the highest raw set_index present, not a row count, after a gapped warm-up regeneration', () => {
+    const workingA = { ...LOGGED_ROW, id: 'ls-working-a', setIndex: 4, setType: 'normal' };
+    const workingB = { ...LOGGED_ROW, id: 'ls-working-b', setIndex: 5, setType: 'normal' };
+    const regeneratedWarmup = { ...WARMUP_ROW, id: 'ls-warmup-regen', setIndex: 6, setType: 'warmup' };
+
+    const rows = buildSetRows(
+      [workingA, workingB, regeneratedWarmup],
+      {},
+      { weight: null, reps: null, rir: null },
+      'kg',
+      null,
+    );
+
+    expect(rows).toHaveLength(4);
+    const draftRow = rows[rows.length - 1];
+    expect(draftRow.setId).toBeNull();
+    expect(draftRow.setIndex).toBe(7);
+  });
+
   it('attaches the matching reference for an existing row and for the trailing draft, by set_index', () => {
     const referenceMap = {
       'se-1:1': { weightKg: '95.000', reps: 8, sessionId: 's-prior', loggedAt: 't' },

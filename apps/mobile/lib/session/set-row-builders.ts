@@ -120,7 +120,13 @@ export function buildSetRows(
   if (activeField && activeField.setId === null && activeField.touched) {
     draft = { ...draft, [activeField.field]: activeField.value };
   }
-  const draftSetIndex = existingSets.length + 1;
+  // Mirrors logSet's own max(set_index) + 1 (log-set.ts), not existingSets.length (WR-01) — a
+  // warm-up regeneration after working sets already exist can leave gaps in the raw set_index
+  // sequence (orderForDisplay buckets warm-ups first for RENDERING, but assigned indices stay
+  // whatever logSet computed at insert time), so a plain count silently diverges from the index
+  // logSet will actually assign next, keying the draft row's reference lookup off the wrong
+  // historical set for this position.
+  const draftSetIndex = existingSets.length === 0 ? 1 : Math.max(...existingSets.map((row) => row.setIndex)) + 1;
   const draftReference = resolveReference(referenceContext.sessionExerciseId, draftSetIndex, referenceContext.referenceMap, weightUnit);
   rows.push({ setId: null, setIndex: draftSetIndex, values: draft, reference: draftReference, completed: false });
 
