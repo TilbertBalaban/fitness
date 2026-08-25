@@ -278,6 +278,19 @@ describe('duplicateSession — copies the prescription, not the performance (LOG
 
     expect(getPowerSyncMock).toHaveBeenCalled();
   });
+
+  // WR-02: startSession and the addSessionExercise/setSessionExerciseTargets loop must all run
+  // inside one transaction, mirroring deleteSession's own all-or-nothing guarantee below — an
+  // interruption partway through must never leave a new session with some but not all of the
+  // source's exercises/targets.
+  it('runs startSession and the whole exercise-copy loop inside exactly one transaction call', async () => {
+    const store = inMemoryDb();
+    seedSourceSession(store, 'src-ws');
+
+    await duplicateSession({ sourceSessionId: 'src-ws' }, store.db);
+
+    expect(store.getTransactionCount()).toBe(1);
+  });
 });
 
 describe('deleteSession — all-or-nothing across three tables (T-05-09-02)', () => {

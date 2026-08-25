@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { isEmptyOverride, WARMUP_SET_TYPE, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
 import { warmupSets } from '@fitness/pr-rules';
 import { addSessionExercise, logSet } from './log-set';
-import { getPowerSync, type WriteDb } from './powersync';
+import { getPowerSync, type WriteDb, type WriteHandle } from './powersync';
 import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from './schema';
 
 // The module every session-scoped write these action-bar/overflow surfaces perform lives behind
@@ -45,7 +45,7 @@ export async function setNote({ level, id, text }: SetNoteInput, db: WriteDb = g
 export async function setSessionExerciseTargets(
   sessionExerciseId: string,
   targets: ResolvedTarget,
-  db: WriteDb = getPowerSync(),
+  db: WriteHandle = getPowerSync(),
 ): Promise<void> {
   await db
     .update(sessionExercise)

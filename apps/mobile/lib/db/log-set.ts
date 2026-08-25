@@ -3,7 +3,7 @@ import * as unitsContract from '@fitness/api-contracts';
 import { EMPTY_TARGET, resolveTarget, type ResolvedTarget } from '@fitness/api-contracts';
 import { captureCalendarDay } from '../calendar-day';
 import { generateClientId } from './id';
-import { getPowerSync, type WriteDb, type WriteTx } from './powersync';
+import { getPowerSync, type WriteDb, type WriteHandle, type WriteTx } from './powersync';
 import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from './schema';
 
 export interface StartSessionInput {
@@ -21,7 +21,7 @@ export interface StartSessionInput {
 // ever touch them, and a third writer reopens the timezone bug PITFALLS §12 already fixed once.
 export async function startSession(
   input: StartSessionInput = {},
-  db: WriteDb = getPowerSync(),
+  db: WriteHandle = getPowerSync(),
 ): Promise<string> {
   const id = generateClientId();
   const startedAt = input.now ?? new Date();
@@ -63,7 +63,7 @@ const EMPTY_PRESCRIPTION: Prescription = EMPTY_TARGET;
 async function resolvePrescriptionForCycle(
   routineExerciseId: string,
   cycleId: string | null | undefined,
-  db: WriteDb,
+  db: WriteHandle,
 ): Promise<Prescription> {
   const [base] = await db
     .select({
@@ -104,7 +104,7 @@ async function resolvePrescriptionForCycle(
 // routine_exercise again (D-05).
 export async function addSessionExercise(
   input: AddSessionExerciseInput,
-  db: WriteDb = getPowerSync(),
+  db: WriteHandle = getPowerSync(),
 ): Promise<string> {
   const id = generateClientId();
 

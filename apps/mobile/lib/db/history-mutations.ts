@@ -42,6 +42,13 @@ interface SourceSessionExerciseRow {
 // overwrites those five columns with the SOURCE row's frozen snapshot, which is the prescription
 // D-05 promises every later read sees, not whatever routine_exercise holds today. No logged_set
 // row is copied: duplicating a workout means doing it again, not claiming you already did it.
+//
+// startSession and the addSessionExercise/setSessionExerciseTargets loop all run inside ONE local
+// transaction (WR-02): an interruption partway through the loop can never leave a new,
+// partially-built workout_session with some but not all of the source session's exercises/targets
+// — the same all-or-nothing guarantee deleteSession below establishes for its own three deletes.
+// The two reads of the SOURCE session stay outside the transaction: they inform what to write, and
+// re-reading a source that is itself immutable mid-duplication carries no atomicity requirement.
 export async function duplicateSession(
   { sourceSessionId, now }: DuplicateSessionInput,
   db: WriteDb = getPowerSync(),
@@ -72,44 +79,46 @@ export async function duplicateSession(
     .from(workoutSession)
     .where(eq(workoutSession.id, sourceSessionId));
 
-  const newSessionId = await startSession(
-    {
-      routineDayId: source?.routineDayId ?? null,
-      equipmentProfileId: source?.equipmentProfileId ?? null,
-      deviceId: source?.deviceId ?? null,
-      now,
-    },
-    db,
-  );
-
   const remaining = sourceRows.filter((row) => row.removedAt === null).sort((a, b) => a.orderIndex - b.orderIndex);
 
-  for (const row of remaining) {
-    const newSessionExerciseId = await addSessionExercise(
+  return db.transaction(async (tx: WriteTx) => {
+    const newSessionId = await startSession(
       {
-        sessionId: newSessionId,
-        exerciseId: row.exerciseId,
-        orderIndex: row.orderIndex,
-        supersetGroupId: row.supersetGroupId,
-        routineExerciseId: row.routineExerciseId,
+        routineDayId: source?.routineDayId ?? null,
+        equipmentProfileId: source?.equipmentProfileId ?? null,
+        deviceId: source?.deviceId ?? null,
+        now,
       },
-      db,
+      tx,
     );
 
-    await setSessionExerciseTargets(
-      newSessionExerciseId,
-      {
-        targetSets: row.targetSets,
-        targetRepMin: row.targetRepMin,
-        targetRepMax: row.targetRepMax,
-        targetRir: row.targetRir,
-        targetRestSeconds: row.targetRestSeconds,
-      },
-      db,
-    );
-  }
+    for (const row of remaining) {
+      const newSessionExerciseId = await addSessionExercise(
+        {
+          sessionId: newSessionId,
+          exerciseId: row.exerciseId,
+          orderIndex: row.orderIndex,
+          supersetGroupId: row.supersetGroupId,
+          routineExerciseId: row.routineExerciseId,
+        },
+        tx,
+      );
 
-  return newSessionId;
+      await setSessionExerciseTargets(
+        newSessionExerciseId,
+        {
+          targetSets: row.targetSets,
+          targetRepMin: row.targetRepMin,
+          targetRepMax: row.targetRepMax,
+          targetRir: row.targetRir,
+          targetRestSeconds: row.targetRestSeconds,
+        },
+        tx,
+      );
+    }
+
+    return newSessionId;
+  });
 }
 
 // The three deletes run inside ONE local transaction (T-05-09-02): an interruption between them

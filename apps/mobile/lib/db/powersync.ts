@@ -33,6 +33,14 @@ export type WriteDb = ReturnType<typeof wrapPowerSyncWithDrizzle>;
 // transaction can change that.
 export type WriteTx = Parameters<Parameters<WriteDb['transaction']>[0]>[0];
 
+// A handle accepted by write helpers that never open their own nested transaction (only
+// select/insert/update/delete) — lets a caller like duplicateSession (WR-02) pass its own `tx`
+// into startSession/addSessionExercise/setSessionExerciseTargets so D-33's single funnel still
+// holds true from inside a db.transaction(), rather than the caller reimplementing those inserts.
+// A helper that itself calls db.transaction() (e.g. logSet) must keep the narrower WriteDb type —
+// WriteTx has no `.transaction` method of its own.
+export type WriteHandle = WriteDb | WriteTx;
+
 let db: ReturnType<typeof wrapPowerSyncWithDrizzle> | null = null;
 let powersync: PowerSyncDatabase | null = null;
 
