@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import type { WeightUnit } from '@fitness/api-contracts';
 import { getPowerSync, type WriteDb } from './powersync';
 import { userPreference } from './schema';
 
@@ -23,6 +24,16 @@ export async function loadWorkoutPreferences(userId: string, db: WriteDb = getPo
 }
 
 export type WorkoutPreferenceKey = keyof WorkoutPreferences;
+
+// Shared by workout.tsx's live subtree and EditingWorkoutScreen.tsx's editing subtree (05-10) —
+// one query, one default, rather than each screen re-deriving its own fallback.
+export async function loadWeightUnit(userId: string, db: WriteDb = getPowerSync()): Promise<WeightUnit> {
+  const [row] = await db
+    .select({ weightUnit: userPreference.weightUnit })
+    .from(userPreference)
+    .where(eq(userPreference.id, userId));
+  return (row?.weightUnit as WeightUnit | undefined) ?? (DEFAULT_WEIGHT_UNIT as WeightUnit);
+}
 
 // Same insert-or-update singleton pattern as programs/lifecycle.ts's activateRoutine (D-14's row
 // IS the user id) — writes exactly the one named column, leaving the sibling flag and weight_unit

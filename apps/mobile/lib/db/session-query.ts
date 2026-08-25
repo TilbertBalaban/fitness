@@ -42,6 +42,10 @@ export interface LiveSessionRow {
   pausedAt: string | null;
   accumulatedPausedSeconds: number;
   restTargetAt: string | null;
+  // Read by 05-10's editing screen (the header line and SessionDateField's current value) — carried
+  // here rather than a second query, since loadSessionTree already selects this session's one row.
+  timezone: string;
+  localDate: string;
 }
 
 export interface LiveSessionData {
@@ -70,6 +74,8 @@ export async function loadSessionTree(
       pausedAt: workoutSession.pausedAt,
       accumulatedPausedSeconds: workoutSession.accumulatedPausedSeconds,
       restTargetAt: workoutSession.restTargetAt,
+      timezone: workoutSession.timezone,
+      localDate: workoutSession.localDate,
     })
     .from(workoutSession)
     .where(eq(workoutSession.id, sessionId));
