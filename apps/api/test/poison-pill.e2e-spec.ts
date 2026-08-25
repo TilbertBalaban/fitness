@@ -119,6 +119,33 @@ async function sessionExerciseRow(id: string): Promise<{ id: string } | undefine
   return rows[0];
 }
 
+// WR-03: logged_set's shape-completeness fields (completed/side/parent_set_id/rest_taken_seconds)
+// — data is untyped `Record<string, unknown>` on the wire, so `fields` intentionally stays typed
+// loosely rather than mirroring LoggedSetOpData 1:1, since these tests exist specifically to send
+// values of the WRONG type through it.
+function loggedSetOp(id: string, sessionExerciseId: string, fields: Record<string, unknown> = {}): SyncCrudOp {
+  return {
+    op_id: randomUUID(),
+    op: 'PUT',
+    type: 'logged_set',
+    id,
+    data: {
+      session_exercise_id: sessionExerciseId,
+      set_index: 1,
+      set_type: 'normal',
+      reps: 5,
+      completed: true,
+      logged_at: new Date().toISOString(),
+      ...fields,
+    },
+  };
+}
+
+async function loggedSetRow(id: string): Promise<{ id: string } | undefined> {
+  const { rows } = await pg.query('SELECT id FROM logged_set WHERE id = $1', [id]);
+  return rows[0];
+}
+
 beforeAll(async () => {
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
@@ -336,5 +363,100 @@ describe('Poison-pill isolation and session_exercise validation (e2e)', () => {
     expect(firstBody.rejected.some((r) => r.op_id === seOp.op_id && r.reason === 'invalid_field')).toBe(true);
     expect(secondBody.rejected.some((r) => r.op_id === seOp.op_id && r.reason === 'invalid_field')).toBe(true);
     expect(await sessionExerciseRow(seId)).toBeUndefined();
+  });
+});
+
+// WR-03: hasInvalidField's logged_set branch previously validated weight_kg/reps/set_index/
+// set_type/notes but not completed/side/parent_set_id/rest_taken_seconds — a malformed value for
+// any of those four passed application-level validation and only failed (or didn't) at the
+// Postgres layer. These cases pin the four new shape checks directly against the real /sync
+// endpoint, the same way the session_exercise cases above pin theirs.
+describe('logged_set validation (e2e, WR-03)', () => {
+  async function seedSessionExercise(cookie: string): Promise<{ sessionId: string; seId: string }> {
+    const sessionId = randomUUID();
+    const seId = randomUUID();
+    const res = await push(cookie, [workoutSessionOp(sessionId), sessionExerciseOp(seId, { session_id: sessionId })]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+    return { sessionId, seId };
+  }
+
+  it('rejects a logged_set PUT with a non-boolean completed as invalid_field, and inserts no row', async () => {
+    const cookie = await signUp('logged-set-bad-completed');
+    const { seId } = await seedSessionExercise(cookie);
+    const setId = randomUUID();
+    const op = loggedSetOp(setId, seId, { completed: 'yes' });
+
+    const res = await push(cookie, [op]);
+
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toContainEqual({ op_id: op.op_id, reason: 'invalid_field' });
+    expect(await loggedSetRow(setId)).toBeUndefined();
+  });
+
+  it('rejects a logged_set PUT with a non-string side as invalid_field', async () => {
+    const cookie = await signUp('logged-set-bad-side');
+    const { seId } = await seedSessionExercise(cookie);
+    const setId = randomUUID();
+    const op = loggedSetOp(setId, seId, { side: 7 });
+
+    const res = await push(cookie, [op]);
+
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toContainEqual({ op_id: op.op_id, reason: 'invalid_field' });
+    expect(await loggedSetRow(setId)).toBeUndefined();
+  });
+
+  it('rejects a logged_set PUT with a non-string parent_set_id as invalid_field', async () => {
+    const cookie = await signUp('logged-set-bad-parent');
+    const { seId } = await seedSessionExercise(cookie);
+    const setId = randomUUID();
+    const op = loggedSetOp(setId, seId, { parent_set_id: 42 });
+
+    const res = await push(cookie, [op]);
+
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toContainEqual({ op_id: op.op_id, reason: 'invalid_field' });
+    expect(await loggedSetRow(setId)).toBeUndefined();
+  });
+
+  it('rejects a logged_set PUT with a negative rest_taken_seconds as invalid_field, and accepts an explicit null for the same field', async () => {
+    const cookie = await signUp('logged-set-bad-rest');
+    const { seId } = await seedSessionExercise(cookie);
+    const badId = randomUUID();
+    const nullId = randomUUID();
+    const badOp = loggedSetOp(badId, seId, { set_index: 1, rest_taken_seconds: -5 });
+    const nullOp = loggedSetOp(nullId, seId, { set_index: 2, rest_taken_seconds: null });
+
+    const res = await push(cookie, [badOp, nullOp]);
+
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toContainEqual({ op_id: badOp.op_id, reason: 'invalid_field' });
+    expect(body.applied).toContain(nullOp.op_id);
+    expect(await loggedSetRow(badId)).toBeUndefined();
+    expect(await loggedSetRow(nullId)).toBeDefined();
+  });
+
+  it('accepts a logged_set PUT with valid completed/side/parent_set_id/rest_taken_seconds values', async () => {
+    const cookie = await signUp('logged-set-valid-shape-fields');
+    const { seId } = await seedSessionExercise(cookie);
+    const parentId = randomUUID();
+    const childId = randomUUID();
+    const parentOp = loggedSetOp(parentId, seId, { set_index: 1, completed: true, side: 'left', rest_taken_seconds: 90 });
+
+    const parentRes = await push(cookie, [parentOp]);
+    expect((parentRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const childOp = loggedSetOp(childId, seId, {
+      set_index: 2,
+      completed: false,
+      side: 'right',
+      parent_set_id: parentId,
+      rest_taken_seconds: null,
+    });
+    const childRes = await push(cookie, [childOp]);
+
+    const body: SyncPushResponse = childRes.body;
+    expect(body.applied).toContain(childOp.op_id);
+    expect(await loggedSetRow(childId)).toBeDefined();
   });
 });

@@ -676,6 +676,12 @@ function isValidOptionalStringOrNull(value: unknown): boolean {
   return value === undefined || value === null || typeof value === 'string';
 }
 
+// logged_set.completed — checked only when present; a PATCH naming only weight/reps must not be
+// rejected for omitting it (WR-03).
+function isValidOptionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean';
+}
+
 // paused_at/rest_target_at/removed_at/achieved_at — checked only when present; an explicit null
 // is valid (clears the column), a non-ISO string is not.
 function isValidOptionalIsoOrNull(value: unknown): boolean {
@@ -793,6 +799,10 @@ function hasInvalidField(op: SyncCrudOp): boolean {
     if (d.set_type !== undefined && !(typeof d.set_type === 'string' && SET_TYPES.has(d.set_type))) {
       return true;
     }
+    if (!isValidOptionalBoolean(d.completed)) return true;
+    if (!isValidOptionalStringOrNull(d.side)) return true;
+    if (!isValidOptionalStringOrNull(d.parent_set_id)) return true;
+    if (d.rest_taken_seconds !== undefined && !isNonNegativeIntegerOrNull(d.rest_taken_seconds)) return true;
     if (!isValidOptionalStringOrNull(d.notes)) return true;
     return false;
   }
