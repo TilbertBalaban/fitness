@@ -11,6 +11,13 @@ jest.mock('../id', () => ({ generateClientId: jest.fn(() => 'fixed-id') }));
 
 const getPowerSyncMock = getPowerSync as jest.MockedFunction<typeof getPowerSync>;
 
+// CR-02: logSet wraps its select-max-then-insert in db.transaction. The fake's transaction handle
+// IS the fake — logSet calls tx.select/tx.insert, and handing it a separate object would hide
+// those calls, so `this` resolves to the fake because logSet always calls it as db.transaction(...).
+async function runInFakeTransaction(this: unknown, run: (tx: unknown) => Promise<unknown>) {
+  return run(this);
+}
+
 function fakeDb(insertedValuesSpy: jest.Mock) {
   return {
     select: () => ({
@@ -24,6 +31,7 @@ function fakeDb(insertedValuesSpy: jest.Mock) {
         return Promise.resolve();
       },
     }),
+    transaction: runInFakeTransaction,
   } as unknown as ReturnType<typeof getPowerSync>;
 }
 
@@ -80,6 +88,79 @@ describe('logSet — the database-injection seam (WINDOWS #23)', () => {
 
     expect(insertedValuesSpy).toHaveBeenCalledTimes(1);
     expect(getPowerSyncMock).toHaveBeenCalled();
+  });
+});
+
+// CR-02: a double-tap fires two logSet calls before either's select(max) resolves. `where()`
+// snapshots max(set_index) synchronously AT ISSUE TIME (as a real concurrent SELECT against the
+// database would), then defers resolution until the test explicitly flushes it — this is what
+// lets the test reproduce "both reads see the same pre-insert state" without relying on any
+// incidental event-loop/timer ordering. db.transaction() queues callbacks (mirroring PowerSync's
+// real single-writer guarantee, documented on WriteTx in powersync.ts): the second call's `run`
+// is not invoked — so its select is not even issued — until the first call's whole transaction
+// (select AND insert) has settled. Without CR-02's transaction wrap, logSet calls db.select/
+// db.insert directly, so both selects are issued back-to-back before either insert lands, and
+// both snapshot the same pre-insert max.
+function queueingTransactionalDb() {
+  const rows: Record<string, unknown>[] = [];
+  let queue: Promise<unknown> = Promise.resolve();
+  const pendingResolvers: (() => void)[] = [];
+
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: () => {
+          const maxIndex = rows.length === 0 ? null : Math.max(...rows.map((row) => row.setIndex as number));
+          return new Promise((resolve) => {
+            pendingResolvers.push(() => resolve([{ maxIndex }]));
+          });
+        },
+      }),
+    }),
+    insert: () => ({
+      values: (values: Record<string, unknown>) => {
+        rows.push(values);
+        return Promise.resolve();
+      },
+    }),
+    transaction(this: unknown, run: (tx: unknown) => Promise<unknown>) {
+      const result = queue.then(() => run(this));
+      queue = result.catch(() => undefined);
+      return result;
+    },
+  } as unknown as ReturnType<typeof getPowerSync>;
+
+  return {
+    db,
+    rows,
+    async flushUntilSettled<T>(promise: Promise<T>): Promise<T> {
+      let settled = false;
+      promise.then(
+        () => (settled = true),
+        () => (settled = true),
+      );
+      for (let guard = 0; !settled && guard < 100; guard++) {
+        await Promise.resolve();
+        pendingResolvers.shift()?.();
+      }
+      return promise;
+    },
+  };
+}
+
+describe('logSet — concurrent double-tap does not collide on set_index (CR-02)', () => {
+  it('assigns distinct, sequential set_index values to two calls fired before either resolves', async () => {
+    const { db, rows, flushUntilSettled } = queueingTransactionalDb();
+
+    const both = Promise.all([
+      logSet({ sessionExerciseId: 'se-1', weight: { value: '100', unit: 'kg' }, reps: 5 }, db),
+      logSet({ sessionExerciseId: 'se-1', weight: { value: '105', unit: 'kg' }, reps: 5 }, db),
+    ]);
+    await flushUntilSettled(both);
+
+    expect(rows).toHaveLength(2);
+    const indexes = rows.map((row) => row.setIndex).sort();
+    expect(indexes).toEqual([1, 2]);
   });
 });
 

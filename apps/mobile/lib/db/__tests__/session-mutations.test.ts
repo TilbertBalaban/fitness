@@ -127,6 +127,12 @@ function inMemoryDb() {
         return Promise.resolve();
       },
     }),
+    // CR-02: logSet (called by generateWarmupSets) wraps its select-max-then-insert in
+    // db.transaction. `this` resolves to the fake because logSet always calls it as
+    // db.transaction(...), so tx.select/tx.insert land on this same in-memory store.
+    transaction(this: unknown, run: (tx: unknown) => Promise<unknown>) {
+      return run(this);
+    },
   } as unknown as WriteDb;
 
   return {

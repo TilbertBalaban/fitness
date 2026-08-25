@@ -3,7 +3,7 @@ import * as unitsContract from '@fitness/api-contracts';
 import { EMPTY_TARGET, resolveTarget, type ResolvedTarget } from '@fitness/api-contracts';
 import { captureCalendarDay } from '../calendar-day';
 import { generateClientId } from './id';
-import { getPowerSync, type WriteDb } from './powersync';
+import { getPowerSync, type WriteDb, type WriteTx } from './powersync';
 import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from './schema';
 
 export interface StartSessionInput {
@@ -177,28 +177,36 @@ export async function updateLoggedSet(input: UpdateLoggedSetInput, db: WriteDb =
 // set that only becomes durable when the workout is finished is a set lost to a force-quit.
 export async function logSet(input: LogSetInput, db: WriteDb = getPowerSync()): Promise<string> {
   const id = generateClientId();
-
-  const [maxRow] = await db
-    .select({ maxIndex: sql<number | null>`max(${loggedSet.setIndex})` })
-    .from(loggedSet)
-    .where(eq(loggedSet.sessionExerciseId, input.sessionExerciseId));
-  const setIndex = (maxRow?.maxIndex ?? 0) + 1;
-
   const weightKg = unitsContract.toCanonicalKg(input.weight.value, input.weight.unit);
+  const loggedAt = (input.now ?? new Date()).toISOString();
 
-  await db.insert(loggedSet).values({
-    id,
-    sessionExerciseId: input.sessionExerciseId,
-    setIndex,
-    setType: input.setType ?? 'normal',
-    weightKg,
-    reps: input.reps,
-    rir: input.rir ?? null,
-    side: input.side ?? null,
-    completed: input.completed ?? false,
-    parentSetId: input.parentSetId ?? null,
-    restTakenSeconds: input.restTakenSeconds ?? null,
-    loggedAt: (input.now ?? new Date()).toISOString(),
+  // The select-max-then-insert must run as one local SQLite transaction (CR-02) — two
+  // handleCheckmarkPress invocations fired in quick succession (a double-tap) would otherwise
+  // both read the same max(set_index) before either insert lands, producing two logged_set rows
+  // with an identical (session_exercise_id, set_index) pair. WriteTx serializes with any other
+  // in-flight db.transaction() call on this connection, so the second call's select only starts
+  // once the first call's insert has committed.
+  await db.transaction(async (tx: WriteTx) => {
+    const [maxRow] = await tx
+      .select({ maxIndex: sql<number | null>`max(${loggedSet.setIndex})` })
+      .from(loggedSet)
+      .where(eq(loggedSet.sessionExerciseId, input.sessionExerciseId));
+    const setIndex = (maxRow?.maxIndex ?? 0) + 1;
+
+    await tx.insert(loggedSet).values({
+      id,
+      sessionExerciseId: input.sessionExerciseId,
+      setIndex,
+      setType: input.setType ?? 'normal',
+      weightKg,
+      reps: input.reps,
+      rir: input.rir ?? null,
+      side: input.side ?? null,
+      completed: input.completed ?? false,
+      parentSetId: input.parentSetId ?? null,
+      restTakenSeconds: input.restTakenSeconds ?? null,
+      loggedAt,
+    });
   });
 
   return id;
