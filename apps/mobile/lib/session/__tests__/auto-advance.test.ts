@@ -7,7 +7,14 @@ const WARMUP = { setType: 'warmup', completed: true };
 describe('shouldAutoAdvance (LOG-13)', () => {
   it('is null when disabled, even with every working set complete', () => {
     expect(
-      shouldAutoAdvance({ sets: [WORKING], enabled: false, currentIndex: 0, exerciseCount: 3, completedSetType: 'normal' }),
+      shouldAutoAdvance({
+        sets: [WORKING],
+        enabled: false,
+        currentIndex: 0,
+        exerciseCount: 3,
+        completedSetType: 'normal',
+        targetWorkingSets: 1,
+      }),
     ).toBeNull();
   });
 
@@ -19,6 +26,7 @@ describe('shouldAutoAdvance (LOG-13)', () => {
         currentIndex: 0,
         exerciseCount: 3,
         completedSetType: 'normal',
+        targetWorkingSets: 2,
       }),
     ).toBeNull();
   });
@@ -31,19 +39,34 @@ describe('shouldAutoAdvance (LOG-13)', () => {
         currentIndex: 0,
         exerciseCount: 3,
         completedSetType: 'warmup',
+        targetWorkingSets: 1,
       }),
     ).toBeNull();
   });
 
   it('is null on the last exercise — no wrap-around', () => {
     expect(
-      shouldAutoAdvance({ sets: [WORKING], enabled: true, currentIndex: 2, exerciseCount: 3, completedSetType: 'normal' }),
+      shouldAutoAdvance({
+        sets: [WORKING],
+        enabled: true,
+        currentIndex: 2,
+        exerciseCount: 3,
+        completedSetType: 'normal',
+        targetWorkingSets: 1,
+      }),
     ).toBeNull();
   });
 
   it('returns the next index once every working set is complete, not the last exercise, and the completion was a working set', () => {
     expect(
-      shouldAutoAdvance({ sets: [WORKING, WORKING], enabled: true, currentIndex: 0, exerciseCount: 3, completedSetType: 'normal' }),
+      shouldAutoAdvance({
+        sets: [WORKING, WORKING],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 3,
+        completedSetType: 'normal',
+        targetWorkingSets: 2,
+      }),
     ).toBe(1);
   });
 
@@ -53,13 +76,104 @@ describe('shouldAutoAdvance (LOG-13)', () => {
       { setType: 'warmup', completed: true },
     ];
     expect(
-      shouldAutoAdvance({ sets, enabled: true, currentIndex: 0, exerciseCount: 2, completedSetType: 'normal' }),
+      shouldAutoAdvance({
+        sets,
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 2,
+        completedSetType: 'normal',
+        targetWorkingSets: 1,
+      }),
     ).toBe(1);
   });
 
   it('is null when no working sets exist at all', () => {
     expect(
-      shouldAutoAdvance({ sets: [WARMUP], enabled: true, currentIndex: 0, exerciseCount: 3, completedSetType: 'normal' }),
+      shouldAutoAdvance({
+        sets: [WARMUP],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 3,
+        completedSetType: 'normal',
+        targetWorkingSets: 1,
+      }),
     ).toBeNull();
+  });
+
+  // WINDOWS #136: a 3-target exercise only has 1 existing row after its first set is completed —
+  // "every EXISTING working set is complete" was trivially true there, firing advance a full two
+  // sets early. targetWorkingSets is what tells the predicate there are two more still owed.
+  it('is null after the first of three prescribed working sets, even though the one existing row is complete', () => {
+    expect(
+      shouldAutoAdvance({
+        sets: [WORKING],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 3,
+        completedSetType: 'normal',
+        targetWorkingSets: 3,
+      }),
+    ).toBeNull();
+  });
+
+  it('returns the next index only once the prescribed set count is reached and every row is complete', () => {
+    expect(
+      shouldAutoAdvance({
+        sets: [WORKING, WORKING, WORKING_INCOMPLETE],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 3,
+        completedSetType: 'normal',
+        targetWorkingSets: 3,
+      }),
+    ).toBeNull();
+
+    expect(
+      shouldAutoAdvance({
+        sets: [WORKING, WORKING, WORKING],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 3,
+        completedSetType: 'normal',
+        targetWorkingSets: 3,
+      }),
+    ).toBe(1);
+  });
+
+  it('falls back to "every existing working set complete" for an ad-hoc exercise with no target (null/0)', () => {
+    expect(
+      shouldAutoAdvance({
+        sets: [WORKING],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 2,
+        completedSetType: 'normal',
+        targetWorkingSets: null,
+      }),
+    ).toBe(1);
+
+    expect(
+      shouldAutoAdvance({
+        sets: [WORKING],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 2,
+        completedSetType: 'normal',
+        targetWorkingSets: 0,
+      }),
+    ).toBe(1);
+  });
+
+  it('still advances once extra sets beyond the target are logged, provided all are complete', () => {
+    expect(
+      shouldAutoAdvance({
+        sets: [WORKING, WORKING, WORKING, WORKING],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 2,
+        completedSetType: 'normal',
+        targetWorkingSets: 3,
+      }),
+    ).toBe(1);
   });
 });
