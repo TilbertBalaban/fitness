@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { WARMUP_SET_TYPE, type ResolvedTarget, type WeightUnit } from '@fitness/api-contracts';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
-import type { WriteDb } from '@/lib/db/powersync';
+import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
 import { ExercisePickerModal, type PickerCatalogRow } from './ExercisePickerModal';
@@ -186,7 +186,7 @@ export function ExercisePage({
 
   const handleConfirmRemove = async () => {
     closeSheet();
-    await removeSessionExercise(sessionExerciseId);
+    await removeSessionExercise(sessionExerciseId, db ?? getPowerSync());
     onExerciseChanged();
   };
 

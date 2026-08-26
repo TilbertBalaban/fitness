@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 115
+open_count: 116
 waived_count: 1
 fixed_count: 18
-total_count: 134
-last_updated: 2026-08-26T09:03:21.212Z
+total_count: 135
+last_updated: 2026-08-26T09:21:06.894Z
 ---
 
 # Broken Windows Ledger
@@ -149,6 +149,7 @@ last_updated: 2026-08-26T09:03:21.212Z
 | 135 | 05 | deviation | apps/mobile/components/NoteSheet.tsx |  | 05-14 orchestrator ruling: NoteSheet.tsx (both mounts) and the new session-level NoteSheet in workout.tsx thread an optional db prop into setNote, sharing WINDOWS #134's getPowerSync()-default gap (NoteSheet/WarmupSheet/swap/remove were flagged by 05-12 as sharing the identical latent defect, out of that plan's scope). This modifies NoteSheet.tsx despite 05-14-PLAN.md's literal 'NoteSheet.tsx and session-mutations.ts are not modified' prohibition; the orchestrator's dispatch explicitly ruled the prohibition's intent is 'do not re-invent note capability', not 'never touch the file', and authorized this narrow db-threading parity fix. session-mutations.ts and WorkoutSummary.tsx remain untouched. | open |  | 2026-08-26T08:26:27.417Z |  |
 | 136 | 05 | deviation | apps/mobile/e2e/session-notes.spec.ts |  | 05-14 Task 3 diagnosis (informational, not fixed here — out of this plan's scope): LOG-13's shouldAutoAdvance (lib/session/auto-advance.ts) treats 'every EXISTING working set on the exercise is complete' as the advance trigger, not 'every TARGET set is complete' — after logging just the FIRST of a seeded 3-target exercise's working sets, that predicate is trivially true (one row exists, it is complete), so the pager auto-advances to the next exercise immediately. This is very likely the actual root cause of the pre-existing 'known-failing' e2e specs (workout-screen.spec.ts and others) that log one set then assert against 'Mark set incomplete' expecting to still be on the same exercise's page — they are actually asserting against the NEXT exercise's still-empty draft after an unaccounted-for auto-advance, not a broken completion write. session-notes.spec.ts worked around it locally by re-selecting the first exercise's strip chip after completing its set; the shared spec files were left untouched per this plan's scope boundary (05-16's job). | open |  | 2026-08-26T08:48:16.589Z |  |
 | 137 | 05 | deviation | apps/mobile/components/DragHandle.tsx |  | 05-15 Task 2: DragHandle.tsx/DragHandle.web.tsx gained an optional rowHeight prop threaded into computeDropTarget, despite the plan's own <verification> line naming both files as staying unmodified. Task 1 added computeDropTarget's optional rowHeight (font-scale-aware drag unit, E12 must-have), but E12 also requires the ReorderExercisesSheet's measured row height to actually govern the drop arithmetic, and the sheet reuses the real stateful DragHandle (per the dispatch's explicit 'reuse DragHandle, do not reinvent a drag surface' instruction) rather than reimplementing the gesture. The only way to satisfy both constraints was an additive, default-preserving optional prop (mirroring Task 1's own reversible pattern) — undefined at every existing ExerciseSlotRow call site, so Phase 4's reorder callers are byte-identical to before. Existing DragHandle/ExerciseSlotRow unit tests (53 cases) still pass unchanged. | open |  | 2026-08-26T09:03:21.212Z |  |
+| 138 | 05 | deviation | apps/mobile/components/ExercisePage.tsx |  | 05-15 Task 3: e2e/reorder-exercises.spec.ts's Remove flow (needed to prove a removed exercise is excluded from the reorder sheet) surfaced the same getPowerSync()-default gap 05-12/05-14 found and fixed for TargetsSheet/NoteSheet (WINDOWS #134/#135) — ExercisePage.tsx's handleConfirmRemove called removeSessionExercise(sessionExerciseId) with no db argument, so the write always resolved the production getPowerSync() singleton instead of the harness's isolated per-test database; the removal silently landed in the wrong SQLite file and the spec's raw read never saw removed_at set. Fixed by passing db ?? getPowerSync() through, matching the pattern already used for Targets/Note/Reorder. handleSwapPick's swapSessionExercise call shares the identical latent defect but is unexercised by this plan's tests, left unfixed and flagged for whichever future plan first browser-tests the swap path. | open |  | 2026-08-26T09:21:06.894Z |  |
 
 ````json
 [
@@ -1758,6 +1759,18 @@ last_updated: 2026-08-26T09:03:21.212Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-26T09:03:21.212Z",
+    "resolved_at": null
+  },
+  {
+    "id": 138,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/components/ExercisePage.tsx",
+    "line": null,
+    "description": "05-15 Task 3: e2e/reorder-exercises.spec.ts's Remove flow (needed to prove a removed exercise is excluded from the reorder sheet) surfaced the same getPowerSync()-default gap 05-12/05-14 found and fixed for TargetsSheet/NoteSheet (WINDOWS #134/#135) — ExercisePage.tsx's handleConfirmRemove called removeSessionExercise(sessionExerciseId) with no db argument, so the write always resolved the production getPowerSync() singleton instead of the harness's isolated per-test database; the removal silently landed in the wrong SQLite file and the spec's raw read never saw removed_at set. Fixed by passing db ?? getPowerSync() through, matching the pattern already used for Targets/Note/Reorder. handleSwapPick's swapSessionExercise call shares the identical latent defect but is unexercised by this plan's tests, left unfixed and flagged for whichever future plan first browser-tests the swap path.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-26T09:21:06.894Z",
     "resolved_at": null
   }
 ]

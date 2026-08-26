@@ -28,6 +28,7 @@ export default defineConfig({
         'workout-summary.spec.ts',
         'target-write-back.spec.ts',
         'session-notes.spec.ts',
+        'reorder-exercises.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },
