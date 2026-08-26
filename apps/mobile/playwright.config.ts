@@ -26,6 +26,7 @@ export default defineConfig({
         'session-edit.spec.ts',
         'history.spec.ts',
         'workout-summary.spec.ts',
+        'target-write-back.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },
