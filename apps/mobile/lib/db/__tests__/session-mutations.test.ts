@@ -70,6 +70,7 @@ function isSqlLike(value: unknown): boolean {
 // addExerciseToSession's own select.
 function inMemoryDb() {
   const tables = new Map<unknown, Row[]>();
+  let transactionCount = 0;
 
   function rowsFor(table: unknown): Row[] {
     if (!tables.has(table)) tables.set(table, []);
@@ -131,12 +132,14 @@ function inMemoryDb() {
     // db.transaction. `this` resolves to the fake because logSet always calls it as
     // db.transaction(...), so tx.select/tx.insert land on this same in-memory store.
     transaction(this: unknown, run: (tx: unknown) => Promise<unknown>) {
+      transactionCount += 1;
       return run(this);
     },
   } as unknown as WriteDb;
 
   return {
     db,
+    getTransactionCount: () => transactionCount,
     seed(table: unknown, row: Row) {
       rowsFor(table).push({ ...row });
     },
@@ -401,6 +404,45 @@ describe('reorderSessionExercises', () => {
     expect(byId.get('se-3')).toBe(0);
     expect(byId.get('se-1')).toBe(1);
     expect(byId.get('se-2')).toBe(2);
+  });
+
+  it('runs all of its order_index updates inside exactly one transaction call', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 5 });
+    store.seed(sessionExercise, { id: 'se-2', sessionId: 's-1', orderIndex: 1 });
+    store.seed(sessionExercise, { id: 'se-3', sessionId: 's-1', orderIndex: 3 });
+
+    await reorderSessionExercises('s-1', ['se-3', 'se-1', 'se-2'], store.db);
+
+    expect(store.getTransactionCount()).toBe(1);
+  });
+
+  it('is idempotent — calling it twice with the same ordered ids writes the same order_index values both times', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 5 });
+    store.seed(sessionExercise, { id: 'se-2', sessionId: 's-1', orderIndex: 1 });
+    store.seed(sessionExercise, { id: 'se-3', sessionId: 's-1', orderIndex: 3 });
+
+    const orderedIds = ['se-3', 'se-1', 'se-2'];
+    await reorderSessionExercises('s-1', orderedIds, store.db);
+    const firstPass = new Map(store.rowsOf(sessionExercise).map((row) => [row.id, row.orderIndex]));
+
+    await reorderSessionExercises('s-1', orderedIds, store.db);
+    const secondPass = new Map(store.rowsOf(sessionExercise).map((row) => [row.id, row.orderIndex]));
+
+    expect(secondPass).toEqual(firstPass);
+  });
+
+  it('only updates rows matching both the id and the sessionId, leaving other sessions untouched', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 0 });
+    store.seed(sessionExercise, { id: 'se-2', sessionId: 's-1', orderIndex: 1 });
+    store.seed(sessionExercise, { id: 'se-9', sessionId: 's-other', orderIndex: 0 });
+
+    await reorderSessionExercises('s-1', ['se-2', 'se-1'], store.db);
+
+    const byId = new Map(store.rowsOf(sessionExercise).map((row) => [row.id, row.orderIndex]));
+    expect(byId.get('se-9')).toBe(0);
   });
 });
 

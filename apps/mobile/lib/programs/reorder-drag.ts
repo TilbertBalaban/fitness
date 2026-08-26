@@ -12,6 +12,7 @@ export interface ComputeDropTargetInput {
   fromIndex: number;
   translationY: number;
   count: number;
+  rowHeight?: number;
 }
 
 export interface DropTarget {
@@ -20,10 +21,14 @@ export interface DropTarget {
 
 // Rounds the drag distance to whole rows of movement, adds it to the starting index, and clamps
 // into [0, count - 1]. count <= 1 always yields 0 — a single-element list (or an empty one) has
-// nowhere else to go, so this branch never needs to reach the clamp math.
-export function computeDropTarget({ fromIndex, translationY, count }: ComputeDropTargetInput): DropTarget {
+// nowhere else to go, so this branch never needs to reach the clamp math. rowHeight lets a caller
+// pass the sheet's own measured row height (Amendment A.3's large-OS-font-scale rule) instead of
+// the fixed SLOT_ROW_HEIGHT constant; a missing, zero, negative or non-finite value falls back to
+// SLOT_ROW_HEIGHT rather than dividing by zero.
+export function computeDropTarget({ fromIndex, translationY, count, rowHeight }: ComputeDropTargetInput): DropTarget {
   if (count <= 1) return { toIndex: 0 };
-  const rowsMoved = Math.round(translationY / SLOT_ROW_HEIGHT);
+  const unit = rowHeight !== undefined && Number.isFinite(rowHeight) && rowHeight > 0 ? rowHeight : SLOT_ROW_HEIGHT;
+  const rowsMoved = Math.round(translationY / unit);
   const toIndex = Math.min(Math.max(fromIndex + rowsMoved, 0), count - 1);
   return { toIndex };
 }

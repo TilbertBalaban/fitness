@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { isEmptyOverride, WARMUP_SET_TYPE, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
 import { warmupSets } from '@fitness/pr-rules';
 import { addSessionExercise, logSet } from './log-set';
-import { getPowerSync, type WriteDb, type WriteHandle } from './powersync';
+import { getPowerSync, type WriteDb, type WriteHandle, type WriteTx } from './powersync';
 import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from './schema';
 
 // The module every session-scoped write these action-bar/overflow surfaces perform lives behind
@@ -237,15 +237,20 @@ export async function generateWarmupSets(
 // Rewrites order_index across the session's non-removed rows in one pass, in the order the caller
 // hands back — the caller (a drag interaction, or any future reorder UI) owns the ordering
 // decision; this function only ever persists it.
+// All order_index writes land in a single transaction (mirroring duplicateSession's shape in
+// history-mutations.ts) so an interruption partway through can never leave two exercises sharing
+// a position — the same all-or-nothing guarantee WR-02 established there.
 export async function reorderSessionExercises(
   sessionId: string,
   orderedIds: string[],
   db: WriteDb = getPowerSync(),
 ): Promise<void> {
-  for (let index = 0; index < orderedIds.length; index += 1) {
-    await db
-      .update(sessionExercise)
-      .set({ orderIndex: index })
-      .where(and(eq(sessionExercise.id, orderedIds[index]), eq(sessionExercise.sessionId, sessionId)));
-  }
+  await db.transaction(async (tx: WriteTx) => {
+    for (let index = 0; index < orderedIds.length; index += 1) {
+      await tx
+        .update(sessionExercise)
+        .set({ orderIndex: index })
+        .where(and(eq(sessionExercise.id, orderedIds[index]), eq(sessionExercise.sessionId, sessionId)));
+    }
+  });
 }
