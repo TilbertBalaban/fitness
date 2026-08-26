@@ -15,7 +15,17 @@ export default defineConfig({
   projects: [
     {
       // Needs only a browser — no PowerSync Service, no API, no Postgres. Safe to run in CI.
+      // workers: 1 — every case in this project drives the SAME webServer's single Metro/Node
+      // process and a real @powersync/web (WASM SQLite + SharedWorker) instance per page; without
+      // this, Playwright's default multi-worker scheduling runs several of these real-browser
+      // cases concurrently against that one dev server, and the resulting CPU/server contention
+      // surfaces as random page.goto/page.reload timeouts in whichever case the scheduler starves
+      // that run — a different one each time, never reproducing in an isolated single-file run.
+      // fullyParallel: false above only serializes cases WITHIN one file; it does not stop
+      // Playwright from running multiple FILES in parallel workers, which is what this project
+      // actually needs to avoid.
       name: 'durability',
+      workers: 1,
       testMatch: [
         'durability.spec.ts',
         'schema-redefinition.spec.ts',
