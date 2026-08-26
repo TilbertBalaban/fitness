@@ -28,7 +28,21 @@ interface FakeRows {
 // this table" — the exact gap that let a wrong-session fixture pass silently.
 type TableLike = Record<string, { name?: string } | undefined>;
 
-function collectEqualities(node: unknown, out: { column: string; value: unknown }[]): void {
+interface Equality {
+  column: string;
+  value: unknown;
+}
+
+interface Membership {
+  column: string;
+  values: unknown[];
+}
+
+// Walks the same queryChunks shape eq()/and() produce, plus inArray()'s one extra chunk: a bare
+// JS array of Param objects sitting where a scalar Param would sit for eq(). loadLiveSession's
+// LIVE_STATUSES membership check is the one caller in this file that needs it (see fakeSessionDb's
+// own comment for why this must actually filter, not just parse without matching).
+function collectConditions(node: unknown, equalities: Equality[], memberships: Membership[]): void {
   const chunks = (node as { queryChunks?: unknown[] })?.queryChunks;
   if (!Array.isArray(chunks)) return;
 
@@ -36,7 +50,14 @@ function collectEqualities(node: unknown, out: { column: string; value: unknown 
   for (const chunk of chunks) {
     const part = chunk as { queryChunks?: unknown[]; name?: string; value?: unknown };
     if (Array.isArray(part?.queryChunks)) {
-      collectEqualities(part, out);
+      collectConditions(part, equalities, memberships);
+      continue;
+    }
+    if (Array.isArray(chunk)) {
+      if (column !== null) {
+        memberships.push({ column, values: chunk.map((entry) => (entry as { value?: unknown })?.value) });
+      }
+      column = null;
       continue;
     }
     if (typeof part?.name === 'string') {
@@ -44,7 +65,7 @@ function collectEqualities(node: unknown, out: { column: string; value: unknown 
       continue;
     }
     if (part && 'value' in part && !Array.isArray(part.value) && column !== null) {
-      out.push({ column, value: part.value });
+      equalities.push({ column, value: part.value });
       column = null;
     }
   }
@@ -55,21 +76,26 @@ function propertyKeyForColumn(table: TableLike, columnName: string): string | un
 }
 
 function rowMatches(table: TableLike, row: Record<string, unknown>, condition: unknown): boolean {
-  const equalities: { column: string; value: unknown }[] = [];
-  collectEqualities(condition, equalities);
-  if (equalities.length === 0) return true;
-  return equalities.every(({ column, value }) => {
+  const equalities: Equality[] = [];
+  const memberships: Membership[] = [];
+  collectConditions(condition, equalities, memberships);
+  if (equalities.length === 0 && memberships.length === 0) return true;
+  const equalitiesMatch = equalities.every(({ column, value }) => {
     const key = propertyKeyForColumn(table, column);
     return key !== undefined && row[key] === value;
   });
+  const membershipsMatch = memberships.every(({ column, values }) => {
+    const key = propertyKeyForColumn(table, column);
+    return key !== undefined && values.includes(row[key]);
+  });
+  return equalitiesMatch && membershipsMatch;
 }
 
 // Keyed by table identity, following lib/db/__tests__/next-up-query.test.ts's established
 // fakeNextUpDb shape — a select's row set is resolved from which drizzle table object it named,
 // not from call order, so reordering the real selects inside session-query.ts cannot silently
 // desync a fixture from the query that consumes it. Every where() clause is evaluated for real
-// (eq()/and() only — inArray()'s multi-value membership is out of scope for this file's own
-// selects), rather than matching every row unconditionally.
+// (eq()/and()/inArray()), rather than matching every row unconditionally.
 function fakeSessionDb(rows: FakeRows) {
   let selectCount = 0;
 
@@ -260,6 +286,36 @@ describe('loadLiveSession', () => {
     const result = await loadLiveSession('user-1', db);
 
     expect(result?.session.id).toBe('s-unsynced');
+  });
+
+  // D-29: a paused session is still the live session — pausing is a status transition the pager
+  // makes deliberately, not a departure from "in progress". A regression here reintroduces the
+  // bug where pausing silently dropped the user back to the "No active program" empty state.
+  it('finds a paused session, not only an in_progress one', async () => {
+    const { db } = fakeSessionDb({
+      sessionRows: [{ id: 's-paused', routineDayId: null, status: 'paused', startedAt: '2026-08-20T09:00:00.000Z' }],
+      exerciseRows: [],
+      setRows: [],
+    });
+
+    const result = await loadLiveSession('user-1', db);
+
+    expect(result?.session.id).toBe('s-paused');
+  });
+
+  it('ignores a completed or discarded session — only in_progress/paused count as live', async () => {
+    const { db } = fakeSessionDb({
+      sessionRows: [
+        { id: 's-completed', routineDayId: null, status: 'completed', startedAt: '2026-08-20T09:00:00.000Z' },
+        { id: 's-discarded', routineDayId: null, status: 'discarded', startedAt: '2026-08-20T10:00:00.000Z' },
+      ],
+      exerciseRows: [],
+      setRows: [],
+    });
+
+    const result = await loadLiveSession('user-1', db);
+
+    expect(result).toBeNull();
   });
 
   it('picks the most recently started row when more than one in_progress session exists on this device', async () => {

@@ -1,10 +1,15 @@
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
-import { WORKING_SET_TYPE } from '@fitness/api-contracts';
+import { WORKING_SET_TYPE, WORKOUT_SESSION_STATUSES } from '@fitness/api-contracts';
 import { getPowerSync, type WriteDb } from './powersync';
 import { loadExerciseNameMap } from './programs/load-program';
 import { loggedSet, sessionExercise, workoutSession } from './schema';
 
-const IN_PROGRESS = 'in_progress';
+// D-09: destructured by position, never re-quoted as a bare string literal below (mirrors
+// session-lifecycle.ts's own OPEN_STATUSES) — a paused session is still the live session (D-29's
+// pause is a status transition, not a departure from "in progress"), so loadLiveSession must find
+// it by either status, never IN_PROGRESS alone.
+const [IN_PROGRESS_STATUS, PAUSED_STATUS] = WORKOUT_SESSION_STATUSES;
+const LIVE_STATUSES = [IN_PROGRESS_STATUS, PAUSED_STATUS];
 
 export interface SessionExerciseRow {
   id: string;
@@ -178,7 +183,7 @@ export async function loadLiveSession(
   const rows = await db
     .select({ id: workoutSession.id, startedAt: workoutSession.startedAt })
     .from(workoutSession)
-    .where(eq(workoutSession.status, IN_PROGRESS));
+    .where(inArray(workoutSession.status, LIVE_STATUSES));
 
   if (rows.length === 0) return null;
 
