@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: in-gym-session-logging
 status: executing
-stopped_at: Phase 5 UI-SPEC approved
-last_updated: "2026-08-25T16:27:13.351Z"
+stopped_at: Completed 05-12-PLAN.md
+last_updated: "2026-08-26T08:11:59.905Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 68
-  completed_plans: 62
+  completed_plans: 65
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 05 (in-gym-session-logging) — EXECUTING
-Plan: 1 of 16
-Status: Executing Phase 05
+Plan: 2 of 16
+Status: Ready to execute
 Last activity: 2026-08-25 — Phase 05 execution started
 
-Progress: [██████████] 100%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [██████████] 100%
 | Phase 01 P06 | 76min | 3 tasks | 13 files |
 | Phase 01 P07 | 2h | 3 tasks | 14 files |
 | Phase 01 P08 | ~1h | 2 tasks | 10 files |
+| Phase 05 P12 | 150 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,7 @@ Recent decisions affecting current work:
 - [Phase ?]: apps/api has no test script: every API test is end-to-end, and a lane reporting 'No tests found' as a pass is a green that asserts nothing
 - [Phase ?]: Suite integrity is enforced by a Jest reporter (scripts/jest-suite-integrity.cjs), so a zero-test, skipped-test or empty-suite run fails identically locally and in CI
 - [Phase ?]: CI references no repository secret: every variable the API needs to boot is a workflow literal and BETTER_AUTH_SECRET is generated per run
+- [Phase ?]: 05-12: threaded an optional db prop through WorkoutScreenView -> ExercisePage -> TargetsSheet so write-back lands in whatever database the screen actually reads from, matching the existing writeDb pattern (WINDOWS #134, fixed).
 
 ### Pending Todos
 
@@ -116,6 +118,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-23T16:38:05.963Z
-Stopped at: Phase 5 UI-SPEC approved
-Resume file: .planning/phases/05-in-gym-session-logging/05-UI-SPEC.md
+Last session: 2026-08-26T08:11:59.888Z
+Stopped at: Completed 05-12-PLAN.md
+Resume file: None
