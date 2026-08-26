@@ -276,7 +276,7 @@ Plans:
   5. User can correct a mistake with a single tap-to-undo mid-workout, and can view, edit, duplicate, and backfill past workouts afterward
   6. User finishes to a summary showing muscles trained, PRs, and a per-exercise breakdown, and can correct entries from that screen
 
-**Plans**: 15/16 plans executed (10/16 executed — 05-11…05-16 are gap-closure plans from `/gsd-verify-work`'s `gaps_found`)
+**Plans**: 16/16 plans executed (10/16 executed — 05-11…05-16 are gap-closure plans from `/gsd-verify-work`'s `gaps_found`)
 
 Plans:
 
@@ -326,7 +326,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4)*
 
-- [ ] 05-16-PLAN.md — Execute the full Playwright durability project (12 specs, never run before), fix real failures, close WINDOWS #109/#116/#118/#123 — LOG-14, LOG-15, LOG-16
+- [x] 05-16-PLAN.md — Execute the full Playwright durability project (12 specs, never run before), fix real failures, close WINDOWS #109/#116/#118/#123 — LOG-14, LOG-15, LOG-16
 
 ### Phase 6: Gym Profiles & Plate Math
 
@@ -496,7 +496,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
-| 5. In-Gym Session Logging | 15/16 | In Progress|  |
+| 5. In-Gym Session Logging | 16/16 | In Progress|  |
 | 6. Gym Profiles & Plate Math | 0/TBD | Not started | - |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
 | 8. Progression Engine | 0/TBD | Not started | - |

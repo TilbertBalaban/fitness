@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: in-gym-session-logging
 status: executing
-stopped_at: Completed 05-15-PLAN.md
-last_updated: "2026-08-26T09:24:03.482Z"
+stopped_at: Completed 05-16-PLAN.md
+last_updated: "2026-08-26T10:29:35.521Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 68
-  completed_plans: 67
+  completed_plans: 68
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 05 (in-gym-session-logging) — EXECUTING
-Plan: 4 of 16
+Plan: 5 of 16
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 05 execution started
 
-Progress: [██████████] 99%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [██████████] 99%
 | Phase 05 P12 | 150 | 3 tasks | 9 files |
 | Phase 05 P14 | 1h | 3 tasks | 13 files |
 | Phase 05 P15 | ~2h | 3 tasks | 13 files |
+| Phase 05 P16 | 3h | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Warm-up badge and note dot now render from inside SetRowView (not an external wrapper), so every consumer of the row gets both affordances (WINDOWS #109)
 - [Phase ?]: 05-15: Threaded an optional rowHeight through DragHandle/DragHandle.web (WINDOWS #137) so the reorder sheet's measured row height governs the real drag gesture, despite the plan naming those files unmodified
 - [Phase ?]: 05-15: Threaded db through ExercisePage's handleConfirmRemove (WINDOWS #138), the same getPowerSync()-default gap 05-12/05-14 fixed for TargetsSheet/NoteSheet, surfaced by the first browser test of the Remove path
+- [Phase ?]: shouldAutoAdvance now requires targetWorkingSets and compares against the exercise's prescribed set count, not merely existing rows — corrects LOG-13's prior satisfied verdict (WINDOWS #136)
+- [Phase ?]: loadLiveSession recognizes a paused session as still live (inArray on in_progress/paused), fixing a real bug where pausing dropped the user to the empty state
+- [Phase ?]: Full durability Playwright project (33 cases) executed for the first time and reached two consecutive clean 33/33 runs — closes SC4 and both behavior_unverified truths in 05-VERIFICATION.md
 
 ### Pending Todos
 
@@ -124,6 +128,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-26T09:24:03.465Z
-Stopped at: Completed 05-15-PLAN.md
+Last session: 2026-08-26T10:29:35.498Z
+Stopped at: Completed 05-16-PLAN.md
 Resume file: None
