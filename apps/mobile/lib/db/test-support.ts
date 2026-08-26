@@ -520,7 +520,7 @@ export async function readWorkoutSessionRaw(sessionId: string): Promise<Record<s
     throw new Error('readWorkoutSessionRaw() called before openTestPowerSync()');
   }
   const rows = await rawDb.getAll<Record<string, unknown>>(
-    'SELECT id, name, started_at, paused_at, accumulated_paused_seconds, status, timezone, local_date FROM workout_session WHERE id = ?',
+    'SELECT id, name, started_at, paused_at, accumulated_paused_seconds, status, timezone, local_date, notes FROM workout_session WHERE id = ?',
     [sessionId],
   );
   return rows[0] ?? null;
