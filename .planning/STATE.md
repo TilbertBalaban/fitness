@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: in-gym-session-logging
 status: executing
-stopped_at: Completed 05-12-PLAN.md
-last_updated: "2026-08-26T08:11:59.905Z"
+stopped_at: Completed 05-14-PLAN.md
+last_updated: "2026-08-26T08:50:49.445Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 68
-  completed_plans: 65
+  completed_plans: 66
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 05 (in-gym-session-logging) — EXECUTING
-Plan: 2 of 16
+Plan: 3 of 16
 Status: Ready to execute
 Last activity: 2026-08-25 — Phase 05 execution started
 
-Progress: [██████████] 96%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [██████████] 96%
 | Phase 01 P07 | 2h | 3 tasks | 14 files |
 | Phase 01 P08 | ~1h | 2 tasks | 10 files |
 | Phase 05 P12 | 150 | 3 tasks | 9 files |
+| Phase 05 P14 | 1h | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Suite integrity is enforced by a Jest reporter (scripts/jest-suite-integrity.cjs), so a zero-test, skipped-test or empty-suite run fails identically locally and in CI
 - [Phase ?]: CI references no repository secret: every variable the API needs to boot is a workflow literal and BETTER_AUTH_SECRET is generated per run
 - [Phase ?]: 05-12: threaded an optional db prop through WorkoutScreenView -> ExercisePage -> TargetsSheet so write-back lands in whatever database the screen actually reads from, matching the existing writeDb pattern (WINDOWS #134, fixed).
+- [Phase ?]: NoteSheet.tsx threaded an optional db prop (WINDOWS #135), per orchestrator ruling narrowing 05-14's 'file not modified' prohibition to a db-parity fix, not new note capability
+- [Phase ?]: Warm-up badge and note dot now render from inside SetRowView (not an external wrapper), so every consumer of the row gets both affordances (WINDOWS #109)
 
 ### Pending Todos
 
@@ -118,6 +121,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-26T08:11:59.888Z
-Stopped at: Completed 05-12-PLAN.md
+Last session: 2026-08-26T08:50:49.429Z
+Stopped at: Completed 05-14-PLAN.md
 Resume file: None

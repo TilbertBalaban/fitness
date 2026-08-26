@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 112
+open_count: 114
 waived_count: 1
 fixed_count: 18
-total_count: 131
-last_updated: 2026-08-26T08:09:40.530Z
+total_count: 133
+last_updated: 2026-08-26T08:48:16.589Z
 ---
 
 # Broken Windows Ledger
@@ -146,6 +146,8 @@ last_updated: 2026-08-26T08:09:40.530Z
 | 132 | 05 | unrun-verify | apps/api/test/schema-parity.e2e-spec.ts |  | 05-11 Task 3 (live drizzle-kit push + db:verify + client schema-redefinition e2e) not run — this worktree has no .env (gitignored, not copied into git worktrees) and the harness's permission settings deny writing one; DATABASE_URL unresolvable from the sandbox even though Postgres port 5432 is reachable. Requires human to restore .env in this worktree (or run Task 3 outside the worktree) before merge. | open |  | 2026-08-25T16:42:58.122Z |  |
 | 133 | 05 | deviation | apps/mobile/lib/db/test-support.ts |  | All 10 e2e durability specs failed test collection with 'No tests found' because test-support.ts (imported only for the DURABILITY_HARNESS_GLOBAL string constant) transitively imports log-set.ts, which imports the bare './powersync' — Node's ESM resolver has no platform-extension awareness and resolves that to the native powersync.ts, whose @powersync/react-native import chain is invalid under strict Node ESM (extensionless dist re-exports). This was not caused by any plan; it was discovered and fixed while resolving 05-11's Task 3 halt, by extracting DURABILITY_HARNESS_GLOBAL into a dependency-free leaf module (durability-harness-key.ts) and repointing all 10 specs at it. It unblocks the whole durability suite and is the root cause of 05-VERIFICATION.md's 2 behavior_unverified truths. | open |  | 2026-08-25T17:19:44.653Z |  |
 | 134 | 05 | deviation | apps/mobile/components/TargetsSheet.tsx |  | 05-12 Task 3: writeBackTargets/setSessionExerciseTargets always defaulted to getPowerSync(), ignoring whichever db the screen was actually reading from (only visible once a real isolated-db browser test exercised the write path) — threaded an optional db prop through WorkoutScreenView -> ExercisePage -> TargetsSheet, matching the existing writeDb pattern already used for logSet/startSession. | fixed |  | 2026-08-26T08:09:16.699Z | 2026-08-26T08:09:40.530Z |
+| 135 | 05 | deviation | apps/mobile/components/NoteSheet.tsx |  | 05-14 orchestrator ruling: NoteSheet.tsx (both mounts) and the new session-level NoteSheet in workout.tsx thread an optional db prop into setNote, sharing WINDOWS #134's getPowerSync()-default gap (NoteSheet/WarmupSheet/swap/remove were flagged by 05-12 as sharing the identical latent defect, out of that plan's scope). This modifies NoteSheet.tsx despite 05-14-PLAN.md's literal 'NoteSheet.tsx and session-mutations.ts are not modified' prohibition; the orchestrator's dispatch explicitly ruled the prohibition's intent is 'do not re-invent note capability', not 'never touch the file', and authorized this narrow db-threading parity fix. session-mutations.ts and WorkoutSummary.tsx remain untouched. | open |  | 2026-08-26T08:26:27.417Z |  |
+| 136 | 05 | deviation | apps/mobile/e2e/session-notes.spec.ts |  | 05-14 Task 3 diagnosis (informational, not fixed here — out of this plan's scope): LOG-13's shouldAutoAdvance (lib/session/auto-advance.ts) treats 'every EXISTING working set on the exercise is complete' as the advance trigger, not 'every TARGET set is complete' — after logging just the FIRST of a seeded 3-target exercise's working sets, that predicate is trivially true (one row exists, it is complete), so the pager auto-advances to the next exercise immediately. This is very likely the actual root cause of the pre-existing 'known-failing' e2e specs (workout-screen.spec.ts and others) that log one set then assert against 'Mark set incomplete' expecting to still be on the same exercise's page — they are actually asserting against the NEXT exercise's still-empty draft after an unaccounted-for auto-advance, not a broken completion write. session-notes.spec.ts worked around it locally by re-selecting the first exercise's strip chip after completing its set; the shared spec files were left untouched per this plan's scope boundary (05-16's job). | open |  | 2026-08-26T08:48:16.589Z |  |
 
 ````json
 [
@@ -1720,6 +1722,30 @@ last_updated: 2026-08-26T08:09:40.530Z
     "reason": "",
     "recorded_at": "2026-08-26T08:09:16.699Z",
     "resolved_at": "2026-08-26T08:09:40.530Z"
+  },
+  {
+    "id": 135,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/components/NoteSheet.tsx",
+    "line": null,
+    "description": "05-14 orchestrator ruling: NoteSheet.tsx (both mounts) and the new session-level NoteSheet in workout.tsx thread an optional db prop into setNote, sharing WINDOWS #134's getPowerSync()-default gap (NoteSheet/WarmupSheet/swap/remove were flagged by 05-12 as sharing the identical latent defect, out of that plan's scope). This modifies NoteSheet.tsx despite 05-14-PLAN.md's literal 'NoteSheet.tsx and session-mutations.ts are not modified' prohibition; the orchestrator's dispatch explicitly ruled the prohibition's intent is 'do not re-invent note capability', not 'never touch the file', and authorized this narrow db-threading parity fix. session-mutations.ts and WorkoutSummary.tsx remain untouched.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-26T08:26:27.417Z",
+    "resolved_at": null
+  },
+  {
+    "id": 136,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/e2e/session-notes.spec.ts",
+    "line": null,
+    "description": "05-14 Task 3 diagnosis (informational, not fixed here — out of this plan's scope): LOG-13's shouldAutoAdvance (lib/session/auto-advance.ts) treats 'every EXISTING working set on the exercise is complete' as the advance trigger, not 'every TARGET set is complete' — after logging just the FIRST of a seeded 3-target exercise's working sets, that predicate is trivially true (one row exists, it is complete), so the pager auto-advances to the next exercise immediately. This is very likely the actual root cause of the pre-existing 'known-failing' e2e specs (workout-screen.spec.ts and others) that log one set then assert against 'Mark set incomplete' expecting to still be on the same exercise's page — they are actually asserting against the NEXT exercise's still-empty draft after an unaccounted-for auto-advance, not a broken completion write. session-notes.spec.ts worked around it locally by re-selecting the first exercise's strip chip after completing its set; the shared spec files were left untouched per this plan's scope boundary (05-16's job).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-26T08:48:16.589Z",
+    "resolved_at": null
   }
 ]
 ````
