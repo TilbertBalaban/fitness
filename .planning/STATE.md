@@ -5,8 +5,8 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: in-gym-session-logging
 status: executing
-stopped_at: Phase 6 context gathered
-last_updated: "2026-08-26T11:53:19.446Z"
+stopped_at: Phase 6 UI-SPEC approved
+last_updated: "2026-08-26T12:34:16.682Z"
 last_activity: 2026-08-25
 last_activity_desc: Phase 05 execution started
 progress:
@@ -128,6 +128,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-26T11:53:19.407Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-gym-profiles-plate-math/06-CONTEXT.md
+Last session: 2026-08-26T12:34:16.641Z
+Stopped at: Phase 6 UI-SPEC approved
+Resume file: .planning/phases/06-gym-profiles-plate-math/06-UI-SPEC.md
