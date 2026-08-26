@@ -17,6 +17,7 @@ import { clampPagerIndex, ExercisePagerView } from '@/components/ExercisePager';
 import { ExercisePage } from '@/components/ExercisePage';
 import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
 import { EditingWorkoutRoute } from '@/components/EditingWorkoutScreen';
+import { NoteSheet } from '@/components/NoteSheet';
 import { BackgroundAlertsOffNote, NotificationPermissionPromptView } from '@/components/NotificationPermissionPrompt';
 import { RestTimerBar } from '@/components/RestTimerBar';
 import { DiscardWorkoutDialog } from '@/components/WorkoutInProgressBanner';
@@ -237,6 +238,12 @@ export interface WorkoutScreenViewProps {
   showAddExercisePicker: boolean;
   showSessionMenu: boolean;
   showDiscardConfirm: boolean;
+  // The session-level note (LOG-16, 05-UI-SPEC Amendment A.2) — live-mode-only chrome, since the
+  // Menu itself only renders in live mode (D-32/R10). hasSessionNote/sessionNoteText mirror the
+  // existing pageData.hasNote/noteText split used for the exercise level.
+  hasSessionNote: boolean;
+  sessionNoteText: string | null;
+  showSessionNoteSheet: boolean;
   onStartWorkout: () => void;
   onStartOneOff: () => void;
   onGoToPrograms: () => void;
@@ -263,6 +270,9 @@ export interface WorkoutScreenViewProps {
   onRequestDiscard: () => void;
   onConfirmDiscard: () => void;
   onCancelDiscard: () => void;
+  onOpenSessionNote: () => void;
+  onSessionNoteSaved: () => void;
+  onCancelSessionNote: () => void;
   onFinishWorkout: () => void;
 }
 
@@ -334,6 +344,9 @@ export function WorkoutScreenView({
   showAddExercisePicker,
   showSessionMenu,
   showDiscardConfirm,
+  hasSessionNote,
+  sessionNoteText,
+  showSessionNoteSheet,
   onStartWorkout,
   onStartOneOff,
   onGoToPrograms,
@@ -360,6 +373,9 @@ export function WorkoutScreenView({
   onRequestDiscard,
   onConfirmDiscard,
   onCancelDiscard,
+  onOpenSessionNote,
+  onSessionNoteSaved,
+  onCancelSessionNote,
   onFinishWorkout,
 }: WorkoutScreenViewProps) {
   if (showOneOffPicker) {
@@ -452,6 +468,17 @@ export function WorkoutScreenView({
                   <Text className="text-body font-normal text-foreground">{paused ? 'Resume' : 'Pause'}</Text>
                 </Pressable>
                 <Pressable
+                  onPress={onOpenSessionNote}
+                  accessibilityRole="button"
+                  accessibilityLabel="Session Note"
+                  style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center' }}
+                >
+                  <Text className="text-body font-normal text-foreground">Session Note</Text>
+                  {hasSessionNote ? (
+                    <View accessibilityLabel="Note exists" className="rounded-full bg-accent" style={{ width: 6, height: 6, marginLeft: 8 }} />
+                  ) : null}
+                </Pressable>
+                <Pressable
                   onPress={onRequestDiscard}
                   accessibilityRole="button"
                   accessibilityLabel="Discard"
@@ -525,6 +552,17 @@ export function WorkoutScreenView({
         </Modal>
       ) : null}
 
+      {showSessionNoteSheet && headerTimer ? (
+        <NoteSheet
+          level="session"
+          id={headerTimer.sessionId}
+          initialText={sessionNoteText}
+          db={db}
+          onSaved={onSessionNoteSaved}
+          onCancel={onCancelSessionNote}
+        />
+      ) : null}
+
       {showAddExercisePicker ? (
         <Modal animationType="slide" onRequestClose={onCancelAddExercisePicker}>
           <ExercisePickerModal dayName="this workout" onAdd={onConfirmAddExercise} onCancel={onCancelAddExercisePicker} />
@@ -573,6 +611,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   const [addExercisePickerOpen, setAddExercisePickerOpen] = useState(false);
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [sessionNoteSheetOpen, setSessionNoteSheetOpen] = useState(false);
   const [autoAdvanceEnabled, setAutoAdvanceEnabled] = useState(true);
   const { width: pagerWidth } = useWindowDimensions();
   const router = useRouter();
@@ -1071,6 +1110,20 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     setSessionMenuOpen((current) => !current);
   }
 
+  function handleOpenSessionNote() {
+    setSessionMenuOpen(false);
+    setSessionNoteSheetOpen(true);
+  }
+
+  async function handleSessionNoteSaved() {
+    setSessionNoteSheetOpen(false);
+    await reload();
+  }
+
+  function handleCancelSessionNote() {
+    setSessionNoteSheetOpen(false);
+  }
+
   // D-29: pause/resume live on this menu, not the action bar — a deliberate act, distinct from and
   // sharing no state with force-quit recovery.
   async function handlePauseResume() {
@@ -1128,6 +1181,9 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     showAddExercisePicker: addExercisePickerOpen,
     showSessionMenu: sessionMenuOpen,
     showDiscardConfirm: discardConfirmOpen,
+    hasSessionNote: sessionRow !== null && sessionRow.notes !== null,
+    sessionNoteText: sessionRow?.notes ?? null,
+    showSessionNoteSheet: sessionNoteSheetOpen,
     onStartWorkout: () => void handleStartWorkout(),
     onStartOneOff: handleStartOneOff,
     onGoToPrograms: handleGoToPrograms,
@@ -1154,6 +1210,9 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     onRequestDiscard: handleRequestDiscard,
     onConfirmDiscard: () => void handleConfirmDiscard(),
     onCancelDiscard: handleCancelDiscard,
+    onOpenSessionNote: handleOpenSessionNote,
+    onSessionNoteSaved: () => void handleSessionNoteSaved(),
+    onCancelSessionNote: handleCancelSessionNote,
     onFinishWorkout: () => void handleFinishWorkout(),
   };
 }

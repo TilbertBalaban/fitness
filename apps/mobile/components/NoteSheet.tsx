@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { DetailSection } from './DetailSection';
 import { TextField } from './TextField';
 import { setNote, type NoteLevel } from '@/lib/db/session-mutations';
+import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 
 const HEADING: Record<NoteLevel, string> = {
   set: 'Set Note',
@@ -62,6 +63,12 @@ export interface NoteSheetProps {
   level: NoteLevel;
   id: string;
   initialText: string | null;
+  // Threaded to setNote's own db argument so the write reaches the same database the screen that
+  // mounted this sheet is actually reading from, rather than setNote's default silently resolving
+  // getPowerSync() again and diverging whenever a caller (the durability harness) supplied a
+  // different db — the same TargetsSheet gap 05-12 found and fixed (WINDOWS #134). Undefined at
+  // call sites that have never needed to override it; setNote's own default takes over identically.
+  db?: WriteDb;
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -70,14 +77,14 @@ export interface NoteSheetProps {
 // setNote) is what turns an empty/all-whitespace draft into null — this wrapper passes the raw
 // draft straight through rather than pre-trimming it itself, so there is exactly one place that
 // rule lives.
-export function NoteSheet({ level, id, initialText, onSaved, onCancel }: NoteSheetProps) {
+export function NoteSheet({ level, id, initialText, db, onSaved, onCancel }: NoteSheetProps) {
   const [text, setText] = useState(initialText ?? '');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await setNote({ level, id, text });
+      await setNote({ level, id, text }, db ?? getPowerSync());
       onSaved();
     } finally {
       setSaving(false);

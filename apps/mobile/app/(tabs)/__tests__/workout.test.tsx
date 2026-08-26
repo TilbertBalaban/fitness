@@ -88,7 +88,7 @@ describe('deriveWorkoutScreenState', () => {
     expect(
       deriveWorkoutScreenState({
         failed: false,
-        session: { session: { id: 's-1', routineDayId: null, cycleId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null, timezone: 'UTC', localDate: '2026-08-20' }, exercises: [], setsByExerciseId: {} },
+        session: { session: { id: 's-1', routineDayId: null, cycleId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null, timezone: 'UTC', localDate: '2026-08-20', notes: null }, exercises: [], setsByExerciseId: {} },
         nextUp: null,
       }),
     ).toBe('ready');
@@ -317,6 +317,9 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     showAddExercisePicker: false,
     showSessionMenu: false,
     showDiscardConfirm: false,
+    hasSessionNote: false,
+    sessionNoteText: null,
+    showSessionNoteSheet: false,
     onStartWorkout: jest.fn(),
     onStartOneOff: jest.fn(),
     onGoToPrograms: jest.fn(),
@@ -343,6 +346,9 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     onRequestDiscard: jest.fn(),
     onConfirmDiscard: jest.fn(),
     onCancelDiscard: jest.fn(),
+    onOpenSessionNote: jest.fn(),
+    onSessionNoteSaved: jest.fn(),
+    onCancelSessionNote: jest.fn(),
     onFinishWorkout: jest.fn(),
     ...overrides,
   };

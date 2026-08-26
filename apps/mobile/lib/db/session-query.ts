@@ -52,6 +52,9 @@ export interface LiveSessionRow {
   // here rather than a second query, since loadSessionTree already selects this session's one row.
   timezone: string;
   localDate: string;
+  // The session-level note (LOG-16) — read back the same way SessionExerciseRow.notes already is,
+  // one table up. Feeds the session Menu's "Session Note" row and its dot.
+  notes: string | null;
 }
 
 export interface LiveSessionData {
@@ -83,6 +86,7 @@ export async function loadSessionTree(
       restTargetAt: workoutSession.restTargetAt,
       timezone: workoutSession.timezone,
       localDate: workoutSession.localDate,
+      notes: workoutSession.notes,
     })
     .from(workoutSession)
     .where(eq(workoutSession.id, sessionId));
