@@ -63,7 +63,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [x] **LOG-11**: User sees a workout duration timer running for the session
 - [x] **LOG-12**: User can pause and resume a workout
 - [x] **LOG-13**: User auto-advances to the next exercise when its sets are complete, and can turn that off
-- [ ] **LOG-14**: User can add, swap, or remove exercises mid-workout
+- [x] **LOG-14**: User can add, swap, or remove exercises mid-workout
 - [x] **LOG-15**: User can adjust targets mid-workout for this session only or persistently
 - [x] **LOG-16**: User can attach notes at set, exercise, and session level
 - [x] **LOG-17**: User can add auto-calculated warm-up sets scaled off the working weight, and toggle the behavior off
@@ -234,7 +234,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | LOG-11 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-12 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-13 | Phase 5 — In-Gym Session Logging | Complete |
-| LOG-14 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-14 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-15 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-16 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-17 | Phase 5 — In-Gym Session Logging | Complete |
