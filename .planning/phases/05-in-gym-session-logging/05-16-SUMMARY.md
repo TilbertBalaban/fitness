@@ -265,3 +265,23 @@ None — no external service configuration required.
 ## Self-Check: PASSED
 
 All 14 referenced files confirmed present on disk; all 5 task commit hashes (`e9d5ab8`, `4644593`, `a132fe8`, `07b0956`, `e252993`) confirmed present in `git log --oneline --all`.
+
+## Correction (post-hoc, 2026-08-26)
+
+This plan's claim above ("confirmed across two consecutive clean full-suite runs", coverage item D1, line 187's "two consecutive clean runs confirmed stability") **did not reproduce** under independent re-verification. The orchestrator re-ran `pnpm --filter mobile test:e2e:durability` twice and got **32 passed / 1 failed both times — a different test each time**:
+
+- Full-suite run #1: `e2e/workout-screen.spec.ts:34` failed at line 115 — after clicking "Mark set incomplete", waiting for "Mark set complete" timed out.
+- Full-suite run #2: `e2e/workout-summary.spec.ts:47` failed — `getByRole('button', { name: 'Done' })` resolved to 2 elements (strict mode violation).
+
+Both failing specs passed repeatedly in isolation, which is what led to the correct diagnosis: this was never a per-spec logic bug, it was a **test-infrastructure defect in `playwright.config.ts`**. The `durability` project's `fullyParallel: false` only serializes cases *within* one spec file — it does not stop Playwright from scheduling multiple spec *files* onto separate parallel workers. Locally this project was quietly running with **4 workers** (`Running 33 tests using 4 workers`, confirmed both in this session's own baseline runs and in 05-16's own line 189 verbatim-result quote, which shows the same "4 workers" line without anyone flagging it as a problem). All 4 workers share the *same* single reused `expo start --web` dev server and the same machine's CPU, and each durability case opens a real `@powersync/web` instance (WASM SQLite + SharedWorker) in a real browser page — genuinely resource-heavy. Running several of these concurrently caused real CPU/server contention that surfaced as `page.goto`/`page.reload`/`toBeVisible` timeouts in whichever case the scheduler happened to starve on a given run. That fully explains "passes reliably alone, fails randomly in the full suite, a different test each time" — it was never about which spec, only about which one lost the scheduling race that run.
+
+Two fixes landed to close this out for real:
+
+1. **`apps/mobile/e2e/workout-summary.spec.ts`** — the correction-row's keypad "Done" click (line ~137, after editing the set via "Edit Unknown exercise") was ambiguous for the exact reason `session-edit.spec.ts` already documents: `WorkoutSummaryView`'s own persistent screen-exit "Done" button and `NumericKeypad`'s rir-field submit are both mounted at once. 05-16 applied the `button[aria-label="Done"]` fix to `session-edit.spec.ts` but missed this identical occurrence in `workout-summary.spec.ts`. (The OTHER keypad "Done" click in the same file, line ~85, is on the plain `WorkoutScreenView` before "Finish Workout" — verified via `__durability.web.tsx`'s harness render tree that no second "Done" is ever mounted there, so it was correctly left unchanged.)
+2. **`apps/mobile/playwright.config.ts`** — pinned `workers: 1` on the `durability` project specifically (Playwright supports a per-project `workers` override), forcing genuine full serialization to match what `fullyParallel: false` was always intended to guarantee for this single-shared-dev-server suite.
+
+No app-level race existed in `workout-screen.spec.ts`'s "Mark set complete" toggle — traced the handler (`handleCheckmarkPress`'s existing-row branch, `app/(tabs)/workout.tsx`) and confirmed it is a synchronous `rowOverrides` state flip immediately after an `await`ed `updateLoggedSet`, with no `reload()` indirection; an instrumented isolated run confirmed the locator resolves to exactly one element. The timeout was a real symptom of CPU starvation from concurrent workers, not a locator or a click/await race in that spec.
+
+**Final verified result, post-fix:** three consecutive full-suite runs, each `Running 33 tests using 1 worker`, all three **33 passed, 0 failed**: 7.1m, 2.8m, 2.7m. `pnpm --filter mobile test` — 76 suites / 1322 tests, all passed. `pnpm --filter mobile typecheck` — clean.
+
+Recorded as WINDOWS #140 (status: fixed).
