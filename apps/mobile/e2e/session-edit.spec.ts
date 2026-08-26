@@ -101,7 +101,12 @@ test.describe('session-edit — a past workout opens, corrects, and backdates th
     // existing row, so a bare "Next field" tap (untouched) must not overwrite them with blanks.
     await page.getByRole('button', { name: 'Next field' }).click();
     await page.getByRole('button', { name: 'Next field' }).click();
-    await page.getByRole('button', { name: 'Done' }).click();
+    // EditingWorkoutScreen's own header carries a persistent "Done" (exit editing) button
+    // alongside NumericKeypad's rir-field submit, also labelled "Done" — both visible at once here,
+    // so getByRole('button', { name: 'Done' }) is ambiguous. Only the keypad's button sets an
+    // explicit aria-label (NumericKeypad.tsx); the header's PrimaryButton derives its accessible
+    // name from text content and carries no aria-label attribute, so this selector is unique.
+    await page.locator('button[aria-label="Done"]').click();
 
     await page.reload();
     await page.waitForSelector('[data-testid="durability-harness-ready"]');
@@ -113,7 +118,9 @@ test.describe('session-edit — a past workout opens, corrects, and backdates th
       ({ globalKey, sessionId }) => (window as unknown as HarnessWindow)[globalKey].openEditWorkoutScreen(sessionId),
       { globalKey: DURABILITY_HARNESS_GLOBAL, sessionId },
     );
-    await expect(page.getByRole('button', { name: 'Weight, set field' })).toContainText('99');
+    // buildSetRows always appends its own trailing draft alongside the one real logged row —
+    // .first() is the corrected, existing row in set_index order.
+    await expect(page.getByRole('button', { name: 'Weight, set field' }).first()).toContainText('99');
 
     // Case 3: change the session's date through SessionDateField — started_at, timezone and
     // local_date all move together (Task 1's single-write invariant), and the row's position in
@@ -196,7 +203,8 @@ test.describe('session-edit — a past workout opens, corrects, and backdates th
     await page.getByRole('button', { name: 'Next field' }).click();
     await page.getByRole('button', { name: '5', exact: true }).click();
     await page.getByRole('button', { name: 'Next field' }).click();
-    await page.getByRole('button', { name: 'Done' }).click();
+    // Same editing-header/keypad "Done" ambiguity documented above.
+    await page.locator('button[aria-label="Done"]').click();
     const checkmark = page.getByRole('button', { name: 'Mark set complete' });
     await checkmark.click();
     await expect(page.getByRole('button', { name: 'Mark set incomplete' })).toBeVisible();

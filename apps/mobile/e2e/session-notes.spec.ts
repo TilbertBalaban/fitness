@@ -89,12 +89,13 @@ async function openAndSeed(page: Page, dbFilename: string): Promise<{ seeded: Se
 // Same weight->reps->rir walk workout-screen.spec.ts already established, so a real logged_set row
 // exists for the long press to annotate — no direct logSet call.
 //
-// LOG-13's auto-advance (lib/session/auto-advance.ts) fires the instant every EXISTING working set
-// on an exercise is complete — after logging exactly one of the seeded 3-target working sets, that
-// is trivially true (one row exists, it's complete), so the pager immediately swipes to the second
-// seeded exercise. Re-selecting the first exercise's strip chip afterward is what keeps every
-// caller's subsequent long press landing on the row it just logged, not the second exercise's still-
-// empty draft — an environment behavior this file's assertions must account for, not fight.
+// WINDOWS #136 (fixed): LOG-13's auto-advance used to fire the instant every EXISTING working set
+// row was complete, rather than every PRESCRIBED one — after logging exactly one of the seeded
+// 3-target working sets, that was trivially true (one row exists, it's complete), so the pager
+// swiped to the second seeded exercise a full two sets early. shouldAutoAdvance now compares
+// against session_exercise.target_sets, so this no longer fires here; the explicit re-select is
+// kept as a harmless no-op (clicking the already-active chip) so a future regression here fails
+// loudly on the next assertion instead of silently landing on the wrong exercise's draft.
 async function logFirstWorkingSet(page: Page): Promise<void> {
   const weightField = page.getByRole('button', { name: 'Weight, set field' }).first();
   await expect(weightField).toBeVisible();

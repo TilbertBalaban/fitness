@@ -77,6 +77,24 @@ async function completeFirstSet(page: import('@playwright/test').Page) {
   await expect(page.getByRole('button', { name: 'Mark set incomplete' })).toBeVisible();
 }
 
+// SEEDED_TARGETS[0] prescribes 3 working sets — completing the second one (against the still-
+// blank trailing draft buildSetRows always appends behind the first, now-completed row) mints a
+// fresh, non-expired restTargetAt. Needed wherever a case must exercise Skip Rest/+30s against a
+// rest window that has not already elapsed on its own (see the +30s test's own comment).
+async function completeNextWorkingSet(page: import('@playwright/test').Page) {
+  const weightField = page.getByRole('button', { name: 'Weight, set field' }).last();
+  await expect(weightField).toBeVisible();
+  await weightField.click();
+  await page.getByRole('button', { name: '1', exact: true }).click();
+  await page.getByRole('button', { name: '0', exact: true }).click();
+  await page.getByRole('button', { name: '0', exact: true }).click();
+  await page.getByRole('button', { name: 'Next field' }).click();
+  await page.getByRole('button', { name: 'Next field' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Mark set complete' }).last().click();
+  await expect(page.getByRole('button', { name: 'Mark set incomplete' }).last()).toBeVisible();
+}
+
 test.describe('rest timer — permission granted', () => {
   test.beforeEach(async ({ context, page }) => {
     await context.grantPermissions(['notifications'], { origin: 'http://localhost:8081' });
@@ -142,6 +160,16 @@ test.describe('rest timer — permission granted', () => {
 
     await page.getByRole('button', { name: 'Add 30 seconds to the rest timer' }).click();
 
+    // handleExtend (app/rest-timer.tsx) awaits a real DB write before calling scheduleRestAlert,
+    // which cancels the original 120s alarm before arming the extended one — but click() resolves
+    // once the event dispatches, not once that async chain settles. fastForward()ing immediately
+    // can run ahead of the still-pending write: the original alarm (not yet cancelled) then fires
+    // during the fastForward window, and handleExtend's own scheduleRestAlert call — resuming only
+    // after the DB write's real IndexedDB promise finally settles — computes its delay against an
+    // already-advanced clock and re-arms at ~0ms, producing two notifications instead of one. This
+    // wait gives the local, normally sub-millisecond write time to land first.
+    await page.waitForTimeout(250);
+
     // +30s reschedules the alert against the new target — the stub records a second constructed
     // Notification at the extended time, not a duplicate of the original one.
     await page.clock.fastForward(150_000 + 1_000);
@@ -150,6 +178,15 @@ test.describe('rest timer — permission granted', () => {
 
     await page.getByRole('button', { name: 'Dismiss' }).click();
     await page.evaluate((globalKey) => (window as unknown as HarnessWindow)[globalKey].openWorkoutScreen(), DURABILITY_HARNESS_GLOBAL);
+
+    // RestTimerFullScreenView deliberately replaces +30s/Skip Rest with a single "Back to Workout"
+    // CTA once the countdown reaches zero (05-UI-SPEC) — the extended target from above has already
+    // elapsed naturally (the fastForward past it, immediately above, is what proved the alert fires
+    // exactly once). Skip Rest can only be exercised against a countdown that has NOT yet reached
+    // zero, so this logs a second working set (SEEDED_TARGETS[0] prescribes 3) to mint a fresh,
+    // still-counting-down rest target for Skip to actually clear.
+    await completeNextWorkingSet(page);
+
     await page.getByRole('button', { name: /^Rest, /, exact: false }).click();
     await page.getByRole('button', { name: 'Skip Rest' }).click();
     await expect(page.getByRole('button', { name: 'Back to Workout' })).toBeVisible();
@@ -163,6 +200,16 @@ test.describe('rest timer — permission granted', () => {
 
     await completeFirstSet(page);
     await page.getByRole('button', { name: 'Mark set incomplete' }).click();
+
+    // The undo branch (workout.tsx's handleCheckmarkPress) never calls reload() — it only patches
+    // rowOverrides — so there is no DOM signal that distinguishes "the click landed" from "the
+    // restTargetAt-clearing write and cancelRestAlert() have actually finished." click() resolves
+    // once the event dispatches, not once this async chain's several sequential IndexedDB awaits
+    // settle; fastForward()ing the fake clock immediately after the click can race ahead of
+    // cancelRestAlert()'s clearTimeout and let the still-armed alert fire. A short real-time wait
+    // (unaffected by page.clock, which only fakes the page's own timers) gives that local, normally
+    // sub-millisecond write time to land before the clock advances.
+    await page.waitForTimeout(250);
 
     await page.clock.fastForward(150_000);
     const calls = await page.evaluate(() => window.__restTimerNotificationCalls ?? []);

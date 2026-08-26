@@ -66,6 +66,12 @@ test.describe('session lifecycle — pause, resume, finish, discard', () => {
     expect(paused?.status).toBe('paused');
     expect(paused?.paused_at).not.toBeNull();
 
+    // resumeSession rounds the closed pause's duration to the nearest whole second
+    // (Math.round, session-lifecycle.ts) against real Date.now() — this file installs no fake
+    // clock, so without a genuine real-time gap here the pause-to-resume interval can round down
+    // to 0 and the accumulated_paused_seconds > 0 assertion below would fail on a fast run.
+    await page.waitForTimeout(1100);
+
     await page.getByRole('button', { name: 'Session menu' }).click();
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
 
@@ -97,6 +103,13 @@ test.describe('session lifecycle — pause, resume, finish, discard', () => {
     );
 
     await page.getByRole('button', { name: 'Finish Workout' }).click();
+
+    // finishSession (lib/session/finish-session.ts) awaits completeSession's write BEFORE
+    // router.push — but click() itself resolves once the event dispatches, not once that async
+    // chain settles. Waiting for the resulting navigation is what proves the write actually landed
+    // before reading it back; without this, readSessionRaw can race the still-in-flight write and
+    // observe the pre-completion row.
+    await expect(page).toHaveURL(new RegExp(`/workout-summary\\?sessionId=${seeded.sessionId}`));
 
     const finished = await page.evaluate(
       ({ globalKey, sessionId }) => (window as unknown as HarnessWindow)[globalKey].readSessionRaw(sessionId),

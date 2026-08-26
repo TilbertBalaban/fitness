@@ -69,11 +69,24 @@ test('starting a programmed workout, logging one set on the in-app keypad, and r
   await expect(checkmark).toBeVisible();
   await checkmark.click();
 
+  // Completing the draft row leaves a SECOND, fresh trailing draft in place behind it (buildSetRows
+  // always appends exactly one) — the exercise still has 2 of its 3 targeted sets left, so this is
+  // the completed row plus its own still-empty successor, not a duplicate. .first() is the just-
+  // completed row, in set_index order ahead of the new draft.
   const completedCheckmark = page.getByRole('button', { name: 'Mark set incomplete' });
   await expect(completedCheckmark).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Weight, set field' })).toContainText('100');
-  await expect(page.getByRole('button', { name: 'Reps, set field' })).toContainText('12');
-  await expect(page.getByRole('button', { name: 'RIR, set field' })).toContainText('2');
+  await expect(page.getByRole('button', { name: 'Weight, set field' }).first()).toContainText('100');
+  await expect(page.getByRole('button', { name: 'Reps, set field' }).first()).toContainText('12');
+  await expect(page.getByRole('button', { name: 'RIR, set field' }).first()).toContainText('2');
+
+  // draftValuesByExercise is otherwise sticky by design (D-16's own prefill survives a reload) —
+  // this is the regression case for the bug that fix closed: without resetting this exercise's
+  // draft entry back to defaultDraftValues on a successful commit, the new trailing draft echoed
+  // the just-submitted 100/12/2 instead of starting blank. formatFieldValue renders a blank weight
+  // as an empty string (D-16), not an em dash — that fallback is reps/rir-only — so the draft's own
+  // weight text node is absent and the row's full text is just its "No previous" reference note.
+  await expect(page.getByRole('button', { name: 'Weight, set field' }).last()).not.toContainText('100');
+  await expect(page.getByRole('button', { name: 'Weight, set field' }).last()).toContainText('No previous');
 
   await page.reload();
   await page.waitForSelector('[data-testid="durability-harness-ready"]');
@@ -88,17 +101,21 @@ test('starting a programmed workout, logging one set on the in-app keypad, and r
   );
 
   await expect(page.getByRole('button', { name: 'Mark set incomplete' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Weight, set field' })).toContainText('100');
-  await expect(page.getByRole('button', { name: 'Reps, set field' })).toContainText('12');
-  await expect(page.getByRole('button', { name: 'RIR, set field' })).toContainText('2');
+  await expect(page.getByRole('button', { name: 'Weight, set field' }).first()).toContainText('100');
+  await expect(page.getByRole('button', { name: 'Reps, set field' }).first()).toContainText('12');
+  await expect(page.getByRole('button', { name: 'RIR, set field' }).first()).toContainText('2');
+  // The reset draft is itself durable — reopening a fresh WorkoutScreenView instance re-derives it
+  // from reload()'s own defaultDraftValues seeding (session_exercise's snapshot), not from
+  // in-memory-only state that a real reload would have no way to reproduce.
+  await expect(page.getByRole('button', { name: 'Weight, set field' }).last()).not.toContainText('100');
 
   // A second checkmark tap undoes the completion in place with all three values intact (D-19) —
   // the round trip LOG-07's edge probe pins, exercised here against the reopened, real database.
   await page.getByRole('button', { name: 'Mark set incomplete' }).click();
   await expect(page.getByRole('button', { name: 'Mark set complete' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Weight, set field' })).toContainText('100');
-  await expect(page.getByRole('button', { name: 'Reps, set field' })).toContainText('12');
-  await expect(page.getByRole('button', { name: 'RIR, set field' })).toContainText('2');
+  await expect(page.getByRole('button', { name: 'Weight, set field' }).first()).toContainText('100');
+  await expect(page.getByRole('button', { name: 'Reps, set field' }).first()).toContainText('12');
+  await expect(page.getByRole('button', { name: 'RIR, set field' }).first()).toContainText('2');
 });
 
 // Swiping the pager / tapping the second strip chip (Task 2's acceptance criteria) is asserted in
@@ -132,7 +149,18 @@ test('adding an exercise mid-session grows the exercise strip by one chip', asyn
 
   await page.getByRole('button', { name: 'Add Exercise' }).click();
 
-  const exerciseRow = page.getByRole('button', { name: 'Barbell Bench Press - Medium Grip' });
+  // The picker's results list is a virtualized FlashList over the full ~900-row catalog — an empty
+  // query renders only the alphabetically-first screenful, well before "Barbell Bench Press" in
+  // sort order. A real user narrows the same way; SearchField's 200ms debounce is covered by
+  // toBeVisible's own retry window, so no manual wait is needed.
+  await page.getByRole('textbox', { name: 'Search exercises' }).fill('Barbell Bench Press - Medium Grip');
+
+  // WINDOWS #139: the picker's per-row Pressable (onToggle, ExercisePickerModal.tsx) wraps
+  // ExerciseListRow's own Pressable — a real button nested inside another, which the browser's
+  // HTML parser splits into two sibling button elements, both matching this accessible name via
+  // getByRole. Only ExerciseListRow's own Pressable sets an explicit aria-label; the wrapper never
+  // does, so the attribute selector is the one way to reach this row unambiguously.
+  const exerciseRow = page.locator('[aria-label="Barbell Bench Press - Medium Grip"]');
   await expect(exerciseRow).toBeVisible();
   await exerciseRow.click();
   await page.getByRole('button', { name: 'Add exercises to day' }).click();
