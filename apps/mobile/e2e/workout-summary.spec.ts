@@ -134,7 +134,11 @@ test('finishing a workout with a new PR shows the badge, and correcting the set 
 
   await page.getByRole('button', { name: 'Next field' }).click();
   await page.getByRole('button', { name: 'Next field' }).click();
-  await page.getByRole('button', { name: 'Done' }).click();
+  // WorkoutSummaryView's own persistent "Done" button (screen exit) and NumericKeypad's rir-field
+  // submit are both visible at once here, same as EditingWorkoutScreen's header/keypad ambiguity
+  // (session-edit.spec.ts) — only the keypad sets an explicit aria-label, so this selector is
+  // unique where getByRole('button', { name: 'Done' }) is not.
+  await page.locator('button[aria-label="Done"]').click();
 
   await expect(page.getByText('New PR', { exact: true })).toHaveCount(0);
 
