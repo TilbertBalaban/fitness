@@ -36,6 +36,12 @@ export interface DragHandleProps {
   fromIndex: number;
   orderedIds: string[];
   onReorder: (beforeId: string | null, afterId: string | null) => void;
+  // Optional — 05-15's ReorderExercisesSheet passes its own measured row height here so
+  // computeDropTarget's drag unit matches the sheet's actual (possibly font-scale-grown) row
+  // height (Amendment A.3) instead of Phase 4's fixed SLOT_ROW_HEIGHT. Undefined at every existing
+  // call site (ExerciseSlotRow), which is byte-identical to before this prop existed (Task 1's own
+  // computeDropTarget default).
+  rowHeight?: number;
 }
 
 // Stateful wrapper — owns the pan gesture and the shared-value translation that gives the grip
@@ -47,17 +53,17 @@ export interface DragHandleProps {
 // gestures never fight over the same touch. On gesture end, the JS-thread callback computes the
 // drop target and its neighbour ids from the pure helpers in reorder-drag.ts and hands them to the
 // caller — this component never reads or writes order_index itself.
-export function DragHandle({ exerciseName, exerciseId, fromIndex, orderedIds, onReorder }: DragHandleProps) {
+export function DragHandle({ exerciseName, exerciseId, fromIndex, orderedIds, onReorder, rowHeight }: DragHandleProps) {
   const colors = useThemeColors();
   const translationY = useSharedValue(0);
 
   const commitDrop = useCallback(
     (rawTranslationY: number) => {
-      const { toIndex } = computeDropTarget({ fromIndex, translationY: rawTranslationY, count: orderedIds.length });
+      const { toIndex } = computeDropTarget({ fromIndex, translationY: rawTranslationY, count: orderedIds.length, rowHeight });
       const { beforeId, afterId } = neighboursForIndex(orderedIds, exerciseId, toIndex);
       onReorder(beforeId, afterId);
     },
-    [fromIndex, orderedIds, exerciseId, onReorder],
+    [fromIndex, orderedIds, exerciseId, onReorder, rowHeight],
   );
 
   const panGesture = Gesture.Pan()

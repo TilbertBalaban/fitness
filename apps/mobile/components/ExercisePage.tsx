@@ -8,8 +8,10 @@ import type { WriteDb } from '@/lib/db/powersync';
 import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
 import { ExercisePickerModal, type PickerCatalogRow } from './ExercisePickerModal';
+import type { ExerciseStripExercise } from './ExerciseStrip';
 import type { KeypadField } from './NumericKeypad';
 import { NoteSheet } from './NoteSheet';
+import { ReorderExercisesSheet } from './ReorderExercisesSheet';
 import { RemoveExerciseDialog, SessionActionSheet, type SessionExerciseActionId } from './SessionActionSheet';
 import { SetRowView, type SetRowReference, type SetRowValues } from './SetRow';
 import { TargetsSheet } from './TargetsSheet';
@@ -95,7 +97,7 @@ export function ExercisePageView({
   );
 }
 
-type ActiveSheet = 'targets' | 'note' | 'set-note' | 'session' | 'remove-confirm' | 'swap' | 'warmup';
+type ActiveSheet = 'targets' | 'note' | 'set-note' | 'session' | 'remove-confirm' | 'swap' | 'warmup' | 'reorder';
 
 export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors' | 'actionBarSlot' | 'onSetLongPress'> {
   sessionExerciseId: string;
@@ -106,6 +108,10 @@ export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors' 
   targets: ResolvedTarget;
   routineExerciseId: string | null;
   cycleId: string | null;
+  // The already-loaded strip/pager exercise list — Amendment A.3's ReorderExercisesSheet renders
+  // from this rather than issuing its own query (the sheet opens from already-loaded session
+  // state, E10's "no loading state of its own" rule).
+  sessionExercises: ExerciseStripExercise[];
   // Threaded to TargetsSheet's own write-back call so it reaches the same database this page's
   // own reads came from, rather than TargetsSheet's default silently resolving getPowerSync()
   // again (05-12). Undefined in the few call sites that have never needed to override it —
@@ -131,6 +137,7 @@ export function ExercisePage({
   targets,
   routineExerciseId,
   cycleId,
+  sessionExercises,
   db,
   hasNote,
   noteText,
@@ -173,10 +180,7 @@ export function ExercisePage({
       closeSheet();
       router.push({ pathname: '/exercises/[id]', params: { id: exerciseId } });
     } else {
-      // 'reorder': no drag-and-drop reorder surface is specified anywhere in 05-UI-SPEC.md for
-      // this phase (E10 lists the row but defines no interaction) — reorderSessionExercises is
-      // built and tested as a mutation, but this row has no UI flow to drive it yet this phase.
-      closeSheet();
+      setActiveSheet('reorder');
     }
   };
 
@@ -259,6 +263,18 @@ export function ExercisePage({
 
       {activeSheet === 'session' ? (
         <SessionActionSheet exerciseName={exerciseName} onSelect={handleSessionAction} onCancel={closeSheet} />
+      ) : null}
+
+      {activeSheet === 'reorder' ? (
+        <ReorderExercisesSheet
+          sessionId={sessionId}
+          exercises={sessionExercises}
+          db={db}
+          onDone={() => {
+            closeSheet();
+            onExerciseChanged();
+          }}
+        />
       ) : null}
 
       {activeSheet === 'remove-confirm' ? (

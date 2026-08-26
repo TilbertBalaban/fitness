@@ -163,6 +163,7 @@ export function EditingWorkoutScreenView({
               targets={pageData.targets}
               routineExerciseId={pageData.routineExerciseId}
               cycleId={pageData.cycleId}
+              sessionExercises={exercises}
               hasNote={pageData.hasNote}
               noteText={pageData.noteText}
               onExerciseChanged={onExerciseChanged}

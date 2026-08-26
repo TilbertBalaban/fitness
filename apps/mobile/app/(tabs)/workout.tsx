@@ -524,6 +524,7 @@ export function WorkoutScreenView({
               targets={pageData.targets}
               routineExerciseId={pageData.routineExerciseId}
               cycleId={pageData.cycleId}
+              sessionExercises={exercises}
               db={db}
               hasNote={pageData.hasNote}
               noteText={pageData.noteText}

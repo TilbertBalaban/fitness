@@ -37,6 +37,12 @@ export interface DragHandleProps {
   fromIndex: number;
   orderedIds: string[];
   onReorder: (beforeId: string | null, afterId: string | null) => void;
+  // Optional — 05-15's ReorderExercisesSheet passes its own measured row height here so
+  // computeDropTarget's drag unit matches the sheet's actual (possibly font-scale-grown) row
+  // height (Amendment A.3) instead of Phase 4's fixed SLOT_ROW_HEIGHT. Undefined at every existing
+  // call site (ExerciseSlotRow), which is byte-identical to before this prop existed (Task 1's own
+  // computeDropTarget default).
+  rowHeight?: number;
 }
 
 // The DOM only dispatches pointer events to the element the pointer is currently over. A reorder
@@ -76,7 +82,7 @@ export function releasePointer(node: PointerCaptureTarget | null | undefined, po
 // pure helpers reorder-drag.ts exports — the same computeDropTarget/neighboursForIndex pair
 // DragHandle.tsx uses, so native and web can never compute a different drop target for the same
 // gesture shape.
-export function DragHandle({ exerciseName, exerciseId, fromIndex, orderedIds, onReorder }: DragHandleProps) {
+export function DragHandle({ exerciseName, exerciseId, fromIndex, orderedIds, onReorder, rowHeight }: DragHandleProps) {
   const colors = useThemeColors();
   const startY = useRef<number | null>(null);
   const activePointerId = useRef<number | null>(null);
@@ -85,11 +91,11 @@ export function DragHandle({ exerciseName, exerciseId, fromIndex, orderedIds, on
 
   const commitDrop = useCallback(
     (rawTranslationY: number) => {
-      const { toIndex } = computeDropTarget({ fromIndex, translationY: rawTranslationY, count: orderedIds.length });
+      const { toIndex } = computeDropTarget({ fromIndex, translationY: rawTranslationY, count: orderedIds.length, rowHeight });
       const { beforeId, afterId } = neighboursForIndex(orderedIds, exerciseId, toIndex);
       onReorder(beforeId, afterId);
     },
-    [fromIndex, orderedIds, exerciseId, onReorder],
+    [fromIndex, orderedIds, exerciseId, onReorder, rowHeight],
   );
 
   // Also the cancel path: the browser revoking the capture (scroll takeover, element removed) must
