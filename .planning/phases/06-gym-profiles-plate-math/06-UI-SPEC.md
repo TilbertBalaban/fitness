@@ -1,7 +1,7 @@
 ---
 phase: 6
 slug: gym-profiles-plate-math
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-26
@@ -112,6 +112,7 @@ Declared values (already shipped in `apps/mobile/global.css`, inherited unchange
 | Empty state heading | Gym Profiles list: never empty after first plate-math use (D-19 auto-seeds "My Gym") — the true zero-profile state only exists for a split second before that seed write completes, and renders no heading, just the section skeleton-free (R6, no loading state) |
 | Empty state body | Editor sub-sections when empty: Plates — **"No plates added"** · Dumbbells — **"No dumbbell weights added"** · Machines — **"No machines added"** — each sits directly above its own "+ Add …" link, never a dead end |
 | Error state | Reuses the exact shipped pattern: **"{Surface} couldn't load"** / "Restart the app to try again. Your programs and history are safe." — new instances: **"Gym Profiles couldn't load"**, same body |
+| Write-failure state | Reuses the same `ErrorBanner` shape for a failed *local write*: **"Couldn't save"** / "Restart the app to try again. Your programs and history are safe." — rendered above the Gym Profile Editor's field stack (form stays open, entered values preserved) and above the Equipment Availability Sheet's pre-action state on a failed profile write-through. Sync failure is deliberately not surfaced inline (Phase 5 E4 precedent). |
 | Destructive confirmation | **Archive Gym:** "Archive Gym" / "Archiving removes it from your gym list, but any workouts logged there stay in your history. Archive anyway?" / confirm **"Archive"** · **Restore Gym:** "Restore Gym" / "This gym will reappear in your gym list." / confirm **"Restore"** (neutral, no destructive fill — mirrors Restore Program) |
 | Equipment sheet heading | **"{Equipment name} Unavailable?"** e.g. "Leg Press Unavailable?" |
 | Equipment sheet body | "Mark it unavailable just for this workout, or update your gym profile if it's gone for good." |
@@ -132,7 +133,7 @@ Declared values (already shipped in `apps/mobile/global.css`, inherited unchange
 
 The Profile tab's new entry point (**Profile tab amendment**, see below) opens `apps/mobile/app/gym-profiles/index.tsx` — same top-level route-group shape as `apps/mobile/app/programs/library.tsx`, not nested under `(tabs)`.
 
-**Layout:** mirrors Program Library's own structure exactly — a scrollable list, active gym pinned first (single-item "Active" partition, since only one gym can be active at a time, unlike programs' active/drafts/ready split), then the rest alphabetically, archived gyms in a collapsed trailing section identical to Program Library's archived partition. Each row: gym name (Body, semibold if active else regular), a muted Label subtitle summarizing the profile ("20kg bar · 6 plate types" or "Archived"), and a trailing `•••` overflow trigger (48×48) opening **Gym Profile Action Sheet**.
+**Layout:** mirrors Program Library's own structure exactly — a scrollable list, active gym pinned first (single-item "Active" partition, since only one gym can be active at a time, unlike programs' active/drafts/ready split), then the rest alphabetically, archived gyms in a collapsed trailing section identical to Program Library's archived partition. Each row: gym name (Body, semibold if active else regular), a muted Label subtitle summarizing the profile, joining **only the configured sections** in fixed order — bar → plates → dumbbells → machines ("20kg bar · 6 plate types" for a gym with no machines; omitted entirely when nothing is configured; "Archived" on an archived row). Absence is never rendered as a zero count or an "Incomplete" marker, since every section is legitimately optional (E2), and a trailing `•••` overflow trigger (48×48) opening **Gym Profile Action Sheet**.
 
 **Gym Profile Action Sheet** (mirrors `RoutineActionSheet` verbatim — dynamic action list per row state, not a fixed constant): **Set Active** (omitted on the already-active row), **Edit**, **Duplicate**, **Archive** (or **Restore** on an archived row, destructive fill only in the Archive confirm dialog, never Restore's).
 
@@ -232,9 +233,16 @@ Extends Phases 1–5's R1–R10 (all still binding). This phase adds:
 
 ## UI Considerations
 
-Shape-rooted UI **state** coverage. Empty-state and error-state **copy** is not restated here — it lives in **Copywriting Contract** and is referenced by the rows below.
+Shape-rooted UI **state** coverage, produced by `ui-consideration-probe` over the eight surfaces this
+phase describes. Empty-state and error-state **copy** is not restated here — it lives in
+**Copywriting Contract** and is referenced by the rows below.
 
-**Coverage:** 56 applicable · 51 resolved (46 explicit, 5 backstop) · 0 unresolved
+**Coverage:** 60 applicable · 60 resolved (60 explicit, 0 backstop) · 0 unresolved · 0 unclassified
+
+> Element kinds below are the authored override (detected kinds ∪ kinds identified as missed). The
+> prose classifier under-detected on three surfaces: E3 tripped only `form`/`static-content` despite
+> rendering a real collection with a zero/one/many story, and E5/E8 tripped only `list-collection`
+> despite being tap-target rows. The override raises the categories those misses would have dropped.
 
 ### E1 — Gym Profiles List
 
@@ -243,10 +251,10 @@ Shape-rooted UI **state** coverage. Empty-state and error-state **copy** is not 
 | State | Verification | Contract |
 |-------|--------------|----------|
 | Empty / no data | explicit | Never truly empty after D-19's auto-seed on first plate-math need; the pre-seed instant renders no skeleton (R6). |
-| Loading / in-flight | explicit | No loading state (R6) — gyms read from local SQLite already seeded by `startSession`/first-use. |
-| Error / failure | explicit | "Gym Profiles couldn't load" / "Restart the app to try again. Your programs and history are safe." — the shipped pattern reused verbatim. |
-| Populated / happy path | explicit | Active gym pinned first (semibold, `text-accent` subtitle if any), remaining gyms alphabetical, archived gyms in a collapsed trailing section — mirrors Program Library exactly. |
-| Partial / incomplete | ⚠ backstop | A gym profile with some sections configured and others empty (e.g. plates set, no machines) is not given its own row-summary rule — needs a held-out test pinning what the subtitle line shows in that case. |
+| Loading / in-flight | explicit | No loading state (R6) — gyms read from local SQLite already seeded by `startSession`/first use. |
+| Error / failure | explicit | "Gym Profiles couldn't load" / "Restart the app to try again. Your programs and history are safe." — the shipped `ErrorBanner` pattern reused verbatim. |
+| Populated / happy path | explicit | Active gym pinned first (semibold, accent-tinted), remaining gyms alphabetical, archived gyms in a collapsed trailing section — mirrors Program Library exactly. |
+| Partial / incomplete | explicit | The row subtitle joins **only the sections that actually have content**, in fixed order (bar → plates → dumbbells → machines) — e.g. a gym with plates but no machines reads "20kg bar · 6 plate types" and never mentions what is absent. A profile with nothing configured degrades to the gym name alone, no subtitle line. Absence is never surfaced as a zero-count or an "Incomplete" marker, because E2's contract makes every section legitimately optional. |
 | Overflow / truncation | explicit | Vertical scroll; row content wraps and grows rather than truncating (R4), consistent with Program Library's own rule. |
 | Zero / one / many | explicit | Exactly one gym (the seeded default, never removable to zero — `Set Active` is a no-op on a lone gym) renders identically to many, just with a single-row Active partition and no "rest" section. |
 | Long text | explicit | Gym names and the summary subtitle wrap-and-grow per R4; no truncation. |
@@ -257,29 +265,29 @@ Shape-rooted UI **state** coverage. Empty-state and error-state **copy** is not 
 
 | State | Verification | Contract |
 |-------|--------------|----------|
-| Empty / no data | explicit | A newly-created gym (not the D-19 seed) starts with empty Plates/Dumbbells/Machines sections, each showing its own "No … added" Label above the "+ Add" link (Copywriting Contract) — never a dead end. |
+| Empty / no data | explicit | A newly-created gym (not the D-19 seed) starts with empty Plates/Dumbbells/Machines sections, each showing its own "No … added" Label above its "+ Add" link (Copywriting Contract) — never a dead end. |
 | Loading / in-flight | explicit | No loading state for a new gym (R6); editing an existing one reads already-local data synchronously. |
-| Error / failure | ⚠ backstop | What the form shows if the local write on Save fails is not specified — D-05 guarantees the write succeeds offline; sync failure is deliberately not surfaced inline, matching Phase 5 E4's own precedent for set rows. Needs a held-out test. |
+| Error / failure | explicit | If the local write on Save fails, the form renders the shipped `ErrorBanner` above the field stack with the established copy shape — "Couldn't save" / "Restart the app to try again. Your programs and history are safe." — and **stays open with every entered value preserved**; the user is never dropped back to the list with unsaved work. Sync failure (as distinct from local-write failure) is still deliberately not surfaced inline, matching Phase 5 E4's precedent. |
 | Populated / happy path | explicit | Name, unit, Bar (preset chips + weight), Plates (denomination + stepper count rows), Dumbbells (weight chips), Machines & Cable (named cards), Save Gym CTA. |
 | Partial / incomplete | explicit | Any section may be legitimately empty while others are populated (e.g. a gym with only a barbell and no machines) — sections are fully independent, none gates another's save. |
 | Overflow / truncation | explicit | The whole screen is one scrolling form (R4); no section has its own nested scroll, so a long plate/dumbbell/machine list simply extends the page. |
-| Zero / one / many | explicit | Zero plates/dumbbells/machines renders that section's empty copy; one or many render as a list with no plural copy anywhere in the form. |
-| Long text | explicit | Machine names, gym name wrap-and-grow per R4 inside their `TextField`s and card headers. |
+| Zero / one / many | explicit | Zero plates/dumbbells/machines renders that section's empty copy; one or many render as a list, with no plural copy anywhere in the form. |
+| Long text | explicit | Machine names and the gym name wrap-and-grow per R4 inside their `TextField`s and card headers. |
 
 ### E3 — Equipment / Plate Band
 
-*Element kinds:* `static-content`, `interactive-control`
+*Element kinds:* `list-collection`, `static-content`, `interactive-control`
 
 | State | Verification | Contract |
 |-------|--------------|----------|
 | Empty / no data | explicit | Collapses to 0 height for equipment types with no inventory model (kettlebell/bodyweight/band/medicine_ball/exercise_ball/foam_roller/other) or when no gym profile is resolved yet — a deliberate absence, not a bug (Content selection table, above). |
 | Loading / in-flight | explicit | No loading state (R6) — the resolved inventory and solver run synchronously against already-local data; the band has a correct value on first paint whenever it renders at all. |
-| Error / failure | explicit | If the solver/achievability computation throws (defensive case), the band renders 0 height, identically to the collapsed state — never a partial or garbled computation. |
+| Error / failure | explicit | If the solver/achievability computation throws (defensive case), the band renders 0 height, identically to the collapsed state — never a partial or garbled computation, and never an error string inside the keypad's reserved band. |
 | Populated / happy path | explicit | Loadable barbell/ez_bar shows the plate breakdown; loadable dumbbell shows the pair; loadable machine/cable shows the stack range/increment/base — all per the Content selection and Copywriting Contract tables. |
-| Partial / incomplete | explicit | The not-loadable state (D-13) — "Not loadable · {lower} ← → {higher}", both values tappable, band grows past 40px to hold real 48px targets (Spacing exceptions). |
-| Overflow / truncation | explicit | A plate stack with many denominations wraps to a second line rather than truncating (R4); the band's height grows to accommodate, same governing rule as the not-loadable grow-case. |
-| Zero / one / many | explicit | Zero plates configured on an otherwise-barbell exercise shows "No plates configured · Add plates" (Copywriting Contract), also a grows-past-40px state. One or many plate denominations render identically as a joined list. |
-| Long text | explicit | No free-text content in this band — only numerals, units, and the fixed short strings in the Copywriting Contract — nothing here can overflow via translation-length the way a name field could. |
+| Partial / incomplete | explicit | The not-loadable state (D-13) — "Not loadable · {lower} ← → {higher}", both values independently tappable, band grows past 40px to hold real 48px targets (Spacing exceptions). |
+| Overflow / truncation | explicit | A plate stack with many denominations wraps to a second line rather than truncating (R4); the band's height grows to accommodate, same governing rule as the not-loadable grow case. |
+| Zero / one / many | explicit | Zero plates configured on an otherwise-barbell exercise shows "No plates configured · Add plates" (Copywriting Contract), also a grows-past-40px state. One denomination and many denominations render identically as a `" · "`-joined descending list — no singular/plural copy variation. |
+| Long text | explicit | No free-text content in this band — only numerals, units, and the fixed short strings in the Copywriting Contract — so nothing here can overflow via translation length the way a name field could. |
 
 ### E4 — Equipment Availability Sheet
 
@@ -287,50 +295,57 @@ Shape-rooted UI **state** coverage. Empty-state and error-state **copy** is not 
 
 | State | Verification | Contract |
 |-------|--------------|----------|
-| Empty / no data | explicit | Never empty — the sheet is only opened from the Equipment row (E-Session-Action-Sheet), which only renders when a resolvable equipment item exists for the current exercise. |
+| Empty / no data | explicit | Never empty — the sheet is only opened from E5's Equipment row, which only renders when a resolvable equipment item exists for the current exercise. |
 | Loading / in-flight | explicit | No loading state (R6) — resolved inventory and the alternative-candidate search both run against already-local data. |
-| Error / failure | ⚠ backstop | What the sheet shows if the profile write-through ("My gym doesn't have this") fails locally is not specified — D-05 guarantees the write succeeds offline; needs a held-out test pinning the sheet's rendering on that failure path. |
+| Error / failure | explicit | If the profile write-through ("My gym doesn't have this") fails locally, the sheet renders the shipped `ErrorBanner` in place of the alternatives transition, with the same copy shape as E2, and **stays open on its pre-action state** so the user can retry or Cancel. The session-scoped "Mark Unavailable" path has no such failure mode — it mutates in-memory session state only. |
 | Populated / happy path | explicit | Heading, body, Mark Unavailable (`PrimaryButton`), My gym doesn't have this (text-accent link), Cancel. |
 | Partial / incomplete | explicit | After either unavailability action, the sheet transitions in place to the alternatives list (`SwapSuggestionList`, reused verbatim) — this transition is the sheet's one state change, and it never loses the original heading context. |
 | Overflow / truncation | explicit | `ScrollView`-based, `max-h-full` — mirrors every sibling sheet; the alternatives list is already capped (`SWAP_RESULT_CAP`, inherited from Phase 3/5) so this sheet never needs its own additional cap. |
 | Zero / one / many | explicit | Zero alternatives renders `SwapSuggestionList`'s existing empty state verbatim ("No good alternatives found" / "Try browsing the full catalog instead."); one or many render as the existing capped list. |
-| Long text | explicit | Equipment names in the heading wrap-and-grow per R4; candidate names/why-strings inherit `SwapSuggestionList`'s own existing wrap behavior unchanged. |
+| Long text | explicit | Equipment names in the heading wrap-and-grow per R4; candidate names and why-strings inherit `SwapSuggestionList`'s existing wrap behaviour unchanged. |
 
 ### E5 — Session Action Sheet (Equipment row amendment)
-
-*Element kinds:* `list-collection`, `interactive-control`
-
-| State | Verification | Contract |
-|-------|--------------|----------|
-| Populated / happy path | explicit | Five rows when the current exercise has resolvable equipment (Swap, Remove, Reorder, Info, Equipment); four rows (Phase 5's original set) when it does not — Equipment icon `construct-outline`, default foreground color (not destructive). |
-| Zero / one / many | explicit | The row's presence is binary per exercise, never partially rendered or disabled — stated explicitly per R11, mirroring Phase 5 R10's discipline. |
-
-*(Remaining state rows for this sheet — Empty, Loading, Error, Partial, Overflow, Long text — are unchanged from Phase 5's `05-UI-SPEC.md` E10 and are not restated here; this amendment touches only arity and the new row's own behavior.)*
-
-### E6 — Session Menu (Switch Gym row + sheet)
 
 *Element kinds:* `list-collection`, `interactive-control`, `static-content`
 
 | State | Verification | Contract |
 |-------|--------------|----------|
-| Empty / no data | explicit | The Menu itself is never empty (fixed four-row constant post-amendment); the Switch Gym Sheet is never empty either — at least the seeded default gym always exists (D-19). |
-| Loading / in-flight | explicit | No loading state (R6) — both the Menu and the sheet read already-local gym data. |
-| Error / failure | explicit | No async failure mode of its own; inherits the parent Active Workout screen's error state, identical to every other Menu row. |
-| Populated / happy path | explicit | Menu: four fixed rows, Discard last and destructive. Sheet: a vertical list of non-archived gyms, active one `text-accent`/`border-accent` with "Active now" trailing, plus a "Manage Gyms" link. |
-| Partial / incomplete | explicit | Not applicable — every gym in the sheet is always fully actionable; there is no partial-data row state. |
-| Overflow / truncation | explicit | The sheet scrolls internally past its `max-h-full`, matching every sibling sheet; gym names wrap-and-grow per R4 rather than truncating. |
-| Zero / one / many | explicit | Exactly one gym renders a single row (still tappable, a no-op if already active); many gyms render the full list, no plural copy anywhere. |
-| Long text | explicit | Gym names wrap-and-grow (R4); "Active now" and "Manage Gyms" are fixed short strings. |
+| Empty / no data | explicit | Not reachable — `SESSION_EXERCISE_ACTIONS` is a fixed constant, so the sheet always has at least Phase 5's four rows; the Equipment row's absence narrows the list, never empties it. |
+| Loading / in-flight | explicit | No loading state (R6) — the equipment predicate (R11) resolves synchronously against already-local data before the sheet paints. |
+| Error / failure | explicit | Unchanged from Phase 5 `05-UI-SPEC.md` E10 — the sheet has no async failure mode of its own and inherits the Active Workout screen's error state. |
+| Populated / happy path | explicit | Five rows when the current exercise has resolvable equipment (Swap, Remove, Reorder, Info, Equipment); four rows (Phase 5's original set) when it does not. Equipment icon `construct-outline`, default foreground colour (not destructive). |
+| Partial / incomplete | explicit | Not applicable — every row is always fully actionable; the Equipment row is structurally present or structurally absent, never rendered in a degraded or disabled form (R11). |
+| Overflow / truncation | explicit | Unchanged from Phase 5 E10 — the sheet's `ScrollView`/`max-h-full` geometry already accommodates a fifth row without any layout change. |
+| Zero / one / many | explicit | The row's presence is binary per exercise, never partially rendered or disabled — stated explicitly per R11, mirroring Phase 5 R10's discipline. |
+| Long text | explicit | "Equipment" is a fixed short label with no interpolated content, so this row cannot overflow; sibling rows' behaviour is unchanged from Phase 5 E10. |
 
-### E7 — Profile tab amendment (Gym Profiles row)
+### E6 — Session Menu (Switch Gym row + Switch Gym Sheet)
 
-*Element kinds:* `nav`, `static-content`
+*Element kinds:* `list-collection`, `nav`, `interactive-control`, `static-content`
 
 | State | Verification | Contract |
 |-------|--------------|----------|
-| Populated / happy path | explicit | One nav row, `ToggleRow`-matching chrome minus the toggle, trailing chevron and the active gym's name in muted Label. |
+| Empty / no data | explicit | The Menu itself is never empty (fixed four-row constant post-amendment); the Switch Gym Sheet is never empty either — at least the seeded default gym always exists (D-19). |
+| Loading / in-flight | explicit | No loading state (R6) — both the Menu and the sheet read already-local gym data. |
+| Error / failure | explicit | No async failure mode of its own; inherits the parent Active Workout screen's error state, identical to every other Menu row. The gym restamp (D-18) is a local write on already-open session state. |
+| Populated / happy path | explicit | Menu: four fixed rows, Discard last and destructive. Sheet: a vertical list of non-archived gyms, the active one accent-tinted with "Active now" trailing, plus a "Manage Gyms" link. |
+| Partial / incomplete | explicit | Not applicable — every gym in the sheet is always fully actionable; a partially-configured gym profile is still a valid, selectable row (its incompleteness is E1/E2's concern, not this sheet's). |
+| Overflow / truncation | explicit | The sheet scrolls internally past its `max-h-full`, matching every sibling sheet; gym names wrap-and-grow per R4 rather than truncating. |
+| Zero / one / many | explicit | Exactly one gym renders a single row (still tappable, a no-op if already active); many gyms render the full list, no plural copy anywhere. Archived gyms are excluded from this list entirely. |
+| Long text | explicit | Gym names wrap-and-grow (R4); "Active now" and "Manage Gyms" are fixed short strings. |
+
+### E7 — Profile tab amendment (Gym Profiles nav row)
+
+*Element kinds:* `nav`, `interactive-control`, `static-content`
+
+*(No `list-collection`/`form` kind — this is a single fixed navigation row, so Empty, Populated, Partial and Zero/one/many do not apply to it.)*
+
+| State | Verification | Contract |
+|-------|--------------|----------|
 | Loading / in-flight | explicit | No loading state (R6) — the active gym's name reads from already-local preference state, same as every other row on this screen. |
-| Long text | explicit | A long active-gym name truncates to nothing special-cased — it wraps-and-grows the row per R4, consistent with every other row on this screen. |
+| Error / failure | explicit | No failure mode of its own; if the active-gym name cannot be resolved the trailing label is omitted and the row still navigates — the row is never rendered broken or disabled. |
+| Overflow / truncation | explicit | The row wraps and grows per R4 within the Profile screen's own scroll; it never clips or introduces a nested scroll. |
+| Long text | explicit | A long active-gym name is not special-cased — it wraps-and-grows the row per R4, consistent with every other row on this screen. |
 
 ### E8 — Gym Profile Action Sheet
 
@@ -338,16 +353,17 @@ Shape-rooted UI **state** coverage. Empty-state and error-state **copy** is not 
 
 | State | Verification | Contract |
 |-------|--------------|----------|
+| Empty / no data | explicit | Not reachable — the action list always contains at least Edit, Duplicate and Archive/Restore; `Set Active` is the only conditional row. |
+| Loading / in-flight | explicit | No loading state (R6) — actions are computed synchronously from the already-loaded row state, exactly as `RoutineActionSheet` does. |
+| Error / failure | explicit | Unchanged from `RoutineActionSheet`'s shipped behaviour — no async failure mode; the Archive/Restore confirm dialogs own their own outcome and the sheet dismisses on either result. |
 | Populated / happy path | explicit | Dynamic action list per row state (mirrors `RoutineActionSheet` verbatim): Set Active (omitted if already active), Edit, Duplicate, Archive/Restore. |
+| Partial / incomplete | explicit | Not applicable — rows are structurally included or excluded, never rendered disabled or half-populated, matching `RoutineActionSheet`'s own established rule. |
+| Overflow / truncation | explicit | Unchanged from `RoutineActionSheet` — the sheet's existing `ScrollView`/`max-h-full` geometry accommodates its 3–4 rows without change. |
 | Zero / one / many | explicit | The action list's arity varies by row state (3 or 4 items) by design — this is `RoutineActionSheet`'s own established shape, not a new rule. |
+| Long text | explicit | All action labels are fixed short strings with no interpolation, so this sheet cannot overflow via text length. |
 
-*(Remaining state rows — Empty, Loading, Error, Overflow, Long text — are unchanged from `RoutineActionSheet`'s own existing, shipped behavior; this is a verbatim reuse, not a new component needing its own full table.)*
-
-### Backstop Summary — planner action required
-
-- **E1 Gym Profiles List — Partial/incomplete:** what a row's summary subtitle shows for a gym with some sections configured and others empty is unspecified. Needs a held-out test.
-- **E2 Gym Profile Editor — Error/failure:** what the form shows if the local write on Save fails is unspecified (mirrors Phase 5 E4's identical, still-open backstop for set rows). Needs a held-out test.
-- **E4 Equipment Availability Sheet — Error/failure:** what the sheet shows if the profile write-through fails locally is unspecified. Needs a held-out test.
+**No unresolved considerations.** Every applicable state carries a concrete, explicitly-verifiable
+contract — the planner should treat none of the rows above as an assumption.
 
 ---
 
@@ -385,11 +401,11 @@ Shape-rooted UI **state** coverage. Empty-state and error-state **copy** is not 
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED — gsd-ui-checker, 6/6 dimensions PASS, no blocking issues and no recommendations.
