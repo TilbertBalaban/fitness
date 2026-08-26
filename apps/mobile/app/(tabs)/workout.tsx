@@ -1033,10 +1033,17 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
           currentIndex: exerciseIndex,
           exerciseCount: sessionExercises.length,
           completedSetType: WORKING_SET_TYPE,
+          targetWorkingSets: exercise.targetSets,
         });
         if (nextIndex !== null) setCurrentIndex(nextIndex);
       }
 
+      // The row that was just the draft is now a real, existing logged_set — its own trailing
+      // replacement draft must start blank again (D-16), not keep showing the value that was just
+      // submitted. draftValuesByExercise is otherwise sticky by design (typing survives a reload,
+      // reload()'s own drafts-seeding only fills entries that don't exist yet), so this exercise's
+      // entry needs an explicit reset here or every draft after the first would echo its predecessor.
+      setDraftValuesByExercise((current) => ({ ...current, [exercise.id]: defaultDraftValues(exercise) }));
       setActiveField(null);
       await reload();
       return;
@@ -1063,6 +1070,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
         currentIndex: exerciseIndex,
         exerciseCount: sessionExercises.length,
         completedSetType: row.setType,
+        targetWorkingSets: exercise.targetSets,
       });
       if (nextIndex !== null) setCurrentIndex(nextIndex);
     }
