@@ -60,6 +60,7 @@ function loggedSetRow(overrides: Partial<LoggedSetRow> = {}): LoggedSetRow {
     rir: 2,
     completed: true,
     loggedAt: '2026-08-24T09:05:00.000Z',
+    notes: null,
     ...overrides,
   };
 }

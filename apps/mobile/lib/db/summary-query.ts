@@ -153,6 +153,7 @@ export async function loadSessionSummary(sessionId: string, userId: string | nul
           rir: loggedSet.rir,
           completed: loggedSet.completed,
           loggedAt: loggedSet.loggedAt,
+          notes: loggedSet.notes,
         })
         .from(loggedSet)
         .where(inArray(loggedSet.sessionExerciseId, sessionExerciseIds))

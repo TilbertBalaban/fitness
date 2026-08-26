@@ -193,6 +193,27 @@ describe('loadSessionTree', () => {
 
     expect(result?.session.cycleId).toBe('cycle-1');
   });
+
+  // LOG-16: a set-level note is carried on LoggedSetRow so the row can show its own note dot and
+  // NoteSheet can be seeded with the existing text — a set with no note returns null, not undefined.
+  it('carries notes on LoggedSetRow — present when set, null when the set has no note', async () => {
+    const { db } = fakeSessionDb({
+      sessionRows: [SESSION_ROW],
+      exerciseRows: [
+        { id: 'se-1', sessionId: 's-1', exerciseId: 'ex-1', orderIndex: 0, supersetGroupId: null, targetSets: null, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+      ],
+      setRows: [
+        { id: 'ls-1', sessionExerciseId: 'se-1', setIndex: 1, setType: 'normal', weightKg: '100.000', reps: 10, rir: 2, completed: true, loggedAt: 't1', notes: 'Felt heavy today' },
+        { id: 'ls-2', sessionExerciseId: 'se-1', setIndex: 2, setType: 'normal', weightKg: '100.000', reps: 10, rir: 2, completed: true, loggedAt: 't2', notes: null },
+      ],
+    });
+
+    const result = await loadSessionTree('s-1', db);
+    const sets = result?.setsByExerciseId['se-1'] ?? [];
+
+    expect(sets.find((row) => row.id === 'ls-1')?.notes).toBe('Felt heavy today');
+    expect(sets.find((row) => row.id === 'ls-2')?.notes).toBeNull();
+  });
 });
 
 describe('loadLiveSession', () => {

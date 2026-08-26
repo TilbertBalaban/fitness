@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Pressable, Text } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { SetRowView, formatFieldValue, setRowFieldState, type SetRowViewProps } from '../SetRow';
 
 // Same direct-invocation technique as CycleStrip.test.tsx/DayDeck.test.tsx — SetRowView has no
@@ -229,5 +229,80 @@ describe('SetRowView', () => {
 
     expect(onReferenceTap).toHaveBeenCalledTimes(1);
     expect(onReferenceTap).toHaveBeenCalledWith('weight');
+  });
+
+  it('renders the leading warm-up badge when warmup is true, and no badge at all when it is absent', () => {
+    const warmupRow = SetRowView(baseProps({ warmup: true }));
+    const normalRow = SetRowView(baseProps());
+
+    expect(findByType(warmupRow, View).some((el) => el.props.accessibilityLabel === 'Warm-up set')).toBe(true);
+    expect(findByType(normalRow, View).some((el) => el.props.accessibilityLabel === 'Warm-up set')).toBe(false);
+  });
+
+  it('renders the note dot immediately before the checkmark when hasNote is true, and none when it is absent', () => {
+    const noted = SetRowView(baseProps({ hasNote: true }));
+    const unnoted = SetRowView(baseProps());
+
+    expect(findByType(noted, View).some((el) => el.props.accessibilityLabel === 'Note exists')).toBe(true);
+    expect(findByType(unnoted, View).some((el) => el.props.accessibilityLabel === 'Note exists')).toBe(false);
+  });
+
+  it('a long press on a nested field target (not just the row container) calls onLongPress', () => {
+    const onLongPress = jest.fn();
+    const result = SetRowView(baseProps({ onLongPress }));
+    const weightField = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Weight, set field');
+
+    (weightField?.props.onLongPress as () => void)();
+
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('a long press on the reference Pressable nested inside a field calls the same onLongPress', () => {
+    const onLongPress = jest.fn();
+    const result = SetRowView(baseProps({ reference: { weight: '95.00', reps: null }, onLongPress }));
+    const referenceTarget = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Weight, use previous 95.00');
+
+    (referenceTarget?.props.onLongPress as () => void)();
+
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('a short tap still fires onFieldPress and onCheckmarkPress unaffected by a supplied onLongPress (D-17/D-19 unchanged)', () => {
+    const onFieldPress = jest.fn();
+    const onCheckmarkPress = jest.fn();
+    const onLongPress = jest.fn();
+    const result = SetRowView(baseProps({ onFieldPress, onCheckmarkPress, onLongPress }));
+    const weightField = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Weight, set field');
+    const checkmark = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Mark set complete');
+
+    (weightField?.props.onPress as () => void)();
+    (checkmark?.props.onPress as () => void)();
+
+    expect(onFieldPress).toHaveBeenCalledWith('weight');
+    expect(onCheckmarkPress).toHaveBeenCalledTimes(1);
+    expect(onLongPress).not.toHaveBeenCalled();
+  });
+
+  it('exposes an "Add note" accessibility action on a press target, routed to onLongPress, when onLongPress is supplied', () => {
+    const onLongPress = jest.fn();
+    const result = SetRowView(baseProps({ onLongPress }));
+    const weightField = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Weight, set field');
+
+    expect(weightField?.props.accessibilityActions).toEqual([{ name: 'note', label: 'Add note' }]);
+    (weightField?.props.onAccessibilityAction as (event: { nativeEvent: { actionName: string } }) => void)({
+      nativeEvent: { actionName: 'note' },
+    });
+
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders with no onLongPress, no accessibilityActions and no badges when none of the new props are supplied (WorkoutSummary.tsx call site)', () => {
+    const result = SetRowView(baseProps());
+    const weightField = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Weight, set field');
+
+    expect(weightField?.props.onLongPress).toBeUndefined();
+    expect(weightField?.props.accessibilityActions).toBeUndefined();
+    expect(findByType(result, View).some((el) => el.props.accessibilityLabel === 'Warm-up set')).toBe(false);
+    expect(findByType(result, View).some((el) => el.props.accessibilityLabel === 'Note exists')).toBe(false);
   });
 });

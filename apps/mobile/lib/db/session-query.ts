@@ -32,6 +32,7 @@ export interface LoggedSetRow {
   rir: number | null;
   completed: boolean;
   loggedAt: string;
+  notes: string | null;
 }
 
 export interface LiveSessionRow {
@@ -124,6 +125,7 @@ export async function loadSessionTree(
           rir: loggedSet.rir,
           completed: loggedSet.completed,
           loggedAt: loggedSet.loggedAt,
+          notes: loggedSet.notes,
         })
         .from(loggedSet)
         .where(inArray(loggedSet.sessionExerciseId, sessionExerciseIds))

@@ -158,6 +158,7 @@ const LOGGED_ROW: LoggedSetRow = {
   rir: 2,
   completed: true,
   loggedAt: '2026-08-20T10:00:00.000Z',
+  notes: null,
 };
 
 const WARMUP_ROW: LoggedSetRow = {
@@ -170,6 +171,7 @@ const WARMUP_ROW: LoggedSetRow = {
   rir: null,
   completed: true,
   loggedAt: '2026-08-20T09:55:00.000Z',
+  notes: null,
 };
 
 describe('buildSetRows', () => {
@@ -182,6 +184,7 @@ describe('buildSetRows', () => {
       values: { weight: null, reps: '12', rir: '2' },
       reference: { weight: null, reps: null },
       completed: false,
+      noteText: null,
     });
   });
 

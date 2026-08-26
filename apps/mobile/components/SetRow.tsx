@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, type AccessibilityActionEvent } from 'react-native';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import type { KeypadField } from './NumericKeypad';
 
@@ -35,6 +35,23 @@ export interface SetRowReference {
   reps: string | null;
 }
 
+// The accessibility-action equivalent of the long press (05-UI-SPEC §Amendment A.1) — a
+// screen-reader user reaches the same note trigger through this named action rather than a
+// gesture. Shared by every press target the long press itself is attached to, so the two paths
+// can never drift onto different labels.
+const NOTE_ACTION_NAME = 'note';
+const NOTE_ACCESSIBILITY_ACTIONS = [{ name: NOTE_ACTION_NAME, label: 'Add note' }];
+
+function noteActionProps(onLongPress: (() => void) | undefined) {
+  if (!onLongPress) return {};
+  return {
+    accessibilityActions: NOTE_ACCESSIBILITY_ACTIONS,
+    onAccessibilityAction: (event: AccessibilityActionEvent) => {
+      if (event.nativeEvent.actionName === NOTE_ACTION_NAME) onLongPress();
+    },
+  };
+}
+
 export interface SetRowViewProps {
   setIndex: number;
   values: SetRowValues;
@@ -42,6 +59,11 @@ export interface SetRowViewProps {
   completed: boolean;
   activeField: KeypadField | null;
   colors: ThemeColors;
+  // All three optional and additive — a caller that supplies none of them (WorkoutSummary.tsx's
+  // summary-correction rows) renders and behaves exactly as it did before these existed.
+  warmup?: boolean;
+  hasNote?: boolean;
+  onLongPress?: () => void;
   onFieldPress: (field: KeypadField) => void;
   onReferenceTap: (field: 'weight' | 'reps') => void;
   onCheckmarkPress: () => void;
@@ -60,6 +82,7 @@ interface SetFieldProps {
   completed: boolean;
   colors: ThemeColors;
   onPress: () => void;
+  onLongPress?: () => void;
   reference: SetFieldReference | null;
 }
 
@@ -72,15 +95,21 @@ interface SetFieldProps {
 // this field never carries one at all (rir) — both render the identical "No previous", no
 // underline, no press target literal string, since a reader can't tell "never applicable" from
 // "not yet logged" apart and shouldn't need to.
-function renderSetField({ field, label, value, active, completed, colors, onPress, reference }: SetFieldProps) {
+//
+// `onLongPress` is attached to both this field's own Pressable AND its nested reference Pressable
+// (when one exists) — a nested Pressable swallows its parent's gesture, so the outer handler alone
+// would never fire for a long press that lands on the reference text itself.
+function renderSetField({ field, label, value, active, completed, colors, onPress, onLongPress, reference }: SetFieldProps) {
   return (
     <Pressable
       key={field}
       onPress={onPress}
+      onLongPress={onLongPress}
       accessibilityRole="button"
       accessibilityLabel={`${label}, set field`}
       className="flex-1 items-start justify-center px-xs"
       style={{ minHeight: 48 }}
+      {...noteActionProps(onLongPress)}
     >
       <View className="flex-row items-center gap-xs">
         <Text className={`text-body ${completed ? 'font-semibold' : 'font-normal'} text-foreground`}>{value}</Text>
@@ -89,8 +118,10 @@ function renderSetField({ field, label, value, active, completed, colors, onPres
       {reference ? (
         <Pressable
           onPress={reference.onTap}
+          onLongPress={onLongPress}
           accessibilityRole="button"
           accessibilityLabel={`${label}, use previous ${reference.value}`}
+          {...noteActionProps(onLongPress)}
         >
           <Text className="text-label font-normal text-accent underline">{reference.value}</Text>
         </Pressable>
@@ -101,17 +132,63 @@ function renderSetField({ field, label, value, active, completed, colors, onPres
   );
 }
 
+// 14px circle, bg-secondary, muted Label glyph, ahead of the set-number column (05-UI-SPEC §Set
+// Row) — rendered from inside the row itself so every SetRowView consumer gets it, not only the
+// one caller (ExercisePageView) that happened to wrap the row from outside (WINDOWS #109).
+function renderWarmupBadge() {
+  return (
+    <View
+      accessibilityLabel="Warm-up set"
+      className="items-center justify-center rounded-full bg-secondary"
+      style={{ width: 14, height: 14, marginRight: 4 }}
+    >
+      <Text className="text-label font-normal text-foreground-muted" style={{ fontSize: 9, lineHeight: 12 }}>
+        W
+      </Text>
+    </View>
+  );
+}
+
+// 6px bg-accent dot, immediately before the checkmark (05-UI-SPEC Amendment A.1) — the identical
+// "Note exists" label ExerciseActionBar's own note badge already uses, so the two surfaces read
+// the same to a screen reader.
+function renderNoteDot() {
+  return <View accessibilityLabel="Note exists" className="rounded-full bg-accent" style={{ width: 6, height: 6, marginRight: 8 }} />;
+}
+
 // Hook-free — direct-invocable by a test, matching CycleStripView/DayDeckView. Every set row is
 // always fully visible, never collapsible (unlike Phase 4's slot row), because logging is the
 // whole point of this screen.
-export function SetRowView({ setIndex, values, reference, completed, activeField, colors, onFieldPress, onReferenceTap, onCheckmarkPress }: SetRowViewProps) {
+export function SetRowView({
+  setIndex,
+  values,
+  reference,
+  completed,
+  activeField,
+  colors,
+  warmup,
+  hasNote,
+  onLongPress,
+  onFieldPress,
+  onReferenceTap,
+  onCheckmarkPress,
+}: SetRowViewProps) {
   return (
-    <View className="flex-row items-center gap-xs border-b border-foreground-muted/20 py-sm">
+    <Pressable
+      onLongPress={onLongPress}
+      accessibilityHint="Long press to add a note"
+      className="flex-row items-center gap-xs border-b border-foreground-muted/20 py-sm"
+      {...noteActionProps(onLongPress)}
+    >
+      {warmup ? renderWarmupBadge() : null}
+
       <View style={{ width: 24, minHeight: 24, alignItems: 'center', justifyContent: 'center' }}>
         <Pressable
+          onLongPress={onLongPress}
           accessibilityRole="button"
           accessibilityLabel={`Set ${setIndex} type`}
           style={{ minHeight: 24, minWidth: 24, alignItems: 'center', justifyContent: 'center' }}
+          {...noteActionProps(onLongPress)}
         >
           <Text className="text-body font-normal text-foreground">{setIndex}</Text>
         </Pressable>
@@ -125,6 +202,7 @@ export function SetRowView({ setIndex, values, reference, completed, activeField
         completed,
         colors,
         onPress: () => onFieldPress('weight'),
+        onLongPress,
         reference: reference.weight !== null ? { value: reference.weight, onTap: () => onReferenceTap('weight') } : null,
       })}
       {renderSetField({
@@ -135,6 +213,7 @@ export function SetRowView({ setIndex, values, reference, completed, activeField
         completed,
         colors,
         onPress: () => onFieldPress('reps'),
+        onLongPress,
         reference: reference.reps !== null ? { value: reference.reps, onTap: () => onReferenceTap('reps') } : null,
       })}
       {renderSetField({
@@ -145,11 +224,15 @@ export function SetRowView({ setIndex, values, reference, completed, activeField
         completed,
         colors,
         onPress: () => onFieldPress('rir'),
+        onLongPress,
         reference: null,
       })}
 
+      {hasNote ? renderNoteDot() : null}
+
       <Pressable
         onPress={onCheckmarkPress}
+        onLongPress={onLongPress}
         accessibilityRole="button"
         accessibilityLabel={completed ? 'Mark set incomplete' : 'Mark set complete'}
         accessibilityState={{ selected: completed }}
@@ -159,10 +242,11 @@ export function SetRowView({ setIndex, values, reference, completed, activeField
             : 'items-center justify-center rounded-full border border-foreground-muted'
         }
         style={{ width: 48, height: 48 }}
+        {...noteActionProps(onLongPress)}
       >
         {completed ? <Ionicons name="checkmark" size={20} color="white" /> : null}
       </Pressable>
-    </View>
+    </Pressable>
   );
 }
 
@@ -172,6 +256,9 @@ export interface SetRowProps {
   reference: SetRowReference;
   completed: boolean;
   activeField: KeypadField | null;
+  warmup?: boolean;
+  hasNote?: boolean;
+  onLongPress?: () => void;
   onFieldPress: (field: KeypadField) => void;
   onReferenceTap: (field: 'weight' | 'reps') => void;
   onCheckmarkPress: () => void;

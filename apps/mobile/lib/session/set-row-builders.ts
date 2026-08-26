@@ -46,6 +46,9 @@ export interface ResolvedSetRow {
   // Omitted on the trailing draft row (always a working entry) — ExercisePageView only checks
   // this for the warm-up badge/ordering, never infers set type from position (RESEARCH Pitfall 2).
   setType?: string;
+  // Null on the trailing draft row (no logged_set exists yet to carry a note) and on any existing
+  // row with no note — feeds SetRowView's hasNote dot and the set-level NoteSheet's initial text.
+  noteText?: string | null;
 }
 
 interface BuildSetRowsActiveField {
@@ -113,7 +116,7 @@ export function buildSetRows(
 
     const reference = resolveReference(referenceContext.sessionExerciseId, row.setIndex, referenceContext.referenceMap, weightUnit);
 
-    return { setId: row.id, setIndex: row.setIndex, values, reference, completed, setType: row.setType };
+    return { setId: row.id, setIndex: row.setIndex, values, reference, completed, setType: row.setType, noteText: row.notes };
   });
 
   let draft = draftValues;
@@ -128,7 +131,7 @@ export function buildSetRows(
   // historical set for this position.
   const draftSetIndex = existingSets.length === 0 ? 1 : Math.max(...existingSets.map((row) => row.setIndex)) + 1;
   const draftReference = resolveReference(referenceContext.sessionExerciseId, draftSetIndex, referenceContext.referenceMap, weightUnit);
-  rows.push({ setId: null, setIndex: draftSetIndex, values: draft, reference: draftReference, completed: false });
+  rows.push({ setId: null, setIndex: draftSetIndex, values: draft, reference: draftReference, completed: false, noteText: null });
 
   return rows;
 }
