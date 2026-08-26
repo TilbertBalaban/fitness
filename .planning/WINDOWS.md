@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 112
 waived_count: 1
-fixed_count: 17
-total_count: 130
-last_updated: 2026-08-25T17:19:44.653Z
+fixed_count: 18
+total_count: 131
+last_updated: 2026-08-26T08:09:40.530Z
 ---
 
 # Broken Windows Ledger
@@ -145,6 +145,7 @@ last_updated: 2026-08-25T17:19:44.653Z
 | 131 | 05 | deviation | apps/mobile/lib/db/schema.ts,apps/api/src/db/schema/session.ts |  | CR-02 review-fix intentionally did not add a unique (session_exercise_id, set_index) constraint to either schema, though REVIEW.md's fix suggestion mentioned it as a belt-and-suspenders option. The db.transaction wrap around logSet's select-max-then-insert (log-set.ts) already closes the race at its source. Adding the unique constraint would require a live Postgres db:push (explicitly out of scope for the review-fix agent) and PowerSync schema-versioning verification on the SQLite mirror (untested here). Revisit if a future finding shows the transaction-only fix insufficient. | open |  | 2026-08-25T07:35:52.441Z |  |
 | 132 | 05 | unrun-verify | apps/api/test/schema-parity.e2e-spec.ts |  | 05-11 Task 3 (live drizzle-kit push + db:verify + client schema-redefinition e2e) not run — this worktree has no .env (gitignored, not copied into git worktrees) and the harness's permission settings deny writing one; DATABASE_URL unresolvable from the sandbox even though Postgres port 5432 is reachable. Requires human to restore .env in this worktree (or run Task 3 outside the worktree) before merge. | open |  | 2026-08-25T16:42:58.122Z |  |
 | 133 | 05 | deviation | apps/mobile/lib/db/test-support.ts |  | All 10 e2e durability specs failed test collection with 'No tests found' because test-support.ts (imported only for the DURABILITY_HARNESS_GLOBAL string constant) transitively imports log-set.ts, which imports the bare './powersync' — Node's ESM resolver has no platform-extension awareness and resolves that to the native powersync.ts, whose @powersync/react-native import chain is invalid under strict Node ESM (extensionless dist re-exports). This was not caused by any plan; it was discovered and fixed while resolving 05-11's Task 3 halt, by extracting DURABILITY_HARNESS_GLOBAL into a dependency-free leaf module (durability-harness-key.ts) and repointing all 10 specs at it. It unblocks the whole durability suite and is the root cause of 05-VERIFICATION.md's 2 behavior_unverified truths. | open |  | 2026-08-25T17:19:44.653Z |  |
+| 134 | 05 | deviation | apps/mobile/components/TargetsSheet.tsx |  | 05-12 Task 3: writeBackTargets/setSessionExerciseTargets always defaulted to getPowerSync(), ignoring whichever db the screen was actually reading from (only visible once a real isolated-db browser test exercised the write path) — threaded an optional db prop through WorkoutScreenView -> ExercisePage -> TargetsSheet, matching the existing writeDb pattern already used for logSet/startSession. | fixed |  | 2026-08-26T08:09:16.699Z | 2026-08-26T08:09:40.530Z |
 
 ````json
 [
@@ -1707,6 +1708,18 @@ last_updated: 2026-08-25T17:19:44.653Z
     "reason": "",
     "recorded_at": "2026-08-25T17:19:44.653Z",
     "resolved_at": null
+  },
+  {
+    "id": 134,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/mobile/components/TargetsSheet.tsx",
+    "line": null,
+    "description": "05-12 Task 3: writeBackTargets/setSessionExerciseTargets always defaulted to getPowerSync(), ignoring whichever db the screen was actually reading from (only visible once a real isolated-db browser test exercised the write path) — threaded an optional db prop through WorkoutScreenView -> ExercisePage -> TargetsSheet, matching the existing writeDb pattern already used for logSet/startSession.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-26T08:09:16.699Z",
+    "resolved_at": "2026-08-26T08:09:40.530Z"
   }
 ]
 ````

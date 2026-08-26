@@ -30,6 +30,7 @@ import {
   type WorkoutScreenViewProps,
 } from '../workout';
 import type { LoggedSetRow, SessionExerciseRow } from '../../../lib/db/session-query';
+import type { WriteDb } from '../../../lib/db/powersync';
 
 type AnyElement = ReactElement<Record<string, unknown>>;
 
@@ -290,6 +291,11 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
   return {
     screenState: 'ready',
     colors: COLORS,
+    // Unused by this suite's assertions — WorkoutScreenView threads it straight through to
+    // ExercisePage/TargetsSheet, neither of which this file exercises (it renders ExercisePageView
+    // directly). A real handle would need the mocked getPowerSync() chain; an opaque stand-in
+    // satisfies the type without importing @powersync internals into a jsdom test (WINDOWS #22).
+    db: {} as WriteDb,
     exercises: [{ id: 'se-1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3 }],
     currentExerciseId: 'se-1',
     currentIndex: 0,

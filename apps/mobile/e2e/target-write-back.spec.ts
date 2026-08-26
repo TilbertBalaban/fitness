@@ -77,6 +77,10 @@ test('an override row exists — write-back updates the override, not the base',
   await expect(page.getByRole('button', { name: 'Increase Sets' })).toBeVisible();
   await page.getByRole('button', { name: 'Increase Sets' }).click();
   await page.getByRole('button', { name: 'Also update my program' }).click();
+  // handleWriteBack awaits setSessionExerciseTargets then writeBackTargets before calling onDone,
+  // which is what unmounts the sheet — reading the DB before the sheet closes races the write and
+  // observes the pre-write value (the Save/write-back buttons are still [disabled] mid-await).
+  await expect(page.getByRole('button', { name: 'Increase Sets' })).toBeHidden();
 
   const overrideAfterFirstWriteBack = await page.evaluate(
     ({ globalKey, cycleTargetId }) => (window as unknown as HarnessWindow)[globalKey].readCycleTarget(cycleTargetId),
@@ -110,6 +114,7 @@ test('an override row exists — write-back updates the override, not the base',
   await expect(page.getByRole('button', { name: 'Increase Sets' })).toBeVisible();
   await page.getByRole('button', { name: 'Increase Sets' }).click();
   await page.getByRole('button', { name: 'Also update my program' }).click();
+  await expect(page.getByRole('button', { name: 'Increase Sets' })).toBeHidden();
 
   const overrideAfterSecondWriteBack = await page.evaluate(
     ({ globalKey, cycleTargetId }) => (window as unknown as HarnessWindow)[globalKey].readCycleTarget(cycleTargetId),
@@ -141,6 +146,7 @@ test('no override row exists — write-back updates the base row', async ({ page
   await expect(page.getByRole('button', { name: 'Increase Sets' })).toBeVisible();
   await page.getByRole('button', { name: 'Increase Sets' }).click();
   await page.getByRole('button', { name: 'Also update my program' }).click();
+  await expect(page.getByRole('button', { name: 'Increase Sets' })).toBeHidden();
 
   const baseAfterWriteBack = await page.evaluate(
     ({ globalKey, routineExerciseId }) =>
@@ -166,6 +172,7 @@ test('a session-only Save leaves both program rows untouched', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Increase Sets' })).toBeVisible();
   await page.getByRole('button', { name: 'Increase Sets' }).click();
   await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('button', { name: 'Increase Sets' })).toBeHidden();
 
   const baseAfterSave = await page.evaluate(
     ({ globalKey, routineExerciseId }) =>

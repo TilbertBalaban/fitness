@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { WARMUP_SET_TYPE, type ResolvedTarget, type WeightUnit } from '@fitness/api-contracts';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
+import type { WriteDb } from '@/lib/db/powersync';
 import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
 import { ExercisePickerModal, type PickerCatalogRow } from './ExercisePickerModal';
@@ -107,6 +108,11 @@ export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors' 
   targets: ResolvedTarget;
   routineExerciseId: string | null;
   cycleId: string | null;
+  // Threaded to TargetsSheet's own write-back call so it reaches the same database this page's
+  // own reads came from, rather than TargetsSheet's default silently resolving getPowerSync()
+  // again (05-12). Undefined in the few call sites that have never needed to override it —
+  // TargetsSheet's own default takes over identically.
+  db?: WriteDb;
   hasNote: boolean;
   noteText: string | null;
   onExerciseChanged: () => void;
@@ -127,6 +133,7 @@ export function ExercisePage({
   targets,
   routineExerciseId,
   cycleId,
+  db,
   hasNote,
   noteText,
   onExerciseChanged,
@@ -191,6 +198,7 @@ export function ExercisePage({
           initial={targets}
           routineExerciseId={routineExerciseId}
           cycleId={cycleId}
+          db={db}
           onDone={() => {
             closeSheet();
             onExerciseChanged();

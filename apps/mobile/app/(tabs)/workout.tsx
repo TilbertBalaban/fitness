@@ -210,6 +210,12 @@ export interface HeaderTimerBarData {
 export interface WorkoutScreenViewProps {
   screenState: WorkoutScreenState;
   colors: ThemeColors;
+  // The same handle useWorkoutScreen resolved its own writes against (db ?? getPowerSync()) —
+  // threaded down to ExercisePage/TargetsSheet so a write-back reaches the same database the
+  // screen is actually reading from, rather than TargetsSheet's own default silently resolving
+  // getPowerSync() again and diverging whenever a caller (the durability harness, a future
+  // multi-instance scenario) supplied a different db (05-12).
+  db: WriteDb;
   exercises: ExerciseStripExercise[];
   currentExerciseId: string | null;
   currentIndex: number;
@@ -309,6 +315,7 @@ function renderNoSessionBody(screenState: WorkoutScreenState, nextUp: NextUp<Pro
 export function WorkoutScreenView({
   screenState,
   colors,
+  db,
   exercises,
   currentExerciseId,
   currentIndex,
@@ -490,6 +497,7 @@ export function WorkoutScreenView({
               targets={pageData.targets}
               routineExerciseId={pageData.routineExerciseId}
               cycleId={pageData.cycleId}
+              db={db}
               hasNote={pageData.hasNote}
               noteText={pageData.noteText}
               onExerciseChanged={onExerciseChanged}
@@ -1101,6 +1109,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
 
   return {
     screenState,
+    db: writeDb,
     exercises,
     currentExerciseId: currentExercise?.id ?? null,
     currentIndex: safeIndex,

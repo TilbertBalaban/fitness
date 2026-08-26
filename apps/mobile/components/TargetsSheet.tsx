@@ -10,6 +10,7 @@ import {
   type StepDirection,
 } from './ExerciseSlotRow';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
+import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { setSessionExerciseTargets, writeBackTargets } from '@/lib/db/session-mutations';
 
 function displayOrDash(value: number | null): string {
@@ -159,6 +160,12 @@ export interface TargetsSheetProps {
   // than inventing a routine row for an exercise that has none (LOG-15, flagged not resolved).
   routineExerciseId: string | null;
   cycleId: string | null;
+  // Defaults to getPowerSync() exactly like every other write helper in this codebase — the
+  // explicit param exists so a caller rendering against a different database (the durability
+  // harness's isolated per-test instance, 05-12) has its write-back land in the SAME database its
+  // own reads came from, rather than this sheet's write silently diverging onto the production
+  // singleton regardless of what the rest of the screen is doing.
+  db?: WriteDb;
   onDone: () => void;
   onCancel: () => void;
 }
@@ -168,16 +175,17 @@ export interface TargetsSheetProps {
 // same values to whichever program row they resolved from, since a write-back that changed the
 // program but left the currently-displayed session numbers stale would be a visible
 // inconsistency the moment the sheet closes.
-export function TargetsSheet({ sessionExerciseId, exerciseName, initial, routineExerciseId, cycleId, onDone, onCancel }: TargetsSheetProps) {
+export function TargetsSheet({ sessionExerciseId, exerciseName, initial, routineExerciseId, cycleId, db, onDone, onCancel }: TargetsSheetProps) {
   const colors = useThemeColors();
   const [draft, setDraft] = useState<ResolvedTarget>(initial);
   const [saving, setSaving] = useState(false);
   const canWriteBack = routineExerciseId !== null;
+  const writeDb = db ?? getPowerSync();
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await setSessionExerciseTargets(sessionExerciseId, draft);
+      await setSessionExerciseTargets(sessionExerciseId, draft, writeDb);
       onDone();
     } finally {
       setSaving(false);
@@ -188,8 +196,8 @@ export function TargetsSheet({ sessionExerciseId, exerciseName, initial, routine
     if (routineExerciseId === null) return;
     setSaving(true);
     try {
-      await setSessionExerciseTargets(sessionExerciseId, draft);
-      await writeBackTargets({ routineExerciseId, cycleId, targets: draft });
+      await setSessionExerciseTargets(sessionExerciseId, draft, writeDb);
+      await writeBackTargets({ routineExerciseId, cycleId, targets: draft }, writeDb);
       onDone();
     } finally {
       setSaving(false);
