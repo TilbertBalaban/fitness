@@ -48,6 +48,8 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // alongside exercise/user_exercise_preference/user_preference — D-30 moved PR detection's write
 // path into Phase 5 so a PR logged on the gym floor survives to Postgres the same session it is
 // achieved; Phase 9 keeps browsing, retrospective reconciliation and cross-device authority.
+// 'equipment_profile' (06-01) is a sixth singleton root — a gym profile owns no synced children and
+// is never a sync parent, the same shape personal_record carries.
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -61,19 +63,19 @@ export const PUSH_APPLIED_TABLES = [
   'routine_cycle',
   'routine_exercise_cycle_target',
   'personal_record',
+  'equipment_profile',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 
 // No apply path yet. Each table lands here until the phase that owns its validation rules and
 // conflict semantics builds one — moving an entry to PUSH_APPLIED_TABLES is a one-line change
 // when that phase ships. Verified against ROADMAP.md's phase ownership, not guessed:
-// equipment_profile is Phase 6 (Gym Profiles & Plate Math — GYM-01/02 own multi-gym config).
 // routine_day and routine_exercise moved to PUSH_APPLIED_TABLES in 04-02, user_preference moved
-// in 04-04 (PROG-08 needed activation to sync before Phase 6 could exist), and personal_record
-// moved in 05-03 (D-30 — the apply path could not wait for Phase 9) — Phase 4 no longer owes
-// either of its two here, and Phase 9 no longer owes personal_record.
+// in 04-04 (PROG-08 needed activation to sync before Phase 6 could exist), personal_record moved in
+// 05-03 (D-30 — the apply path could not wait for Phase 9), and equipment_profile moved in 06-01 —
+// Phase 4 no longer owes either of its two here, Phase 9 no longer owes personal_record, and Phase 6
+// no longer owes equipment_profile. Only Phase 12's two tables remain.
 export const PUSH_DEFERRED_TABLES = [
-  'equipment_profile', // Phase 6 — Gym Profiles & Plate Math
   'body_metric', // Phase 12 — Body Metrics & Dashboard
   'progress_photo', // Phase 12 — Body Metrics & Dashboard
 ] as const;
