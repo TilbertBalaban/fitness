@@ -42,7 +42,11 @@ describe('solvePlateBreakdown', () => {
       barKg: '20.000',
       perSidePlatesKg: ['20.000'],
     });
-    expect(solvePlateBreakdown('100.000', onePair)).toEqual({ kind: 'not_loadable' });
+    expect(solvePlateBreakdown('100.000', onePair)).toEqual({
+      kind: 'not_loadable',
+      lowerKg: '60.000',
+      higherKg: null,
+    });
   });
 
   it('a zero-plate inventory reports the bar weight itself as loadable with an empty stack', () => {
@@ -68,9 +72,13 @@ describe('solvePlateBreakdown', () => {
     expect(solvePlateBreakdown('100.000', noBar)).toEqual({ kind: 'unsupported' });
   });
 
-  it('an ungapped target (odd milli-kg split) is not loadable', () => {
+  it('an ungapped target (odd milli-kg split) is not loadable, and names its nearest neighbours', () => {
     const oddGap = inventoryFrom({ barbellWeightKg: '20.001' });
-    expect(solvePlateBreakdown('100.000', oddGap)).toEqual({ kind: 'not_loadable' });
+    expect(solvePlateBreakdown('100.000', oddGap)).toEqual({
+      kind: 'not_loadable',
+      lowerKg: '95.001',
+      higherKg: '100.001',
+    });
   });
 
   it('returns the per-side stack in strictly descending order, stable across repeated calls', () => {

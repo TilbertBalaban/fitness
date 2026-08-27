@@ -1,7 +1,10 @@
 // The 40/60/80 percent, 10/5/3 rep warm-up scheme is this project's own evidence-informed
 // convention, not MacroFactor's undocumented internal formula — no public specification exists
-// (PITFALLS.md Pitfall 8). Phase 6 replaces roundingIncrementKg with the active gym profile's
-// real plate increments behind this same signature.
+// (PITFALLS.md Pitfall 8). Phase 6 adds an optional achievable-load rounder alongside this
+// increment rather than replacing it: this value is now the last-resort fallback for a caller
+// with no resolvable gym profile, never the app's general increment — RESEARCH.md's Open
+// Question 3 recommends keeping it as documented insurance, and D-19's seed-on-first-need means
+// it should never actually be reached in normal operation.
 export const DEFAULT_ROUNDING_INCREMENT_KG = 2.5;
 
 export const WARMUP_STEPS = [
@@ -24,7 +27,8 @@ export interface WarmupSet {
 
 export function warmupSets(
   workingWeightKg: number | null,
-  roundingIncrementKg: number = DEFAULT_ROUNDING_INCREMENT_KG
+  roundingIncrementKg: number = DEFAULT_ROUNDING_INCREMENT_KG,
+  roundWeight?: (rawKg: number) => number
 ): WarmupSet[] {
   if (
     workingWeightKg === null ||
@@ -36,7 +40,8 @@ export function warmupSets(
 
   const sets: WarmupSet[] = [];
   for (const step of WARMUP_STEPS) {
-    const weightKg = roundToIncrement(workingWeightKg * step.fraction, roundingIncrementKg);
+    const rawKg = workingWeightKg * step.fraction;
+    const weightKg = roundWeight ? roundWeight(rawKg) : roundToIncrement(rawKg, roundingIncrementKg);
     if (weightKg <= 0) continue;
     sets.push({ weightKg, reps: step.reps });
   }

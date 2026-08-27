@@ -1,9 +1,10 @@
 import { CANONICAL_KG_SCALE } from '@fitness/api-contracts';
+import { achievableBarbellLoads, nearestLoadable } from './achievability';
 import type { ResolvedInventory } from './inventory';
 
 export type PlateBreakdown =
   | { kind: 'loadable'; barKg: string; perSidePlatesKg: string[] }
-  | { kind: 'not_loadable' }
+  | { kind: 'not_loadable'; lowerKg: string | null; higherKg: string | null }
   | { kind: 'no_plates' }
   | { kind: 'unsupported' };
 
@@ -24,6 +25,14 @@ function fromMilliKg(value: bigint): string {
   const wholePart = digits.slice(0, digits.length - CANONICAL_KG_SCALE) || '0';
   const fractionPart = digits.slice(digits.length - CANONICAL_KG_SCALE);
   return `${wholePart}.${fractionPart}`;
+}
+
+// Both not_loadable exits below (an ungapped diff, and a count-bound solve) fill in the same
+// neighbour pair via achievability.ts's nearestLoadable over the same achievable set this solver
+// itself would accept — the neighbours can never name a load this solver would then refuse.
+function notLoadableWithNeighbours(targetKg: string, inventory: ResolvedInventory): PlateBreakdown {
+  const { lower, higher } = nearestLoadable(targetKg, achievableBarbellLoads(inventory));
+  return { kind: 'not_loadable', lowerKg: lower, higherKg: higher };
 }
 
 interface Denomination {
@@ -86,7 +95,7 @@ export function solvePlateBreakdown(targetKg: string, inventory: ResolvedInvento
   const diff = targetMilli - barMilli;
   // A per-side split only exists when the bar-to-target gap divides evenly across both sides —
   // plates are always added in matched pairs, so an odd milli-kg gap can never be exactly loaded.
-  if (diff % 2n !== 0n) return { kind: 'not_loadable' };
+  if (diff % 2n !== 0n) return notLoadableWithNeighbours(targetKg, inventory);
   const perSideTarget = diff / 2n;
 
   if (perSideTarget === 0n) {
@@ -103,7 +112,7 @@ export function solvePlateBreakdown(targetKg: string, inventory: ResolvedInvento
   }));
 
   const solution = solvePerSide(perSideTarget, denominations);
-  if (!solution) return { kind: 'not_loadable' };
+  if (!solution) return notLoadableWithNeighbours(targetKg, inventory);
 
   const perSidePlatesKg: string[] = [];
   for (let i = 0; i < denominations.length; i++) {
