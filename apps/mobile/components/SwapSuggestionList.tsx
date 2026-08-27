@@ -6,6 +6,11 @@ import { SWAP_RESULT_CAP, type ScoredCandidate } from '@/lib/catalog/smart-swap'
 
 export interface SwapSuggestionListProps {
   candidates: ScoredCandidate[];
+  // Absent: every row stays the navigation link it is today, and every existing caller/test is
+  // unaffected. Present: a row invokes this with the picked candidate instead of navigating — the
+  // Equipment Availability Sheet's own session-only swap (D-22/D-23) is the first caller to supply
+  // it.
+  onSelect?: (candidate: ScoredCandidate) => void;
 }
 
 // "{n} suggested alternative" / "{n} suggested alternatives" — the exact Copywriting Contract
@@ -20,7 +25,7 @@ function pluralizeSuggestionHeader(count: number): string {
 // without needing its own nested scroll region. A candidate whose `why` is blank is dropped rather
 // than rendered: an unexplained suggestion is exactly what choosing a deterministic scorer over a
 // similarity model was meant to avoid (UI-SPEC E6 populated/partial rows).
-export function SwapSuggestionList({ candidates }: SwapSuggestionListProps) {
+export function SwapSuggestionList({ candidates, onSelect }: SwapSuggestionListProps) {
   const visible = candidates.filter((candidate) => candidate.why.trim().length > 0).slice(0, SWAP_RESULT_CAP);
 
   if (visible.length === 0) {
@@ -46,14 +51,9 @@ export function SwapSuggestionList({ candidates }: SwapSuggestionListProps) {
     <View className="mt-lg gap-xs">
       <Text className="text-body font-semibold text-foreground">{pluralizeSuggestionHeader(visible.length)}</Text>
       <View className="gap-sm">
-        {visible.map((candidate) => (
-          <Link key={candidate.id} href={{ pathname: '/exercises/[id]', params: { id: candidate.id } }} asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={candidate.name}
-              className="flex-row items-center gap-sm rounded-md bg-surface px-md py-sm"
-              style={{ minHeight: 48 }}
-            >
+        {visible.map((candidate) => {
+          const rowContent = (
+            <>
               <ExerciseImageTile localSource={getLocalCatalogImage(candidate.id)} width={EXERCISE_THUMBNAIL_WIDTH} />
               <View className="flex-1 gap-xs">
                 <Text className="text-body font-normal text-foreground" numberOfLines={1}>
@@ -63,9 +63,37 @@ export function SwapSuggestionList({ candidates }: SwapSuggestionListProps) {
                   {candidate.why}
                 </Text>
               </View>
-            </Pressable>
-          </Link>
-        ))}
+            </>
+          );
+
+          if (onSelect) {
+            return (
+              <Pressable
+                key={candidate.id}
+                onPress={() => onSelect(candidate)}
+                accessibilityRole="button"
+                accessibilityLabel={candidate.name}
+                className="flex-row items-center gap-sm rounded-md bg-surface px-md py-sm"
+                style={{ minHeight: 48 }}
+              >
+                {rowContent}
+              </Pressable>
+            );
+          }
+
+          return (
+            <Link key={candidate.id} href={{ pathname: '/exercises/[id]', params: { id: candidate.id } }} asChild>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={candidate.name}
+                className="flex-row items-center gap-sm rounded-md bg-surface px-md py-sm"
+                style={{ minHeight: 48 }}
+              >
+                {rowContent}
+              </Pressable>
+            </Link>
+          );
+        })}
       </View>
     </View>
   );

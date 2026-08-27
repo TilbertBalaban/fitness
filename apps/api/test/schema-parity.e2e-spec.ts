@@ -45,6 +45,7 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
     'id',
     'user_id',
     'cycle_id',
+    'unavailable_equipment',
     'started_at',
     'timezone',
     'local_date',

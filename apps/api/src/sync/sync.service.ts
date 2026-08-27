@@ -14,6 +14,7 @@ import {
   isEquipmentProfilePlates,
   isEquipmentDumbbellIncrements,
   isEquipmentMachineAvailability,
+  isUnavailableEquipmentRefs,
   type SyncCrudOp,
   type SyncPushResponse,
   type SyncRejectionReason,
@@ -222,6 +223,7 @@ interface WorkoutSessionOpData {
   routine_day_id?: string | null;
   cycle_id?: string | null;
   equipment_profile_id?: string | null;
+  unavailable_equipment?: unknown;
   started_at?: string;
   ended_at?: string | null;
   status?: string;
@@ -390,6 +392,9 @@ function toWorkoutSessionValues(id: string, userId: string, data: Record<string,
     routineDayId: d.routine_day_id ?? null,
     cycleId: d.cycle_id ?? null,
     equipmentProfileId: d.equipment_profile_id ?? null,
+    // Absent and explicit null both mean "no marks" — there is no distinct wire shape for
+    // clearing versus never having set it, matching cycle_id's own absent/null convention above.
+    unavailableEquipment: d.unavailable_equipment ?? null,
     startedAt,
     endedAt: d.ended_at ? new Date(d.ended_at) : null,
     status: d.status ?? 'in_progress',
@@ -841,6 +846,13 @@ function hasInvalidField(op: SyncCrudOp): boolean {
     if (!isValidOptionalIsoOrNull(d.paused_at)) return true;
     if (!isValidOptionalIsoOrNull(d.rest_target_at)) return true;
     if (d.accumulated_paused_seconds !== undefined && !isNonNegativeInteger(d.accumulated_paused_seconds)) {
+      return true;
+    }
+    if (
+      d.unavailable_equipment !== undefined &&
+      d.unavailable_equipment !== null &&
+      !isUnavailableEquipmentRefs(d.unavailable_equipment)
+    ) {
       return true;
     }
     return false;

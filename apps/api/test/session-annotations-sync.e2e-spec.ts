@@ -96,6 +96,7 @@ interface WorkoutSessionRow {
   routine_day_id: string | null;
   cycle_id: string | null;
   equipment_profile_id: string | null;
+  unavailable_equipment: unknown;
   started_at: string;
   ended_at: string | null;
   status: string;
@@ -111,7 +112,8 @@ interface WorkoutSessionRow {
 
 async function readWorkoutSession(id: string): Promise<WorkoutSessionRow> {
   const { rows } = await pg.query(
-    `SELECT routine_day_id, cycle_id, equipment_profile_id, started_at::text AS started_at,
+    `SELECT routine_day_id, cycle_id, equipment_profile_id, unavailable_equipment,
+            started_at::text AS started_at,
             ended_at::text AS ended_at, status, device_id, timezone, local_date::text AS local_date,
             notes, name, paused_at::text AS paused_at, accumulated_paused_seconds,
             rest_target_at::text AS rest_target_at
@@ -447,6 +449,80 @@ describe('session annotations sync (e2e) — notes, pause, preferences', () => {
       const badRes = await push(cookie, [badOp]);
       expect((badRes.body as SyncPushResponse).rejected).toEqual([{ op_id: badOp.op_id, reason: 'invalid_field' }]);
       expect((await readWorkoutSession(sessionId)).cycle_id).toBeNull();
+    });
+  });
+
+  describe('GYM-07: workout_session.unavailable_equipment', () => {
+    it('a PATCH naming only unavailable_equipment writes it and leaves every other session column untouched', async () => {
+      const { cookie } = await signUp('unavail-eq-patch');
+      const { sessionId } = await seedWorkoutSessionAndExercise(cookie, {
+        started_at: new Date('2026-06-15T20:00:00Z').toISOString(),
+        status: 'in_progress',
+        timezone: 'UTC',
+        local_date: '2026-06-15',
+        name: 'Push Day',
+      });
+
+      const marks = [{ kind: 'machine', machineId: 'leg-press-1' }];
+      const patchOp = workoutSessionOp(sessionId, { unavailable_equipment: marks }, 'PATCH');
+      const res = await push(cookie, [patchOp]);
+      expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+      const row = await readWorkoutSession(sessionId);
+      expect(row.unavailable_equipment).toEqual(marks);
+      expect(row.name).toBe('Push Day');
+      expect(row.status).toBe('in_progress');
+    });
+
+    it('a PATCH naming unavailable_equipment as null clears it', async () => {
+      const { cookie } = await signUp('unavail-eq-clear');
+      const { sessionId } = await seedWorkoutSessionAndExercise(cookie, {
+        started_at: new Date('2026-06-15T20:00:00Z').toISOString(),
+        status: 'in_progress',
+        timezone: 'UTC',
+        local_date: '2026-06-15',
+        unavailable_equipment: [{ kind: 'equipment_type', equipmentType: 'dumbbell' }],
+      });
+      expect((await readWorkoutSession(sessionId)).unavailable_equipment).toEqual([
+        { kind: 'equipment_type', equipmentType: 'dumbbell' },
+      ]);
+
+      const clearOp = workoutSessionOp(sessionId, { unavailable_equipment: null }, 'PATCH');
+      const res = await push(cookie, [clearOp]);
+      expect((res.body as SyncPushResponse).rejected).toEqual([]);
+      expect((await readWorkoutSession(sessionId)).unavailable_equipment).toBeNull();
+    });
+
+    it('a push naming a malformed unavailable_equipment payload is rejected invalid_field with no row written', async () => {
+      const { cookie } = await signUp('unavail-eq-invalid-create');
+      const sessionId = randomUUID();
+      const badOp = workoutSessionOp(sessionId, {
+        started_at: new Date('2026-06-15T20:00:00Z').toISOString(),
+        status: 'in_progress',
+        timezone: 'UTC',
+        local_date: '2026-06-15',
+        unavailable_equipment: [{ kind: 'equipment_type', equipmentType: 'not-a-real-type' }],
+      });
+      const res = await push(cookie, [badOp]);
+      expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: badOp.op_id, reason: 'invalid_field' }]);
+      expect(await readWorkoutSession(sessionId)).toBeUndefined();
+    });
+
+    it('a PATCH naming a non-array unavailable_equipment is rejected invalid_field and leaves the prior marks unchanged', async () => {
+      const { cookie } = await signUp('unavail-eq-invalid-patch');
+      const marks = [{ kind: 'machine', machineId: 'cable-row-2' }];
+      const { sessionId } = await seedWorkoutSessionAndExercise(cookie, {
+        started_at: new Date('2026-06-15T20:00:00Z').toISOString(),
+        status: 'in_progress',
+        timezone: 'UTC',
+        local_date: '2026-06-15',
+        unavailable_equipment: marks,
+      });
+
+      const badOp = workoutSessionOp(sessionId, { unavailable_equipment: 'leg-press' }, 'PATCH');
+      const res = await push(cookie, [badOp]);
+      expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: badOp.op_id, reason: 'invalid_field' }]);
+      expect((await readWorkoutSession(sessionId)).unavailable_equipment).toEqual(marks);
     });
   });
 

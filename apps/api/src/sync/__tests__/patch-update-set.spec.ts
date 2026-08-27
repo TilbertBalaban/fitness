@@ -39,6 +39,7 @@ function workoutSessionValues(overrides: Partial<WorkoutSessionValues> = {}): Wo
     routineDayId: 'rd-1',
     cycleId: null,
     equipmentProfileId: 'ep-1',
+    unavailableEquipment: null,
     startedAt: new Date('2026-06-15T20:00:00Z'),
     endedAt: null,
     status: 'in_progress',
@@ -214,6 +215,7 @@ describe('patchAwareSet', () => {
         paused_at: '2026-06-16T00:30:00Z',
         accumulated_paused_seconds: 90,
         rest_target_at: '2026-06-16T00:32:00Z',
+        unavailable_equipment: '[{"kind":"equipment_type","equipmentType":"barbell"}]',
       },
     });
     const result = patchAwareSet(patchOp, values, WORKOUT_SESSION_PATCH_FIELDS);

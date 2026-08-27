@@ -21,6 +21,7 @@ import {
   drizzleSchema,
   equipmentProfile,
   exercise,
+  exerciseMuscleMapping,
   loggedSet,
   personalRecord,
   progressPhoto,
@@ -640,7 +641,7 @@ export async function readWorkoutSessionRaw(sessionId: string): Promise<Record<s
     throw new Error('readWorkoutSessionRaw() called before openTestPowerSync()');
   }
   const rows = await rawDb.getAll<Record<string, unknown>>(
-    'SELECT id, name, started_at, paused_at, accumulated_paused_seconds, status, timezone, local_date, notes, equipment_profile_id FROM workout_session WHERE id = ?',
+    'SELECT id, name, started_at, paused_at, accumulated_paused_seconds, status, timezone, local_date, notes, equipment_profile_id, unavailable_equipment FROM workout_session WHERE id = ?',
     [sessionId],
   );
   return rows[0] ?? null;
@@ -712,4 +713,56 @@ export async function connectTestPowerSync(connector: PowerSyncBackendConnector)
 export async function disconnectTestPowerSync(): Promise<void> {
   if (!rawDb) return;
   await rawDb.disconnect();
+}
+
+export interface SeedSwapCandidateInput {
+  targetExerciseId: string;
+  candidateId: string;
+  candidateName: string;
+  candidateEquipmentType: EquipmentType;
+}
+
+// 06-06's equipment-availability e2e case: a real seeded_exercise candidate plus a shared-muscle-
+// group mapping against the target exercise, so scoreAlternatives (smart-swap.ts) has a genuine
+// muscle-overlap signal to clear SWAP_SCORE_THRESHOLD on — no other e2e fixture in this file seeds
+// exercise_muscle_mapping rows, and neither seedProgrammedSession nor
+// seedProgrammedSessionWithEquipment's own bare/equipment-typed exercises carry one. The
+// muscleGroupId is synthetic (never inserted into muscle_group itself) — nothing scoreAlternatives
+// reads compares it against that table, only against the matching id on the other mapping row.
+export async function seedSwapCandidate(db: TestWriteDb, input: SeedSwapCandidateInput): Promise<void> {
+  const muscleGroupId = 'harness-swap-muscle';
+
+  await db.insert(seededExercise).values({
+    id: input.candidateId,
+    name: input.candidateName,
+    aliases: null,
+    movementPattern: null,
+    equipmentRequired: input.candidateEquipmentType,
+    loadType: 'external_weight',
+    unilateral: false,
+    instructionsText: null,
+    cueText: null,
+    imageUrls: null,
+    bodyweightContributionPct: null,
+    variationOfId: null,
+    source: 'harness',
+    archivedAt: null,
+  });
+
+  await db.insert(exerciseMuscleMapping).values([
+    {
+      id: `${input.targetExerciseId}:${muscleGroupId}`,
+      exerciseId: input.targetExerciseId,
+      muscleGroupId,
+      role: 'primary',
+      weightFactor: '1',
+    },
+    {
+      id: `${input.candidateId}:${muscleGroupId}`,
+      exerciseId: input.candidateId,
+      muscleGroupId,
+      role: 'primary',
+      weightFactor: '1',
+    },
+  ]);
 }

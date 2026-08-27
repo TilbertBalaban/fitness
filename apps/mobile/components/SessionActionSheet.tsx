@@ -13,7 +13,7 @@ const GLYPH_COLORS: Record<'light' | 'dark', { foreground: string; destructive: 
   dark: { foreground: 'rgb(250, 250, 250)', destructive: 'rgb(239, 68, 68)' },
 };
 
-export type SessionExerciseActionId = 'swap' | 'remove' | 'reorder' | 'info';
+export type SessionExerciseActionId = 'swap' | 'remove' | 'reorder' | 'info' | 'equipment';
 
 export interface SessionExerciseAction {
   id: SessionExerciseActionId;
@@ -22,28 +22,39 @@ export interface SessionExerciseAction {
   destructive?: boolean;
 }
 
-// D-13's overflow: a fixed four-row constant — Swap, Remove, Reorder, Info — mirroring
-// RoutineActionSheet's own row anatomy verbatim, never conditionally hidden or reordered (UI-SPEC
-// E10 empty/zero-one-many).
+// D-13's overflow: a fixed five-row constant — Swap, Remove, Reorder, Info, Equipment — mirroring
+// RoutineActionSheet's own row anatomy verbatim, never reordered (UI-SPEC E10/E5 empty/zero-one-
+// many). Equipment is appended last, matching D-06's additive-only rule for a closed UI list; its
+// rendering is gated by `hasEquipment` below, so its absence from the constant is never the answer
+// — the constant always lists all five, the view decides which paint (E5 populated/partial).
 export const SESSION_EXERCISE_ACTIONS: SessionExerciseAction[] = [
   { id: 'swap', label: 'Swap', icon: 'swap-horizontal-outline' },
   { id: 'remove', label: 'Remove', icon: 'trash-outline', destructive: true },
   { id: 'reorder', label: 'Reorder', icon: 'reorder-three-outline' },
   { id: 'info', label: 'Info', icon: 'information-circle-outline' },
+  { id: 'equipment', label: 'Equipment', icon: 'construct-outline' },
 ];
 
 export interface SessionActionSheetViewProps {
   exerciseName: string;
   colors: { foreground: string; destructive: string };
+  // R11: whether the current exercise's equipment resolves to non-collapsed band content — always
+  // computed by the caller from the one shared predicate (hasResolvableEquipment/
+  // resolveEquipmentBand), never re-derived here. Absent, not disabled: a bodyweight/kettlebell/etc
+  // exercise structurally excludes the row rather than rendering it inert (E5 partial).
+  hasEquipment: boolean;
   onSelect: (id: SessionExerciseActionId) => void;
   onCancel: () => void;
 }
 
 // Hook-free — mirrors RoutineActionSheet.tsx's shape verbatim: same overlay, same ScrollView, same
-// 48x48 row geometry. Remove renders in the destructive color; the other three in default
-// foreground (UI-SPEC E10 populated). Every row is always actionable — there is no disabled-row
-// state (E10 partial).
-export function SessionActionSheetView({ exerciseName, colors, onSelect, onCancel }: SessionActionSheetViewProps) {
+// 48x48 row geometry. Remove renders in the destructive color; every other row (including
+// Equipment) in default foreground — marking equipment unavailable is never rendered as
+// destructive (UI-SPEC E5 populated). Every row is always actionable — there is no disabled-row
+// state (E10/E5 partial).
+export function SessionActionSheetView({ exerciseName, colors, hasEquipment, onSelect, onCancel }: SessionActionSheetViewProps) {
+  const visibleActions = SESSION_EXERCISE_ACTIONS.filter((action) => action.id !== 'equipment' || hasEquipment);
+
   return (
     <View className="flex-1 items-center justify-center bg-background/80 px-lg">
       <ScrollView
@@ -53,7 +64,7 @@ export function SessionActionSheetView({ exerciseName, colors, onSelect, onCance
         <Text className="text-heading font-semibold text-foreground">{exerciseName}</Text>
 
         <View className="mt-md gap-xs">
-          {SESSION_EXERCISE_ACTIONS.map((action) => (
+          {visibleActions.map((action) => (
             <Pressable
               key={action.id}
               onPress={() => onSelect(action.id)}
@@ -88,6 +99,7 @@ export function SessionActionSheetView({ exerciseName, colors, onSelect, onCance
 
 export interface SessionActionSheetProps {
   exerciseName: string;
+  hasEquipment: boolean;
   onSelect: (id: SessionExerciseActionId) => void;
   onCancel: () => void;
 }

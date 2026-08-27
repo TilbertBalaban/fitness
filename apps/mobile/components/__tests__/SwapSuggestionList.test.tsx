@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Image, StyleSheet, Text, type ImageStyle } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, type ImageStyle } from 'react-native';
+import { Link } from 'expo-router';
 import {
   EXERCISE_THUMBNAIL_WIDTH,
   ExerciseImageTile,
@@ -189,5 +190,40 @@ describe('SwapSuggestionList', () => {
     expect(StyleSheet.flatten(image.props.style)).toEqual(StyleSheet.flatten(resolveTileImageStyle()));
     expect(flattened.width).toBe('100%');
     expect(flattened.height).toBe('100%');
+  });
+
+  it('without onSelect, rows stay navigation Links exactly as before this prop existed', () => {
+    const result = SwapSuggestionList({
+      candidates: [candidate({ id: 'a', name: 'Incline Bench Press', why: 'Same primary muscle: chest' })],
+    });
+
+    expect(findByType(result, Link)).toHaveLength(1);
+  });
+
+  it('with onSelect, a row is a plain Pressable — no Link is rendered for the populated rows', () => {
+    const result = SwapSuggestionList({
+      candidates: [candidate({ id: 'a', name: 'Incline Bench Press', why: 'Same primary muscle: chest' })],
+      onSelect: jest.fn(),
+    });
+
+    expect(findByType(result, Link)).toHaveLength(0);
+  });
+
+  it('with onSelect, tapping a row invokes it with the picked candidate', () => {
+    const onSelect = jest.fn();
+    const picked = candidate({ id: 'a', name: 'Incline Bench Press', why: 'Same primary muscle: chest' });
+    const result = SwapSuggestionList({ candidates: [picked], onSelect });
+
+    const row = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Incline Bench Press');
+    (row?.props.onPress as () => void)();
+
+    expect(onSelect).toHaveBeenCalledWith(picked);
+  });
+
+  it('with onSelect, the empty state still renders its unconditional Browse Catalog Link, unaffected', () => {
+    const result = SwapSuggestionList({ candidates: [], onSelect: jest.fn() });
+
+    expect(flatText(result)).toContain('Browse Catalog');
+    expect(findByType(result, Link)).toHaveLength(1);
   });
 });
