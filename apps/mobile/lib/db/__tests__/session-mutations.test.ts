@@ -1,3 +1,4 @@
+import { serializeEquipmentJson } from '@fitness/api-contracts';
 import { warmupSets } from '@fitness/pr-rules';
 import {
   addExerciseToSession,
@@ -11,7 +12,7 @@ import {
   writeBackTargets,
 } from '../session-mutations';
 import { getPowerSync, type WriteDb } from '../powersync';
-import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from '../schema';
+import { equipmentProfile, loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from '../schema';
 
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
 
@@ -78,10 +79,15 @@ function inMemoryDb() {
   }
 
   const db = {
-    select: (projection: Record<string, unknown>) => ({
+    // Bare select() (no projection object) returns whole rows as-is — loadEquipmentProfile
+    // (equipment-profiles.ts) reads this way, matching session-equipment.test.ts's own fake.
+    select: (projection?: Record<string, unknown>) => ({
       from: (table: TableLike) => ({
         where: (condition: unknown) => {
           const matched = rowsFor(table).filter((row) => rowMatches(table, row, condition));
+          if (!projection) {
+            return Promise.resolve(matched.map((row) => ({ ...row })));
+          }
           const aggregateEntry = Object.entries(projection).find(([, col]) => isSqlLike(col));
           if (aggregateEntry) {
             const [alias] = aggregateEntry;
@@ -510,6 +516,47 @@ describe('generateWarmupSets — deterministic, durable, idempotent (LOG-17)', (
     expect(idsForNull).toHaveLength(0);
     expect(idsForZero).toHaveLength(0);
     expect(store.rowsOf(loggedSet)).toHaveLength(0);
+  });
+
+  it('rounds each step down to the nearest achievable barbell load when the session resolves a gym inventory (D-10)', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 'sess-1' });
+    store.seed(workoutSession, { id: 'sess-1', equipmentProfileId: 'gym-1' });
+    store.seed(equipmentProfile, {
+      id: 'gym-1',
+      userId: null,
+      name: 'Test Gym',
+      isDefault: false,
+      barbellWeightKg: '20.000',
+      availablePlates: serializeEquipmentJson([{ weightKg: '20.000', pairCount: 1 }]),
+      dumbbellIncrementsKg: serializeEquipmentJson([]),
+      machineAvailability: serializeEquipmentJson([]),
+      nativeUnit: 'kg',
+      archivedAt: null,
+      serverSeq: null,
+    });
+
+    // Achievable barbell loads: bar alone (20) and bar + one 20kg pair (60). 40% of 100 = 40 rounds
+    // down to 20 (the bar); 60% = 60 is exactly achievable; 80% = 80 rounds down to 60 — never the
+    // plain-increment values warmupSets() would otherwise produce.
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+
+    const rows = store.rowsOf(loggedSet);
+    expect(rows.map((row) => Number(row.weightKg))).toEqual([20, 60, 60]);
+  });
+
+  it('falls back to the plain increment path when the session resolves no gym inventory', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 'sess-1' });
+    store.seed(workoutSession, { id: 'sess-1', equipmentProfileId: null });
+
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+
+    const expected = warmupSets(100);
+    const rows = store.rowsOf(loggedSet);
+    rows.forEach((row, index) => {
+      expect(Number(row.weightKg)).toBeCloseTo(expected[index].weightKg);
+    });
   });
 });
 

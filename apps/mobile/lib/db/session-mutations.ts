@@ -1,8 +1,10 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { isEmptyOverride, WARMUP_SET_TYPE, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
+import { achievableBarbellLoads, roundToAchievable, type ResolvedInventory } from '@fitness/plate-math';
 import { warmupSets } from '@fitness/pr-rules';
 import { addSessionExercise, logSet } from './log-set';
 import { getPowerSync, type WriteDb, type WriteHandle, type WriteTx } from './powersync';
+import { loadSessionInventory } from './session-equipment';
 import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from './schema';
 
 // The module every session-scoped write these action-bar/overflow surfaces perform lives behind
@@ -197,11 +199,25 @@ export interface GenerateWarmupSetsInput {
   roundingIncrementKg?: number;
 }
 
+// D-10: a warm-up rounded UP is heavier than intended — the hazard this rounder exists to close.
+// Rounds down against the session's own resolved barbell loads; a step with nothing achievable at
+// or below it drops out (0), matching warmupSets()'s own "weightKg <= 0 is skipped" rule, rather
+// than ever emitting a load the gym cannot produce.
+function achievableWarmupRounder(inventory: ResolvedInventory): (rawKg: number) => number {
+  const achievableKg = achievableBarbellLoads(inventory);
+  return (rawKg: number): number => {
+    const rounded = roundToAchievable(String(rawKg), achievableKg, 'down');
+    return rounded === null ? 0 : Number(rounded);
+  };
+}
+
 // LOG-17: deletes the exercise's existing UNCOMPLETED warm-up rows, then inserts one logged_set
 // row per warmupSets() entry through the existing logSet helper — a second tap regenerates rather
 // than appends, so an exercise can never end up with two ladders; a completed warm-up row from an
 // earlier generation is left alone, since the user did it. Writes no percentage or rounding
-// arithmetic itself — @fitness/pr-rules's warmupSets() is the only source of the ladder.
+// arithmetic itself — @fitness/pr-rules's warmupSets() is the only source of the ladder; when the
+// session resolves a gym inventory (D-17), that ladder rounds down to what the gym can actually
+// load (D-10) instead of the plain increment.
 export async function generateWarmupSets(
   { sessionExerciseId, workingWeightKg, roundingIncrementKg }: GenerateWarmupSetsInput,
   db: WriteDb = getPowerSync(),
@@ -216,7 +232,15 @@ export async function generateWarmupSets(
       ),
     );
 
-  const ladder = warmupSets(workingWeightKg, roundingIncrementKg);
+  const [sessionExerciseRow] = await db
+    .select({ sessionId: sessionExercise.sessionId })
+    .from(sessionExercise)
+    .where(eq(sessionExercise.id, sessionExerciseId));
+
+  const inventory = sessionExerciseRow ? await loadSessionInventory(sessionExerciseRow.sessionId, db) : null;
+  const roundWeight = inventory ? achievableWarmupRounder(inventory) : undefined;
+
+  const ladder = warmupSets(workingWeightKg, roundingIncrementKg, roundWeight);
   const ids: string[] = [];
   for (const set of ladder) {
     const id = await logSet(

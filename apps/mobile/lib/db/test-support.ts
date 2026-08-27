@@ -11,8 +11,9 @@ import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-d
 // import chain fails there (its dist re-exports omit file extensions, invalid under strict Node
 // ESM). powersync.web.ts's AppSchema is the exact object getPowerSync() uses on web — importing
 // it explicitly is correct for this durability harness regardless of platform resolution.
+import type { EquipmentType } from '@fitness/api-contracts';
 import { AppSchema } from './powersync.web';
-import { ensureDefaultEquipmentProfile } from './equipment-profiles';
+import { createEquipmentProfile, ensureDefaultEquipmentProfile, type CreateEquipmentProfileInput } from './equipment-profiles';
 import { generateClientId } from './id';
 import { startWorkoutFromProgram, type StartWorkoutFromProgramSlot } from './log-set';
 import {
@@ -28,6 +29,7 @@ import {
   routineDay,
   routineExercise,
   routineExerciseCycleTarget,
+  seededExercise,
   sessionExercise,
   userPreference,
   workoutSession,
@@ -167,6 +169,91 @@ export async function seedProgrammedSession(db: TestWriteDb, userId?: string): P
   };
 }
 
+// Same shape as seedProgrammedSession, plus two REAL catalog rows (seeded_exercise, localOnly —
+// never a ps_crud entry) carrying a real equipment_required value each — 06-05's band gates on
+// EquipmentType, so unlike seedProgrammedSession's deliberately-bare exercise ids (which every
+// other e2e spec's "Unknown exercise" assertion depends on, and which this function must never
+// touch), a plate-strip.spec.ts case needs a real, resolvable equipment type per exercise. A
+// distinct exercise-id prefix ('ex-workout-harness-equip-') keeps this fixture's rows from ever
+// colliding with seedProgrammedSession's own.
+export async function seedProgrammedSessionWithEquipment(
+  db: TestWriteDb,
+  userId: string,
+  equipmentTypes: [EquipmentType, EquipmentType],
+): Promise<SeededProgrammedSession> {
+  const routineId = generateClientId();
+  const routineDayId = generateClientId();
+  const routineExerciseIds = [generateClientId(), generateClientId()];
+  const exerciseIds = ['ex-workout-harness-equip-1', 'ex-workout-harness-equip-2'];
+
+  await db.insert(routine).values({
+    id: routineId,
+    userId: null,
+    name: 'Harness Equipment Program',
+    goal: null,
+    status: 'ready',
+    progressionFrozen: false,
+    source: 'user',
+    createdFromTemplateId: null,
+    archivedAt: null,
+  });
+
+  await db.insert(routineDay).values({
+    id: routineDayId,
+    routineId,
+    orderIndex: 1024,
+    name: 'Push',
+    isRestDay: false,
+  });
+
+  for (const [index, exerciseId] of exerciseIds.entries()) {
+    await db.insert(seededExercise).values({
+      id: exerciseId,
+      name: `Harness ${equipmentTypes[index]} exercise`,
+      aliases: null,
+      movementPattern: null,
+      equipmentRequired: equipmentTypes[index],
+      loadType: 'external_weight',
+      unilateral: false,
+      instructionsText: null,
+      cueText: null,
+      imageUrls: null,
+      bodyweightContributionPct: null,
+      variationOfId: null,
+      source: 'harness',
+      archivedAt: null,
+    });
+  }
+
+  for (const [index, routineExerciseId] of routineExerciseIds.entries()) {
+    await db.insert(routineExercise).values({
+      id: routineExerciseId,
+      routineDayId,
+      exerciseId: exerciseIds[index],
+      orderIndex: (index + 1) * 1024,
+      supersetGroupId: null,
+      progressionSchemeId: null,
+      notes: null,
+      ...SEEDED_TARGETS[index],
+    });
+  }
+
+  const slots: StartWorkoutFromProgramSlot[] = routineExerciseIds.map((routineExerciseId, index) => ({
+    routineExerciseId,
+    exerciseId: exerciseIds[index],
+    orderIndex: (index + 1) * 1024,
+  }));
+
+  const sessionId = await startWorkoutFromProgram({ routineDayId, cycleId: null, slots, userId }, db);
+
+  return {
+    sessionId,
+    routineId,
+    routineDayId,
+    exercises: slots,
+  };
+}
+
 export interface SeedEquipmentProfileResult {
   profileId: string;
 }
@@ -177,6 +264,15 @@ export interface SeedEquipmentProfileResult {
 // flow does.
 export async function seedEquipmentProfile(db: TestWriteDb, userId: string): Promise<SeedEquipmentProfileResult> {
   const profileId = await ensureDefaultEquipmentProfile(userId, db);
+  return { profileId };
+}
+
+// Delegates to the real createEquipmentProfile (equipment-profiles.ts) — no seed shortcut, no
+// second construction of the equipment_profile row shape. Used by plate-strip.spec.ts's
+// not-loadable/zero-plate/dumbbell cases, which each need a deliberately shaped inventory the D-19
+// commercial-gym default does not produce.
+export async function seedGymProfile(db: TestWriteDb, input: CreateEquipmentProfileInput): Promise<SeedEquipmentProfileResult> {
+  const profileId = await createEquipmentProfile(input, db);
   return { profileId };
 }
 

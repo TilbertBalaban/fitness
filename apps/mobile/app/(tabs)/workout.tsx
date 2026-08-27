@@ -1,7 +1,7 @@
-import { fromCanonicalKg, toCanonicalKg, WORKING_SET_TYPE, type WeightUnit } from '@fitness/api-contracts';
-import { eq } from 'drizzle-orm';
+import { fromCanonicalKg, toCanonicalKg, WORKING_SET_TYPE, type EquipmentType, type WeightUnit } from '@fitness/api-contracts';
+import { eq, inArray } from 'drizzle-orm';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import {
@@ -10,6 +10,7 @@ import {
   NumericKeypadView,
   type KeypadField,
   type KeypadPress,
+  type PlateStripBandData,
 } from '@/components/NumericKeypad';
 import { type SetRowValues } from '@/components/SetRow';
 import { countCompletedWorkingSets, ExerciseStripView, type ExerciseStripExercise } from '@/components/ExerciseStrip';
@@ -22,8 +23,14 @@ import { BackgroundAlertsOffNote, NotificationPermissionPromptView } from '@/com
 import { RestTimerBar } from '@/components/RestTimerBar';
 import { DiscardWorkoutDialog } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
-import { resolveInventory, type ResolvedInventory } from '@fitness/plate-math';
-import { loadEquipmentProfile } from '@/lib/db/equipment-profiles';
+import {
+  achievableBarbellLoads,
+  achievableDumbbellLoads,
+  resolveEquipmentBand,
+  roundToAchievable,
+  type EquipmentBandState,
+  type ResolvedInventory,
+} from '@fitness/plate-math';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, startWorkoutFromProgram, updateLoggedSet } from '@/lib/db/log-set';
 import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
@@ -31,6 +38,7 @@ import type { ProgramCycle, ProgramDay } from '@/lib/db/programs/load-program';
 import { loadWorkoutPreferences } from '@/lib/db/preferences';
 import { addExerciseToSession } from '@/lib/db/session-mutations';
 import { discardSession, pauseSession, resumeSession, startOneOffSession } from '@/lib/db/session-lifecycle';
+import { loadSessionInventory } from '@/lib/db/session-equipment';
 import {
   loadLiveSession,
   previousSetReferencesForSession,
@@ -39,7 +47,10 @@ import {
   type LoggedSetRow,
   type PreviousSetReferenceMap,
 } from '@/lib/db/session-query';
-import { loggedSet, userPreference, workoutSession } from '@/lib/db/schema';
+// exerciseTable/seededExerciseTable, not the bare schema names — this file already uses `exercise`
+// as a loop/parameter identifier for SessionExerciseRow throughout, and a bare import would shadow
+// (or be shadowed by) every one of those bindings.
+import { exercise as exerciseTable, loggedSet, seededExercise as seededExerciseTable, userPreference, workoutSession } from '@/lib/db/schema';
 import { finishSession } from '@/lib/session/finish-session';
 import { shouldAutoAdvance } from '@/lib/session/auto-advance';
 import { resolveNextUp, type NextUp } from '@/lib/programs/next-up';
@@ -107,6 +118,47 @@ async function loadWeightUnit(userId: string, db = getPowerSync()): Promise<Weig
     .from(userPreference)
     .where(eq(userPreference.id, userId));
   return (row?.weightUnit as WeightUnit | undefined) ?? DEFAULT_WEIGHT_UNIT;
+}
+
+// D-14's per-exercise equipment_type, keyed by catalog exercise id (SessionExerciseRow.exerciseId)
+// — the one piece the band and tap-to-autofill rounding both need that no existing read in this
+// file carries yet. Unions seeded/custom exactly like loadExerciseNameMap does, but this file's own
+// scope (Task 3) is band/rounding wiring, not a change to session-query.ts/load-program.ts, so this
+// stays a local, additive helper rather than a change to either shared module.
+async function loadExerciseEquipmentTypeMap(
+  exerciseIds: string[],
+  db: WriteDb = getPowerSync(),
+): Promise<Map<string, EquipmentType | null>> {
+  if (exerciseIds.length === 0) return new Map();
+
+  const seededRows = await db
+    .select({ id: seededExerciseTable.id, equipmentRequired: seededExerciseTable.equipmentRequired })
+    .from(seededExerciseTable)
+    .where(inArray(seededExerciseTable.id, exerciseIds));
+  const customRows = await db
+    .select({ id: exerciseTable.id, equipmentRequired: exerciseTable.equipmentRequired })
+    .from(exerciseTable)
+    .where(inArray(exerciseTable.id, exerciseIds));
+
+  const map = new Map<string, EquipmentType | null>();
+  for (const row of seededRows) map.set(row.id, (row.equipmentRequired as EquipmentType | null) ?? null);
+  for (const row of customRows) map.set(row.id, (row.equipmentRequired as EquipmentType | null) ?? null);
+  return map;
+}
+
+// D-09's tap-to-autofill rounding needs the achievable set matching the CURRENT exercise's
+// equipment type. Barbell/dumbbell resolve directly against the whole inventory (achievability.ts's
+// own single-argument builders); machine/cable selection additionally depends on band.ts's
+// name-then-id machine ordering (06-02's GYM-03 decision), which stays that file's one observable
+// point per its own SUMMARY — duplicating it here would create the exact second-order-of-truth risk
+// that decision was written to avoid, so machine/cable resolves to no achievable set and the
+// autofill falls through to "write the logged value unchanged" (the same null-rounder behaviour
+// D-09 already specifies for "nothing achievable").
+function achievableLoadsForEquipmentType(equipmentType: EquipmentType | null, inventory: ResolvedInventory | null): string[] {
+  if (equipmentType === null || inventory === null) return [];
+  if (equipmentType === 'barbell' || equipmentType === 'ez_bar') return achievableBarbellLoads(inventory);
+  if (equipmentType === 'dumbbell') return achievableDumbbellLoads(inventory);
+  return [];
 }
 
 export interface WorkoutScreenRead {
@@ -226,9 +278,13 @@ export interface WorkoutScreenViewProps {
   rowsByExercise: Record<string, ResolvedSetRow[]>;
   pageDataByExercise: Record<string, ExercisePageData>;
   activeField: ActiveFieldState | null;
-  // The active gym's resolved inventory, snapshotted against the session's own stamped
-  // equipment_profile_id — threaded down to the docked keypad's plate/equipment band.
-  resolvedInventory: ResolvedInventory | null;
+  // The already-resolved, already-memoised equipment band state for the currently focused weight
+  // field (T-06-04) — this view performs no computation and runs no solver of its own; the hook
+  // resolves and memoises it once, against the session's snapshotted inventory and the in-flight
+  // target, exactly as D-15's live-typing constraint requires.
+  bandState: EquipmentBandState;
+  onBandNeighbourPress: (valueKg: string) => void;
+  onBandRecoveryPress: () => void;
   starting: boolean;
   // Replaces the old canStartWorkout/nextUpHeading pair (Task 1): the view derives every
   // no-session-ish state's heading/body itself from the same NextUp value the screen already
@@ -338,7 +394,9 @@ export function WorkoutScreenView({
   rowsByExercise,
   pageDataByExercise,
   activeField,
-  resolvedInventory,
+  bandState,
+  onBandNeighbourPress,
+  onBandRecoveryPress,
   starting,
   nextUp,
   weightUnit,
@@ -552,7 +610,12 @@ export function WorkoutScreenView({
           onSubmit={onSubmitField}
           band={
             activeField.field === 'weight'
-              ? { inventory: resolvedInventory, targetKg: toCanonicalKg(activeField.value, weightUnit), unit: weightUnit }
+              ? ({
+                  state: bandState,
+                  unit: weightUnit,
+                  onNeighbourPress: onBandNeighbourPress,
+                  onRecoveryPress: onBandRecoveryPress,
+                } satisfies PlateStripBandData)
               : undefined
           }
         />
@@ -611,10 +674,13 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   const writeDb = db ?? getPowerSync();
   const [read, setRead] = useState<WorkoutScreenReadResult | null>(null);
   const [activeField, setActiveField] = useState<ActiveFieldState | null>(null);
-  // Resolved once per session load, against the session's OWN stamped equipment_profile_id
-  // (D-17) — never the live default pointer, so mid-workout the plate band keeps answering
-  // against the gym this session actually started at.
+  // Resolved once per session load, through loadSessionInventory's own snapshot read (D-17) —
+  // never the live default pointer, so mid-workout the plate band keeps answering against the gym
+  // this session actually started at.
   const [resolvedInventory, setResolvedInventory] = useState<ResolvedInventory | null>(null);
+  // D-14's per-exercise equipment type, loaded alongside the inventory — the band needs both to
+  // decide what an exercise's own band content is (Task 3).
+  const [equipmentTypeByExerciseId, setEquipmentTypeByExerciseId] = useState<Map<string, EquipmentType | null>>(new Map());
   const [draftValuesByExercise, setDraftValuesByExercise] = useState<Record<string, SetRowValues>>({});
   const [rowOverrides, setRowOverrides] = useState<Record<string, RowOverride>>({});
   const [starting, setStarting] = useState(false);
@@ -687,17 +753,15 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
           return drafts;
         });
         void previousSetReferencesForSession(session.session.id, db).then(setReferenceMap);
-        const equipmentProfileId = session.session.equipmentProfileId;
-        if (equipmentProfileId) {
-          void loadEquipmentProfile(equipmentProfileId, db).then((profile) =>
-            setResolvedInventory(profile ? resolveInventory(profile, []) : null),
-          );
-        } else {
-          setResolvedInventory(null);
-        }
+        void loadSessionInventory(session.session.id, db).then(setResolvedInventory);
+        void loadExerciseEquipmentTypeMap(
+          session.exercises.map((sessionExercise) => sessionExercise.exerciseId),
+          db,
+        ).then(setEquipmentTypeByExerciseId);
       } else {
         setReferenceMap({});
         setResolvedInventory(null);
+        setEquipmentTypeByExerciseId(new Map());
       }
     },
     [db],
@@ -770,6 +834,29 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   const sessionExercises = liveSession?.exercises ?? [];
   const safeIndex = clampPagerIndex(currentIndex, sessionExercises.length);
   const currentExercise = sessionExercises[safeIndex] ?? null;
+
+  // The focused field's own exercise, not necessarily the pager's current one — activeField is
+  // always inside the currently displayed page in practice, but this reads its own exerciseId
+  // directly rather than assuming that invariant holds.
+  const activeEquipmentType = useMemo<EquipmentType | null>(() => {
+    if (!activeField) return null;
+    const exercise = sessionExercises.find((candidate) => candidate.id === activeField.exerciseId);
+    if (!exercise) return null;
+    return equipmentTypeByExerciseId.get(exercise.exerciseId) ?? null;
+  }, [activeField, sessionExercises, equipmentTypeByExerciseId]);
+
+  // T-06-04: the band's whole state, computed once here and memoised on the inventory and the
+  // in-flight target — the view itself (WorkoutScreenView) performs no computation and runs no
+  // solver. Reps/rir fields never carry a band (the band answers a question only a weight field
+  // asks), so this collapses outside the 'weight' branch rather than resolving anything.
+  const bandState = useMemo<EquipmentBandState>(() => {
+    if (!activeField || activeField.field !== 'weight') return { kind: 'collapsed' };
+    return resolveEquipmentBand({
+      equipmentType: activeEquipmentType,
+      targetKg: toCanonicalKg(activeField.value, weightUnit),
+      inventory: resolvedInventory,
+    });
+  }, [activeField, activeEquipmentType, resolvedInventory, weightUnit]);
 
   const exercises: ExerciseStripExercise[] = sessionExercises.map((exercise) => {
     const existingSets = liveSession?.setsByExerciseId[exercise.id] ?? [];
@@ -903,6 +990,17 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     setActiveField({ exerciseId, setId, field, value: currentValue, touched: false });
   }
 
+  // D-09/D-10's achievable-autofill: a weight taken from the reference row is rounded to nearest
+  // against the session's own inventory before it is written into the field — the reference row's
+  // own displayed figure (referenceMap) is never touched by this function, so it keeps reading
+  // exactly as logged no matter what this rounds to.
+  function achievableReferenceWeightKg(exerciseId: string, loggedWeightKg: string | null): string | null {
+    if (loggedWeightKg === null) return loggedWeightKg;
+    const equipmentType = equipmentTypeByExerciseId.get(exerciseId) ?? null;
+    const achievableKg = achievableLoadsForEquipmentType(equipmentType, resolvedInventory);
+    return roundToAchievable(loggedWeightKg, achievableKg, 'nearest') ?? loggedWeightKg;
+  }
+
   // Writes a reference's number straight into the field it sits under, leaving the other two
   // untouched (D-17) — the same write path handleSubmitField uses for a manually typed value, just
   // sourced from the history lookup instead of the keypad, and applied in one step with no
@@ -919,15 +1017,19 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
 
     if (setId === null) {
       const draftValues = draftValuesByExercise[exercise.id] ?? defaultDraftValues(exercise);
-      const value = field === 'weight' ? fromCanonicalKg(ref.weightKg, weightUnit) : String(ref.reps);
+      const value =
+        field === 'weight'
+          ? fromCanonicalKg(achievableReferenceWeightKg(exercise.exerciseId, ref.weightKg), weightUnit)
+          : String(ref.reps);
       setDraftValuesByExercise((current) => ({ ...current, [exercise.id]: { ...draftValues, [field]: value } }));
       return;
     }
 
     if (field === 'weight') {
-      const value = fromCanonicalKg(ref.weightKg, weightUnit);
+      const roundedKg = achievableReferenceWeightKg(exercise.exerciseId, ref.weightKg);
+      const value = fromCanonicalKg(roundedKg, weightUnit);
       await updateLoggedSet({ id: setId, weight: { value, unit: weightUnit } }, db);
-      setRowOverrides((current) => ({ ...current, [setId]: { ...current[setId], weightKg: ref.weightKg } }));
+      setRowOverrides((current) => ({ ...current, [setId]: { ...current[setId], weightKg: roundedKg } }));
     } else {
       await updateLoggedSet({ id: setId, reps: ref.reps }, db);
       setRowOverrides((current) => ({ ...current, [setId]: { ...current[setId], reps: ref.reps } }));
@@ -938,6 +1040,23 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     setActiveField((current) =>
       current ? { ...current, value: applyKeypadPress(current.value, press), touched: true } : current,
     );
+  }
+
+  // A neighbour tap routes through the exact field-write path a typed digit uses (D-09): it writes
+  // the whole value into the in-flight field, exactly as if typed, and nothing else — no set is
+  // completed, no other field changes.
+  function handleBandNeighbourPress(valueKg: string) {
+    setActiveField((current) =>
+      current && current.field === 'weight' ? { ...current, value: fromCanonicalKg(valueKg, weightUnit), touched: true } : current,
+    );
+  }
+
+  // Routes to the active gym's editor — the gym this session is actually scoped to (D-17's
+  // snapshot), not whichever gym happens to be the live default right now.
+  function handleBandRecoveryPress() {
+    const equipmentProfileId = liveSession?.session.equipmentProfileId ?? null;
+    if (!equipmentProfileId) return;
+    router.push(`/gym-profiles/edit/${equipmentProfileId}`);
   }
 
   async function handleSubmitField() {
@@ -1204,7 +1323,9 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     rowsByExercise,
     pageDataByExercise,
     activeField,
-    resolvedInventory,
+    bandState,
+    onBandNeighbourPress: handleBandNeighbourPress,
+    onBandRecoveryPress: handleBandRecoveryPress,
     starting,
     nextUp,
     weightUnit,

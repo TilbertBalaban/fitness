@@ -306,7 +306,9 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     rowsByExercise: { 'se-1': buildSetRows([], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null) },
     pageDataByExercise: { 'se-1': PAGE_DATA },
     activeField: null,
-    resolvedInventory: null,
+    bandState: { kind: 'collapsed' },
+    onBandNeighbourPress: jest.fn(),
+    onBandRecoveryPress: jest.fn(),
     starting: false,
     nextUp: null,
     weightUnit: 'kg',
@@ -589,6 +591,37 @@ describe('WorkoutScreenView', () => {
 
     expect(findByType(withoutKeypad, NumericKeypadView)).toHaveLength(0);
     expect(findByType(withKeypad, NumericKeypadView)).toHaveLength(1);
+  });
+
+  it('threads the already-resolved band state and callbacks to the keypad only for the weight field', () => {
+    const onBandNeighbourPress = jest.fn();
+    const onBandRecoveryPress = jest.fn();
+    const bandState = { kind: 'pair', weightKg: '20.000' } as const;
+
+    const weightField = WorkoutScreenView(
+      baseViewProps({
+        activeField: { exerciseId: 'se-1', setId: null, field: 'weight', value: null, touched: false },
+        bandState,
+        onBandNeighbourPress,
+        onBandRecoveryPress,
+      }),
+    );
+    const [weightKeypad] = findByType(weightField, NumericKeypadView);
+    expect(weightKeypad.props.band).toEqual({
+      state: bandState,
+      unit: 'kg',
+      onNeighbourPress: onBandNeighbourPress,
+      onRecoveryPress: onBandRecoveryPress,
+    });
+
+    const repsField = WorkoutScreenView(
+      baseViewProps({
+        activeField: { exerciseId: 'se-1', setId: null, field: 'reps', value: null, touched: false },
+        bandState,
+      }),
+    );
+    const [repsKeypad] = findByType(repsField, NumericKeypadView);
+    expect(repsKeypad.props.band).toBeUndefined();
   });
 
   const HEADER_TIMER = { sessionId: 's-1', startedAtMs: 0, accumulatedPausedSeconds: 0, pausedAtMs: null, restTargetAtMs: null };
