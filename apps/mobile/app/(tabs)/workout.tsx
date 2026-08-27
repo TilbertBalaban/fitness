@@ -38,7 +38,8 @@ import type { ProgramCycle, ProgramDay } from '@/lib/db/programs/load-program';
 import { loadWorkoutPreferences } from '@/lib/db/preferences';
 import { addExerciseToSession } from '@/lib/db/session-mutations';
 import { discardSession, pauseSession, resumeSession, startOneOffSession } from '@/lib/db/session-lifecycle';
-import { loadSessionInventory } from '@/lib/db/session-equipment';
+import { loadSessionInventory, restampSessionGym } from '@/lib/db/session-equipment';
+import { SwitchGymSheet } from '@/components/SwitchGymSheet';
 import {
   loadLiveSession,
   previousSetReferencesForSession,
@@ -271,6 +272,13 @@ export interface WorkoutScreenViewProps {
   // getPowerSync() again and diverging whenever a caller (the durability harness, a future
   // multi-instance scenario) supplied a different db (05-12).
   db: WriteDb;
+  // The signed-in user's id, threaded straight from useWorkoutScreen's own hook option — the
+  // Switch Gym sheet needs it to load the caller's own gym list (T-06-04); no other existing prop
+  // carries it at this top level (only per-exercise ExercisePageData does).
+  userId: string | null;
+  // The gym id currently stamped on the live session (D-17's snapshot) — the Switch Gym sheet's
+  // own "which row is active" comparison, not the live default pointer.
+  activeGymId: string | null;
   exercises: ExerciseStripExercise[];
   currentExerciseId: string | null;
   currentIndex: number;
@@ -299,6 +307,10 @@ export interface WorkoutScreenViewProps {
   showAddExercisePicker: boolean;
   showSessionMenu: boolean;
   showDiscardConfirm: boolean;
+  // T-06-04: the Switch Gym sheet's own visibility, gated behind the session menu exactly like
+  // showSessionNoteSheet/showDiscardConfirm — Menu closes itself the instant this opens (no
+  // confirmation step, D-18).
+  showSwitchGymSheet: boolean;
   // The session-level note (LOG-16, 05-UI-SPEC Amendment A.2) — live-mode-only chrome, since the
   // Menu itself only renders in live mode (D-32/R10). hasSessionNote/sessionNoteText mirror the
   // existing pageData.hasNote/noteText split used for the exercise level.
@@ -331,6 +343,13 @@ export interface WorkoutScreenViewProps {
   onRequestDiscard: () => void;
   onConfirmDiscard: () => void;
   onCancelDiscard: () => void;
+  // T-06-04: closes the menu and opens the Switch Gym sheet — no confirmation step.
+  onOpenSwitchGym: () => void;
+  // Fires with the tapped gym's id; the caller (useWorkoutScreen) is the one that calls
+  // restampSessionGym and reloads — the sheet itself performs no write (SwitchGymSheet.tsx).
+  onSelectGym: (gymId: string) => void;
+  onManageGyms: () => void;
+  onCancelSwitchGym: () => void;
   onOpenSessionNote: () => void;
   onSessionNoteSaved: () => void;
   onCancelSessionNote: () => void;
@@ -387,6 +406,8 @@ export function WorkoutScreenView({
   screenState,
   colors,
   db,
+  userId,
+  activeGymId,
   exercises,
   currentExerciseId,
   currentIndex,
@@ -408,6 +429,7 @@ export function WorkoutScreenView({
   showAddExercisePicker,
   showSessionMenu,
   showDiscardConfirm,
+  showSwitchGymSheet,
   hasSessionNote,
   sessionNoteText,
   showSessionNoteSheet,
@@ -437,6 +459,10 @@ export function WorkoutScreenView({
   onRequestDiscard,
   onConfirmDiscard,
   onCancelDiscard,
+  onOpenSwitchGym,
+  onSelectGym,
+  onManageGyms,
+  onCancelSwitchGym,
   onOpenSessionNote,
   onSessionNoteSaved,
   onCancelSessionNote,
@@ -543,6 +569,14 @@ export function WorkoutScreenView({
                   ) : null}
                 </Pressable>
                 <Pressable
+                  onPress={onOpenSwitchGym}
+                  accessibilityRole="button"
+                  accessibilityLabel="Switch Gym"
+                  style={{ minHeight: 48, justifyContent: 'center' }}
+                >
+                  <Text className="text-body font-normal text-foreground">Switch Gym</Text>
+                </Pressable>
+                <Pressable
                   onPress={onRequestDiscard}
                   accessibilityRole="button"
                   accessibilityLabel="Discard"
@@ -638,6 +672,17 @@ export function WorkoutScreenView({
         />
       ) : null}
 
+      {showSwitchGymSheet && userId ? (
+        <SwitchGymSheet
+          userId={userId}
+          activeGymId={activeGymId}
+          db={db}
+          onSelectGym={onSelectGym}
+          onManageGyms={onManageGyms}
+          onDismiss={onCancelSwitchGym}
+        />
+      ) : null}
+
       {showAddExercisePicker ? (
         <Modal animationType="slide" onRequestClose={onCancelAddExercisePicker}>
           <ExercisePickerModal dayName="this workout" onAdd={onConfirmAddExercise} onCancel={onCancelAddExercisePicker} />
@@ -693,6 +738,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   const [addExercisePickerOpen, setAddExercisePickerOpen] = useState(false);
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [switchGymSheetOpen, setSwitchGymSheetOpen] = useState(false);
   const [sessionNoteSheetOpen, setSessionNoteSheetOpen] = useState(false);
   const [autoAdvanceEnabled, setAutoAdvanceEnabled] = useState(true);
   const { width: pagerWidth } = useWindowDimensions();
@@ -1295,6 +1341,33 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     setDiscardConfirmOpen(true);
   }
 
+  // T-06-04: closes the menu and opens the sheet — no confirmation step (D-18 already establishes
+  // the switch as reversible and harmless to anything logged).
+  function handleOpenSwitchGym() {
+    setSessionMenuOpen(false);
+    setSwitchGymSheetOpen(true);
+  }
+
+  // On selection, restamp the session's gym column, then re-run the existing session read so the
+  // resolved inventory the band uses comes from the newly-stamped gym (D-17/D-18) — no logged set
+  // is touched, and no historical weight is re-derived; the write is exactly the session's one
+  // gym column, nothing else.
+  async function handleSelectGym(gymId: string) {
+    if (!liveSession) return;
+    await restampSessionGym(liveSession.session.id, gymId, db);
+    setSwitchGymSheetOpen(false);
+    await reload();
+  }
+
+  function handleManageGyms() {
+    setSwitchGymSheetOpen(false);
+    router.push('/gym-profiles');
+  }
+
+  function handleCancelSwitchGym() {
+    setSwitchGymSheetOpen(false);
+  }
+
   function handleCancelDiscard() {
     setDiscardConfirmOpen(false);
   }
@@ -1316,6 +1389,8 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   return {
     screenState,
     db: writeDb,
+    userId,
+    activeGymId: sessionRow?.equipmentProfileId ?? null,
     exercises,
     currentExerciseId: currentExercise?.id ?? null,
     currentIndex: safeIndex,
@@ -1337,6 +1412,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     showAddExercisePicker: addExercisePickerOpen,
     showSessionMenu: sessionMenuOpen,
     showDiscardConfirm: discardConfirmOpen,
+    showSwitchGymSheet: switchGymSheetOpen,
     hasSessionNote: sessionRow !== null && sessionRow.notes !== null,
     sessionNoteText: sessionRow?.notes ?? null,
     showSessionNoteSheet: sessionNoteSheetOpen,
@@ -1366,6 +1442,10 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     onRequestDiscard: handleRequestDiscard,
     onConfirmDiscard: () => void handleConfirmDiscard(),
     onCancelDiscard: handleCancelDiscard,
+    onOpenSwitchGym: handleOpenSwitchGym,
+    onSelectGym: (gymId) => void handleSelectGym(gymId),
+    onManageGyms: handleManageGyms,
+    onCancelSwitchGym: handleCancelSwitchGym,
     onOpenSessionNote: handleOpenSessionNote,
     onSessionNoteSaved: () => void handleSessionNoteSaved(),
     onCancelSessionNote: handleCancelSessionNote,

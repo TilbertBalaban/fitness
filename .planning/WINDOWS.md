@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 115
+open_count: 116
 waived_count: 1
 fixed_count: 23
-total_count: 139
-last_updated: 2026-08-27T15:48:46.047Z
+total_count: 140
+last_updated: 2026-08-27T16:10:35.408Z
 ---
 
 # Broken Windows Ledger
@@ -154,6 +154,7 @@ last_updated: 2026-08-27T15:48:46.047Z
 | 140 | 05 | deviation | apps/mobile/playwright.config.ts |  | 05-16's 'confirmed across two consecutive clean full-suite runs' did not reproduce under independent re-verification (orchestrator got 32/1 twice, different test each time). Root cause: the durability project runs with Playwright's default worker count (4 on this machine) despite fullyParallel:false, which only serializes cases WITHIN one spec file — multiple spec FILES still ran concurrently, all against the single shared webServer/Metro process, causing real CPU/server contention that surfaced as random page.goto/page.reload timeouts. Fixed by pinning workers:1 on the durability project; also fixed a missed ambiguous Done locator in workout-summary.spec.ts (session-edit.spec.ts precedent). Reproduced 33/33 across three consecutive full-suite runs post-fix. | fixed |  | 2026-08-26T11:15:15.039Z | 2026-08-26T11:15:23.069Z |
 | 141 | 06 | unrun-verify | apps/mobile/app/gym-profiles/index.tsx |  | 06-03 plan <verification> human-check: Profile tab Gyms section / Gym Profiles list / archive-to-collapsed-section — not run, no browser/simulator session available in this executor pass | open |  | 2026-08-27T14:44:46.168Z |  |
 | 142 | 06 | unrun-verify | apps/mobile |  | 06-04 human-check not run: create a gym in lb, add plates, add a machine, save, reopen, on web target — no browser/simulator session available in this executor pass | open |  | 2026-08-27T15:48:46.047Z |  |
+| 143 | 06 | unrun-verify | apps/mobile/app/(tabs)/workout.tsx |  | Plan 06-07's <human-check> (session menu row order: pause/resume, session note, switch gym, discard; visual accent confirmation on switching gyms) was not run interactively — no browser/simulator UI session available in this sandboxed worktree beyond the automated Playwright e2e run (switch-gym.spec.ts, which passed). Automated tsc, unit suite (1473/1473) and the durability e2e spec all green; the human visual confirmation is deferred to UAT. | open |  | 2026-08-27T16:10:35.408Z |  |
 
 ````json
 [
@@ -1823,6 +1824,18 @@ last_updated: 2026-08-27T15:48:46.047Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-27T15:48:46.047Z",
+    "resolved_at": null
+  },
+  {
+    "id": 143,
+    "kind": "unrun-verify",
+    "phase": "06",
+    "file": "apps/mobile/app/(tabs)/workout.tsx",
+    "line": null,
+    "description": "Plan 06-07's <human-check> (session menu row order: pause/resume, session note, switch gym, discard; visual accent confirmation on switching gyms) was not run interactively — no browser/simulator UI session available in this sandboxed worktree beyond the automated Playwright e2e run (switch-gym.spec.ts, which passed). Automated tsc, unit suite (1473/1473) and the durability e2e spec all green; the human visual confirmation is deferred to UAT.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-27T16:10:35.408Z",
     "resolved_at": null
   }
 ]
