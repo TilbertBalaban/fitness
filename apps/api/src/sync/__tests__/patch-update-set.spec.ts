@@ -39,6 +39,7 @@ function workoutSessionValues(overrides: Partial<WorkoutSessionValues> = {}): Wo
     routineDayId: 'rd-1',
     cycleId: null,
     equipmentProfileId: 'ep-1',
+    unavailableEquipment: null,
     startedAt: new Date('2026-06-15T20:00:00Z'),
     endedAt: null,
     status: 'in_progress',

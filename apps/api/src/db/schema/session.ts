@@ -6,6 +6,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgSequence,
   pgTable,
@@ -36,6 +37,11 @@ export const workoutSession = pgTable(
     // inside startSession (D-06's stamp-once pattern) and never re-derived on a read path (LOG-15).
     cycleId: text('cycle_id'),
     equipmentProfileId: text('equipment_profile_id'),
+    // The session-scoped equipment mark, D-20/D-21: an UnavailableEquipmentRef[] naming what this
+    // workout cannot use right now. Lives here, not on session_exercise and not on
+    // equipment_profile, because which row a mark landed in is how every later read distinguishes
+    // "busy today" (this column) from "this gym lacks it" (the profile's own inventory columns).
+    unavailableEquipment: jsonb('unavailable_equipment'),
     startedAt: timestamp('started_at').notNull(),
     endedAt: timestamp('ended_at'),
     status: text('status').notNull(),

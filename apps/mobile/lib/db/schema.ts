@@ -12,6 +12,7 @@ export const workoutSession = sqliteTable('workout_session', {
   routineDayId: text('routine_day_id'),
   cycleId: text('cycle_id'),
   equipmentProfileId: text('equipment_profile_id'),
+  unavailableEquipment: text('unavailable_equipment'),
   startedAt: text('started_at').notNull(),
   endedAt: text('ended_at'),
   status: text('status').notNull(),
