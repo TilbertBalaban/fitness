@@ -27,6 +27,8 @@ export default function GymProfilesLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Gym Profiles' }} />
+      <Stack.Screen name="new" options={{ title: 'New Gym' }} />
+      <Stack.Screen name="edit/[id]" options={{ title: 'Edit Gym' }} />
     </Stack>
   );
 }
