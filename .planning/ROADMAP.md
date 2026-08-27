@@ -341,7 +341,7 @@ Plans:
   3. Plate math and any suggested load only ever use equipment the active profile actually has — a home gym with 5 lb jumps is never shown a 152.5 lb load
   4. User can switch gyms mid-program and mark equipment unavailable mid-workout, and be offered alternatives
 
-**Plans**: 3/8 plans executed
+**Plans**: 5/8 plans executed
 
 Plans:
 
@@ -356,8 +356,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 06-04-PLAN.md — Gym Profile Editor: bar, plate denominations and counts, dumbbells, machines and cable
-- [ ] 06-05-PLAN.md — The full equipment band, and every app-generated load made achievable
+- [x] 06-04-PLAN.md — Gym Profile Editor: bar, plate denominations and counts, dumbbells, machines and cable
+- [x] 06-05-PLAN.md — The full equipment band, and every app-generated load made achievable
 
 **Wave 4** *(blocked on Wave 3)*
 
@@ -518,7 +518,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
 | 5. In-Gym Session Logging | 16/16 | In Progress|  |
-| 6. Gym Profiles & Plate Math | 3/8 | In Progress|  |
+| 6. Gym Profiles & Plate Math | 5/8 | In Progress|  |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
 | 8. Progression Engine | 0/TBD | Not started | - |
 | 9. Records & Client Analytics | 0/TBD | Not started | - |
