@@ -470,11 +470,45 @@ describe('archiveEquipmentProfile / restoreEquipmentProfile', () => {
   it('stamps archivedAt and never deletes', async () => {
     const store = inMemoryDb();
     store.seed(equipmentProfile, profileRow({ id: 'p-1' }));
+    store.seed(equipmentProfile, profileRow({ id: 'p-2', name: 'Other Gym' }));
 
     await archiveEquipmentProfile('p-1', store.db);
 
-    expect(store.rowsOf(equipmentProfile)).toHaveLength(1);
-    expect(typeof store.rowsOf(equipmentProfile)[0].archivedAt).toBe('string');
+    expect(store.rowsOf(equipmentProfile)).toHaveLength(2);
+    const archived = store.rowsOf(equipmentProfile).find((row) => row.id === 'p-1');
+    expect(typeof archived?.archivedAt).toBe('string');
+  });
+
+  // E1's contract: exactly one gym must always read as active, so archiving a user's last live
+  // row is rejected rather than silently leaving zero (WR-02).
+  it('rejects archiving a user\'s only remaining live gym', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-1' }));
+
+    await expect(archiveEquipmentProfile('p-1', store.db)).rejects.toThrow();
+
+    expect(store.rowsOf(equipmentProfile)[0].archivedAt).toBeNull();
+  });
+
+  it('allows archiving one of several live gyms for the same user', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-1' }));
+    store.seed(equipmentProfile, profileRow({ id: 'p-2', name: 'Other Gym' }));
+
+    await archiveEquipmentProfile('p-1', store.db);
+
+    const rows = store.rowsOf(equipmentProfile);
+    expect(rows.find((row) => row.id === 'p-1')?.archivedAt).not.toBeNull();
+    expect(rows.find((row) => row.id === 'p-2')?.archivedAt).toBeNull();
+  });
+
+  it('is a no-op re-stamp when the target is already archived, even as the only live-or-archived row', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-1', archivedAt: '2026-01-01T00:00:00.000Z' }));
+
+    await archiveEquipmentProfile('p-1', store.db);
+
+    expect(store.rowsOf(equipmentProfile)[0].archivedAt).toEqual(expect.any(String));
   });
 
   it('clears archivedAt on restore', async () => {

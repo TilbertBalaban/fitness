@@ -328,8 +328,31 @@ export async function updateEquipmentProfile(
 // a destroyed gym would still orphan every session that snapshotted its id (D-04/D-17), the same
 // reasoning archiveRoutine documents for routine. The active-pointer reconciliation is deliberately
 // NOT done here: it lives entirely on the read side (resolveLiveEquipmentProfileId), one owner of
-// the rule, matching what this plan's own behaviour contract specifies.
+// the rule, matching what this plan's own behaviour contract specifies. What IS enforced here: E1's
+// "exactly one gym always reads as active" contract requires at least one non-archived row per
+// user, so archiving a user's last live row is rejected rather than silently leaving zero.
 export async function archiveEquipmentProfile(id: string, db: WriteDb = getPowerSync()): Promise<void> {
+  const [target] = await db
+    .select({ userId: equipmentProfile.userId, archivedAt: equipmentProfile.archivedAt })
+    .from(equipmentProfile)
+    .where(eq(equipmentProfile.id, id));
+  if (!target) return;
+
+  if (target.archivedAt === null) {
+    const liveRows = await db
+      .select({ id: equipmentProfile.id })
+      .from(equipmentProfile)
+      .where(
+        and(
+          target.userId === null ? isNull(equipmentProfile.userId) : eq(equipmentProfile.userId, target.userId),
+          isNull(equipmentProfile.archivedAt),
+        ),
+      );
+    if (liveRows.length <= 1) {
+      throw new Error("Can't archive your only gym");
+    }
+  }
+
   await db.update(equipmentProfile).set({ archivedAt: new Date().toISOString() }).where(eq(equipmentProfile.id, id));
 }
 
