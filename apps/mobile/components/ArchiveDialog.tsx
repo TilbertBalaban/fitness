@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-export type ArchiveDialogSubject = 'exercise' | 'program';
+export type ArchiveDialogSubject = 'exercise' | 'program' | 'gym';
 
 export interface ArchiveDialogProps {
   unarchiving?: boolean;
@@ -36,6 +36,20 @@ const COPY = {
     unarchive: {
       heading: 'Restore Program',
       body: 'This program will reappear in your library.',
+      confirmLabel: 'Restore',
+    },
+  },
+  // Verbatim from the 06-UI-SPEC.md Copywriting Contract's Destructive confirmation row — the
+  // union's third extension point, no new component.
+  gym: {
+    archive: {
+      heading: 'Archive Gym',
+      body: 'Archiving removes it from your gym list, but any workouts logged there stay in your history. Archive anyway?',
+      confirmLabel: 'Archive',
+    },
+    unarchive: {
+      heading: 'Restore Gym',
+      body: 'This gym will reappear in your gym list.',
       confirmLabel: 'Restore',
     },
   },

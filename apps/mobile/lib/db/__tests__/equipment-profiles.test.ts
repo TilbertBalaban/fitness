@@ -1,8 +1,17 @@
 import {
   SEEDED_PROFILE_NAME,
+  archiveEquipmentProfile,
+  createEquipmentProfile,
+  duplicateEquipmentProfile,
   ensureDefaultEquipmentProfile,
+  formatGymRowSubtitle,
   loadActiveEquipmentProfileId,
   loadEquipmentProfile,
+  loadEquipmentProfiles,
+  resolveLiveEquipmentProfileId,
+  restoreEquipmentProfile,
+  updateEquipmentProfile,
+  type EquipmentProfileRow,
 } from '../equipment-profiles';
 import { getPowerSync, type WriteDb } from '../powersync';
 import { equipmentProfile, userPreference } from '../schema';
@@ -313,5 +322,292 @@ describe('ensureDefaultEquipmentProfile', () => {
     await ensureDefaultEquipmentProfile('u-1');
 
     expect(getPowerSyncMock).toHaveBeenCalled();
+  });
+});
+
+function profileRow(overrides: Partial<EquipmentProfileRow> & { id: string }): Row {
+  return {
+    id: overrides.id,
+    userId: 'u-1',
+    name: overrides.name ?? overrides.id,
+    isDefault: overrides.isDefault ?? false,
+    barbellWeightKg: overrides.barbellWeightKg ?? null,
+    availablePlates: JSON.stringify(overrides.plates ?? []),
+    dumbbellIncrementsKg: JSON.stringify(overrides.dumbbells ?? []),
+    machineAvailability: JSON.stringify(overrides.machines ?? []),
+    nativeUnit: overrides.nativeUnit ?? 'kg',
+    archivedAt: overrides.archivedAt ?? null,
+  };
+}
+
+function equipmentRow(overrides: Partial<EquipmentProfileRow> & { id: string }): EquipmentProfileRow {
+  return {
+    id: overrides.id,
+    name: overrides.name ?? overrides.id,
+    isDefault: overrides.isDefault ?? false,
+    barbellWeightKg: overrides.barbellWeightKg ?? null,
+    plates: overrides.plates ?? [],
+    dumbbells: overrides.dumbbells ?? [],
+    machines: overrides.machines ?? [],
+    nativeUnit: overrides.nativeUnit ?? 'kg',
+    archivedAt: overrides.archivedAt ?? null,
+  };
+}
+
+describe('loadEquipmentProfiles', () => {
+  it('returns every profile including archived ones, sorted by name then id', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-b', name: 'Bravo' }));
+    store.seed(equipmentProfile, profileRow({ id: 'p-a', name: 'Alpha' }));
+    store.seed(equipmentProfile, profileRow({ id: 'p-x', name: 'Old Gym', archivedAt: '2026-01-01T00:00:00.000Z' }));
+
+    const rows = await loadEquipmentProfiles('u-1', store.db);
+
+    expect(rows.map((row) => row.id)).toEqual(['p-a', 'p-b', 'p-x']);
+    expect(rows.find((row) => row.id === 'p-x')?.archivedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('orders two gyms sharing a name by id so the sequence is total', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-b', name: 'Same' }));
+    store.seed(equipmentProfile, profileRow({ id: 'p-a', name: 'Same' }));
+
+    const rows = await loadEquipmentProfiles('u-1', store.db);
+
+    expect(rows.map((row) => row.id)).toEqual(['p-a', 'p-b']);
+  });
+});
+
+describe('resolveLiveEquipmentProfileId', () => {
+  const LIVE = equipmentRow({ id: 'g-live', name: 'A Live Gym' });
+  const OTHER_LIVE = equipmentRow({ id: 'g-other', name: 'B Other Gym' });
+  const ARCHIVED = equipmentRow({ id: 'g-archived', name: 'Old Gym', archivedAt: '2026-01-01T00:00:00.000Z' });
+
+  it('resolves a pointer naming a live gym', () => {
+    expect(resolveLiveEquipmentProfileId([LIVE, OTHER_LIVE], 'g-live')).toBe('g-live');
+  });
+
+  // Unlike resolveLiveRoutineId (a program CAN have zero active), a gym profile always has exactly
+  // one active gym — so archiving the currently active gym must still resolve a live one rather than
+  // leaving the pointer dangling.
+  it('falls back to the first live gym by the total ordering when the pointer names an archived gym', () => {
+    expect(resolveLiveEquipmentProfileId([ARCHIVED, LIVE, OTHER_LIVE], 'g-archived')).toBe('g-live');
+  });
+
+  it('falls back to the first live gym when the pointer names a gym this device does not hold', () => {
+    expect(resolveLiveEquipmentProfileId([LIVE, OTHER_LIVE], 'g-unsynced')).toBe('g-live');
+  });
+
+  it('falls back to the first live gym when the pointer is absent', () => {
+    expect(resolveLiveEquipmentProfileId([LIVE, OTHER_LIVE], null)).toBe('g-live');
+    expect(resolveLiveEquipmentProfileId([LIVE, OTHER_LIVE], undefined)).toBe('g-live');
+  });
+
+  it('returns null when every row is archived', () => {
+    expect(resolveLiveEquipmentProfileId([ARCHIVED], 'g-archived')).toBeNull();
+  });
+
+  it('returns null for an empty list', () => {
+    expect(resolveLiveEquipmentProfileId([], 'g-live')).toBeNull();
+  });
+
+  it('does not mutate or reorder the list it is given', () => {
+    const rows = [ARCHIVED, LIVE, OTHER_LIVE];
+    resolveLiveEquipmentProfileId(rows, 'g-archived');
+    expect(rows).toEqual([ARCHIVED, LIVE, OTHER_LIVE]);
+  });
+});
+
+describe('createEquipmentProfile', () => {
+  it('inserts a non-default, non-archived row with a fresh client id', async () => {
+    const store = inMemoryDb();
+
+    const id = await createEquipmentProfile({ userId: 'u-1', name: 'Home Gym', nativeUnit: 'kg' }, store.db);
+
+    expect(store.rowsOf(equipmentProfile)).toHaveLength(1);
+    const created = store.rowsOf(equipmentProfile)[0];
+    expect(created.id).toBe(id);
+    expect(created.name).toBe('Home Gym');
+    expect(created.isDefault).toBe(false);
+    expect(created.archivedAt).toBeNull();
+  });
+
+  it('trims the name and throws on a blank one, writing nothing', async () => {
+    const store = inMemoryDb();
+
+    await expect(createEquipmentProfile({ userId: 'u-1', name: '   ', nativeUnit: 'kg' }, store.db)).rejects.toThrow(
+      'Gym name is required',
+    );
+    expect(store.rowsOf(equipmentProfile)).toHaveLength(0);
+  });
+});
+
+describe('updateEquipmentProfile', () => {
+  it('writes only the fields the caller supplies', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-1', name: 'Old Name', barbellWeightKg: '20.000' }));
+
+    await updateEquipmentProfile('p-1', { name: 'New Name' }, store.db);
+
+    const row = store.rowsOf(equipmentProfile)[0];
+    expect(row.name).toBe('New Name');
+    expect(row.barbellWeightKg).toBe('20.000');
+  });
+
+  it('serializes a supplied plates array through serializeEquipmentJson, never JSON.stringify at the call site', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-1' }));
+
+    await updateEquipmentProfile('p-1', { plates: [{ weightKg: '20.000', pairCount: 2 }] }, store.db);
+
+    expect(JSON.parse(store.rowsOf(equipmentProfile)[0].availablePlates as string)).toEqual([
+      { weightKg: '20.000', pairCount: 2 },
+    ]);
+  });
+});
+
+describe('archiveEquipmentProfile / restoreEquipmentProfile', () => {
+  it('stamps archivedAt and never deletes', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-1' }));
+
+    await archiveEquipmentProfile('p-1', store.db);
+
+    expect(store.rowsOf(equipmentProfile)).toHaveLength(1);
+    expect(typeof store.rowsOf(equipmentProfile)[0].archivedAt).toBe('string');
+  });
+
+  it('clears archivedAt on restore', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-1', archivedAt: '2026-01-01T00:00:00.000Z' }));
+
+    await restoreEquipmentProfile('p-1', store.db);
+
+    expect(store.rowsOf(equipmentProfile)[0].archivedAt).toBeNull();
+  });
+
+  // The behaviour this plan requires: archiving the currently active gym leaves the pointer
+  // resolvable. archiveEquipmentProfile itself only stamps the timestamp — the read side
+  // (resolveLiveEquipmentProfileId) is the one place that must never present the archived gym as
+  // active again.
+  it('archiving the active gym still resolves a live gym on the read side', async () => {
+    const store = inMemoryDb();
+    store.seed(equipmentProfile, profileRow({ id: 'p-active', name: 'Active Gym' }));
+    store.seed(equipmentProfile, profileRow({ id: 'p-other', name: 'Other Gym' }));
+
+    await archiveEquipmentProfile('p-active', store.db);
+
+    const rows = await loadEquipmentProfiles('u-1', store.db);
+    expect(resolveLiveEquipmentProfileId(rows, 'p-active')).toBe('p-other');
+  });
+});
+
+describe('duplicateEquipmentProfile', () => {
+  it('produces a new row with a fresh client id, a distinct name, is_default false, archived_at null, and a deep-equal inventory', async () => {
+    const store = inMemoryDb();
+    store.seed(
+      equipmentProfile,
+      profileRow({
+        id: 'p-source',
+        name: 'My Gym',
+        isDefault: true,
+        barbellWeightKg: '20.000',
+        plates: [{ weightKg: '20.000', pairCount: 3 }],
+        dumbbells: [{ weightKg: '2.500' }],
+        machines: [],
+      }),
+    );
+
+    const newId = await duplicateEquipmentProfile('u-1', 'p-source', store.db);
+
+    expect(newId).not.toBe('p-source');
+    expect(store.rowsOf(equipmentProfile)).toHaveLength(2);
+    const copy = store.rowsOf(equipmentProfile).find((row) => row.id === newId)!;
+    expect(copy.name).toBe('My Gym copy');
+    expect(copy.isDefault).toBe(false);
+    expect(copy.archivedAt).toBeNull();
+    expect(JSON.parse(copy.availablePlates as string)).toEqual([{ weightKg: '20.000', pairCount: 3 }]);
+    expect(JSON.parse(copy.dumbbellIncrementsKg as string)).toEqual([{ weightKg: '2.500' }]);
+  });
+
+  it('throws when the source profile does not exist', async () => {
+    const store = inMemoryDb();
+    await expect(duplicateEquipmentProfile('u-1', 'missing', store.db)).rejects.toThrow('Gym profile not found');
+  });
+});
+
+describe('formatGymRowSubtitle', () => {
+  it('returns "Archived" alone for an archived row, regardless of configured sections', () => {
+    expect(
+      formatGymRowSubtitle({
+        barbellWeightKg: '20.000',
+        plateCount: 6,
+        dumbbellCount: 20,
+        machineCount: 3,
+        nativeUnit: 'kg',
+        archivedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    ).toBe('Archived');
+  });
+
+  it('returns an empty string for a gym with nothing configured — never a zero count', () => {
+    const subtitle = formatGymRowSubtitle({
+      barbellWeightKg: null,
+      plateCount: 0,
+      dumbbellCount: 0,
+      machineCount: 0,
+      nativeUnit: 'kg',
+      archivedAt: null,
+    });
+    expect(subtitle).toBe('');
+  });
+
+  it('joins only the configured sections in fixed order: bar, plates, dumbbells, machines', () => {
+    const subtitle = formatGymRowSubtitle({
+      barbellWeightKg: '20.000',
+      plateCount: 6,
+      dumbbellCount: 0,
+      machineCount: 0,
+      nativeUnit: 'kg',
+      archivedAt: null,
+    });
+    expect(subtitle).toBe('20.00kg bar · 6 plate types');
+  });
+
+  it('omits the bar section when no barbell weight is configured, without leaving a stray separator', () => {
+    const subtitle = formatGymRowSubtitle({
+      barbellWeightKg: null,
+      plateCount: 3,
+      dumbbellCount: 5,
+      machineCount: 0,
+      nativeUnit: 'kg',
+      archivedAt: null,
+    });
+    expect(subtitle).toBe('3 plate types · 5 dumbbell weights');
+  });
+
+  it('formats the bar weight in the profile\'s own unit, converting from the canonical kg column', () => {
+    const subtitle = formatGymRowSubtitle({
+      barbellWeightKg: '20.000',
+      plateCount: 0,
+      dumbbellCount: 0,
+      machineCount: 0,
+      nativeUnit: 'lb',
+      archivedAt: null,
+    });
+    expect(subtitle).toContain('lb bar');
+    expect(subtitle).not.toContain('20lb');
+  });
+
+  it('includes every section when all four are configured', () => {
+    const subtitle = formatGymRowSubtitle({
+      barbellWeightKg: '20.000',
+      plateCount: 1,
+      dumbbellCount: 1,
+      machineCount: 1,
+      nativeUnit: 'kg',
+      archivedAt: null,
+    });
+    expect(subtitle).toBe('20.00kg bar · 1 plate type · 1 dumbbell weight · 1 machine');
   });
 });

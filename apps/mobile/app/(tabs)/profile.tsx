@@ -1,13 +1,20 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { AppearanceControl } from '@/components/AppearanceControl';
 import { SignOutDialog } from '@/components/SignOutDialog';
 import { authClient } from '@/lib/auth-client';
+import {
+  loadActiveEquipmentProfileId,
+  loadEquipmentProfiles,
+  resolveLiveEquipmentProfileId,
+} from '@/lib/db/equipment-profiles';
 import { loadWorkoutPreferences, setWorkoutPreference, type WorkoutPreferences } from '@/lib/db/preferences';
 import { getAlertPermission, openAlertSettings, type AlertPermission } from '@/lib/rest-alert';
 import { signOut } from '@/lib/sign-out';
+import { useThemeColors } from '@/lib/theme-colors';
 
 interface PendingConfirmation {
   count: number;
@@ -66,25 +73,70 @@ export function NotificationRow({ permission, onTurnOn }: { permission: AlertPer
   );
 }
 
+// Reuses ToggleRow's bordered, surface-filled, rounded row chrome — the shipped minimum-height
+// row shape — but with a link/button role in place of a switch, a leading icon, and a trailing
+// chevron in place of the on/off pill. The active gym's name is optional: an unresolved read
+// omits the trailing label entirely rather than rendering the row broken or disabled.
+export function GymRow({ gymName, onPress }: { gymName?: string; onPress: () => void }) {
+  const colors = useThemeColors();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Gym Profiles"
+      className="flex-row items-center justify-between rounded-md border border-foreground-muted bg-surface px-md py-sm"
+      style={{ minHeight: 48 }}
+    >
+      <View className="flex-row items-center gap-sm">
+        <Ionicons name="barbell-outline" size={20} color={colors.foregroundMuted} />
+        <Text className="text-body font-normal text-foreground">Gym Profiles</Text>
+      </View>
+      <View className="flex-row items-center gap-xs">
+        {gymName ? <Text className="text-label font-normal text-foreground-muted">{gymName}</Text> : null}
+        <Ionicons name="chevron-forward" size={20} color={colors.foregroundMuted} />
+      </View>
+    </Pressable>
+  );
+}
+
 export default function ProfileScreen() {
+  const router = useRouter();
   const { data: sessionData, refetch: refetchSession } = authClient.useSession();
   const userId = sessionData?.user?.id ?? null;
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [preferences, setPreferences] = useState<WorkoutPreferences>(DEFAULT_PREFERENCES);
   const [notificationPermission, setNotificationPermission] = useState<AlertPermission>('undetermined');
+  const [activeGymName, setActiveGymName] = useState<string | undefined>(undefined);
 
-  // A read, never a prompt (getAlertPermission never calls requestPermissionsAsync) — safe on
+  // An all-settled read, not Promise.all: a failure resolving the active gym's name must never
+  // prevent the workout preferences or notification permission from loading, and vice versa — the
+  // screen still issues one read pass per focus, but each of its four reads fails independently.
+  // getAlertPermission is a read, never a prompt (it never calls requestPermissionsAsync) — safe on
   // every focus, including after the user changes the OS-level answer in Settings and returns.
   useFocusEffect(
     useCallback(() => {
       let active = true;
       void (async () => {
         if (!userId) return;
-        const [loadedPreferences, permission] = await Promise.all([loadWorkoutPreferences(userId), getAlertPermission()]);
+        const [preferencesResult, permissionResult, gymProfilesResult, activeGymIdResult] = await Promise.allSettled([
+          loadWorkoutPreferences(userId),
+          getAlertPermission(),
+          loadEquipmentProfiles(userId),
+          loadActiveEquipmentProfileId(userId),
+        ]);
         if (!active) return;
-        setPreferences(loadedPreferences);
-        setNotificationPermission(permission);
+
+        if (preferencesResult.status === 'fulfilled') setPreferences(preferencesResult.value);
+        if (permissionResult.status === 'fulfilled') setNotificationPermission(permissionResult.value);
+
+        if (gymProfilesResult.status === 'fulfilled' && activeGymIdResult.status === 'fulfilled') {
+          const liveId = resolveLiveEquipmentProfileId(gymProfilesResult.value, activeGymIdResult.value);
+          setActiveGymName(gymProfilesResult.value.find((profile) => profile.id === liveId)?.name);
+        } else {
+          setActiveGymName(undefined);
+        }
       })();
       return () => {
         active = false;
@@ -154,6 +206,11 @@ export default function ProfileScreen() {
             onToggle={() => void togglePreference('warmupSetsEnabled')}
           />
           <NotificationRow permission={notificationPermission} onTurnOn={() => void openAlertSettings()} />
+        </View>
+
+        <View className="gap-sm">
+          <Text className="text-label font-normal text-foreground-muted">Gyms</Text>
+          <GymRow gymName={activeGymName} onPress={() => router.push('/gym-profiles')} />
         </View>
 
         <Pressable

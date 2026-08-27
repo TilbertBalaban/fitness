@@ -6,8 +6,19 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: { getItem: jest.fn().mockResolvedValue(null), setItem: jest.fn().mockResolvedValue(undefined) },
 }));
+// GymRow calls useThemeColors, which reaches NativeWind's useColorScheme — a hook this Node test
+// environment cannot drive. Mocking it makes GymRow a plain `(props) => ReactElement` function, so
+// direct invocation (no renderer) is faithful, matching ExerciseListRow.test.tsx's established
+// technique.
+jest.mock('@/lib/theme-colors', () => ({
+  useThemeColors: () => ({
+    accent: 'rgb(37, 99, 235)',
+    foregroundMuted: 'rgb(113, 113, 122)',
+    surface: 'rgb(244, 244, 245)',
+  }),
+}));
 
-import { NotificationRow, ToggleRow } from '../profile';
+import { GymRow, NotificationRow, ToggleRow } from '../profile';
 
 function findText(node: unknown, out: string[] = []): string[] {
   if (node === null || node === undefined || typeof node === 'boolean') return out;
@@ -69,5 +80,47 @@ describe('NotificationRow (D-22)', () => {
     const [, turnOnButton] = result.props.children as [unknown, { props: { onPress: () => void } }];
     turnOnButton.props.onPress();
     expect(onTurnOn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GymRow', () => {
+  it('renders the Gym Profiles label', () => {
+    const result = GymRow({ onPress: jest.fn() });
+    expect(findText(result)).toContain('Gym Profiles');
+  });
+
+  it('trails the active gym name in muted Label when it resolves', () => {
+    const result = GymRow({ gymName: 'Home Gym', onPress: jest.fn() });
+    expect(findText(result)).toContain('Home Gym');
+  });
+
+  // The row must never render disabled or broken when the active gym cannot be resolved — the
+  // trailing label is simply absent.
+  it('renders with no trailing name when no active gym resolves', () => {
+    const result = GymRow({ onPress: jest.fn() });
+    const text = findText(result);
+    expect(text).toContain('Gym Profiles');
+    expect(text).not.toContain('undefined');
+  });
+
+  it('is announced as a button, never a switch, and renders no on/off pill', () => {
+    const result = GymRow({ onPress: jest.fn() }) as { props: { accessibilityRole?: string } };
+    expect(result.props.accessibilityRole).toBe('button');
+    expect(findText(result)).not.toContain('On');
+    expect(findText(result)).not.toContain('Off');
+  });
+
+  it('tapping the row calls onPress exactly once, still navigating with or without a resolved name', () => {
+    const onPress = jest.fn();
+    const result = GymRow({ onPress }) as { props: { onPress: () => void } };
+    result.props.onPress();
+    expect(onPress).toHaveBeenCalledTimes(1);
+
+    const onPressWithName = jest.fn();
+    const resultWithName = GymRow({ gymName: 'Home Gym', onPress: onPressWithName }) as {
+      props: { onPress: () => void };
+    };
+    resultWithName.props.onPress();
+    expect(onPressWithName).toHaveBeenCalledTimes(1);
   });
 });

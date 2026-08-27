@@ -228,8 +228,8 @@ describe('protected set membership', () => {
       .sort();
   }
 
-  it('guards (tabs), exercises and programs behind the signed-in condition', () => {
-    expect(screenNamesUnderGuard(true, true)).toEqual(['(tabs)', 'exercises', 'programs']);
+  it('guards (tabs), exercises, programs and gym-profiles behind the signed-in condition', () => {
+    expect(screenNamesUnderGuard(true, true)).toEqual(['(tabs)', 'exercises', 'gym-profiles', 'programs']);
   });
 
   it('guards only (auth) behind the signed-out condition', () => {
