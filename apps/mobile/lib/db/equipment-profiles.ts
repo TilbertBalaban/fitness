@@ -3,6 +3,7 @@ import {
   serializeEquipmentJson,
   parseEquipmentJson,
   toCanonicalKg,
+  fromCanonicalKg,
   type EquipmentDumbbell,
   type EquipmentMachine,
   type EquipmentPlate,
@@ -67,6 +68,38 @@ export async function loadActiveEquipmentProfileId(userId: string, db: WriteDb =
     .from(userPreference)
     .where(eq(userPreference.id, userId));
   return row?.defaultEquipmentProfileId ?? null;
+}
+
+function byNameThenId(a: EquipmentProfileRow, b: EquipmentProfileRow): number {
+  if (a.name !== b.name) return a.name < b.name ? -1 : 1;
+  if (a.id === b.id) return 0;
+  return a.id < b.id ? -1 : 1;
+}
+
+// The list screen's read: every profile including archived ones (mirrors loadLibraryRoutines —
+// the list is the only surface an archived gym can be restored from, so a filtered read would make
+// restore unreachable). Sorted in JavaScript by name then id, matching every other total-ordering
+// list in this codebase, so two gyms sharing a name still have a stable order.
+export async function loadEquipmentProfiles(userId: string, db: WriteDb = getPowerSync()): Promise<EquipmentProfileRow[]> {
+  const rows = await db.select().from(equipmentProfile).where(eq(equipmentProfile.userId, userId));
+  return rows.map(toEquipmentProfileRow).sort(byNameThenId);
+}
+
+// Mirrors resolveLiveRoutineId's archived-wins reconciliation, with one deliberate difference: a
+// program can legitimately have zero active programs, but a gym profile cannot — E1's contract
+// requires exactly one gym to always read as active (D-19 guarantees at least one non-archived row
+// exists). So where resolveLiveRoutineId reads a stale/archived pointer as "no active routine",
+// this falls back to the first non-archived row by the caller's own total ordering (loadEquipmentProfiles
+// already sorts by name then id) rather than leaving the active partition empty.
+export function resolveLiveEquipmentProfileId(
+  rows: EquipmentProfileRow[],
+  candidateId: string | null | undefined,
+): string | null {
+  const target = candidateId ? rows.find((row) => row.id === candidateId) : undefined;
+  if (target && target.archivedAt === null) return target.id;
+
+  const firstLive = rows.find((row) => row.archivedAt === null);
+  return firstLive ? firstLive.id : null;
 }
 
 interface SeedPlateSpec {
@@ -213,4 +246,160 @@ export async function ensureDefaultEquipmentProfile(userId: string, db: WriteDb 
 export async function setActiveEquipmentProfile(userId: string, profileId: string, db: WriteDb = getPowerSync()): Promise<void> {
   const unit = await loadWeightUnit(userId, db);
   await pointDefaultProfileAt(userId, profileId, unit, db);
+}
+
+export interface CreateEquipmentProfileInput {
+  userId: string;
+  name: string;
+  nativeUnit: WeightUnit;
+  barbellWeightKg?: string | null;
+  plates?: EquipmentPlate[];
+  dumbbells?: EquipmentDumbbell[];
+  machines?: EquipmentMachine[];
+}
+
+// The editor's create path (06-04). A new gym is never the seeded default and never archived —
+// both are facts about how a row came to exist, not something a caller here gets to choose.
+export async function createEquipmentProfile(input: CreateEquipmentProfileInput, db: WriteDb = getPowerSync()): Promise<string> {
+  const trimmed = input.name.trim();
+  if (trimmed.length === 0) {
+    throw new Error('Gym name is required');
+  }
+
+  const id = generateClientId();
+  await db.insert(equipmentProfile).values({
+    id,
+    userId: input.userId,
+    name: trimmed,
+    isDefault: false,
+    barbellWeightKg: input.barbellWeightKg ?? null,
+    availablePlates: serializeEquipmentJson(input.plates ?? []),
+    dumbbellIncrementsKg: serializeEquipmentJson(input.dumbbells ?? []),
+    machineAvailability: serializeEquipmentJson(input.machines ?? []),
+    nativeUnit: input.nativeUnit,
+    archivedAt: null,
+  });
+
+  return id;
+}
+
+export interface UpdateEquipmentProfileInput {
+  name?: string;
+  nativeUnit?: WeightUnit;
+  barbellWeightKg?: string | null;
+  plates?: EquipmentPlate[];
+  dumbbells?: EquipmentDumbbell[];
+  machines?: EquipmentMachine[];
+}
+
+// The editor's save path (06-04). Only the fields the caller actually supplies are written — an
+// undefined field is "not part of this edit", not "clear this column" (the same partial-write
+// contract updateWorkoutSession-shaped helpers elsewhere in this codebase already follow).
+export async function updateEquipmentProfile(
+  id: string,
+  input: UpdateEquipmentProfileInput,
+  db: WriteDb = getPowerSync(),
+): Promise<void> {
+  const patch: Record<string, unknown> = {};
+
+  if (input.name !== undefined) {
+    const trimmed = input.name.trim();
+    if (trimmed.length === 0) {
+      throw new Error('Gym name is required');
+    }
+    patch.name = trimmed;
+  }
+  if (input.nativeUnit !== undefined) patch.nativeUnit = input.nativeUnit;
+  if (input.barbellWeightKg !== undefined) patch.barbellWeightKg = input.barbellWeightKg;
+  if (input.plates !== undefined) patch.availablePlates = serializeEquipmentJson(input.plates);
+  if (input.dumbbells !== undefined) patch.dumbbellIncrementsKg = serializeEquipmentJson(input.dumbbells);
+  if (input.machines !== undefined) patch.machineAvailability = serializeEquipmentJson(input.machines);
+
+  if (Object.keys(patch).length === 0) return;
+
+  await db.update(equipmentProfile).set(patch).where(eq(equipmentProfile.id, id));
+}
+
+// A timestamp, never a delete — workout_session carries no foreign key into equipment_profile, but
+// a destroyed gym would still orphan every session that snapshotted its id (D-04/D-17), the same
+// reasoning archiveRoutine documents for routine. The active-pointer reconciliation is deliberately
+// NOT done here: it lives entirely on the read side (resolveLiveEquipmentProfileId), one owner of
+// the rule, matching what this plan's own behaviour contract specifies.
+export async function archiveEquipmentProfile(id: string, db: WriteDb = getPowerSync()): Promise<void> {
+  await db.update(equipmentProfile).set({ archivedAt: new Date().toISOString() }).where(eq(equipmentProfile.id, id));
+}
+
+// Restoring returns a gym to the list; it never makes it active. Activation is Set Active's own
+// explicit act, matching restoreRoutine's identical rule for programs.
+export async function restoreEquipmentProfile(id: string, db: WriteDb = getPowerSync()): Promise<void> {
+  await db.update(equipmentProfile).set({ archivedAt: null }).where(eq(equipmentProfile.id, id));
+}
+
+// A deep copy with a fresh client id and a distinct name (source name + " copy", matching the
+// program library's own duplicate-naming convention), never the seeded default, never archived. The
+// inventory is reserialized rather than referenced, so editing the copy can never touch the source's
+// rows.
+export async function duplicateEquipmentProfile(
+  userId: string,
+  id: string,
+  db: WriteDb = getPowerSync(),
+): Promise<string> {
+  const source = await loadEquipmentProfile(id, db);
+  if (!source) {
+    throw new Error('Gym profile not found');
+  }
+
+  const newId = generateClientId();
+  await db.insert(equipmentProfile).values({
+    id: newId,
+    userId,
+    name: `${source.name} copy`,
+    isDefault: false,
+    barbellWeightKg: source.barbellWeightKg,
+    availablePlates: serializeEquipmentJson(source.plates),
+    dumbbellIncrementsKg: serializeEquipmentJson(source.dumbbells),
+    machineAvailability: serializeEquipmentJson(source.machines),
+    nativeUnit: source.nativeUnit,
+    archivedAt: null,
+  });
+
+  return newId;
+}
+
+export interface GymRowSubtitleInput {
+  barbellWeightKg: string | null;
+  plateCount: number;
+  dumbbellCount: number;
+  machineCount: number;
+  nativeUnit: WeightUnit;
+  archivedAt: string | null;
+}
+
+// The list row's own subtitle rule (unit-testable without a renderer, mirroring
+// formatLibraryRowSubtitle): joins only the sections that actually have content, in the fixed
+// order bar -> plates -> dumbbells -> machines. Absence is never a zero count — a gym with nothing
+// configured returns an empty string, and the row renders no subtitle line at all, because every
+// section is legitimately optional (E1 partial). An archived row returns the single word
+// "Archived", same as Program Library's own archived rows.
+export function formatGymRowSubtitle({
+  barbellWeightKg,
+  plateCount,
+  dumbbellCount,
+  machineCount,
+  nativeUnit,
+  archivedAt,
+}: GymRowSubtitleInput): string {
+  if (archivedAt !== null) return 'Archived';
+
+  const parts: string[] = [];
+
+  if (barbellWeightKg !== null) {
+    const displayWeight = fromCanonicalKg(barbellWeightKg, nativeUnit);
+    if (displayWeight !== null) parts.push(`${displayWeight}${nativeUnit} bar`);
+  }
+  if (plateCount > 0) parts.push(`${plateCount} plate type${plateCount === 1 ? '' : 's'}`);
+  if (dumbbellCount > 0) parts.push(`${dumbbellCount} dumbbell weight${dumbbellCount === 1 ? '' : 's'}`);
+  if (machineCount > 0) parts.push(`${machineCount} machine${machineCount === 1 ? '' : 's'}`);
+
+  return parts.join(' · ');
 }
