@@ -3,6 +3,9 @@ import { Text, View } from 'react-native';
 import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
 import { startBackfilledSession } from './(tabs)/history';
 import { EditingWorkoutRoute } from '../components/EditingWorkoutScreen';
+import GymProfilesScreen from './gym-profiles/index';
+import NewGymScreen from './gym-profiles/new';
+import EditGymScreen from './gym-profiles/edit/[id]';
 import { SyncConnector } from '../lib/db/connector';
 import { loadEquipmentProfile, setActiveEquipmentProfile } from '../lib/db/equipment-profiles';
 import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib/db/log-set';
@@ -88,6 +91,18 @@ export default function DurabilityHarnessScreen() {
   const [ready, setReady] = useState(false);
   const [workoutHarness, setWorkoutHarness] = useState<{ db: TestWriteDb } | null>(null);
   const [editingHarness, setEditingHarness] = useState<{ db: TestWriteDb; sessionId: string } | null>(null);
+  // Task 3's two gym-profile mounts — mutually exclusive with each other and with the two above,
+  // matching the existing single-active-mount convention this harness already follows.
+  const [gymProfilesHarness, setGymProfilesHarness] = useState<{ db: TestWriteDb } | null>(null);
+  const [gymEditorHarness, setGymEditorHarness] = useState<{ db: TestWriteDb; profileId: string | null } | null>(
+    null,
+  );
+  // NewGymScreen/EditGymScreen's onSaved fires with the row's id — the only way a spec can learn
+  // the id createEquipmentProfile generates server-side, mid-write, since this harness never
+  // navigates on save (see NewGymScreenProps.onSaved's own doc comment). Rendered below as a plain
+  // DOM value, not a third harness method, so Task 3's "exactly two new methods" holds; a spec
+  // polls it with expect.poll the same way every other harness case polls a raw DB read.
+  const [lastSavedGymId, setLastSavedGymId] = useState<string | null>(null);
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -128,6 +143,9 @@ export default function DurabilityHarnessScreen() {
         currentDb = null;
         setWorkoutHarness(null);
         setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setLastSavedGymId(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -367,6 +385,24 @@ export default function DurabilityHarnessScreen() {
         const next = resolveNextUp({ routine: data.routine, days: data.days, cycles: data.cycles, history: data.history, today: data.today });
         return next.kind;
       },
+      // Task 3's two new methods (06-04) — mounts the real gym-profiles list against the currently
+      // open() database. Delegates entirely to GymProfilesScreen's own db/userId override props
+      // (added in this same plan alongside GymProfilesScreenProps); no wiring is duplicated here.
+      async openGymProfilesScreen() {
+        const db = requireOpenDb();
+        setGymProfilesHarness({ db });
+        setGymEditorHarness(null);
+      },
+      // Mounts the real gym-profile editor: NewGymScreen for a fresh profile when no id is given,
+      // EditGymScreen for an existing one otherwise — same real create/update helpers the editor
+      // uses when reached through actual navigation, just supplied a db/userId/onSaved override
+      // instead of resolving them from the signed-in session and expo-router's own replace().
+      async openGymProfileEditor(profileId?: string) {
+        const db = requireOpenDb();
+        setGymEditorHarness({ db, profileId: profileId ?? null });
+        setGymProfilesHarness(null);
+        setLastSavedGymId(null);
+      },
     };
 
     setReady(true);
@@ -379,6 +415,20 @@ export default function DurabilityHarnessScreen() {
       {editingHarness ? (
         <EditingWorkoutHarnessScreen db={editingHarness.db} userId={WORKOUT_HARNESS_USER_ID} sessionId={editingHarness.sessionId} />
       ) : null}
+      {gymProfilesHarness ? <GymProfilesScreen db={gymProfilesHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
+      {gymEditorHarness ? (
+        gymEditorHarness.profileId ? (
+          <EditGymScreen
+            id={gymEditorHarness.profileId}
+            db={gymEditorHarness.db}
+            userId={WORKOUT_HARNESS_USER_ID}
+            onSaved={setLastSavedGymId}
+          />
+        ) : (
+          <NewGymScreen db={gymEditorHarness.db} userId={WORKOUT_HARNESS_USER_ID} onSaved={setLastSavedGymId} />
+        )
+      ) : null}
+      <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>
   );
 }

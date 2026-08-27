@@ -54,7 +54,7 @@ describe('createGymProfile (new.tsx create path)', () => {
 
     const result = await createGymProfile('user-1', output);
 
-    expect(mockCreateEquipmentProfile).toHaveBeenCalledWith({ userId: 'user-1', ...output });
+    expect(mockCreateEquipmentProfile).toHaveBeenCalledWith({ userId: 'user-1', ...output }, undefined);
     expect(result).toEqual({ ok: true, id: 'new-id' });
   });
 
@@ -78,7 +78,7 @@ describe('updateGymProfile (edit/[id].tsx save path)', () => {
 
     const result = await updateGymProfile('gym-1', output);
 
-    expect(mockUpdateEquipmentProfile).toHaveBeenCalledWith('gym-1', output);
+    expect(mockUpdateEquipmentProfile).toHaveBeenCalledWith('gym-1', output, undefined);
     expect(result).toEqual({ ok: true });
   });
 

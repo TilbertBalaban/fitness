@@ -3,14 +3,16 @@ import { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { GymProfileEditor } from '@/components/GymProfileEditor';
 import { loadEquipmentProfile, updateEquipmentProfile } from '@/lib/db/equipment-profiles';
+import type { WriteDb } from '@/lib/db/powersync';
 import { draftFromProfile, type EquipmentProfileDraftOutput, type GymProfileDraft } from '@/lib/gym/profile-draft';
 
 export async function updateGymProfile(
   id: string,
   output: EquipmentProfileDraftOutput,
+  db?: WriteDb,
 ): Promise<{ ok: true } | { ok: false }> {
   try {
-    await updateEquipmentProfile(id, output);
+    await updateEquipmentProfile(id, output, db);
     return { ok: true };
   } catch (error) {
     console.error('gym profile update failed', error);
@@ -24,8 +26,23 @@ type LoadState =
   | { status: 'error' }
   | { status: 'ready'; draft: GymProfileDraft };
 
-export default function EditGymScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+export interface EditGymScreenProps {
+  // The durability harness's own seam (06-04 Task 3), mirroring NewGymScreenProps/
+  // GymProfilesScreenProps. `id` overrides the route param — the harness mounts this component
+  // directly rather than through a matched /gym-profiles/edit/[id] route, so useLocalSearchParams
+  // resolves against whatever route the page actually is (/__durability), never this one's param.
+  id?: string;
+  userId?: string;
+  db?: WriteDb;
+  // Receives the just-updated row's id (always the same as the `id` prop/param here — kept for
+  // interface symmetry with NewGymScreenProps.onSaved, which is where an id genuinely cannot be
+  // known any other way).
+  onSaved?: (id: string) => void;
+}
+
+export default function EditGymScreen({ id: idProp, db, onSaved }: EditGymScreenProps = {}) {
+  const params = useLocalSearchParams<{ id: string }>();
+  const id = idProp ?? params.id;
   const router = useRouter();
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
@@ -36,7 +53,7 @@ export default function EditGymScreen() {
 
     (async () => {
       try {
-        const row = await loadEquipmentProfile(id);
+        const row = await loadEquipmentProfile(id, db);
         if (!mounted) return;
 
         if (!row) {
@@ -54,15 +71,19 @@ export default function EditGymScreen() {
     return () => {
       mounted = false;
     };
-  }, [id]);
+  }, [id, db]);
 
   async function handleSubmit(output: EquipmentProfileDraftOutput): Promise<boolean> {
     if (!id) return false;
 
-    const result = await updateGymProfile(id, output);
+    const result = await updateGymProfile(id, output, db);
     if (!result.ok) return false;
 
-    router.replace('/gym-profiles');
+    if (onSaved) {
+      onSaved(id);
+    } else {
+      router.replace('/gym-profiles');
+    }
     return true;
   }
 
