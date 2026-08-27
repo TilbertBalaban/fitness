@@ -341,7 +341,7 @@ Plans:
   3. Plate math and any suggested load only ever use equipment the active profile actually has — a home gym with 5 lb jumps is never shown a 152.5 lb load
   4. User can switch gyms mid-program and mark equipment unavailable mid-workout, and be offered alternatives
 
-**Plans**: 1/8 plans executed
+**Plans**: 3/8 plans executed
 
 Plans:
 
@@ -351,8 +351,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 06-02-PLAN.md — Achievability rounding with an explicit direction, nearest-loadable neighbours, and the one band predicate
-- [ ] 06-03-PLAN.md — Gym Profiles list, action sheet, gym archival, and the Profile tab entry point
+- [x] 06-02-PLAN.md — Achievability rounding with an explicit direction, nearest-loadable neighbours, and the one band predicate
+- [x] 06-03-PLAN.md — Gym Profiles list, action sheet, gym archival, and the Profile tab entry point
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -518,7 +518,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
 | 5. In-Gym Session Logging | 16/16 | In Progress|  |
-| 6. Gym Profiles & Plate Math | 1/8 | In Progress|  |
+| 6. Gym Profiles & Plate Math | 3/8 | In Progress|  |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
 | 8. Progression Engine | 0/TBD | Not started | - |
 | 9. Records & Client Analytics | 0/TBD | Not started | - |
