@@ -19,6 +19,7 @@ import { ExercisePagerView } from '../../../components/ExercisePager';
 import { ExercisePageView } from '../../../components/ExercisePage';
 import { ExercisePickerModal } from '../../../components/ExercisePickerModal';
 import { DiscardWorkoutDialog } from '../../../components/WorkoutInProgressBanner';
+import { SwitchGymSheet } from '../../../components/SwitchGymSheet';
 import {
   WorkoutScreenView,
   buildSetRows,
@@ -299,6 +300,8 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     // directly). A real handle would need the mocked getPowerSync() chain; an opaque stand-in
     // satisfies the type without importing @powersync internals into a jsdom test (WINDOWS #22).
     db: {} as WriteDb,
+    userId: 'user-1',
+    activeGymId: 'gym-1',
     exercises: [{ id: 'se-1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3 }],
     currentExerciseId: 'se-1',
     currentIndex: 0,
@@ -320,6 +323,7 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     showAddExercisePicker: false,
     showSessionMenu: false,
     showDiscardConfirm: false,
+    showSwitchGymSheet: false,
     hasSessionNote: false,
     sessionNoteText: null,
     showSessionNoteSheet: false,
@@ -349,6 +353,10 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     onRequestDiscard: jest.fn(),
     onConfirmDiscard: jest.fn(),
     onCancelDiscard: jest.fn(),
+    onOpenSwitchGym: jest.fn(),
+    onSelectGym: jest.fn(),
+    onManageGyms: jest.fn(),
+    onCancelSwitchGym: jest.fn(),
     onOpenSessionNote: jest.fn(),
     onSessionNoteSaved: jest.fn(),
     onCancelSessionNote: jest.fn(),
@@ -658,6 +666,33 @@ describe('WorkoutScreenView', () => {
     const [discardButton] = findByType(result, Pressable).filter((el) => el.props.accessibilityLabel === 'Discard');
     (discardButton.props.onPress as () => void)();
     expect(onRequestDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it('the menu carries Switch Gym between Session Note and Discard, and Discard is still the last row', () => {
+    const result = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, showSessionMenu: true }));
+    const rows = findByType(result, Pressable).filter((el) =>
+      ['Session Note', 'Switch Gym', 'Discard'].includes(el.props.accessibilityLabel as string),
+    );
+    expect(rows.map((row) => row.props.accessibilityLabel)).toEqual(['Session Note', 'Switch Gym', 'Discard']);
+  });
+
+  it('selecting Switch Gym from the menu opens the sheet with no confirmation step', () => {
+    const onOpenSwitchGym = jest.fn();
+    const result = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, showSessionMenu: true, onOpenSwitchGym }));
+    const [switchGymButton] = findByType(result, Pressable).filter((el) => el.props.accessibilityLabel === 'Switch Gym');
+    (switchGymButton.props.onPress as () => void)();
+    expect(onOpenSwitchGym).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the Switch Gym sheet only when showSwitchGymSheet is true, wired to the session gym', () => {
+    const withoutSheet = WorkoutScreenView(baseViewProps({ headerTimer: HEADER_TIMER, showSwitchGymSheet: false }));
+    const withSheet = WorkoutScreenView(
+      baseViewProps({ headerTimer: HEADER_TIMER, showSwitchGymSheet: true, userId: 'user-1', activeGymId: 'gym-1' }),
+    );
+    expect(findByType(withoutSheet, SwitchGymSheet)).toHaveLength(0);
+    const [sheet] = findByType(withSheet, SwitchGymSheet);
+    expect(sheet.props.userId).toBe('user-1');
+    expect(sheet.props.activeGymId).toBe('gym-1');
   });
 
   it('renders the Discard Workout confirmation dialog only when showDiscardConfirm is true', () => {
