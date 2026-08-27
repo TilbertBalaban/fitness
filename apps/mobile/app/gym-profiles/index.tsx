@@ -7,6 +7,7 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 import { GymProfileActionSheet, type GymProfileAction } from '@/components/GymProfileActionSheet';
 import { authClient } from '@/lib/auth-client';
 import { runMutation } from '@/lib/programs/mutation';
+import type { WriteDb } from '@/lib/db/powersync';
 import {
   archiveEquipmentProfile,
   duplicateEquipmentProfile,
@@ -109,10 +110,19 @@ function buildGymListItems(rows: EquipmentProfileRow[], activeId: string | null)
   return items;
 }
 
-export default function GymProfilesScreen() {
+export interface GymProfilesScreenProps {
+  // The durability harness's own seam (06-04 Task 3): mounts this exact route component against
+  // a caller-chosen db/userId instead of the production getPowerSync() singleton and the signed-in
+  // session, exactly as useWorkoutScreen({ userId, db }) does for the workout screen. Both are
+  // undefined for every real navigation to this route — production behaviour is unchanged.
+  userId?: string;
+  db?: WriteDb;
+}
+
+export default function GymProfilesScreen({ userId: userIdOverride, db }: GymProfilesScreenProps = {}) {
   const router = useRouter();
   const session = authClient.useSession();
-  const userId = session.data?.user?.id ?? null;
+  const userId = userIdOverride ?? session.data?.user?.id ?? null;
 
   const [profiles, setProfiles] = useState<EquipmentProfileRow[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -124,7 +134,10 @@ export default function GymProfilesScreen() {
   const reload = useCallback(async () => {
     if (!userId) return;
     try {
-      const [loaded, pointer] = await Promise.all([loadEquipmentProfiles(userId), loadActiveEquipmentProfileId(userId)]);
+      const [loaded, pointer] = await Promise.all([
+        loadEquipmentProfiles(userId, db),
+        loadActiveEquipmentProfileId(userId, db),
+      ]);
       setProfiles(loaded);
       setActiveProfileId(pointer);
       setFailed(false);
@@ -132,7 +145,7 @@ export default function GymProfilesScreen() {
       console.error('gym profiles load failed', error);
       setFailed(true);
     }
-  }, [userId]);
+  }, [userId, db]);
 
   useEffect(() => {
     let mounted = true;
@@ -141,8 +154,8 @@ export default function GymProfilesScreen() {
       if (!userId) return;
       try {
         const [loaded, pointer] = await Promise.all([
-          loadEquipmentProfiles(userId),
-          loadActiveEquipmentProfileId(userId),
+          loadEquipmentProfiles(userId, db),
+          loadActiveEquipmentProfileId(userId, db),
         ]);
         if (mounted) {
           setProfiles(loaded);
@@ -158,7 +171,7 @@ export default function GymProfilesScreen() {
     return () => {
       mounted = false;
     };
-  }, [userId]);
+  }, [userId, db]);
 
   // Never rejects, so no async handler reaches onSelect/onPress as an unhandled rejection — same
   // rule library.tsx's own mutate follows (WR-11).
@@ -182,7 +195,7 @@ export default function GymProfilesScreen() {
       switch (key) {
         case SET_ACTIVE:
           await mutate(
-            () => setActiveEquipmentProfile(userId, row.id),
+            () => setActiveEquipmentProfile(userId, row.id, db),
             `Couldn't make ${row.name} the active gym.`,
           );
           return;
@@ -190,7 +203,7 @@ export default function GymProfilesScreen() {
           router.push(`/gym-profiles/edit/${row.id}`);
           return;
         case DUPLICATE:
-          await mutate(() => duplicateEquipmentProfile(userId, row.id), `Couldn't duplicate ${row.name}.`);
+          await mutate(() => duplicateEquipmentProfile(userId, row.id, db), `Couldn't duplicate ${row.name}.`);
           return;
         case ARCHIVE:
           setConfirming({ profileId: row.id, unarchiving: false });
@@ -202,7 +215,7 @@ export default function GymProfilesScreen() {
           return;
       }
     },
-    [mutate, profiles, router, sheetRowId, userId],
+    [mutate, profiles, router, sheetRowId, userId, db],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -211,11 +224,11 @@ export default function GymProfilesScreen() {
     setConfirming(null);
 
     if (unarchiving) {
-      await mutate(() => restoreEquipmentProfile(profileId), "Couldn't restore that gym.");
+      await mutate(() => restoreEquipmentProfile(profileId, db), "Couldn't restore that gym.");
       return;
     }
-    await mutate(() => archiveEquipmentProfile(profileId), "Couldn't archive that gym.");
-  }, [confirming, mutate]);
+    await mutate(() => archiveEquipmentProfile(profileId, db), "Couldn't archive that gym.");
+  }, [confirming, mutate, db]);
 
   const screenState = deriveGymProfilesScreenState({ failed, profiles });
 
