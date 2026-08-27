@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+import type { EquipmentType } from '@fitness/api-contracts';
 import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
 import { startBackfilledSession } from './(tabs)/history';
 import { EditingWorkoutRoute } from '../components/EditingWorkoutScreen';
 import { SyncConnector } from '../lib/db/connector';
-import { loadEquipmentProfile, setActiveEquipmentProfile } from '../lib/db/equipment-profiles';
+import { loadEquipmentProfile, setActiveEquipmentProfile, type CreateEquipmentProfileInput } from '../lib/db/equipment-profiles';
 import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib/db/log-set';
 import { loadSessionPersonalRecords } from '../lib/db/personal-record';
 import { completeSession, discardSession, pauseSession, resumeSession } from '../lib/db/session-lifecycle';
@@ -41,9 +42,11 @@ import {
   readWorkoutSessionRaw,
   reopenTestPowerSync,
   seedEquipmentProfile,
+  seedGymProfile,
   seedPriorHeaviestSet,
   seedProgrammedSession,
   seedProgrammedSessionWithCycle,
+  seedProgrammedSessionWithEquipment,
   writeCatalogVersionSentinel,
   type SeededProgrammedSession,
   type SeededProgrammedSessionWithCycle,
@@ -289,6 +292,24 @@ export default function DurabilityHarnessScreen() {
       async seedEquipmentProfile(): Promise<SeedEquipmentProfileResult> {
         const db = requireOpenDb();
         return seedEquipmentProfile(db, WORKOUT_HARNESS_USER_ID);
+      },
+      // 06-05's band-gating scenarios: the same seed-then-mount shape as seedWorkoutSession, but
+      // against seedProgrammedSessionWithEquipment's program — two exercises with real, resolvable
+      // equipment types (test-support.ts's own doc comment explains why seedWorkoutSession's bare
+      // exercise ids can't serve this).
+      async seedWorkoutSessionWithEquipment(equipmentTypes: [EquipmentType, EquipmentType]): Promise<SeededProgrammedSession> {
+        const db = requireOpenDb();
+        const seeded = await seedProgrammedSessionWithEquipment(db, WORKOUT_HARNESS_USER_ID, equipmentTypes);
+        setWorkoutHarness({ db });
+        return seeded;
+      },
+      // Delegates to the real createEquipmentProfile — 06-05's not-loadable/zero-plate/dumbbell e2e
+      // cases each need a deliberately shaped inventory the D-19 commercial-gym default doesn't
+      // produce. Call setActiveGym(profileId) afterward (and before seeding the session) so the
+      // started session's snapshot resolves to this profile.
+      async seedGymProfile(input: Omit<CreateEquipmentProfileInput, 'userId'>): Promise<SeedEquipmentProfileResult> {
+        const db = requireOpenDb();
+        return seedGymProfile(db, { ...input, userId: WORKOUT_HARNESS_USER_ID });
       },
       async readEquipmentProfile(id: string) {
         return loadEquipmentProfile(id, requireOpenDb());
