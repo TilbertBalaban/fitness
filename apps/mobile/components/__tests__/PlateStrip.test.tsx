@@ -58,10 +58,14 @@ describe('PlateStripView', () => {
     expect(texts[0].props.children).toBe('20.00kg bar');
   });
 
-  it.each(['not_loadable', 'no_plates', 'unsupported'] as const)(
-    'renders zero height for the %s state (this task; 06-05 fills in the content)',
-    (kind) => {
-      const result = PlateStripView(baseProps({ breakdown: { kind } }));
+  it.each([
+    { kind: 'not_loadable', lowerKg: null, higherKg: null } as const,
+    { kind: 'no_plates' } as const,
+    { kind: 'unsupported' } as const,
+  ])(
+    'renders zero height for the $kind state (this task; 06-05 fills in the content)',
+    (breakdown) => {
+      const result = PlateStripView(baseProps({ breakdown }));
 
       expect(result.props.style).toEqual({ height: 0 });
       expect(findByType(result, Text)).toHaveLength(0);

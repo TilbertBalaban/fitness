@@ -77,4 +77,46 @@ describe('warmupSets', () => {
 
     expect(first).toEqual(second);
   });
+
+  it('with no roundWeight argument, behaves exactly as before, including the ties-up rounding', () => {
+    const withoutArg = warmupSets(100);
+    const withUndefinedArg = warmupSets(100, DEFAULT_ROUNDING_INCREMENT_KG, undefined);
+
+    expect(withoutArg).toEqual([
+      { weightKg: 40, reps: 10 },
+      { weightKg: 60, reps: 5 },
+      { weightKg: 80, reps: 3 },
+    ]);
+    expect(withUndefinedArg).toEqual(withoutArg);
+  });
+
+  it('calls a supplied roundWeight once per warm-up step with the raw fractional weight, and uses its return value', () => {
+    const calls: number[] = [];
+    const roundWeight = (rawKg: number) => {
+      calls.push(rawKg);
+      return Math.floor(rawKg);
+    };
+
+    const result = warmupSets(101, DEFAULT_ROUNDING_INCREMENT_KG, roundWeight);
+
+    expect(calls).toHaveLength(3);
+    calls.forEach((call, index) => expect(call).toBeCloseTo([40.4, 60.6, 80.8][index]));
+    expect(result).toEqual([
+      { weightKg: 40, reps: 10 },
+      { weightKg: 60, reps: 5 },
+      { weightKg: 80, reps: 3 },
+    ]);
+  });
+
+  it('drops a warm-up step when the supplied roundWeight returns a value at or below zero', () => {
+    const roundWeight = (rawKg: number) => (rawKg < 50 ? 0 : rawKg);
+
+    const result = warmupSets(100, DEFAULT_ROUNDING_INCREMENT_KG, roundWeight);
+
+    expect(result.find((s) => s.reps === 10)).toBeUndefined();
+    expect(result).toEqual([
+      { weightKg: 60, reps: 5 },
+      { weightKg: 80, reps: 3 },
+    ]);
+  });
 });
