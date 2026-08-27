@@ -166,6 +166,13 @@ export function EditingWorkoutScreenView({
               sessionExercises={exercises}
               hasNote={pageData.hasNote}
               noteText={pageData.noteText}
+              // A past, already-completed workout has no live equipment band or Equipment
+              // action — D-11's "a logged weight never recomputes" extends here structurally:
+              // there is no forward-looking suggestion to make against equipment that may have
+              // changed since this session ran, so the row is absent, not gated.
+              equipmentType={null}
+              resolvedInventory={null}
+              equipmentProfileId={null}
               onExerciseChanged={onExerciseChanged}
               onFieldPress={(setId, field, currentValue) => onFieldPress(exercise.id, setId, field, currentValue)}
               onReferenceTap={(setId, field) => onReferenceTap(exercise.id, setId, field)}

@@ -285,6 +285,13 @@ export interface WorkoutScreenViewProps {
   bandState: EquipmentBandState;
   onBandNeighbourPress: (valueKg: string) => void;
   onBandRecoveryPress: () => void;
+  // Threaded to ExercisePage/SessionActionSheet so the Equipment row's presence and the
+  // Equipment Availability Sheet's own resolution both read the session's already-loaded
+  // equipment-type map and resolved inventory (06-05) rather than either component running a
+  // second, independently-computed query of its own (R11, T-06-06).
+  equipmentTypeByExerciseId: Map<string, EquipmentType | null>;
+  resolvedInventory: ResolvedInventory | null;
+  equipmentProfileId: string | null;
   starting: boolean;
   // Replaces the old canStartWorkout/nextUpHeading pair (Task 1): the view derives every
   // no-session-ish state's heading/body itself from the same NextUp value the screen already
@@ -397,6 +404,9 @@ export function WorkoutScreenView({
   bandState,
   onBandNeighbourPress,
   onBandRecoveryPress,
+  equipmentTypeByExerciseId,
+  resolvedInventory,
+  equipmentProfileId,
   starting,
   nextUp,
   weightUnit,
@@ -592,6 +602,9 @@ export function WorkoutScreenView({
               db={db}
               hasNote={pageData.hasNote}
               noteText={pageData.noteText}
+              equipmentType={equipmentTypeByExerciseId.get(pageData.exerciseId) ?? null}
+              resolvedInventory={resolvedInventory}
+              equipmentProfileId={equipmentProfileId}
               onExerciseChanged={onExerciseChanged}
               onFieldPress={(setId, field, currentValue) => onFieldPress(exercise.id, setId, field, currentValue)}
               onReferenceTap={(setId, field) => onReferenceTap(exercise.id, setId, field)}
@@ -1326,6 +1339,9 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     bandState,
     onBandNeighbourPress: handleBandNeighbourPress,
     onBandRecoveryPress: handleBandRecoveryPress,
+    equipmentTypeByExerciseId,
+    resolvedInventory,
+    equipmentProfileId: liveSession?.session.equipmentProfileId ?? null,
     starting,
     nextUp,
     weightUnit,

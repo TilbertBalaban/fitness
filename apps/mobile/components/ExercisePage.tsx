@@ -2,10 +2,12 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
-import { WARMUP_SET_TYPE, type ResolvedTarget, type WeightUnit } from '@fitness/api-contracts';
+import { WARMUP_SET_TYPE, type EquipmentType, type ResolvedTarget, type WeightUnit } from '@fitness/api-contracts';
+import { hasResolvableEquipment, resolveEquipmentBand, type ResolvedInventory } from '@fitness/plate-math';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
+import { EquipmentAvailabilitySheet } from './EquipmentAvailabilitySheet';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
 import { ExercisePickerModal, type PickerCatalogRow } from './ExercisePickerModal';
 import type { ExerciseStripExercise } from './ExerciseStrip';
@@ -97,7 +99,7 @@ export function ExercisePageView({
   );
 }
 
-type ActiveSheet = 'targets' | 'note' | 'set-note' | 'session' | 'remove-confirm' | 'swap' | 'warmup' | 'reorder';
+type ActiveSheet = 'targets' | 'note' | 'set-note' | 'session' | 'remove-confirm' | 'swap' | 'warmup' | 'reorder' | 'equipment';
 
 export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors' | 'actionBarSlot' | 'onSetLongPress'> {
   sessionExerciseId: string;
@@ -119,6 +121,14 @@ export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors' 
   db?: WriteDb;
   hasNote: boolean;
   noteText: string | null;
+  // R11's shared inputs: the current exercise's own equipment type and the session's resolved
+  // inventory, both already loaded by the caller (06-05's workout.tsx state) — this page computes
+  // the Equipment row's visibility from them via the one shared predicate, never a second,
+  // independently-computed check, and hands the same two values to EquipmentAvailabilitySheet so
+  // it never re-derives its own answer either.
+  equipmentType: EquipmentType | null;
+  resolvedInventory: ResolvedInventory | null;
+  equipmentProfileId: string | null;
   onExerciseChanged: () => void;
 }
 
@@ -141,6 +151,9 @@ export function ExercisePage({
   db,
   hasNote,
   noteText,
+  equipmentType,
+  resolvedInventory,
+  equipmentProfileId,
   onExerciseChanged,
   rows,
   activeField,
@@ -154,6 +167,13 @@ export function ExercisePage({
   const [setNoteTarget, setSetNoteTarget] = useState<{ id: string; text: string | null } | null>(null);
 
   const closeSheet = () => setActiveSheet(null);
+
+  // R11: the one predicate the band and this row share — computed here, from the same two
+  // already-loaded inputs the caller resolved, never re-derived inside SessionActionSheet or
+  // EquipmentAvailabilitySheet.
+  const hasEquipment = hasResolvableEquipment(
+    resolveEquipmentBand({ equipmentType, targetKg: null, inventory: resolvedInventory }),
+  );
 
   // A draft row's setId is null, so ExercisePageView never calls this for one (05-UI-SPEC
   // Amendment A.1) — there is no logged_set yet for a draft to annotate.
@@ -176,6 +196,7 @@ export function ExercisePage({
   const handleSessionAction = (id: SessionExerciseActionId) => {
     if (id === 'remove') setActiveSheet('remove-confirm');
     else if (id === 'swap') setActiveSheet('swap');
+    else if (id === 'equipment') setActiveSheet('equipment');
     else if (id === 'info') {
       closeSheet();
       router.push({ pathname: '/exercises/[id]', params: { id: exerciseId } });
@@ -262,7 +283,30 @@ export function ExercisePage({
       ) : null}
 
       {activeSheet === 'session' ? (
-        <SessionActionSheet exerciseName={exerciseName} onSelect={handleSessionAction} onCancel={closeSheet} />
+        <SessionActionSheet
+          exerciseName={exerciseName}
+          hasEquipment={hasEquipment}
+          onSelect={handleSessionAction}
+          onCancel={closeSheet}
+        />
+      ) : null}
+
+      {activeSheet === 'equipment' && equipmentType !== null && resolvedInventory !== null && equipmentProfileId !== null ? (
+        <EquipmentAvailabilitySheet
+          sessionId={sessionId}
+          sessionExerciseId={sessionExerciseId}
+          exerciseId={exerciseId}
+          userId={userId}
+          equipmentProfileId={equipmentProfileId}
+          equipmentType={equipmentType}
+          inventory={resolvedInventory}
+          db={db}
+          onDone={() => {
+            closeSheet();
+            onExerciseChanged();
+          }}
+          onCancel={closeSheet}
+        />
       ) : null}
 
       {activeSheet === 'reorder' ? (

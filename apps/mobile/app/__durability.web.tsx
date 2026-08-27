@@ -50,11 +50,13 @@ import {
   seedProgrammedSession,
   seedProgrammedSessionWithCycle,
   seedProgrammedSessionWithEquipment,
+  seedSwapCandidate,
   writeCatalogVersionSentinel,
   type SeededProgrammedSession,
   type SeededProgrammedSessionWithCycle,
   type SeedEquipmentProfileResult,
   type SeedPriorHeaviestSetInput,
+  type SeedSwapCandidateInput,
   type TestWriteDb,
 } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
@@ -423,6 +425,13 @@ export default function DurabilityHarnessScreen() {
         setGymEditorHarness({ db, profileId: profileId ?? null });
         setGymProfilesHarness(null);
         setLastSavedGymId(null);
+      },
+      // 06-06's equipment-availability spec: seeds a real candidate exercise with a genuine muscle-
+      // overlap signal against a given target — see test-support.ts's own doc comment on why this is
+      // needed (no existing seed helper gives scoreAlternatives anything to match against).
+      async seedSwapCandidate(input: SeedSwapCandidateInput) {
+        const db = requireOpenDb();
+        await seedSwapCandidate(db, input);
       },
     };
 

@@ -38,6 +38,7 @@ function baseProps(overrides: Partial<SessionActionSheetViewProps> = {}): Sessio
   return {
     exerciseName: 'Bench Press',
     colors: COLORS,
+    hasEquipment: false,
     onSelect: jest.fn(),
     onCancel: jest.fn(),
     ...overrides,
@@ -45,8 +46,14 @@ function baseProps(overrides: Partial<SessionActionSheetViewProps> = {}): Sessio
 }
 
 describe('SESSION_EXERCISE_ACTIONS', () => {
-  it('is exactly four entries, in the order Swap, Remove, Reorder, Info', () => {
-    expect(SESSION_EXERCISE_ACTIONS.map((action) => action.id)).toEqual(['swap', 'remove', 'reorder', 'info']);
+  it('is exactly five entries, in the order Swap, Remove, Reorder, Info, Equipment', () => {
+    expect(SESSION_EXERCISE_ACTIONS.map((action) => action.id)).toEqual([
+      'swap',
+      'remove',
+      'reorder',
+      'info',
+      'equipment',
+    ]);
   });
 
   it('marks only Remove as destructive', () => {
@@ -111,6 +118,40 @@ describe('SessionActionSheetView', () => {
     // sheet's outer content is asserted instead, matching RoutineActionSheet.test.tsx's own style.
     const result = SessionActionSheetView(baseProps()) as AnyElement;
     expect(flatText(result)).toContain('Bench Press');
+  });
+
+  it('renders four rows, Equipment absent, when hasEquipment is false — a structural exclusion, not a disabled row', () => {
+    const result = SessionActionSheetView(baseProps({ hasEquipment: false }));
+    const labels = findByType(result, Pressable)
+      .map((el) => el.props.accessibilityLabel)
+      .filter((label) => label !== 'Cancel');
+    expect(labels).toEqual(['Swap', 'Remove', 'Reorder', 'Info']);
+  });
+
+  it('renders five rows, Equipment last, when hasEquipment is true', () => {
+    const result = SessionActionSheetView(baseProps({ hasEquipment: true }));
+    const labels = findByType(result, Pressable)
+      .map((el) => el.props.accessibilityLabel)
+      .filter((label) => label !== 'Cancel');
+    expect(labels).toEqual(['Swap', 'Remove', 'Reorder', 'Info', 'Equipment']);
+  });
+
+  it('the Equipment row resolves the default foreground color, never destructive', () => {
+    const result = SessionActionSheetView(baseProps({ hasEquipment: true }));
+    const row = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Equipment');
+    const text = findByType(row, Text)[0];
+    expect((text?.props.className as string)).toContain('text-foreground');
+    expect((text?.props.className as string)).not.toContain('text-destructive');
+  });
+
+  it('tapping the Equipment row calls onSelect with "equipment"', () => {
+    const onSelect = jest.fn();
+    const result = SessionActionSheetView(baseProps({ hasEquipment: true, onSelect }));
+    const row = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Equipment');
+
+    (row?.props.onPress as () => void)();
+
+    expect(onSelect).toHaveBeenCalledWith('equipment');
   });
 });
 
