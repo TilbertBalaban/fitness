@@ -274,6 +274,7 @@ export function ExercisePage({
           liveSessionId={sessionId}
           userId={userId}
           weightUnit={weightUnit}
+          equipmentType={equipmentType}
           onDone={() => {
             closeSheet();
             onExerciseChanged();

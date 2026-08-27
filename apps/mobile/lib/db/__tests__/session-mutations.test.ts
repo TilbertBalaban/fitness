@@ -456,7 +456,7 @@ describe('generateWarmupSets — deterministic, durable, idempotent (LOG-17)', (
   it('a first call inserts exactly the rows warmupSets() returns, each warm-up-typed and incomplete', async () => {
     const store = inMemoryDb();
 
-    const ids = await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+    const ids = await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100, equipmentType: null }, store.db);
 
     const expected = warmupSets(100);
     expect(ids).toHaveLength(expected.length);
@@ -473,12 +473,12 @@ describe('generateWarmupSets — deterministic, durable, idempotent (LOG-17)', (
   it('a second call for the same exercise regenerates rather than appends, and a completed warm-up row survives', async () => {
     const store = inMemoryDb();
 
-    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100, equipmentType: null }, store.db);
     // Mark one generated row as completed, as if the user actually did it.
     const [firstGenerated] = store.rowsOf(loggedSet);
     firstGenerated.completed = true;
 
-    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 120 }, store.db);
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 120, equipmentType: null }, store.db);
 
     const expected = warmupSets(120);
     const rows = store.rowsOf(loggedSet);
@@ -500,7 +500,7 @@ describe('generateWarmupSets — deterministic, durable, idempotent (LOG-17)', (
       reps: 10,
     });
 
-    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100, equipmentType: null }, store.db);
 
     const expected = warmupSets(100);
     const rows = store.rowsOf(loggedSet).filter((row) => row.setType === 'warmup');
@@ -510,8 +510,8 @@ describe('generateWarmupSets — deterministic, durable, idempotent (LOG-17)', (
   it('writes no rows for a null or zero working weight', async () => {
     const store = inMemoryDb();
 
-    const idsForNull = await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: null }, store.db);
-    const idsForZero = await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 0 }, store.db);
+    const idsForNull = await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: null, equipmentType: null }, store.db);
+    const idsForZero = await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 0, equipmentType: null }, store.db);
 
     expect(idsForNull).toHaveLength(0);
     expect(idsForZero).toHaveLength(0);
@@ -539,10 +539,76 @@ describe('generateWarmupSets — deterministic, durable, idempotent (LOG-17)', (
     // Achievable barbell loads: bar alone (20) and bar + one 20kg pair (60). 40% of 100 = 40 rounds
     // down to 20 (the bar); 60% = 60 is exactly achievable; 80% = 80 rounds down to 60 — never the
     // plain-increment values warmupSets() would otherwise produce.
-    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100, equipmentType: 'barbell' }, store.db);
 
     const rows = store.rowsOf(loggedSet);
     expect(rows.map((row) => Number(row.weightKg))).toEqual([20, 60, 60]);
+  });
+
+  it('rounds each step down to the nearest achievable dumbbell load for a dumbbell exercise, not the barbell loads (CR-01)', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 'sess-1' });
+    store.seed(workoutSession, { id: 'sess-1', equipmentProfileId: 'gym-1' });
+    store.seed(equipmentProfile, {
+      id: 'gym-1',
+      userId: null,
+      name: 'Test Gym',
+      isDefault: false,
+      barbellWeightKg: '20.000',
+      availablePlates: serializeEquipmentJson([{ weightKg: '20.000', pairCount: 1 }]),
+      dumbbellIncrementsKg: serializeEquipmentJson([
+        { weightKg: '12' },
+        { weightKg: '22' },
+        { weightKg: '45' },
+        { weightKg: '70' },
+      ]),
+      machineAvailability: serializeEquipmentJson([]),
+      nativeUnit: 'kg',
+      archivedAt: null,
+      serverSeq: null,
+    });
+
+    // Achievable barbell loads for this gym are [20, 60] — if the rounder used those (the CR-01
+    // bug), 40/60/80 would round down to 20/60/60. Rounded against the gym's dumbbells instead,
+    // they round down to 22/45/70.
+    await generateWarmupSets(
+      { sessionExerciseId: 'se-1', workingWeightKg: 100, equipmentType: 'dumbbell' },
+      store.db,
+    );
+
+    const rows = store.rowsOf(loggedSet);
+    expect(rows.map((row) => Number(row.weightKg))).toEqual([22, 45, 70]);
+  });
+
+  it('falls back to the plain increment path, never a silent zero, for a machine exercise at a barbell-less gym (CR-01)', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 'sess-1' });
+    store.seed(workoutSession, { id: 'sess-1', equipmentProfileId: 'gym-1' });
+    store.seed(equipmentProfile, {
+      id: 'gym-1',
+      userId: null,
+      name: 'Test Gym',
+      isDefault: false,
+      barbellWeightKg: null,
+      availablePlates: serializeEquipmentJson([]),
+      dumbbellIncrementsKg: serializeEquipmentJson([{ weightKg: '20' }]),
+      machineAvailability: serializeEquipmentJson([]),
+      nativeUnit: 'kg',
+      archivedAt: null,
+      serverSeq: null,
+    });
+
+    await generateWarmupSets(
+      { sessionExerciseId: 'se-1', workingWeightKg: 100, equipmentType: 'machine' },
+      store.db,
+    );
+
+    const expected = warmupSets(100);
+    const rows = store.rowsOf(loggedSet);
+    expect(rows).toHaveLength(expected.length);
+    rows.forEach((row, index) => {
+      expect(Number(row.weightKg)).toBeCloseTo(expected[index].weightKg);
+    });
   });
 
   it('falls back to the plain increment path when the session resolves no gym inventory', async () => {
@@ -550,7 +616,7 @@ describe('generateWarmupSets — deterministic, durable, idempotent (LOG-17)', (
     store.seed(sessionExercise, { id: 'se-1', sessionId: 'sess-1' });
     store.seed(workoutSession, { id: 'sess-1', equipmentProfileId: null });
 
-    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100 }, store.db);
+    await generateWarmupSets({ sessionExerciseId: 'se-1', workingWeightKg: 100, equipmentType: null }, store.db);
 
     const expected = warmupSets(100);
     const rows = store.rowsOf(loggedSet);

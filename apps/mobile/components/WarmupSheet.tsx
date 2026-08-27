@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { fromCanonicalKg, toCanonicalKg, type WeightUnit } from '@fitness/api-contracts';
+import { fromCanonicalKg, toCanonicalKg, type EquipmentType, type WeightUnit } from '@fitness/api-contracts';
 import { DEFAULT_ROUNDING_INCREMENT_KG, warmupSets } from '@fitness/pr-rules';
 import { TextField } from './TextField';
 import { generateWarmupSets } from '@/lib/db/session-mutations';
@@ -76,6 +76,7 @@ export interface WarmupSheetProps {
   liveSessionId: string;
   userId: string | null;
   weightUnit: WeightUnit;
+  equipmentType: EquipmentType | null;
   onDone: () => void;
   onCancel: () => void;
 }
@@ -85,7 +86,16 @@ export interface WarmupSheetProps {
 // resolution order), lets the user adjust it, and on confirm calls generateWarmupSets with the
 // canonical-kg number — never percentage/rounding arithmetic here, @fitness/pr-rules's warmupSets
 // is the only source of the ladder and its live preview count.
-export function WarmupSheet({ sessionExerciseId, exerciseId, liveSessionId, userId, weightUnit, onDone, onCancel }: WarmupSheetProps) {
+export function WarmupSheet({
+  sessionExerciseId,
+  exerciseId,
+  liveSessionId,
+  userId,
+  weightUnit,
+  equipmentType,
+  onDone,
+  onCancel,
+}: WarmupSheetProps) {
   const [weightText, setWeightText] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -114,6 +124,7 @@ export function WarmupSheet({ sessionExerciseId, exerciseId, liveSessionId, user
         sessionExerciseId,
         workingWeightKg: Number(workingWeightKg),
         roundingIncrementKg: DEFAULT_ROUNDING_INCREMENT_KG,
+        equipmentType,
       });
       onDone();
     } finally {

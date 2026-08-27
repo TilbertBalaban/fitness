@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { isEmptyOverride, WARMUP_SET_TYPE, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
-import { achievableBarbellLoads, roundToAchievable, type ResolvedInventory } from '@fitness/plate-math';
+import { isEmptyOverride, WARMUP_SET_TYPE, type EquipmentType, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
+import { achievableBarbellLoads, achievableDumbbellLoads, roundToAchievable, type ResolvedInventory } from '@fitness/plate-math';
 import { warmupSets } from '@fitness/pr-rules';
 import { addSessionExercise, logSet } from './log-set';
 import { getPowerSync, type WriteDb, type WriteHandle, type WriteTx } from './powersync';
@@ -197,14 +197,32 @@ export interface GenerateWarmupSetsInput {
   sessionExerciseId: string;
   workingWeightKg: number | null;
   roundingIncrementKg?: number;
+  equipmentType: EquipmentType | null;
+}
+
+// Mirrors workout.tsx's achievableLoadsForEquipmentType: barbell/ez_bar and dumbbell resolve
+// directly against the whole inventory; machine/cable resolves to no achievable set (band.ts's
+// name-then-id ordering stays that file's one observable point) and falls through to the
+// plain-increment rounder below, never to a silent zero.
+function achievableLoadsForEquipmentType(equipmentType: EquipmentType | null, inventory: ResolvedInventory): string[] {
+  if (equipmentType === 'barbell' || equipmentType === 'ez_bar') return achievableBarbellLoads(inventory);
+  if (equipmentType === 'dumbbell') return achievableDumbbellLoads(inventory);
+  return [];
 }
 
 // D-10: a warm-up rounded UP is heavier than intended — the hazard this rounder exists to close.
-// Rounds down against the session's own resolved barbell loads; a step with nothing achievable at
-// or below it drops out (0), matching warmupSets()'s own "weightKg <= 0 is skipped" rule, rather
-// than ever emitting a load the gym cannot produce.
-function achievableWarmupRounder(inventory: ResolvedInventory): (rawKg: number) => number {
-  const achievableKg = achievableBarbellLoads(inventory);
+// Rounds down against the exercise's own equipment type within the session's resolved inventory; a
+// step with nothing achievable at or below it drops out (0), matching warmupSets()'s own "weightKg
+// <= 0 is skipped" rule, rather than ever emitting a load the gym cannot produce. When nothing is
+// achievable for the equipment type (machine/cable, or a gym with no barbell/dumbbells configured
+// for this exercise), returns undefined so warmupSets() falls back to roundToIncrement instead of
+// rounding every step to zero.
+function achievableWarmupRounder(
+  equipmentType: EquipmentType | null,
+  inventory: ResolvedInventory,
+): ((rawKg: number) => number) | undefined {
+  const achievableKg = achievableLoadsForEquipmentType(equipmentType, inventory);
+  if (achievableKg.length === 0) return undefined;
   return (rawKg: number): number => {
     const rounded = roundToAchievable(String(rawKg), achievableKg, 'down');
     return rounded === null ? 0 : Number(rounded);
@@ -219,7 +237,7 @@ function achievableWarmupRounder(inventory: ResolvedInventory): (rawKg: number) 
 // session resolves a gym inventory (D-17), that ladder rounds down to what the gym can actually
 // load (D-10) instead of the plain increment.
 export async function generateWarmupSets(
-  { sessionExerciseId, workingWeightKg, roundingIncrementKg }: GenerateWarmupSetsInput,
+  { sessionExerciseId, workingWeightKg, roundingIncrementKg, equipmentType }: GenerateWarmupSetsInput,
   db: WriteDb = getPowerSync(),
 ): Promise<string[]> {
   await db
@@ -238,7 +256,7 @@ export async function generateWarmupSets(
     .where(eq(sessionExercise.id, sessionExerciseId));
 
   const inventory = sessionExerciseRow ? await loadSessionInventory(sessionExerciseRow.sessionId, db) : null;
-  const roundWeight = inventory ? achievableWarmupRounder(inventory) : undefined;
+  const roundWeight = inventory ? achievableWarmupRounder(equipmentType, inventory) : undefined;
 
   const ladder = warmupSets(workingWeightKg, roundingIncrementKg, roundWeight);
   const ids: string[] = [];
