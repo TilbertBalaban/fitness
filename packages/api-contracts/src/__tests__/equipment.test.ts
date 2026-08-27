@@ -135,6 +135,22 @@ describe('isUnavailableEquipmentRefs', () => {
   it('rejects an unknown kind', () => {
     expect(isUnavailableEquipmentRefs([{ kind: 'barbell' }])).toBe(false);
   });
+
+  it('rejects an array longer than the declared limit', () => {
+    const overLimit = Array.from({ length: EQUIPMENT_PROFILE_LIMITS.maxUnavailableEquipmentRefs + 1 }, (_, i) => ({
+      kind: 'machine' as const,
+      machineId: `m-${i}`,
+    }));
+    expect(isUnavailableEquipmentRefs(overLimit)).toBe(false);
+  });
+
+  it('accepts an array exactly at the declared limit', () => {
+    const atLimit = Array.from({ length: EQUIPMENT_PROFILE_LIMITS.maxUnavailableEquipmentRefs }, (_, i) => ({
+      kind: 'machine' as const,
+      machineId: `m-${i}`,
+    }));
+    expect(isUnavailableEquipmentRefs(atLimit)).toBe(true);
+  });
 });
 
 describe('serializeEquipmentJson / parseEquipmentJson', () => {

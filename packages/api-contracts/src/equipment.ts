@@ -2,11 +2,19 @@ import { EQUIPMENT_TYPES, type EquipmentType } from './catalog';
 
 // Fail-closed bounds (T-06-02) — every type-guard below rejects an array past these lengths
 // rather than truncating, mirroring isCatalogSnapshot's own gate.
-export const EQUIPMENT_PROFILE_LIMITS = {
+const BASE_EQUIPMENT_PROFILE_LIMITS = {
   maxPlateDenominations: 24,
   maxDumbbellWeights: 60,
   maxMachines: 60,
   maxNameLength: 80,
+} as const;
+
+export const EQUIPMENT_PROFILE_LIMITS = {
+  ...BASE_EQUIPMENT_PROFILE_LIMITS,
+  // One ref per possible machine, one per dumbbell weight, plus one per equipment_type — the
+  // union of every distinct thing a session can mark unavailable.
+  maxUnavailableEquipmentRefs:
+    BASE_EQUIPMENT_PROFILE_LIMITS.maxMachines + BASE_EQUIPMENT_PROFILE_LIMITS.maxDumbbellWeights + EQUIPMENT_TYPES.length,
 } as const;
 
 export interface EquipmentPlate {
@@ -96,6 +104,7 @@ export function isEquipmentMachineAvailability(value: unknown): value is Equipme
 
 export function isUnavailableEquipmentRefs(value: unknown): value is UnavailableEquipmentRef[] {
   if (!Array.isArray(value)) return false;
+  if (value.length > EQUIPMENT_PROFILE_LIMITS.maxUnavailableEquipmentRefs) return false;
   return value.every((entry) => {
     if (typeof entry !== 'object' || entry === null) return false;
     const candidate = entry as Record<string, unknown>;
