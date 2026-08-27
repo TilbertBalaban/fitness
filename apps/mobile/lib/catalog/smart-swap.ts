@@ -28,9 +28,10 @@ export interface SwapPreference extends CatalogPreference {
   neverSuggest: boolean;
 }
 
-// Phase 7 owns equipment_profile.machine_availability; this type is the seam that column will one
-// day feed. An allow-list plus an exclude-list covers both "this gym only has these machines" and
-// "this one is taken right now" without this module knowing anything about that profile shape.
+// D-22's seam: equipmentSwapConstraints (session-equipment.ts) turns a session's resolved
+// inventory into this shape. An allow-list plus an exclude-list covers both "this gym only has
+// these machines" and "this one is taken right now" without this module knowing anything about
+// that profile shape.
 export interface SwapConstraints {
   excludeEquipment?: string[];
   allowEquipment?: string[];

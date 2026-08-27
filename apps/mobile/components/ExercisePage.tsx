@@ -194,7 +194,7 @@ export function ExercisePage({
     closeSheet();
     const picked = pickedRows[0];
     if (!picked) return;
-    await swapSessionExercise({ sessionExerciseId, newExerciseId: picked.id });
+    await swapSessionExercise({ sessionExerciseId, newExerciseId: picked.id }, db ?? getPowerSync());
     onExerciseChanged();
   };
 
