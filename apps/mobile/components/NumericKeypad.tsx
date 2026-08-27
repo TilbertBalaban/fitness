@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
+import { PlateStrip, type PlateStripProps } from './PlateStrip';
 
 // Walks weight -> reps -> rir -> null (D-18) — the next-arrow's whole job. rir has no successor:
 // its submit both writes the field and dismisses the keypad, there being no fourth field.
@@ -67,7 +68,7 @@ function pressForKey(key: DigitGridKey): KeypadPress {
 
 const KEY_SIZE = 56;
 const STEPPER_SIZE = 48;
-const RESERVED_BAND_HEIGHT = 40;
+export const RESERVED_BAND_HEIGHT = 40;
 
 export interface NumericKeypadViewProps {
   field: KeypadField;
@@ -75,18 +76,30 @@ export interface NumericKeypadViewProps {
   colors: ThemeColors;
   onPress: (press: KeypadPress) => void;
   onSubmit: () => void;
+  // Phase 6's equipment/plate band data — optional and defaulting to nothing, so every existing
+  // call site (and this file's own tests) keeps rendering the plain empty 40px slot exactly as
+  // before. Only the workout screen, which knows the active gym's resolved inventory and the
+  // field's live-typed value, passes real band data.
+  band?: PlateStripBandData;
 }
+
+export type PlateStripBandData = PlateStripProps;
 
 // Hook-free — direct-invocable by a test, matching SetRowView/CycleStripView. Every field value
 // display lives in SetRow, not here: this component only ever emits presses and a submit signal.
-export function NumericKeypadView({ field, stepAmount, colors, onPress, onSubmit }: NumericKeypadViewProps) {
+export function NumericKeypadView({ field, stepAmount, colors, onPress, onSubmit, band }: NumericKeypadViewProps) {
   const rows: DigitGridKey[][] = [];
   for (let i = 0; i < KEYPAD_KEYS.length; i += 3) rows.push(KEYPAD_KEYS.slice(i, i + 3));
 
   return (
     <View className="border-t border-foreground-muted bg-background">
-      {/* R8: an always-rendered, empty layout slot — Phase 6 fills this, Phase 5 leaves it blank. */}
-      <View style={{ height: RESERVED_BAND_HEIGHT }} />
+      {/* R8: Phase 5 left this an empty layout slot; Phase 6 fills it with the real plate/equipment
+          band once `band` data is supplied, and keeps the plain empty slot otherwise. */}
+      {band ? (
+        <PlateStrip inventory={band.inventory} targetKg={band.targetKg} unit={band.unit} />
+      ) : (
+        <View style={{ height: RESERVED_BAND_HEIGHT }} />
+      )}
 
       <View>
         {rows.map((row, rowIndex) => (
