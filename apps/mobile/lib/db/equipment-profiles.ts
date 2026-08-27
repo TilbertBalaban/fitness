@@ -89,8 +89,10 @@ export async function loadEquipmentProfiles(userId: string, db: WriteDb = getPow
 // program can legitimately have zero active programs, but a gym profile cannot — E1's contract
 // requires exactly one gym to always read as active (D-19 guarantees at least one non-archived row
 // exists). So where resolveLiveRoutineId reads a stale/archived pointer as "no active routine",
-// this falls back to the first non-archived row by the caller's own total ordering (loadEquipmentProfiles
-// already sorts by name then id) rather than leaving the active partition empty.
+// this falls back to the first non-archived row by the total ordering (name then id) rather than
+// leaving the active partition empty. Sorted on a copy here, not trusted from the caller's array
+// order, so the guarantee holds regardless of what order rows arrive in — the one thing this
+// function is for.
 export function resolveLiveEquipmentProfileId(
   rows: EquipmentProfileRow[],
   candidateId: string | null | undefined,
@@ -98,7 +100,9 @@ export function resolveLiveEquipmentProfileId(
   const target = candidateId ? rows.find((row) => row.id === candidateId) : undefined;
   if (target && target.archivedAt === null) return target.id;
 
-  const firstLive = rows.find((row) => row.archivedAt === null);
+  const firstLive = rows
+    .filter((row) => row.archivedAt === null)
+    .sort(byNameThenId)[0];
   return firstLive ? firstLive.id : null;
 }
 

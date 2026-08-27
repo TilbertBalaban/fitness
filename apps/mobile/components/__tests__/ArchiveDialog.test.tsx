@@ -90,4 +90,43 @@ describe('ArchiveDialog', () => {
     confirmButton?.props.onPress?.();
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
+
+  // The 'gym' subject (06-03): the union's third extension point, verbatim copy from the
+  // 06-UI-SPEC.md Copywriting Contract's Destructive confirmation row.
+  it('renders the exact gym archive confirmation copy', () => {
+    const onConfirm = jest.fn();
+    const onCancel = jest.fn();
+    const result = ArchiveDialog({ subject: 'gym', onConfirm, onCancel });
+
+    const text = flatText(result);
+    expect(text).toContain('Archive Gym');
+    expect(text).toContain(
+      'Archiving removes it from your gym list, but any workouts logged there stay in your history. Archive anyway?',
+    );
+
+    const pressables = findPressables(result);
+    const confirmButton = pressables.find((p) => flatText(p.props.children) === 'Archive');
+    expect(confirmButton).toBeDefined();
+    confirmButton?.props.onPress?.();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the gym restore copy with a neutral, non-destructive confirm fill', () => {
+    const onConfirm = jest.fn();
+    const onCancel = jest.fn();
+    const result = ArchiveDialog({ subject: 'gym', unarchiving: true, onConfirm, onCancel });
+
+    const text = flatText(result);
+    expect(text).toContain('Restore Gym');
+    expect(text).toContain('This gym will reappear in your gym list.');
+
+    const pressables = findPressables(result);
+    const confirmButton = pressables.find((p) => flatText(p.props.children) === 'Restore');
+    expect(confirmButton).toBeDefined();
+    const confirmProps = confirmButton?.props as { className?: string; onPress?: () => void } | undefined;
+    expect(confirmProps?.className).not.toContain('bg-destructive');
+    confirmProps?.onPress?.();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
 });
