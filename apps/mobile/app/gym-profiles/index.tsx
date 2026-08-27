@@ -148,30 +148,8 @@ export default function GymProfilesScreen({ userId: userIdOverride, db }: GymPro
   }, [userId, db]);
 
   useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      if (!userId) return;
-      try {
-        const [loaded, pointer] = await Promise.all([
-          loadEquipmentProfiles(userId, db),
-          loadActiveEquipmentProfileId(userId, db),
-        ]);
-        if (mounted) {
-          setProfiles(loaded);
-          setActiveProfileId(pointer);
-          setFailed(false);
-        }
-      } catch (error) {
-        console.error('gym profiles load failed', error);
-        if (mounted) setFailed(true);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [userId, db]);
+    void reload();
+  }, [reload]);
 
   // Never rejects, so no async handler reaches onSelect/onPress as an unhandled rejection — same
   // rule library.tsx's own mutate follows (WR-11).
