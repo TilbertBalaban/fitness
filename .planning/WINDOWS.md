@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 115
+open_count: 119
 waived_count: 1
 fixed_count: 24
-total_count: 140
-last_updated: 2026-08-27T16:43:10.613Z
+total_count: 144
+last_updated: 2026-08-27T16:56:30.246Z
 ---
 
 # Broken Windows Ledger
@@ -155,6 +155,10 @@ last_updated: 2026-08-27T16:43:10.613Z
 | 141 | 06 | unrun-verify | apps/mobile/app/gym-profiles/index.tsx |  | 06-03 plan <verification> human-check: Profile tab Gyms section / Gym Profiles list / archive-to-collapsed-section — not run, no browser/simulator session available in this executor pass | open |  | 2026-08-27T14:44:46.168Z |  |
 | 142 | 06 | unrun-verify | apps/mobile |  | 06-04 human-check not run: create a gym in lb, add plates, add a machine, save, reopen, on web target — no browser/simulator session available in this executor pass | open |  | 2026-08-27T15:48:46.047Z |  |
 | 143 | 06 | unrun-verify | apps/mobile/app/(tabs)/workout.tsx |  | Plan 06-07's <human-check> (session menu row order: pause/resume, session note, switch gym, discard; visual accent confirmation on switching gyms) was not run interactively — no browser/simulator UI session available in this sandboxed worktree beyond the automated Playwright e2e run (switch-gym.spec.ts, which passed). Automated tsc, unit suite (1473/1473) and the durability e2e spec all green; the human visual confirmation is deferred to UAT. | open |  | 2026-08-27T16:10:35.408Z |  |
+| 144 | 06 | deviation | apps/mobile/lib/navigation/root-stack.tsx |  | 06-03 Task 2: the plan named apps/mobile/app/_layout.tsx as the file to declare the gym-profiles signed-in route guard, but that file only calls renderRootStack(signedIn) — the real Stack.Protected/Stack.Screen declarations live in lib/navigation/root-stack.tsx (exercises/_layout.tsx's own comment says do not edit app/_layout.tsx). Registered gym-profiles there instead, matching the exercises/programs precedent; root-stack.tsx was not in 06-03's declared files_modified list. | open |  | 2026-08-27T16:56:16.487Z |  |
+| 145 | 06 | deviation | apps/mobile/app/gym-profiles/index.tsx |  | 06-04 Task 3: gym-profiles/index.tsx (06-03's file, not in 06-04's declared files_modified) gained optional userId/db override props so the durability harness could mount the real GymProfilesScreen against an isolated test database instead of the production getPowerSync() singleton. Extending a prior plan's output for a genuine harness-seam need, both props undefined for every real navigation. | open |  | 2026-08-27T16:56:23.888Z |  |
+| 146 | 06 | deviation | apps/mobile/components/NumericKeypad.tsx |  | 06-05 Task 2: NumericKeypad.tsx (not in either task's declared files) type-aliases PlateStripBandData = PlateStripProps and constructed the old {inventory, targetKg, unit} shape; Task 2's rewrite of PlateStripView to take an already-resolved EquipmentBandState broke it. Replaced the type alias with an explicit PlateStripBandData interface {state, unit, onNeighbourPress, onRecoveryPress} and updated the one JSX call site — a genuine typecheck blocker, fixed within the same commit. | open |  | 2026-08-27T16:56:26.514Z |  |
+| 147 | 06 | deviation | apps/mobile/app/(tabs)/workout.tsx |  | 06-06 Task 3: equipmentType/resolvedInventory/equipmentProfileId were threaded from workout.tsx into ExercisePage even though neither workout.tsx nor EditingWorkoutScreen.tsx was in 06-06's declared files_modified — ExercisePage's new required props had no other data source, and 06-05's own SUMMARY had already flagged workout.tsx as the intended 06-06 integration point. EditingWorkoutScreen.tsx's historical-editing call site passes null for all three (D-11). | open |  | 2026-08-27T16:56:30.246Z |  |
 
 ````json
 [
@@ -1836,6 +1840,54 @@ last_updated: 2026-08-27T16:43:10.613Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-27T16:10:35.408Z",
+    "resolved_at": null
+  },
+  {
+    "id": 144,
+    "kind": "deviation",
+    "phase": "06",
+    "file": "apps/mobile/lib/navigation/root-stack.tsx",
+    "line": null,
+    "description": "06-03 Task 2: the plan named apps/mobile/app/_layout.tsx as the file to declare the gym-profiles signed-in route guard, but that file only calls renderRootStack(signedIn) — the real Stack.Protected/Stack.Screen declarations live in lib/navigation/root-stack.tsx (exercises/_layout.tsx's own comment says do not edit app/_layout.tsx). Registered gym-profiles there instead, matching the exercises/programs precedent; root-stack.tsx was not in 06-03's declared files_modified list.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-27T16:56:16.487Z",
+    "resolved_at": null
+  },
+  {
+    "id": 145,
+    "kind": "deviation",
+    "phase": "06",
+    "file": "apps/mobile/app/gym-profiles/index.tsx",
+    "line": null,
+    "description": "06-04 Task 3: gym-profiles/index.tsx (06-03's file, not in 06-04's declared files_modified) gained optional userId/db override props so the durability harness could mount the real GymProfilesScreen against an isolated test database instead of the production getPowerSync() singleton. Extending a prior plan's output for a genuine harness-seam need, both props undefined for every real navigation.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-27T16:56:23.888Z",
+    "resolved_at": null
+  },
+  {
+    "id": 146,
+    "kind": "deviation",
+    "phase": "06",
+    "file": "apps/mobile/components/NumericKeypad.tsx",
+    "line": null,
+    "description": "06-05 Task 2: NumericKeypad.tsx (not in either task's declared files) type-aliases PlateStripBandData = PlateStripProps and constructed the old {inventory, targetKg, unit} shape; Task 2's rewrite of PlateStripView to take an already-resolved EquipmentBandState broke it. Replaced the type alias with an explicit PlateStripBandData interface {state, unit, onNeighbourPress, onRecoveryPress} and updated the one JSX call site — a genuine typecheck blocker, fixed within the same commit.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-27T16:56:26.514Z",
+    "resolved_at": null
+  },
+  {
+    "id": 147,
+    "kind": "deviation",
+    "phase": "06",
+    "file": "apps/mobile/app/(tabs)/workout.tsx",
+    "line": null,
+    "description": "06-06 Task 3: equipmentType/resolvedInventory/equipmentProfileId were threaded from workout.tsx into ExercisePage even though neither workout.tsx nor EditingWorkoutScreen.tsx was in 06-06's declared files_modified — ExercisePage's new required props had no other data source, and 06-05's own SUMMARY had already flagged workout.tsx as the intended 06-06 integration point. EditingWorkoutScreen.tsx's historical-editing call site passes null for all three (D-11).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-27T16:56:30.246Z",
     "resolved_at": null
   }
 ]
