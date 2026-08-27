@@ -87,7 +87,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 ### Gym Profiles & Plate Math
 
-- [ ] **GYM-01**: User can create multiple gym profiles and pick which is active
+- [x] **GYM-01**: User can create multiple gym profiles and pick which is active
 - [ ] **GYM-02**: User can configure a profile's bar types and weights, available plate denominations and counts, and unit system
 - [ ] **GYM-03**: User can configure machine availability, weight-stack ranges, and any built-in starting resistance
 - [ ] **GYM-04**: User can assign a gym profile to a workout and switch gyms mid-program
@@ -242,7 +242,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | LOG-19 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-20 | Phase 5 — In-Gym Session Logging | Pending |
 | LOG-21 | Phase 5 — In-Gym Session Logging | Pending |
-| GYM-01 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| GYM-01 | Phase 6 — Gym Profiles & Plate Math | Complete |
 | GYM-02 | Phase 6 — Gym Profiles & Plate Math | Pending |
 | GYM-03 | Phase 6 — Gym Profiles & Plate Math | Pending |
 | GYM-04 | Phase 6 — Gym Profiles & Plate Math | Pending |

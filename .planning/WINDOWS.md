@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 113
+open_count: 114
 waived_count: 1
 fixed_count: 23
-total_count: 137
-last_updated: 2026-08-26T11:15:23.069Z
+total_count: 138
+last_updated: 2026-08-27T14:44:46.168Z
 ---
 
 # Broken Windows Ledger
@@ -152,6 +152,7 @@ last_updated: 2026-08-26T11:15:23.069Z
 | 138 | 05 | deviation | apps/mobile/components/ExercisePage.tsx |  | 05-15 Task 3: e2e/reorder-exercises.spec.ts's Remove flow (needed to prove a removed exercise is excluded from the reorder sheet) surfaced the same getPowerSync()-default gap 05-12/05-14 found and fixed for TargetsSheet/NoteSheet (WINDOWS #134/#135) — ExercisePage.tsx's handleConfirmRemove called removeSessionExercise(sessionExerciseId) with no db argument, so the write always resolved the production getPowerSync() singleton instead of the harness's isolated per-test database; the removal silently landed in the wrong SQLite file and the spec's raw read never saw removed_at set. Fixed by passing db ?? getPowerSync() through, matching the pattern already used for Targets/Note/Reorder. handleSwapPick's swapSessionExercise call shares the identical latent defect but is unexercised by this plan's tests, left unfixed and flagged for whichever future plan first browser-tests the swap path. | open |  | 2026-08-26T09:21:06.894Z |  |
 | 139 | 05 | deviation | apps/mobile/components/ExercisePickerModal.tsx |  | The picker's per-row Pressable (onToggle) wraps ExerciseListRow's own Pressable — a real button nested inside another button. Browsers split this into two sibling elements on parse, both matching the row's accessible name; workout-screen.spec.ts's 'adding an exercise mid-session' case works around it with an aria-label attribute selector rather than a role+name locator. Discovered running the durability suite for real (05-16); out of that plan's file scope (ExercisePickerModal.tsx). Needs a real fix: either drop the outer selection Pressable and let ExerciseListRow itself own the press/selection affordance, or vice versa. | open |  | 2026-08-26T10:21:03.759Z |  |
 | 140 | 05 | deviation | apps/mobile/playwright.config.ts |  | 05-16's 'confirmed across two consecutive clean full-suite runs' did not reproduce under independent re-verification (orchestrator got 32/1 twice, different test each time). Root cause: the durability project runs with Playwright's default worker count (4 on this machine) despite fullyParallel:false, which only serializes cases WITHIN one spec file — multiple spec FILES still ran concurrently, all against the single shared webServer/Metro process, causing real CPU/server contention that surfaced as random page.goto/page.reload timeouts. Fixed by pinning workers:1 on the durability project; also fixed a missed ambiguous Done locator in workout-summary.spec.ts (session-edit.spec.ts precedent). Reproduced 33/33 across three consecutive full-suite runs post-fix. | fixed |  | 2026-08-26T11:15:15.039Z | 2026-08-26T11:15:23.069Z |
+| 141 | 06 | unrun-verify | apps/mobile/app/gym-profiles/index.tsx |  | 06-03 plan <verification> human-check: Profile tab Gyms section / Gym Profiles list / archive-to-collapsed-section — not run, no browser/simulator session available in this executor pass | open |  | 2026-08-27T14:44:46.168Z |  |
 
 ````json
 [
@@ -1798,6 +1799,18 @@ last_updated: 2026-08-26T11:15:23.069Z
     "reason": "",
     "recorded_at": "2026-08-26T11:15:15.039Z",
     "resolved_at": "2026-08-26T11:15:23.069Z"
+  },
+  {
+    "id": 141,
+    "kind": "unrun-verify",
+    "phase": "06",
+    "file": "apps/mobile/app/gym-profiles/index.tsx",
+    "line": null,
+    "description": "06-03 plan <verification> human-check: Profile tab Gyms section / Gym Profiles list / archive-to-collapsed-section — not run, no browser/simulator session available in this executor pass",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-27T14:44:46.168Z",
+    "resolved_at": null
   }
 ]
 ````
