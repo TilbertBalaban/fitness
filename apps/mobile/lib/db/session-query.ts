@@ -48,6 +48,10 @@ export interface LiveSessionRow {
   // screen call sites so a restored session (force-quit, relaunch) still resolves against the
   // cycle it actually started in.
   cycleId: string | null;
+  // Snapshotted once at session start (D-17) — the workout screen resolves the plate/equipment
+  // band against THIS profile, never the live default pointer, so switching gyms mid-program never
+  // retroactively changes what an already-running session's band computes against.
+  equipmentProfileId: string | null;
   status: string;
   startedAt: string;
   pausedAt: string | null;
@@ -84,6 +88,7 @@ export async function loadSessionTree(
       id: workoutSession.id,
       routineDayId: workoutSession.routineDayId,
       cycleId: workoutSession.cycleId,
+      equipmentProfileId: workoutSession.equipmentProfileId,
       status: workoutSession.status,
       startedAt: workoutSession.startedAt,
       pausedAt: workoutSession.pausedAt,

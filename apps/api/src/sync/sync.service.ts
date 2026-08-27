@@ -11,6 +11,9 @@ import {
   WORKOUT_SESSION_STATUSES,
   SET_TYPES as SET_TYPE_TUPLE,
   PR_TYPES as PR_TYPE_TUPLE,
+  isEquipmentProfilePlates,
+  isEquipmentDumbbellIncrements,
+  isEquipmentMachineAvailability,
   type SyncCrudOp,
   type SyncPushResponse,
   type SyncRejectionReason,
@@ -29,6 +32,7 @@ import {
   routineExerciseCycleTarget,
   userPreference,
   personalRecord,
+  equipmentProfile,
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { classifyTransactionError } from './rejection-reason';
@@ -41,6 +45,7 @@ import {
   type TombstoneKey,
 } from './conflict-log';
 import {
+  EQUIPMENT_PROFILE_PATCH_FIELDS,
   EXERCISE_PATCH_FIELDS,
   LOGGED_SET_PATCH_FIELDS,
   patchAwareSet,
@@ -54,6 +59,7 @@ import {
   USER_EXERCISE_PREFERENCE_PATCH_FIELDS,
   USER_PREFERENCE_PATCH_FIELDS,
   WORKOUT_SESSION_PATCH_FIELDS,
+  type EquipmentProfileValues,
   type ExerciseValues,
   type LoggedSetValues,
   type PersonalRecordValues,
@@ -81,6 +87,7 @@ const TABLE_MAP = {
   routine_cycle: routineCycle,
   routine_exercise_cycle_target: routineExerciseCycleTarget,
   personal_record: personalRecord,
+  equipment_profile: equipmentProfile,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -103,11 +110,15 @@ const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 // keys off this set rather than repeating three string comparisons (RESEARCH.md Pattern 2).
 // personal_record (05-03) is a fifth singleton root: it owns no synced children and is never
 // referenced as a parent by another synced op, the same reasoning exercise/user_preference carry.
+// equipment_profile (06-01) is a sixth: a gym profile owns no synced children and is never a sync
+// parent, the same shape as personal_record — unlike exercise its userId column is NOT NULL, so it
+// follows personal_record's ownership branch, never exercise's nullable-owner special case.
 const SINGLETON_ROOT_TYPES = new Set<string>([
   'exercise',
   'user_exercise_preference',
   'user_preference',
   'personal_record',
+  'equipment_profile',
 ]);
 
 // An aggregate root owns synced children and is looked up in its own table; a singleton root
@@ -128,6 +139,7 @@ const ROOT_TABLE_BY_TYPE = {
   user_exercise_preference: userExercisePreference,
   user_preference: userPreference,
   personal_record: personalRecord,
+  equipment_profile: equipmentProfile,
 } as const;
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
@@ -187,6 +199,7 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   // order the crud queue delivered them.
   routine_exercise_cycle_target: 3,
   personal_record: 0,
+  equipment_profile: 0,
 };
 
 const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -305,6 +318,20 @@ interface PersonalRecordOpData {
   logged_set_id?: string | null;
   achieved_at?: string;
   reconciled_at?: string | null;
+}
+
+interface EquipmentProfileOpData {
+  name?: string;
+  is_default?: boolean;
+  barbell_weight_kg?: string | number | null;
+  available_plates?: unknown;
+  dumbbell_increments_kg?: unknown;
+  machine_availability?: unknown;
+  native_unit?: string;
+  archived_at?: string | null;
+  // Never read — accepted only so a present user_id key does not crash the presence check in
+  // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
+  user_id?: unknown;
 }
 
 interface RoutineDayOpData {
@@ -568,6 +595,31 @@ function toPersonalRecordValues(
     loggedSetId: d.logged_set_id ?? null,
     achievedAt: d.achieved_at ? new Date(d.achieved_at) : new Date(),
     reconciledAt: d.reconciled_at ? new Date(d.reconciled_at) : null,
+  };
+}
+
+// userId always comes from the authenticated session argument, never from data.user_id — the same
+// ownership guarantee toPersonalRecordValues carries (T-06-01). The three JSONB columns are passed
+// through as whatever hasInvalidField already validated (isEquipmentProfilePlates and friends);
+// this function reshapes the op into column values, it does not re-validate. barbellWeightKg reuses
+// normalizeWeightKg — same nullable-decimal-string shape as logged_set.weightKg, never a float.
+function toEquipmentProfileValues(
+  id: string,
+  userId: string,
+  data: Record<string, unknown> | null | undefined,
+): EquipmentProfileValues {
+  const d = (data ?? {}) as EquipmentProfileOpData;
+  return {
+    id,
+    userId,
+    name: d.name ?? '',
+    isDefault: d.is_default ?? false,
+    barbellWeightKg: normalizeWeightKg(d.barbell_weight_kg),
+    availablePlates: d.available_plates ?? [],
+    dumbbellIncrementsKg: d.dumbbell_increments_kg ?? [],
+    machineAvailability: d.machine_availability ?? [],
+    nativeUnit: d.native_unit ?? 'kg',
+    archivedAt: d.archived_at ? new Date(d.archived_at) : null,
   };
 }
 
@@ -905,6 +957,21 @@ function hasInvalidField(op: SyncCrudOp): boolean {
       return true;
     }
     if (!isValidOptionalIsoOrNull(d.achieved_at)) return true;
+    return false;
+  }
+
+  if (op.type === 'equipment_profile') {
+    const d = data as EquipmentProfileOpData;
+    if (d.name !== undefined && !(typeof d.name === 'string' && d.name.trim().length > 0)) return true;
+    if (d.is_default !== undefined && typeof d.is_default !== 'boolean') return true;
+    if (d.barbell_weight_kg !== undefined && !isNonNegativeDecimalOrNull(d.barbell_weight_kg)) return true;
+    if (d.available_plates !== undefined && !isEquipmentProfilePlates(d.available_plates)) return true;
+    if (d.dumbbell_increments_kg !== undefined && !isEquipmentDumbbellIncrements(d.dumbbell_increments_kg)) return true;
+    if (d.machine_availability !== undefined && !isEquipmentMachineAvailability(d.machine_availability)) return true;
+    if (d.native_unit !== undefined && !(typeof d.native_unit === 'string' && WEIGHT_UNITS.has(d.native_unit))) {
+      return true;
+    }
+    if (!isValidOptionalIsoOrNull(d.archived_at)) return true;
     return false;
   }
 
@@ -1418,6 +1485,7 @@ export class SyncService {
     const exerciseRootIds = rootIdsByRootType.get('exercise') ?? [];
     const userExercisePreferenceRootIds = rootIdsByRootType.get('user_exercise_preference') ?? [];
     const personalRecordRootIds = rootIdsByRootType.get('personal_record') ?? [];
+    const equipmentProfileRootIds = rootIdsByRootType.get('equipment_profile') ?? [];
 
     const existingRoots = workoutSessionRootIds.length
       ? await this.db
@@ -1470,6 +1538,15 @@ export class SyncService {
           .from(personalRecord)
           .where(inArray(personalRecord.id, personalRecordRootIds))
       : [];
+    // equipment_profile.userId is NOT NULL, same shape as personal_record, not exercise's
+    // nullable-owner special case (T-06-01) — a gym profile is either owned by someone or does not
+    // exist yet, never owned by no one.
+    const existingEquipmentProfileRoots = equipmentProfileRootIds.length
+      ? await this.db
+          .select({ id: equipmentProfile.id, userId: equipmentProfile.userId })
+          .from(equipmentProfile)
+          .where(inArray(equipmentProfile.id, equipmentProfileRootIds))
+      : [];
     // Keyed by aggregateKey, not by the bare id, for the same reason the aggregate map is: two
     // roots of different types sharing one id would otherwise overwrite each other here and hand
     // one aggregate the other's owner.
@@ -1483,6 +1560,10 @@ export class SyncService {
       ]),
       ...existingPersonalRecordRoots.map((row): [string, string | null] => [
         aggregateKey('personal_record', row.id),
+        row.userId,
+      ]),
+      ...existingEquipmentProfileRoots.map((row): [string, string | null] => [
+        aggregateKey('equipment_profile', row.id),
         row.userId,
       ]),
     ]);
@@ -1741,7 +1822,9 @@ export class SyncService {
                                   )
                                 : op.type === 'personal_record'
                                   ? toPersonalRecordValues(op.id, userId, op.data)
-                                  : toUserPreferenceValues(op.id, userId, op.data);
+                                  : op.type === 'equipment_profile'
+                                    ? toEquipmentProfileValues(op.id, userId, op.data)
+                                    : toUserPreferenceValues(op.id, userId, op.data);
 
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
@@ -1896,6 +1979,22 @@ export class SyncService {
                 set: { ...patchAwareSet(op, personalRecordValues, PERSONAL_RECORD_PATCH_FIELDS), serverSeq: nextSeq },
               })
               .returning({ serverSeq: personalRecord.serverSeq });
+            const seqValue = BigInt(serverSeq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else if (op.type === 'equipment_profile') {
+            // equipment_profile — a sixth singleton root (SINGLETON_ROOT_TYPES, 06-01), inserted/
+            // upserted the same shape as personal_record: server_seq on insert and on the conflict
+            // set, since a singleton root carries its own server_seq like any other aggregate root.
+            const nextSeq = sql`nextval('sync_seq')`;
+            const equipmentProfileValues = values as EquipmentProfileValues;
+            const [{ serverSeq }] = await tx
+              .insert(equipmentProfile)
+              .values({ ...equipmentProfileValues, serverSeq: nextSeq })
+              .onConflictDoUpdate({
+                target: equipmentProfile.id,
+                set: { ...patchAwareSet(op, equipmentProfileValues, EQUIPMENT_PROFILE_PATCH_FIELDS), serverSeq: nextSeq },
+              })
+              .returning({ serverSeq: equipmentProfile.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           } else {

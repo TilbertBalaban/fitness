@@ -18,9 +18,10 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('contains exactly workout_session, session_exercise, logged_set, personal_record, exercise, user_exercise_preference, routine, routine_day, routine_exercise, user_preference, routine_cycle and routine_exercise_cycle_target in PUSH_APPLIED_TABLES', () => {
+  it('contains exactly workout_session, session_exercise, logged_set, personal_record, equipment_profile, exercise, user_exercise_preference, routine, routine_day, routine_exercise, user_preference, routine_cycle and routine_exercise_cycle_target in PUSH_APPLIED_TABLES', () => {
     expect([...PUSH_APPLIED_TABLES].sort()).toEqual(
       [
+        'equipment_profile',
         'exercise',
         'logged_set',
         'personal_record',
@@ -68,11 +69,20 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect((PUSH_APPLIED_TABLES as readonly string[]).includes('routine_exercise_cycle_target')).toBe(true);
     expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('routine_exercise_cycle_target')).toBe(false);
   });
+
+  it('equipment_profile is applied, not deferred — 06-01 gives gym profiles a server-side apply path', () => {
+    expect((PUSH_APPLIED_TABLES as readonly string[]).includes('equipment_profile')).toBe(true);
+    expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('equipment_profile')).toBe(false);
+  });
 });
 
 describe('isTerminalRejection', () => {
   it('is true for a deferred table\'s unknown_table rejection — retrying cannot cure it', () => {
-    expect(isTerminalRejection('unknown_table', 'equipment_profile')).toBe(true);
+    expect(isTerminalRejection('unknown_table', 'body_metric')).toBe(true);
+  });
+
+  it('is false for equipment_profile\'s unknown_table rejection — no longer a known permanent gap (06-01)', () => {
+    expect(isTerminalRejection('unknown_table', 'equipment_profile')).toBe(false);
   });
 
   it('is false for routine_day\'s unknown_table rejection — no longer a known permanent gap (04-02)', () => {
@@ -112,7 +122,7 @@ describe('isTerminalRejection', () => {
   it('is false for server_error on every table, including a deferred one — a transient server failure never destroys a queued write', () => {
     expect(isTerminalRejection('server_error', 'routine')).toBe(false);
     expect(isTerminalRejection('server_error', 'routine_exercise_cycle_target')).toBe(false);
-    expect(isTerminalRejection('server_error', 'equipment_profile')).toBe(false);
+    expect(isTerminalRejection('server_error', 'body_metric')).toBe(false);
     expect(isTerminalRejection('server_error', '')).toBe(false);
   });
 });

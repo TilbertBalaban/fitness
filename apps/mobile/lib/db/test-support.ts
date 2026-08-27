@@ -12,6 +12,7 @@ import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-d
 // ESM). powersync.web.ts's AppSchema is the exact object getPowerSync() uses on web — importing
 // it explicitly is correct for this durability harness regardless of platform resolution.
 import { AppSchema } from './powersync.web';
+import { ensureDefaultEquipmentProfile } from './equipment-profiles';
 import { generateClientId } from './id';
 import { startWorkoutFromProgram, type StartWorkoutFromProgramSlot } from './log-set';
 import {
@@ -111,7 +112,7 @@ const SEEDED_TARGETS = [
 // e2e spec exists to prove. Exercise rows are referenced by id only (not seeded into
 // exercise/seeded_exercise): the workout screen resolves an unrecognised id to "Unknown exercise"
 // rather than throwing, matching durability.spec.ts's own precedent of bare exercise ids.
-export async function seedProgrammedSession(db: TestWriteDb): Promise<SeededProgrammedSession> {
+export async function seedProgrammedSession(db: TestWriteDb, userId?: string): Promise<SeededProgrammedSession> {
   const routineId = generateClientId();
   const routineDayId = generateClientId();
   const routineExerciseIds = [generateClientId(), generateClientId()];
@@ -156,7 +157,7 @@ export async function seedProgrammedSession(db: TestWriteDb): Promise<SeededProg
     orderIndex: (index + 1) * 1024,
   }));
 
-  const sessionId = await startWorkoutFromProgram({ routineDayId, cycleId: null, slots }, db);
+  const sessionId = await startWorkoutFromProgram({ routineDayId, cycleId: null, slots, userId }, db);
 
   return {
     sessionId,
@@ -164,6 +165,29 @@ export async function seedProgrammedSession(db: TestWriteDb): Promise<SeededProg
     routineDayId,
     exercises: slots,
   };
+}
+
+export interface SeedEquipmentProfileResult {
+  profileId: string;
+}
+
+// Delegates to the real ensureDefaultEquipmentProfile (D-19) — no seed shortcut. Called BEFORE
+// seedProgrammedSession(db, userId) so the session picks up the already-active profile via that
+// same function's idempotent lookup, exactly as a real "start workout after configuring a gym"
+// flow does.
+export async function seedEquipmentProfile(db: TestWriteDb, userId: string): Promise<SeedEquipmentProfileResult> {
+  const profileId = await ensureDefaultEquipmentProfile(userId, db);
+  return { profileId };
+}
+
+// Raw read of the equipment_profile row's own columns, by id — used by e2e specs that need to
+// prove a write landed without depending on loadEquipmentProfile's own JSON-parsing correctness.
+export async function readEquipmentProfileRaw(id: string): Promise<Record<string, unknown> | null> {
+  if (!rawDb) {
+    throw new Error('readEquipmentProfileRaw() called before openTestPowerSync()');
+  }
+  const rows = await rawDb.getAll<Record<string, unknown>>('SELECT * FROM equipment_profile WHERE id = ?', [id]);
+  return rows[0] ?? null;
 }
 
 export interface SeededProgrammedSessionWithCycle extends SeededProgrammedSession {
@@ -520,7 +544,7 @@ export async function readWorkoutSessionRaw(sessionId: string): Promise<Record<s
     throw new Error('readWorkoutSessionRaw() called before openTestPowerSync()');
   }
   const rows = await rawDb.getAll<Record<string, unknown>>(
-    'SELECT id, name, started_at, paused_at, accumulated_paused_seconds, status, timezone, local_date, notes FROM workout_session WHERE id = ?',
+    'SELECT id, name, started_at, paused_at, accumulated_paused_seconds, status, timezone, local_date, notes, equipment_profile_id FROM workout_session WHERE id = ?',
     [sessionId],
   );
   return rows[0] ?? null;

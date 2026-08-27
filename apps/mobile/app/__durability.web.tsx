@@ -4,6 +4,7 @@ import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
 import { startBackfilledSession } from './(tabs)/history';
 import { EditingWorkoutRoute } from '../components/EditingWorkoutScreen';
 import { SyncConnector } from '../lib/db/connector';
+import { loadEquipmentProfile, setActiveEquipmentProfile } from '../lib/db/equipment-profiles';
 import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib/db/log-set';
 import { loadSessionPersonalRecords } from '../lib/db/personal-record';
 import { completeSession, discardSession, pauseSession, resumeSession } from '../lib/db/session-lifecycle';
@@ -34,16 +35,19 @@ import {
   readLoggedSetsRaw,
   readRawColumns,
   readRoutineExerciseCycleTargetsRaw,
+  readEquipmentProfileRaw,
   readRoutineExerciseRaw,
   readSessionExercisesRaw,
   readWorkoutSessionRaw,
   reopenTestPowerSync,
+  seedEquipmentProfile,
   seedPriorHeaviestSet,
   seedProgrammedSession,
   seedProgrammedSessionWithCycle,
   writeCatalogVersionSentinel,
   type SeededProgrammedSession,
   type SeededProgrammedSessionWithCycle,
+  type SeedEquipmentProfileResult,
   type SeedPriorHeaviestSetInput,
   type TestWriteDb,
 } from '../lib/db/test-support';
@@ -270,9 +274,32 @@ export default function DurabilityHarnessScreen() {
       // renders the workout UI until there is a real session for it to load (workout-screen.spec.ts).
       async seedWorkoutSession(): Promise<SeededProgrammedSession> {
         const db = requireOpenDb();
-        const seeded = await seedProgrammedSession(db);
+        // Threading WORKOUT_HARNESS_USER_ID here is what makes D-19's seed-on-first-need fire for
+        // every harness-started session, same as a real signed-in "Start Workout" tap — a prior
+        // seedEquipmentProfile() call (plate-strip.spec.ts and friends) is picked up by this same
+        // ensureDefaultEquipmentProfile idempotent lookup; a spec that never calls it gets the
+        // auto-seeded default instead, exactly like a first-ever real session would.
+        const seeded = await seedProgrammedSession(db, WORKOUT_HARNESS_USER_ID);
         setWorkoutHarness({ db });
         return seeded;
+      },
+      // Task 2's gym seam: seeds/points the active default gym profile for WORKOUT_HARNESS_USER_ID
+      // via the real ensureDefaultEquipmentProfile — call before seedWorkoutSession() so the
+      // started session's equipment_profile_id resolves to this same profile.
+      async seedEquipmentProfile(): Promise<SeedEquipmentProfileResult> {
+        const db = requireOpenDb();
+        return seedEquipmentProfile(db, WORKOUT_HARNESS_USER_ID);
+      },
+      async readEquipmentProfile(id: string) {
+        return loadEquipmentProfile(id, requireOpenDb());
+      },
+      async readEquipmentProfileRaw(id: string) {
+        return readEquipmentProfileRaw(id);
+      },
+      // Later plans (06-03/06-04) exercise the multi-gym switch through this — writes the pointer
+      // directly via the real setActiveEquipmentProfile, no stub.
+      async setActiveGym(profileId: string) {
+        await setActiveEquipmentProfile(WORKOUT_HARNESS_USER_ID, profileId, requireOpenDb());
       },
       // 05-12's D-15 write-back proof: same seed-then-mount shape as seedWorkoutSession, but
       // against seedProgrammedSessionWithCycle's program (one override row on the first routine

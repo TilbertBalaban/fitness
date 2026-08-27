@@ -88,7 +88,7 @@ describe('deriveWorkoutScreenState', () => {
     expect(
       deriveWorkoutScreenState({
         failed: false,
-        session: { session: { id: 's-1', routineDayId: null, cycleId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null, timezone: 'UTC', localDate: '2026-08-20', notes: null }, exercises: [], setsByExerciseId: {} },
+        session: { session: { id: 's-1', routineDayId: null, cycleId: null, equipmentProfileId: null, status: 'in_progress', startedAt: 't', pausedAt: null, accumulatedPausedSeconds: 0, restTargetAt: null, timezone: 'UTC', localDate: '2026-08-20', notes: null }, exercises: [], setsByExerciseId: {} },
         nextUp: null,
       }),
     ).toBe('ready');
@@ -306,6 +306,7 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     rowsByExercise: { 'se-1': buildSetRows([], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null) },
     pageDataByExercise: { 'se-1': PAGE_DATA },
     activeField: null,
+    resolvedInventory: null,
     starting: false,
     nextUp: null,
     weightUnit: 'kg',

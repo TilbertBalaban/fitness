@@ -1,5 +1,6 @@
 import { eq, inArray } from 'drizzle-orm';
 import { WORKOUT_SESSION_STATUSES } from '@fitness/api-contracts';
+import { ensureDefaultEquipmentProfile } from './equipment-profiles';
 import { addSessionExercise, startSession } from './log-set';
 import { getPowerSync, type WriteDb } from './powersync';
 import { workoutSession } from './schema';
@@ -13,6 +14,9 @@ const OPEN_STATUSES = [IN_PROGRESS_STATUS, PAUSED_STATUS];
 
 export interface StartOneOffSessionInput {
   exerciseIds: string[];
+  // Optional for the same reason StartWorkoutFromProgramInput.userId is (log-set.ts) — every
+  // existing no-user caller keeps stamping equipmentProfileId null.
+  userId?: string | null;
   now?: Date;
 }
 
@@ -22,10 +26,11 @@ export interface StartOneOffSessionInput {
 // EMPTY_PRESCRIPTION path — every target column on every session_exercise row lands null, which is
 // what makes a one-off's rows render as em dashes rather than invented targets (LOG-02).
 export async function startOneOffSession(
-  { exerciseIds, now }: StartOneOffSessionInput,
+  { exerciseIds, userId, now }: StartOneOffSessionInput,
   db: WriteDb = getPowerSync(),
 ): Promise<string> {
-  const sessionId = await startSession({ routineDayId: null, now }, db);
+  const equipmentProfileId = userId ? await ensureDefaultEquipmentProfile(userId, db) : null;
+  const sessionId = await startSession({ routineDayId: null, equipmentProfileId, now }, db);
 
   for (const [index, exerciseId] of exerciseIds.entries()) {
     await addSessionExercise({ sessionId, exerciseId, orderIndex: index }, db);

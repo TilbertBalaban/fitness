@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import * as unitsContract from '@fitness/api-contracts';
 import { EMPTY_TARGET, resolveTarget, type ResolvedTarget } from '@fitness/api-contracts';
 import { captureCalendarDay } from '../calendar-day';
+import { ensureDefaultEquipmentProfile } from './equipment-profiles';
 import { generateClientId } from './id';
 import { getPowerSync, type WriteDb, type WriteHandle, type WriteTx } from './powersync';
 import { loggedSet, routineExercise, routineExerciseCycleTarget, sessionExercise, workoutSession } from './schema';
@@ -227,6 +228,10 @@ export interface StartWorkoutFromProgramInput {
   routineDayId: string;
   cycleId: string | null;
   slots: StartWorkoutFromProgramSlot[];
+  // Optional so every existing caller with no signed-in user (the durability harness) keeps
+  // stamping equipmentProfileId null exactly as before this phase — a real screen call site
+  // passes the authenticated userId and gets D-19's seed-on-first-need for free.
+  userId?: string | null;
   now?: Date;
 }
 
@@ -239,8 +244,10 @@ export async function startWorkoutFromProgram(
   input: StartWorkoutFromProgramInput,
   db: WriteDb = getPowerSync(),
 ): Promise<string> {
+  const equipmentProfileId = input.userId ? await ensureDefaultEquipmentProfile(input.userId, db) : null;
+
   const sessionId = await startSession(
-    { routineDayId: input.routineDayId, cycleId: input.cycleId, now: input.now },
+    { routineDayId: input.routineDayId, cycleId: input.cycleId, equipmentProfileId, now: input.now },
     db,
   );
 

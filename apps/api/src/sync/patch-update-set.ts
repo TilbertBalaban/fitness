@@ -162,6 +162,19 @@ export interface RoutineExerciseCycleTargetValues {
   targetRestSeconds: number | null;
 }
 
+export interface EquipmentProfileValues {
+  id: string;
+  userId: string;
+  name: string;
+  isDefault: boolean;
+  barbellWeightKg: string | null;
+  availablePlates: unknown;
+  dumbbellIncrementsKg: unknown;
+  machineAvailability: unknown;
+  nativeUnit: string;
+  archivedAt: Date | null;
+}
+
 // A mapped type over keyof V, so every property of V is a required key here — adding a column to
 // a values interface without classifying it in the matching map is a compile error, not a
 // silently-always-written column. That compile error is the exhaustiveness gate this module
@@ -372,6 +385,24 @@ export const ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS: PatchFieldMap<RoutineEx
   targetRepMax: 'target_rep_max',
   targetRir: 'target_rir',
   targetRestSeconds: 'target_rest_seconds',
+};
+
+// id/userId are server-derived and written unconditionally, mirroring PERSONAL_RECORD_PATCH_FIELDS'
+// ownership guarantee (T-06-01): userId always comes from the authenticated session, never from
+// data.user_id. Every other field — including the three JSONB columns — is genuinely client-owned
+// and maps to its own wire key; the JSONB columns carry pre-validated (hasInvalidField) JS values
+// straight through, same as any other column here.
+export const EQUIPMENT_PROFILE_PATCH_FIELDS: PatchFieldMap<EquipmentProfileValues> = {
+  id: null,
+  userId: null,
+  name: 'name',
+  isDefault: 'is_default',
+  barbellWeightKg: 'barbell_weight_kg',
+  availablePlates: 'available_plates',
+  dumbbellIncrementsKg: 'dumbbell_increments_kg',
+  machineAvailability: 'machine_availability',
+  nativeUnit: 'native_unit',
+  archivedAt: 'archived_at',
 };
 
 // The values object is keyed by Drizzle property names (camelCase); op.data is keyed by wire

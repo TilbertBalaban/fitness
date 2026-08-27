@@ -22,6 +22,8 @@ import { BackgroundAlertsOffNote, NotificationPermissionPromptView } from '@/com
 import { RestTimerBar } from '@/components/RestTimerBar';
 import { DiscardWorkoutDialog } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
+import { resolveInventory, type ResolvedInventory } from '@fitness/plate-math';
+import { loadEquipmentProfile } from '@/lib/db/equipment-profiles';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, startWorkoutFromProgram, updateLoggedSet } from '@/lib/db/log-set';
 import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
@@ -224,6 +226,9 @@ export interface WorkoutScreenViewProps {
   rowsByExercise: Record<string, ResolvedSetRow[]>;
   pageDataByExercise: Record<string, ExercisePageData>;
   activeField: ActiveFieldState | null;
+  // The active gym's resolved inventory, snapshotted against the session's own stamped
+  // equipment_profile_id — threaded down to the docked keypad's plate/equipment band.
+  resolvedInventory: ResolvedInventory | null;
   starting: boolean;
   // Replaces the old canStartWorkout/nextUpHeading pair (Task 1): the view derives every
   // no-session-ish state's heading/body itself from the same NextUp value the screen already
@@ -333,6 +338,7 @@ export function WorkoutScreenView({
   rowsByExercise,
   pageDataByExercise,
   activeField,
+  resolvedInventory,
   starting,
   nextUp,
   weightUnit,
@@ -544,6 +550,11 @@ export function WorkoutScreenView({
           colors={colors}
           onPress={onKeypadPress}
           onSubmit={onSubmitField}
+          band={
+            activeField.field === 'weight'
+              ? { inventory: resolvedInventory, targetKg: toCanonicalKg(activeField.value, weightUnit), unit: weightUnit }
+              : undefined
+          }
         />
       ) : null}
 
@@ -600,6 +611,10 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   const writeDb = db ?? getPowerSync();
   const [read, setRead] = useState<WorkoutScreenReadResult | null>(null);
   const [activeField, setActiveField] = useState<ActiveFieldState | null>(null);
+  // Resolved once per session load, against the session's OWN stamped equipment_profile_id
+  // (D-17) — never the live default pointer, so mid-workout the plate band keeps answering
+  // against the gym this session actually started at.
+  const [resolvedInventory, setResolvedInventory] = useState<ResolvedInventory | null>(null);
   const [draftValuesByExercise, setDraftValuesByExercise] = useState<Record<string, SetRowValues>>({});
   const [rowOverrides, setRowOverrides] = useState<Record<string, RowOverride>>({});
   const [starting, setStarting] = useState(false);
@@ -672,8 +687,17 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
           return drafts;
         });
         void previousSetReferencesForSession(session.session.id, db).then(setReferenceMap);
+        const equipmentProfileId = session.session.equipmentProfileId;
+        if (equipmentProfileId) {
+          void loadEquipmentProfile(equipmentProfileId, db).then((profile) =>
+            setResolvedInventory(profile ? resolveInventory(profile, []) : null),
+          );
+        } else {
+          setResolvedInventory(null);
+        }
       } else {
         setReferenceMap({});
+        setResolvedInventory(null);
       }
     },
     [db],
@@ -802,6 +826,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
             exerciseId: slot.exerciseId,
             orderIndex: slot.orderIndex,
           })),
+          userId,
         },
         db,
       );
@@ -826,7 +851,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
       setOneOffPickerOpen(false);
       return;
     }
-    await startOneOffSession({ exerciseIds: rows.map((row) => row.id) }, db);
+    await startOneOffSession({ exerciseIds: rows.map((row) => row.id), userId }, db);
     setOneOffPickerOpen(false);
     await reload();
   }
@@ -1179,6 +1204,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     rowsByExercise,
     pageDataByExercise,
     activeField,
+    resolvedInventory,
     starting,
     nextUp,
     weightUnit,

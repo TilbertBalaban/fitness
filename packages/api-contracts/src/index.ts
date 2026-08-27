@@ -44,3 +44,4 @@ export * from './units';
 export * from './catalog';
 export * from './program';
 export * from './session';
+export * from './equipment';
