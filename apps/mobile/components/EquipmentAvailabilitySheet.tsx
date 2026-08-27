@@ -356,11 +356,15 @@ export function EquipmentAvailabilitySheet({
 
   async function handleMarkUnavailable(): Promise<void> {
     setBusy(true);
+    setError(null);
     try {
       await markEquipmentUnavailable(sessionId, target.ref, writeDb);
       const fresh = await loadSessionInventory(sessionId, writeDb);
       await loadAlternatives(fresh);
       setScreen('alternatives');
+    } catch {
+      setError("Couldn't save");
+      setScreen('confirm');
     } finally {
       setBusy(false);
     }
