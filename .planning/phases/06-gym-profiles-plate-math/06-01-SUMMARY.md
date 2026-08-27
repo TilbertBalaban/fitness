@@ -197,3 +197,7 @@ None - no external service configuration required.
 ## Next Phase Readiness
 
 The whole Phase 6 vertical slice is proven end-to-end: contract → solver → client seed/stamp → UI → server sync. Later plans in this phase (multi-gym switching, per-machine availability editing, equipment-type unavailability) build directly on `packages/plate-math`, `equipment-profiles.ts`'s seed/stamp pattern, and the `sync.service.ts` singleton-root registration this plan established — including the ownership-query gap called out above, which any new sync root in this phase must also close.
+
+## Self-Check: PASSED
+
+All 10 created files confirmed tracked via `git ls-files`; all 10 commit hashes (754c982, b734a9c, 50b1106, 872dc22, 9e69ee8, 4d7171c, a7f6519, e1a1d2c, 84f9ff0, 37c27ef) confirmed present via `git log --oneline --all`.
