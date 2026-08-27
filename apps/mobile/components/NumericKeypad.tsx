@@ -1,7 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
+import type { WeightUnit } from '@fitness/api-contracts';
+import type { EquipmentBandState } from '@fitness/plate-math';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
-import { PlateStrip, type PlateStripProps } from './PlateStrip';
+import { PlateStrip } from './PlateStrip';
 
 // Walks weight -> reps -> rir -> null (D-18) — the next-arrow's whole job. rir has no successor:
 // its submit both writes the field and dismisses the keypad, there being no fourth field.
@@ -83,7 +85,16 @@ export interface NumericKeypadViewProps {
   band?: PlateStripBandData;
 }
 
-export type PlateStripBandData = PlateStripProps;
+// Phase 6's caller-owned, already-resolved band data (D-15's live-typing constraint, T-06-04): the
+// workout screen resolves and memoises the band state itself (against the inventory and in-flight
+// target), then hands the finished state down here — this file and PlateStrip.tsx run no solver
+// and no band resolver of their own.
+export interface PlateStripBandData {
+  state: EquipmentBandState;
+  unit: WeightUnit;
+  onNeighbourPress: (valueKg: string) => void;
+  onRecoveryPress: () => void;
+}
 
 // Hook-free — direct-invocable by a test, matching SetRowView/CycleStripView. Every field value
 // display lives in SetRow, not here: this component only ever emits presses and a submit signal.
@@ -96,7 +107,12 @@ export function NumericKeypadView({ field, stepAmount, colors, onPress, onSubmit
       {/* R8: Phase 5 left this an empty layout slot; Phase 6 fills it with the real plate/equipment
           band once `band` data is supplied, and keeps the plain empty slot otherwise. */}
       {band ? (
-        <PlateStrip inventory={band.inventory} targetKg={band.targetKg} unit={band.unit} />
+        <PlateStrip
+          state={band.state}
+          unit={band.unit}
+          onNeighbourPress={band.onNeighbourPress}
+          onRecoveryPress={band.onRecoveryPress}
+        />
       ) : (
         <View style={{ height: RESERVED_BAND_HEIGHT }} />
       )}
