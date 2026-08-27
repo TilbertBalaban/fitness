@@ -13,6 +13,7 @@ import { SessionDateField } from '@/components/SessionDateField';
 import { ExercisePickerModal, type PickerCatalogRow } from '@/components/ExercisePickerModal';
 import { authClient } from '@/lib/auth-client';
 import { captureCalendarDay } from '@/lib/calendar-day';
+import { ensureDefaultEquipmentProfile } from '@/lib/db/equipment-profiles';
 import { addSessionExercise, setSessionDate, startSession } from '@/lib/db/log-set';
 import { completeSession } from '@/lib/db/session-lifecycle';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
@@ -27,6 +28,9 @@ export interface StartBackfilledSessionInput {
   date: Date;
   timezone: string;
   exerciseIds: string[];
+  // Optional for the same reason StartWorkoutFromProgramInput.userId is (log-set.ts) — the
+  // durability harness's existing zero-arg-past-db calls keep stamping equipmentProfileId null.
+  userId?: string | null;
 }
 
 // D-33's third funnel entry point: the SAME startSession log-set.ts's other two callers use, then
@@ -37,10 +41,11 @@ export interface StartBackfilledSessionInput {
 // `in_progress` would incorrectly route it to the live screen instead) — the same reason a
 // finished workout, not a running one, is what "add a workout you already did" actually means.
 export async function startBackfilledSession(
-  { date, timezone, exerciseIds }: StartBackfilledSessionInput,
+  { date, timezone, exerciseIds, userId }: StartBackfilledSessionInput,
   db: WriteDb = getPowerSync(),
 ): Promise<string> {
-  const sessionId = await startSession({}, db);
+  const equipmentProfileId = userId ? await ensureDefaultEquipmentProfile(userId, db) : null;
+  const sessionId = await startSession({ equipmentProfileId }, db);
   await setSessionDate(sessionId, date, timezone, db);
   await completeSession(sessionId, date, db);
 
@@ -358,14 +363,14 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
       setOverlay(null);
       void (async () => {
         try {
-          await duplicateSession({ sourceSessionId: sessionId }, db);
+          await duplicateSession({ sourceSessionId: sessionId, userId }, db);
           router.push(WORKOUT_TAB_ROUTE);
         } catch (error) {
           console.error('duplicate session failed', error);
         }
       })();
     },
-    [overlay, db, router],
+    [overlay, db, router, userId],
   );
 
   const handleConfirmRename = useCallback(
@@ -438,7 +443,7 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
       void (async () => {
         try {
           const sessionId = await startBackfilledSession(
-            { date: pendingBackfill.date, timezone: pendingBackfill.timezone, exerciseIds: rows.map((row) => row.id) },
+            { date: pendingBackfill.date, timezone: pendingBackfill.timezone, exerciseIds: rows.map((row) => row.id), userId },
             db,
           );
           router.push(`${WORKOUT_TAB_ROUTE}?sessionId=${sessionId}`);
@@ -447,7 +452,7 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
         }
       })();
     },
-    [pendingBackfill, db, router],
+    [pendingBackfill, db, router, userId],
   );
 
   return {

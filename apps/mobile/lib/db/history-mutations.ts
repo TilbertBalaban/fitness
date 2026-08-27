@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm';
+import { ensureDefaultEquipmentProfile } from './equipment-profiles';
 import { addSessionExercise, startSession } from './log-set';
 import { setSessionExerciseTargets } from './session-mutations';
 import { getPowerSync, type WriteDb, type WriteTx } from './powersync';
@@ -16,6 +17,10 @@ export async function renameSession(sessionId: string, name: string | null, db: 
 
 export interface DuplicateSessionInput {
   sourceSessionId: string;
+  // Only consulted when the SOURCE session predates this phase's equipment_profile_id stamp
+  // (null on that column) — the common case copies the source's own stamped profile forward
+  // unchanged, exactly what "duplicate" means for which gym a workout happened at.
+  userId?: string | null;
   now?: Date;
 }
 
@@ -50,7 +55,7 @@ interface SourceSessionExerciseRow {
 // The two reads of the SOURCE session stay outside the transaction: they inform what to write, and
 // re-reading a source that is itself immutable mid-duplication carries no atomicity requirement.
 export async function duplicateSession(
-  { sourceSessionId, now }: DuplicateSessionInput,
+  { sourceSessionId, userId, now }: DuplicateSessionInput,
   db: WriteDb = getPowerSync(),
 ): Promise<string> {
   const sourceRows: SourceSessionExerciseRow[] = await db
@@ -82,12 +87,18 @@ export async function duplicateSession(
 
   const remaining = sourceRows.filter((row) => row.removedAt === null).sort((a, b) => a.orderIndex - b.orderIndex);
 
+  // Resolved outside the transaction, same as sourceRows/source above — ensureDefaultEquipmentProfile
+  // is its own idempotent read-then-write and carries no atomicity requirement with the
+  // session/exercise build below.
+  const equipmentProfileId =
+    source?.equipmentProfileId ?? (userId ? await ensureDefaultEquipmentProfile(userId, db) : null);
+
   return db.transaction(async (tx: WriteTx) => {
     const newSessionId = await startSession(
       {
         routineDayId: source?.routineDayId ?? null,
         cycleId: source?.cycleId ?? null,
-        equipmentProfileId: source?.equipmentProfileId ?? null,
+        equipmentProfileId,
         deviceId: source?.deviceId ?? null,
         now,
       },
