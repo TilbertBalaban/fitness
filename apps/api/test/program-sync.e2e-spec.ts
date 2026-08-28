@@ -156,11 +156,12 @@ interface RoutineDayRow {
   order_index: number;
   name: string;
   is_rest_day: boolean;
+  archived_at: string | null;
 }
 
 async function routineDayRow(id: string): Promise<RoutineDayRow | undefined> {
   const { rows } = await pg.query(
-    'SELECT id, routine_id, order_index, name, is_rest_day FROM routine_day WHERE id = $1',
+    'SELECT id, routine_id, order_index, name, is_rest_day, archived_at FROM routine_day WHERE id = $1',
     [id],
   );
   return rows[0];
@@ -758,6 +759,69 @@ describe('routine_day / routine_exercise sync (e2e)', () => {
     expect(afterStatus?.status).toBe('ready');
     const { rows: stillFrozenRows } = await pg.query('SELECT progression_frozen FROM routine WHERE id = $1', [routineId]);
     expect(stillFrozenRows[0].progression_frozen).toBe(true);
+  });
+
+  it('a routine_day PATCH naming only archived_at applies the stamp and leaves name/order_index/is_rest_day untouched', async () => {
+    const cookie = await signUp('day-patch-archive');
+    const { dayId } = await seedRoutineAndDay(cookie, 'day-patch-archive');
+
+    const archivedAt = new Date().toISOString();
+    const patchOp = routineDayOp(dayId, { archived_at: archivedAt }, 'PATCH');
+    const res = await push(cookie, [patchOp]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await routineDayRow(dayId);
+    expect(row?.archived_at).not.toBeNull();
+    expect(row?.name).toBe('Day 1');
+    expect(row?.order_index).toBe(0);
+    expect(row?.is_rest_day).toBe(false);
+  });
+
+  it('a second routine_day PATCH naming archived_at: null clears it and the row is still there — restore is not a re-create', async () => {
+    const cookie = await signUp('day-patch-restore');
+    const { dayId } = await seedRoutineAndDay(cookie, 'day-patch-restore');
+
+    const archiveOp = routineDayOp(dayId, { archived_at: new Date().toISOString() }, 'PATCH');
+    const archiveRes = await push(cookie, [archiveOp]);
+    expect((archiveRes.body as SyncPushResponse).rejected).toEqual([]);
+    expect((await routineDayRow(dayId))?.archived_at).not.toBeNull();
+
+    const restoreOp = routineDayOp(dayId, { archived_at: null }, 'PATCH');
+    const restoreRes = await push(cookie, [restoreOp]);
+    expect((restoreRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await routineDayRow(dayId);
+    expect(row).toBeDefined();
+    expect(row?.archived_at).toBeNull();
+  });
+
+  it('archiving a routine_day emits no sync_tombstone rows and leaves its routine_exercise children present — an archive is not a delete', async () => {
+    const cookie = await signUp('day-archive-no-cascade');
+    const { dayId } = await seedRoutineAndDay(cookie, 'day-archive-no-cascade');
+    const exId = randomUUID();
+    const exRes = await push(cookie, [routineExerciseOp(exId, { routine_day_id: dayId, exercise_id: exerciseId, order_index: 0 })]);
+    expect((exRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const patchOp = routineDayOp(dayId, { archived_at: new Date().toISOString() }, 'PATCH');
+    const res = await push(cookie, [patchOp]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+
+    expect(await routineDayRow(dayId)).toBeDefined();
+    expect(await routineExerciseRow(exId)).toBeDefined();
+    expect(await tombstoneCount([dayId, exId])).toBe(0);
+  });
+
+  it('rejects a routine_day PATCH with a non-ISO archived_at as invalid_field and leaves the stored row unchanged', async () => {
+    const cookie = await signUp('day-patch-bad-archived-at');
+    const { dayId } = await seedRoutineAndDay(cookie, 'day-patch-bad-archived-at');
+
+    const patchOp = routineDayOp(dayId, { archived_at: 'banana' }, 'PATCH');
+    const res = await push(cookie, [patchOp]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: patchOp.op_id, reason: 'invalid_field' }]);
+
+    const row = await routineDayRow(dayId);
+    expect(row?.archived_at).toBeNull();
+    expect(row?.name).toBe('Day 1');
   });
 });
 

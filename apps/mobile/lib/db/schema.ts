@@ -80,6 +80,7 @@ export const routineDay = sqliteTable('routine_day', {
   orderIndex: integer('order_index').notNull(),
   name: text('name').notNull(),
   isRestDay: integer('is_rest_day', { mode: 'boolean' }).notNull(),
+  archivedAt: text('archived_at'),
 });
 
 export const routineExercise = sqliteTable('routine_exercise', {

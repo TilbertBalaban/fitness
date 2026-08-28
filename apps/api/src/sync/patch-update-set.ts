@@ -126,6 +126,7 @@ export interface RoutineDayValues {
   orderIndex: number;
   name: string;
   isRestDay: boolean;
+  archivedAt: Date | null;
 }
 
 export interface RoutineExerciseValues {
@@ -340,6 +341,7 @@ export const ROUTINE_DAY_PATCH_FIELDS: PatchFieldMap<RoutineDayValues> = {
   orderIndex: 'order_index',
   name: 'name',
   isRestDay: 'is_rest_day',
+  archivedAt: 'archived_at',
 };
 
 // id/routineDayId are server-derived and written unconditionally — same shape as
