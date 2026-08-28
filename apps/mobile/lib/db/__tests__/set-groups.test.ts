@@ -1,10 +1,16 @@
-import { clearSubEntries, removeSubEntry } from '../set-groups';
+import { addSubEntry, clearSubEntries, removeSubEntry } from '../set-groups';
+import { logSet } from '../log-set';
 import { getPowerSync, type WriteDb } from '../powersync';
 import { loggedSet } from '../schema';
 
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
+// addSubEntry's own contract is what it delegates and what it refuses — logSet's own insert
+// mechanics (the select-max-then-insert transaction, CR-02) are already covered by
+// log-set.test.ts and are not re-verified here.
+jest.mock('../log-set', () => ({ logSet: jest.fn() }));
 
 const getPowerSyncMock = getPowerSync as jest.MockedFunction<typeof getPowerSync>;
+const logSetMock = logSet as jest.MockedFunction<typeof logSet>;
 
 type TableLike = Record<string, { name?: string } | undefined>;
 type Row = Record<string, unknown>;
@@ -108,6 +114,7 @@ function inMemoryDb() {
 
 beforeEach(() => {
   getPowerSyncMock.mockReset();
+  logSetMock.mockReset();
 });
 
 describe('clearSubEntries — the group-level delete D-09 gates behind a confirm', () => {
@@ -182,5 +189,59 @@ describe('removeSubEntry — the per-child remove, deliberately un-confirmed', (
 
     expect(deleted).toBeFalsy();
     expect(store.rowsOf(loggedSet)).toHaveLength(1);
+  });
+});
+
+describe("addSubEntry — the D-08 '+ Add {type}' control's write", () => {
+  it('delegates to logSet with the blank-slot shape isBlankSubEntry recognises, and returns its id', async () => {
+    const store = inMemoryDb();
+    store.seed(loggedSet, { id: 'parent-1', sessionExerciseId: 'se-1', parentSetId: null });
+    logSetMock.mockResolvedValue('new-child-id');
+
+    const id = await addSubEntry({ sessionExerciseId: 'se-1', parentSetId: 'parent-1', setType: 'drop' }, store.db);
+
+    expect(id).toBe('new-child-id');
+    expect(logSetMock).toHaveBeenCalledTimes(1);
+    expect(logSetMock).toHaveBeenCalledWith(
+      {
+        sessionExerciseId: 'se-1',
+        setType: 'drop',
+        parentSetId: 'parent-1',
+        side: null,
+        weight: { value: null, unit: 'kg' },
+        reps: 0,
+        completed: false,
+      },
+      store.db,
+    );
+  });
+
+  it('threads an optional side through to logSet unchanged', async () => {
+    const store = inMemoryDb();
+    store.seed(loggedSet, { id: 'parent-1', sessionExerciseId: 'se-1', parentSetId: null });
+    logSetMock.mockResolvedValue('new-child-id');
+
+    await addSubEntry({ sessionExerciseId: 'se-1', parentSetId: 'parent-1', setType: 'myorep', side: 'left' }, store.db);
+
+    expect(logSetMock.mock.calls[0][0].side).toBe('left');
+  });
+
+  it('rejects a parentSetId whose row belongs to a different session_exercise, and never calls logSet', async () => {
+    const store = inMemoryDb();
+    store.seed(loggedSet, { id: 'parent-1', sessionExerciseId: 'se-other', parentSetId: null });
+
+    await expect(
+      addSubEntry({ sessionExerciseId: 'se-1', parentSetId: 'parent-1', setType: 'drop' }, store.db),
+    ).rejects.toThrow();
+    expect(logSetMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a parentSetId that does not exist at all, and never calls logSet', async () => {
+    const store = inMemoryDb();
+
+    await expect(
+      addSubEntry({ sessionExerciseId: 'se-1', parentSetId: 'missing-id', setType: 'drop' }, store.db),
+    ).rejects.toThrow();
+    expect(logSetMock).not.toHaveBeenCalled();
   });
 });

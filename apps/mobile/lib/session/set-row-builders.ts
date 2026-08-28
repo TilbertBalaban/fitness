@@ -1,4 +1,4 @@
-import { fromCanonicalKg, type ResolvedTarget, type WeightUnit } from '@fitness/api-contracts';
+import { fromCanonicalKg, type ResolvedTarget, type SetType, type WeightUnit } from '@fitness/api-contracts';
 import type { KeypadField } from '@/components/NumericKeypad';
 import type { SetRowReference, SetRowValues } from '@/components/SetRow';
 import type { LoggedSetRow, PreviousSetReferenceMap, SessionExerciseRow } from '@/lib/db/session-query';
@@ -228,6 +228,56 @@ export function buildSetRows(
   });
 
   return rows;
+}
+
+// D-08's three groupable set types and the exact Copywriting Contract label each one's "+ Add"
+// control carries — the one place this text lives; SetRow.tsx's SetGroupAddControl and
+// ExercisePage.tsx's render site both take the label as a prop, never re-deriving the string.
+export const GROUP_ADD_LABEL: Partial<Record<SetType, string>> = {
+  drop: '+ Add Drop',
+  myorep: '+ Add Myorep Set',
+  partial: '+ Add Partial',
+};
+
+// The group's kind decides which "+ Add" label applies and, via resolveGroupAddControls below,
+// whether the control may appear at all. D-07's divergence: for a myorep the PARENT is the
+// activation set, so a myorep parent's own setType answers the question regardless of whether it
+// has children yet — every other groupable type answers from its children's shared setType
+// instead, since D-07 keeps a drop/partial parent typed `normal`. A `warmup` parent is never a
+// group of any kind this phase builds.
+export function groupKindFor(parentRow: ResolvedSetRow, childRows: ResolvedSetRow[]): SetType | null {
+  if (parentRow.setType === 'warmup') return null;
+  if (parentRow.setType === 'myorep') return 'myorep';
+  const childType = childRows[0]?.setType;
+  return (childType as SetType | undefined) ?? null;
+}
+
+export interface GroupAddControl {
+  parentSetId: string;
+  kind: SetType;
+  label: string;
+  visible: boolean;
+}
+
+// Generalises D-08 ("revealed once a sub-entry is completed") to myorep's activation-set case,
+// where the group's most recently added entry is the parent itself rather than a sub-entry (D-07)
+// — resolveGroupAddControls keys `visible` off whichever row is that "most recent entry": the
+// last child when the group has any, the parent itself when it does not. The control never fires
+// on its own; one deliberate tap per mini-set is the decision (D-08).
+export function resolveGroupAddControls(rows: ResolvedSetRow[]): GroupAddControl[] {
+  const controls: GroupAddControl[] = [];
+  for (const parent of rows) {
+    if (parent.setId === null) continue; // the trailing draft row never owns a group
+    if ((parent.parentSetId ?? null) !== null) continue; // only a parent can own a group's control
+    const children = rows.filter((candidate) => candidate.parentSetId === parent.setId);
+    const kind = groupKindFor(parent, children);
+    if (kind === null) continue;
+    const label = GROUP_ADD_LABEL[kind];
+    if (label === undefined) continue;
+    const lastEntry = children.length > 0 ? children[children.length - 1] : parent;
+    controls.push({ parentSetId: parent.setId, kind, label, visible: lastEntry.completed });
+  }
+  return controls;
 }
 
 const WEIGHT_STEP_KG = 2.5;

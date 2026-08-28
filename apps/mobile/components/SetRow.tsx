@@ -1,7 +1,27 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useColorScheme } from 'nativewind';
 import { Pressable, Text, View, type AccessibilityActionEvent } from 'react-native';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import type { KeypadField } from './NumericKeypad';
+
+// ThemeColors (lib/theme-colors.ts) carries only accent/foregroundMuted/surface — no destructive
+// glyph color exists there yet. Resolved locally (mirroring SessionActionSheet.tsx's/
+// GymProfileEditor.tsx's own GLYPH_COLORS/DESTRUCTIVE_COLORS pattern and global.css's
+// --color-destructive values exactly) rather than widening the shared interface for every other,
+// unrelated consumer of it.
+const DESTRUCTIVE_COLORS: Record<'light' | 'dark', string> = {
+  light: 'rgb(220, 38, 38)',
+  dark: 'rgb(239, 68, 68)',
+};
+
+export type SetRowColors = ThemeColors & { destructive?: string };
+
+// Shared by SetRow's own wrapper and ExercisePage's — one place resolves colorScheme into the
+// destructive value, so the two call sites this row family has can never drift onto different
+// reds.
+export function resolveSetRowColors(themeColors: ThemeColors, colorScheme: 'light' | 'dark' | null | undefined): SetRowColors {
+  return { ...themeColors, destructive: DESTRUCTIVE_COLORS[colorScheme === 'dark' ? 'dark' : 'light'] };
+}
 
 export type SetRowFieldState = 'active' | 'populated' | 'empty';
 
@@ -96,7 +116,7 @@ export interface SetRowViewProps {
   reference: SetRowReference;
   completed: boolean;
   activeField: KeypadField | null;
-  colors: ThemeColors;
+  colors: SetRowColors;
   // All optional and additive — a caller that supplies none of them (WorkoutSummary.tsx's
   // summary-correction rows) renders and behaves exactly as it did before these existed.
   warmup?: boolean;
@@ -111,6 +131,9 @@ export interface SetRowViewProps {
   onFieldPress: (field: KeypadField) => void;
   onReferenceTap: (field: 'weight' | 'reps') => void;
   onCheckmarkPress: () => void;
+  // Task 2 (07-05): the per-child remove glyph. Rendered only when isChild is true AND this is
+  // supplied — a parent row never carries it, regardless of whether the caller passes it in.
+  onRemoveChild?: () => void;
 }
 
 interface SetFieldReference {
@@ -221,6 +244,7 @@ export function SetRowView({
   onFieldPress,
   onReferenceTap,
   onCheckmarkPress,
+  onRemoveChild,
 }: SetRowViewProps) {
   const glyph = badgeGlyphFor({ setType: warmup ? 'warmup' : setType, side });
 
@@ -299,6 +323,41 @@ export function SetRowView({
       >
         {completed ? <Ionicons name="checkmark" size={20} color="white" /> : null}
       </Pressable>
+
+      {isChild && onRemoveChild ? (
+        <Pressable
+          onPress={onRemoveChild}
+          accessibilityRole="button"
+          accessibilityLabel="Remove sub-entry"
+          className="items-center justify-center"
+          style={{ width: 48, height: 48 }}
+        >
+          <Ionicons name="trash-outline" size={16} color={colors.destructive ?? DESTRUCTIVE_COLORS.light} />
+        </Pressable>
+      ) : null}
+    </Pressable>
+  );
+}
+
+export interface SetGroupAddControlProps {
+  label: string;
+  onPress: () => void;
+}
+
+// The D-08 "+ Add {type}" control — dashed-border, text-accent chip language (Gym Profile Editor
+// precedent, the third reuse of this visual pattern in this codebase), indented to match the D-06
+// child indent. Lives in this file, not at ExercisePage's call site, for the same WINDOWS #109
+// reason SetRowView's own badge does: one place renders the affordance, every consumer gets it.
+export function SetGroupAddControl({ label, onPress }: SetGroupAddControlProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="items-start justify-center rounded-md border border-foreground-muted"
+      style={{ minHeight: 48, borderStyle: 'dashed', paddingLeft: 16, paddingRight: 16, paddingVertical: 8 }}
+    >
+      <Text className="text-label font-normal text-accent">{label}</Text>
     </Pressable>
   );
 }
@@ -319,9 +378,11 @@ export interface SetRowProps {
   onFieldPress: (field: KeypadField) => void;
   onReferenceTap: (field: 'weight' | 'reps') => void;
   onCheckmarkPress: () => void;
+  onRemoveChild?: () => void;
 }
 
 export function SetRow(props: SetRowProps) {
-  const colors = useThemeColors();
-  return <SetRowView {...props} colors={colors} />;
+  const themeColors = useThemeColors();
+  const { colorScheme } = useColorScheme();
+  return <SetRowView {...props} colors={resolveSetRowColors(themeColors, colorScheme)} />;
 }

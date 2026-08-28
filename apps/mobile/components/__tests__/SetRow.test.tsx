@@ -1,6 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { SetRowView, badgeGlyphFor, formatFieldValue, setRowFieldState, type SetRowViewProps } from '../SetRow';
+import { SetGroupAddControl, SetRowView, badgeGlyphFor, formatFieldValue, setRowFieldState, type SetRowViewProps } from '../SetRow';
 
 // Same direct-invocation technique as CycleStrip.test.tsx/DayDeck.test.tsx — SetRowView has no
 // hooks, so calling it directly exercises its real body with no renderer.
@@ -357,5 +357,68 @@ describe('SetRowView — Phase 7 badge/grouping additions', () => {
 
     (setNumberPressable?.props.onLongPress as () => void)();
     expect(onLongPress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SetRowView — Task 2 (07-05): the per-child remove glyph', () => {
+  it('renders a trailing 48x48 remove Pressable labelled "Remove sub-entry" only when isChild is true AND onRemoveChild is supplied', () => {
+    const withBoth = SetRowView(baseProps({ isChild: true, onRemoveChild: jest.fn() }));
+    const removeGlyph = findByType(withBoth, Pressable).find((el) => el.props.accessibilityLabel === 'Remove sub-entry');
+    expect(removeGlyph).toBeDefined();
+    expect(removeGlyph?.props.style).toEqual({ width: 48, height: 48 });
+
+    const childNoHandler = SetRowView(baseProps({ isChild: true, onRemoveChild: undefined }));
+    expect(findByType(childNoHandler, Pressable).some((el) => el.props.accessibilityLabel === 'Remove sub-entry')).toBe(false);
+
+    const parentWithHandler = SetRowView(baseProps({ isChild: false, onRemoveChild: jest.fn() }));
+    expect(findByType(parentWithHandler, Pressable).some((el) => el.props.accessibilityLabel === 'Remove sub-entry')).toBe(false);
+  });
+
+  it('a PARENT row renders no control labelled "Remove sub-entry", regardless of the handler being supplied', () => {
+    const result = SetRowView(baseProps({ isChild: false, onRemoveChild: jest.fn() }));
+    expect(findByType(result, Pressable).some((el) => el.props.accessibilityLabel === 'Remove sub-entry')).toBe(false);
+  });
+
+  it('tapping the remove glyph calls onRemoveChild exactly once and does not call onCheckmarkPress', () => {
+    const onRemoveChild = jest.fn();
+    const onCheckmarkPress = jest.fn();
+    const result = SetRowView(baseProps({ isChild: true, onRemoveChild, onCheckmarkPress }));
+    const removeGlyph = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Remove sub-entry');
+
+    (removeGlyph?.props.onPress as () => void)();
+
+    expect(onRemoveChild).toHaveBeenCalledTimes(1);
+    expect(onCheckmarkPress).not.toHaveBeenCalled();
+  });
+
+  it('resolves the destructive glyph color from colors.destructive when supplied, falling back to the light default otherwise', () => {
+    const withDestructive = SetRowView(baseProps({ isChild: true, onRemoveChild: jest.fn(), colors: { ...COLORS, destructive: 'rgb(1, 2, 3)' } }));
+    const glyphIcon = findByType(withDestructive, Pressable).find((el) => el.props.accessibilityLabel === 'Remove sub-entry');
+    expect(JSON.stringify(glyphIcon)).toContain('rgb(1, 2, 3)');
+
+    const withoutDestructive = SetRowView(baseProps({ isChild: true, onRemoveChild: jest.fn() }));
+    const fallbackIcon = findByType(withoutDestructive, Pressable).find((el) => el.props.accessibilityLabel === 'Remove sub-entry');
+    expect(JSON.stringify(fallbackIcon)).toContain('rgb(220, 38, 38)');
+  });
+});
+
+describe('SetGroupAddControl — Task 2 (07-05): the D-08 "+ Add {type}" control', () => {
+  it('renders a dashed-border, text-accent chip at the 48-minimum height carrying the given label', () => {
+    const result = SetGroupAddControl({ label: '+ Add Drop', onPress: jest.fn() });
+
+    expect(flatText(result)).toBe('+ Add Drop');
+    expect((result.props.style as { minHeight: number; borderStyle: string })?.minHeight).toBe(48);
+    expect((result.props.style as { minHeight: number; borderStyle: string })?.borderStyle).toBe('dashed');
+    const label = findByType(result, Text).find((el) => flatText(el) === '+ Add Drop');
+    expect((label?.props.className as string)).toContain('text-accent');
+  });
+
+  it('calls onPress exactly once when tapped', () => {
+    const onPress = jest.fn();
+    const result = SetGroupAddControl({ label: '+ Add Myorep Set', onPress });
+
+    (result.props.onPress as () => void)();
+
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 });
