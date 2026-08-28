@@ -1,4 +1,4 @@
-import { normalizeHistory } from '../normalize-history';
+import { foldPerSidePair, normalizeHistory, PER_SIDE_STRATEGY } from '../normalize-history';
 import type { ExerciseSessionSets, LoggedSetInput } from '../result';
 
 function set(overrides: Partial<LoggedSetInput> = {}): LoggedSetInput {
@@ -87,5 +87,68 @@ describe('normalizeHistory', () => {
       ]),
     ]);
     expect(result[0]).toMatchObject({ weightKg: '100.000' });
+  });
+
+  it('folds a completed left-right per-side pair to one performance from the lower rep count when weights are equal', () => {
+    const result = normalizeHistory([
+      session('sess-1', [
+        set({ id: 'left', side: 'left', weightKg: '100.000', reps: 8, rir: 2 }),
+        set({ id: 'right', parentSetId: 'left', side: 'right', weightKg: '100.000', reps: 6, rir: 2 }),
+      ]),
+    ]);
+    expect(result).toEqual([{ sessionId: 'sess-1', weightKg: '100.000', reps: 6, rir: 2, setType: 'normal' }]);
+  });
+
+  it('returns the lighter side and that side own reps when a per-side pair logged different weights', () => {
+    const result = normalizeHistory([
+      session('sess-1', [
+        set({ id: 'left', side: 'left', weightKg: '100.000', reps: 8, rir: 2 }),
+        set({ id: 'right', parentSetId: 'left', side: 'right', weightKg: '90.000', reps: 10, rir: 1 }),
+      ]),
+    ]);
+    expect(result).toEqual([{ sessionId: 'sess-1', weightKg: '90.000', reps: 10, rir: 1, setType: 'normal' }]);
+  });
+
+  it('yields the left parent alone when its right-side child has not been logged yet', () => {
+    const result = normalizeHistory([
+      session('sess-1', [set({ id: 'left', side: 'left', weightKg: '100.000', reps: 8, rir: 2 })]),
+    ]);
+    expect(result).toEqual([{ sessionId: 'sess-1', weightKg: '100.000', reps: 8, rir: 2, setType: 'normal' }]);
+  });
+
+  it('does not apply the per-side fold to a drop group whose parent has no side', () => {
+    const result = normalizeHistory([
+      session('sess-1', [
+        set({ id: 'parent', parentSetId: null, side: null, weightKg: '100.000', reps: 8 }),
+        set({ id: 'child-1', parentSetId: 'parent', side: null, setType: 'drop', weightKg: '80.000', reps: 6 }),
+      ]),
+    ]);
+    expect(result).toEqual([{ sessionId: 'sess-1', weightKg: '100.000', reps: 8, rir: 2, setType: 'normal' }]);
+  });
+
+  it('produces identical output whether or not a superset grouping is present on the session, since supersets are invisible to a per-exercise fold', () => {
+    const rows = [set({ id: 'a', weightKg: '100.000', reps: 8 })];
+    const withoutSuperset = normalizeHistory([session('sess-1', rows)]);
+    const withSuperset = normalizeHistory([
+      { ...session('sess-1', rows), supersetGroupId: 'grp-1' } as ExerciseSessionSets,
+    ]);
+    expect(withSuperset).toEqual(withoutSuperset);
+  });
+
+  describe('foldPerSidePair', () => {
+    it('returns the lower rep count when both sides logged the same weight', () => {
+      const left = set({ id: 'left', side: 'left', weightKg: '100.000', reps: 9 });
+      const right = set({ id: 'right', side: 'right', parentSetId: 'left', weightKg: '100.000', reps: 7 });
+      expect(foldPerSidePair(left, right)).toBe(right);
+    });
+
+    it('PER_SIDE_STRATEGY selects the weaker side by default, and the fold flips coherently under the other value', () => {
+      const left = set({ id: 'left', side: 'left', weightKg: '100.000', reps: 8 });
+      const right = set({ id: 'right', side: 'right', parentSetId: 'left', weightKg: '90.000', reps: 8 });
+
+      expect(PER_SIDE_STRATEGY).toBe('weaker');
+      expect(foldPerSidePair(left, right)).toBe(right);
+      expect(foldPerSidePair(left, right, 'stronger')).toBe(left);
+    });
   });
 });
