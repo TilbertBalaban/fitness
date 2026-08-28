@@ -42,9 +42,9 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [x] **PROG-04**: User can organize a program into cycles (weeks), each with its own targets
 - [x] **PROG-05**: User can place a deload at the start or end of a cycle
 - [x] **PROG-06**: User can schedule planned time off within a program
-- [ ] **PROG-07**: User can duplicate, archive, and restore programs and individual workouts
+- [x] **PROG-07**: User can duplicate, archive, and restore programs and individual workouts
 - [x] **PROG-08**: User can set which program is active
-- [x] **PROG-09**: User can view the active program's upcoming workouts with target muscles and per-cycle rep/RIR targets
+- [x] **PROG-09**: User can view the active program's next workout with target muscles and per-cycle rep/RIR targets
 - [x] **PROG-10**: User can freeze a program so progression stops modifying it
 - [x] **PROG-11**: User can edit a program without corrupting any workout already logged against it
 
@@ -216,7 +216,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PROG-04 | Phase 4 — Program Builder | Complete |
 | PROG-05 | Phase 4 — Program Builder | Complete |
 | PROG-06 | Phase 4 — Program Builder | Complete |
-| PROG-07 | Phase 4 — Program Builder | Partial |
+| PROG-07 | Phase 4 — Program Builder | Complete |
 | PROG-08 | Phase 4 — Program Builder | Complete |
 | PROG-09 | Phase 4 — Program Builder | Complete |
 | PROG-10 | Phase 4 — Program Builder | Complete |
@@ -294,6 +294,15 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DASH-01 | Phase 12 — Body Metrics & Dashboard | Pending |
 | DASH-02 | Phase 12 — Body Metrics & Dashboard | Pending |
 | DASH-03 | Phase 12 — Body Metrics & Dashboard | Pending |
+
+## Amendments
+
+Changes to a requirement's own text after it was first written, with the decision that authorised
+each one. A requirement is never silently reworded to match what shipped.
+
+| Date | Requirement | Change | Authority | Rationale |
+|------|-------------|--------|-----------|-----------|
+| 2026-08-28 | PROG-09 | "upcoming workouts" narrowed to "the next workout" | D-32 (`04-CONTEXT.md`) | The load-bearing user need — "what am I training next, and what are the numbers" — is fully served by Home's single `NextUpCard`: the full upcoming sequence remains visible on the Programs tab's day deck, so nothing the user could see before is now hidden, only Home's own framing narrows to the next workout. The prior justification for this same narrowing cited D-27 ("Upcoming workouts appear on the Home tab, not the Programs tab"), but D-27 is a **placement** decision — it says *where* upcoming workouts are shown, not how many — and does not support a scope cap; citing it for the single-card scope was authority drift, and this amendment removes that drift by naming the decision that actually authorises the narrowing (D-32) instead. Extending Home to N cards later stays additive, not a rework: `resolveNextUp` already computes cycle position and rotation, so a future plan can widen the card count without touching the resolver. |
 
 **Coverage:**
 
