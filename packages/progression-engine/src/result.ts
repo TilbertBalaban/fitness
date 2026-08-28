@@ -8,7 +8,10 @@ export interface LoggedSetInput {
   weightKg: string | null;
   reps: number;
   rir: number | null;
-  side: 'left' | 'right' | null;
+  // Not typed as a closed union: the logged_set.side column is a plain text field with no
+  // enumerated vocabulary yet, and 08-03 (not this plan) is what defines and consumes per-side
+  // values. This module reads the column as-is and does not interpret it.
+  side: string | null;
   completed: boolean;
 }
 

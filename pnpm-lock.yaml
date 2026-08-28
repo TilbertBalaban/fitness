@@ -125,6 +125,9 @@ importers:
       '@fitness/pr-rules':
         specifier: workspace:*
         version: link:../../packages/pr-rules
+      '@fitness/progression-engine':
+        specifier: workspace:*
+        version: link:../../packages/progression-engine
       '@op-engineering/op-sqlite':
         specifier: ^18.0.0
         version: 18.0.0(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)

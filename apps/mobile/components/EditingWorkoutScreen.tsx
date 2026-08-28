@@ -187,6 +187,10 @@ export function EditingWorkoutScreenView({
               // changed since this session ran, so the row is absent, not gated.
               equipmentType={null}
               resolvedInventory={null}
+              // Same reasoning as the equipment fields immediately above: a past, already-completed
+              // workout has no forward-looking recommendation to make (08-01's recommendation
+              // engine answers "what to lift next", not "what was logged here").
+              recommendation={null}
               equipmentProfileId={null}
               onExerciseChanged={onExerciseChanged}
               onFieldPress={(setId, field, currentValue) => onFieldPress(exercise.id, setId, field, currentValue)}

@@ -5,6 +5,7 @@ import { useColorScheme } from 'nativewind';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { WARMUP_SET_TYPE, WORKING_SET_TYPE, type EquipmentType, type ResolvedTarget, type SetType, type WeightUnit } from '@fitness/api-contracts';
 import { hasResolvableEquipment, resolveEquipmentBand, type ResolvedInventory } from '@fitness/plate-math';
+import type { ProgressionResult } from '@fitness/progression-engine';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, updateLoggedSet } from '@/lib/db/log-set';
@@ -30,6 +31,7 @@ import {
   SetTypePickerSheet,
   type SetTypeSelectionEffect,
 } from './SetTypePickerSheet';
+import { RecommendationBanner } from './RecommendationBanner';
 import { TargetsSheet } from './TargetsSheet';
 import { WarmupSheet } from './WarmupSheet';
 
@@ -99,6 +101,11 @@ export interface ExercisePageViewProps {
   rows: ExercisePageSetRow[];
   activeField: ExercisePageActiveField | null;
   colors: ThemeColors;
+  weightUnit: WeightUnit;
+  // Already computed by the caller's useMemo over recommendNextPrescription (D-01, D-09) — this
+  // view performs no computation and calls no engine function, exactly like resolvedInventory/
+  // bandState above it. null before the session's history has resolved.
+  recommendation: ProgressionResult | null;
   actionBarSlot?: ReactNode;
   // A draft row (null setId) supplies no handler — there is no logged_set yet to annotate.
   onSetLongPress?: (setId: string) => void;
@@ -126,6 +133,8 @@ export function ExercisePageView({
   rows,
   activeField,
   colors,
+  weightUnit,
+  recommendation,
   actionBarSlot,
   onSetLongPress,
   onSetNumberPress,
@@ -152,6 +161,7 @@ export function ExercisePageView({
     <View className="flex-1 bg-background">
       <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 }}>
         <Text className="mb-md text-heading font-semibold text-foreground">{exerciseName}</Text>
+        <RecommendationBanner result={recommendation} weightUnit={weightUnit} colors={colors} />
         {actionBarSlot ?? null}
         {rows.flatMap((row) => {
           const key = row.setId ?? `draft-${row.setIndex}`;
@@ -278,6 +288,7 @@ export function ExercisePage({
   onExerciseChanged,
   rows,
   activeField,
+  recommendation,
   onFieldPress,
   onReferenceTap,
   onCheckmarkPress,
@@ -703,6 +714,8 @@ export function ExercisePage({
       rows={rows}
       activeField={activeField}
       colors={colors}
+      weightUnit={weightUnit}
+      recommendation={recommendation}
       actionBarSlot={actionBarSlot}
       onSetLongPress={handleSetLongPress}
       onSetNumberPress={handleSetNumberPress}

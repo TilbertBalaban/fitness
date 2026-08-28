@@ -17,6 +17,7 @@ import { SetRowView } from '../../../components/SetRow';
 import { ExerciseStripView } from '../../../components/ExerciseStrip';
 import { ExercisePagerView } from '../../../components/ExercisePager';
 import { ExercisePageView } from '../../../components/ExercisePage';
+import { RecommendationBanner } from '../../../components/RecommendationBanner';
 import { ExercisePickerModal } from '../../../components/ExercisePickerModal';
 import { DiscardWorkoutDialog } from '../../../components/WorkoutInProgressBanner';
 import { SwitchGymSheet } from '../../../components/SwitchGymSheet';
@@ -460,6 +461,7 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     onBandRecoveryPress: jest.fn(),
     equipmentTypeByExerciseId: new Map(),
     resolvedInventory: null,
+    recommendationBySessionExerciseId: {},
     equipmentProfileId: null,
     starting: false,
     nextUp: null,
@@ -547,10 +549,20 @@ const NO_ACTIVE_PROGRAM_NEXT_UP = { kind: 'no-active-program' as const };
 function renderCurrentExercisePage(result: ReactNode, exercise: { id: string; name: string; completedWorkingSets: number; targetSets: number }) {
   const [pager] = findByType(result, ExercisePagerView);
   const pageElement = (pager.props.renderExercise as (ex: typeof exercise) => AnyElement)(exercise);
-  const { exerciseName, rows, activeField, onFieldPress, onReferenceTap, onCheckmarkPress } = pageElement.props as unknown as Parameters<
-    typeof ExercisePageView
-  >[0];
-  return ExercisePageView({ exerciseName, rows, activeField, onFieldPress, onReferenceTap, onCheckmarkPress, colors: COLORS, actionBarSlot: undefined });
+  const { exerciseName, rows, activeField, weightUnit, recommendation, onFieldPress, onReferenceTap, onCheckmarkPress } =
+    pageElement.props as unknown as Parameters<typeof ExercisePageView>[0];
+  return ExercisePageView({
+    exerciseName,
+    rows,
+    activeField,
+    weightUnit,
+    recommendation,
+    onFieldPress,
+    onReferenceTap,
+    onCheckmarkPress,
+    colors: COLORS,
+    actionBarSlot: undefined,
+  });
 }
 
 describe('WorkoutScreenView', () => {
@@ -696,6 +708,42 @@ describe('WorkoutScreenView', () => {
     expect(setRows).toHaveLength(2);
     expect(setRows[0].props.completed).toBe(true);
     expect(setRows[1].props.completed).toBe(false);
+  });
+
+  it('threads the recommendation for the current exercise through to the rendered page (08-01)', () => {
+    const exercise = { id: 'se-1', name: 'Bench Press', completedWorkingSets: 1, targetSets: 1 };
+    const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null);
+    const result = WorkoutScreenView(
+      baseViewProps({
+        exercises: [exercise],
+        rowsByExercise: { 'se-1': rows },
+        recommendationBySessionExerciseId: {
+          'se-1': { kind: 'recommendation', weightKg: '102.500', reps: 8, rir: 2, basis: 'load_increase', offeredReduction: null },
+        },
+      }),
+    );
+
+    const page = renderCurrentExercisePage(result, exercise);
+    const [banner] = findByType(page, RecommendationBanner);
+    const bannerResult = RecommendationBanner(banner.props as unknown as Parameters<typeof RecommendationBanner>[0]);
+    expect(flatText(bannerResult)).toContain('102.50 kg');
+  });
+
+  it('renders the no_history banner when the exercise has no recommendation yet', () => {
+    const exercise = { id: 'se-1', name: 'Bench Press', completedWorkingSets: 1, targetSets: 1 };
+    const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null);
+    const result = WorkoutScreenView(
+      baseViewProps({
+        exercises: [exercise],
+        rowsByExercise: { 'se-1': rows },
+        recommendationBySessionExerciseId: { 'se-1': { kind: 'no_history' } },
+      }),
+    );
+
+    const page = renderCurrentExercisePage(result, exercise);
+    const [banner] = findByType(page, RecommendationBanner);
+    const bannerResult = RecommendationBanner(banner.props as unknown as Parameters<typeof RecommendationBanner>[0]);
+    expect(flatText(bannerResult)).toContain('No history yet');
   });
 
   it('a SetRowView field press resolves that row’s exerciseId, setId, field and current value through onFieldPress', () => {
