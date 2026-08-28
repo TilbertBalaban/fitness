@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 118
+open_count: 119
 waived_count: 4
 fixed_count: 25
-total_count: 147
-last_updated: 2026-08-28T15:30:59.775Z
+total_count: 148
+last_updated: 2026-08-28T16:14:09.256Z
 ---
 
 # Broken Windows Ledger
@@ -162,6 +162,7 @@ last_updated: 2026-08-28T15:30:59.775Z
 | 148 | 07 | deviation | apps/mobile/lib/db/session-mutations.ts |  | 07-06-PLAN.md Task 2 acceptance criterion 'grep -c routineExercise is 0' is unsatisfiable as literally written — the file already legitimately imports/uses routineExercise (13 pre-existing occurrences) for Phase 4/5 writeBackTargets/resolveWriteBackTarget target write-back, unrelated to this plan. Verified instead that formSuperset/detachSuperset themselves reference only sessionExercise (D-16 intent honored). | open |  | 2026-08-28T10:48:02.164Z |  |
 | 149 | 04 | deviation | ops/powersync/sync-rules.yaml |  | routine_day stream query deliberately not filtered by archived_at, against D-29's literal text — a filter would delete an archived day from every device that did not perform the archive, making restore unreachable; withdrawn/resolved as D-33 in 04-CONTEXT.md | open |  | 2026-08-28T15:18:35.060Z |  |
 | 150 | 04 | unrun-verify | apps/mobile/app/(tabs)/programs.tsx |  | The four day-page controls (Duplicate, Archive, Restore, plus the pre-existing Remove) have been observed on neither iOS nor Android — no Xcode, no Android SDK in this worktree (ROADMAP Phase 999.1); the web observation lands in 04-15. | open |  | 2026-08-28T15:29:10.796Z |  |
+| 151 | 04 | unrun-verify | apps/mobile/e2e/program-day-lifecycle.spec.ts |  | Duplicate/archive/restore day and time-off cycle conversion have been observed only in a web browser (Chromium via Playwright) — no Xcode, no Android SDK in this worktree (ROADMAP Phase 999.1 native sweep). | open |  | 2026-08-28T16:14:09.256Z |  |
 
 ````json
 [
@@ -1927,6 +1928,18 @@ last_updated: 2026-08-28T15:30:59.775Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-28T15:29:10.796Z",
+    "resolved_at": null
+  },
+  {
+    "id": 151,
+    "kind": "unrun-verify",
+    "phase": "04",
+    "file": "apps/mobile/e2e/program-day-lifecycle.spec.ts",
+    "line": null,
+    "description": "Duplicate/archive/restore day and time-off cycle conversion have been observed only in a web browser (Chromium via Playwright) — no Xcode, no Android SDK in this worktree (ROADMAP Phase 999.1 native sweep).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-28T16:14:09.256Z",
     "resolved_at": null
   }
 ]
