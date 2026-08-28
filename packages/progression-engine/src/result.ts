@@ -1,4 +1,4 @@
-import type { EquipmentType, SetType } from '@fitness/api-contracts';
+import type { EquipmentType, ProgressionPreference, SetType } from '@fitness/api-contracts';
 import type { ResolvedInventory } from '@fitness/plate-math';
 
 export interface LoggedSetInput {
@@ -40,9 +40,19 @@ export interface RecommendInput {
   };
   equipmentType: EquipmentType | null;
   inventory: ResolvedInventory | null;
+  // D-07: required, not optional. An optional field would let a caller silently receive the
+  // default forever, which is exactly how a shipped preference dial becomes a setting that
+  // changes nothing.
+  preference: ProgressionPreference;
 }
 
-export type RecommendationBasis = 'load_increase' | 'rep_increase' | 'hold' | 'failure_rep_increase' | 'shortfall_hold';
+export type RecommendationBasis =
+  | 'load_increase'
+  | 'rep_increase'
+  | 'hold'
+  | 'failure_rep_increase'
+  | 'shortfall_hold'
+  | 'range_widened';
 
 export type UnavailableReason = 'incomplete_prescription' | 'no_achievable_weight' | 'equipment_unavailable';
 
