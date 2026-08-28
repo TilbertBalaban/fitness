@@ -368,6 +368,7 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     userId: 'user-1',
     activeGymId: 'gym-1',
     exercises: [{ id: 'se-1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3 }],
+    supersetGroupMembers: [{ id: 'se-1', orderIndex: 0, supersetGroupId: null, exerciseName: 'Bench Press' }],
     currentExerciseId: 'se-1',
     currentIndex: 0,
     pagerWidth: 375,

@@ -281,6 +281,10 @@ export interface WorkoutScreenViewProps {
   // own "which row is active" comparison, not the live default pointer.
   activeGymId: string | null;
   exercises: ExerciseStripExercise[];
+  // The same live members list Task 1 built for handleCheckmarkPress's own D-13/D-14 use —
+  // threaded here so ExercisePage's Superset/Detach rows and partner chip answer every
+  // group-membership question from this one already-loaded list too.
+  supersetGroupMembers: SupersetMemberInput[];
   currentExerciseId: string | null;
   currentIndex: number;
   pagerWidth: number;
@@ -417,6 +421,7 @@ export function WorkoutScreenView({
   userId,
   activeGymId,
   exercises,
+  supersetGroupMembers,
   currentExerciseId,
   currentIndex,
   pagerWidth,
@@ -634,6 +639,8 @@ export function WorkoutScreenView({
               routineExerciseId={pageData.routineExerciseId}
               cycleId={pageData.cycleId}
               sessionExercises={exercises}
+              sessionExerciseRows={supersetGroupMembers}
+              onSelectExercise={onSelectExercise}
               db={db}
               hasNote={pageData.hasNote}
               noteText={pageData.noteText}
@@ -1440,6 +1447,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     userId,
     activeGymId: sessionRow?.equipmentProfileId ?? null,
     exercises,
+    supersetGroupMembers,
     currentExerciseId: currentExercise?.id ?? null,
     currentIndex: safeIndex,
     pagerWidth,

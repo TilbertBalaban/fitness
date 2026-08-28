@@ -2,15 +2,16 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from 'nativewind';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { WARMUP_SET_TYPE, type EquipmentType, type ResolvedTarget, type SetType, type WeightUnit } from '@fitness/api-contracts';
 import { hasResolvableEquipment, resolveEquipmentBand, type ResolvedInventory } from '@fitness/plate-math';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, updateLoggedSet } from '@/lib/db/log-set';
-import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
+import { detachSuperset, formSuperset, removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
 import { addSubEntry, clearSubEntries, removeSubEntry } from '@/lib/db/set-groups';
 import { resolveGroupAddControls, type GroupAddControl } from '@/lib/session/set-row-builders';
+import { detachRowPartnerName, supersetMembers, supersetPartnerLabel, type SupersetMemberInput } from '@/lib/session/superset';
 import { ChangeSetTypeDialog } from './ChangeSetTypeDialog';
 import { EquipmentAvailabilitySheet } from './EquipmentAvailabilitySheet';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
@@ -30,6 +31,42 @@ import {
 } from './SetTypePickerSheet';
 import { TargetsSheet } from './TargetsSheet';
 import { WarmupSheet } from './WarmupSheet';
+
+export interface SupersetPartnerChipProps {
+  sessionExerciseRows: SupersetMemberInput[];
+  sessionExerciseId: string;
+  onSelectExercise: (sessionExerciseId: string) => void;
+}
+
+// D-12: the `bg-secondary rounded-full` pill beneath the header and above the action bar — renders
+// nothing when the shared predicate resolves no label (ungrouped, or a group shrunk to one live
+// member, D-24). Tapping jumps the pager to the partner for a two-member group, and cyclically to
+// the next member for a group of three or more — reusing the same jump handler the strip's own
+// chips already call, never a second navigation mechanism.
+export function SupersetPartnerChip({ sessionExerciseRows, sessionExerciseId, onSelectExercise }: SupersetPartnerChipProps) {
+  const label = supersetPartnerLabel(sessionExerciseRows, sessionExerciseId);
+  if (label === null) return null;
+
+  const handlePress = () => {
+    const members = supersetMembers(sessionExerciseRows, sessionExerciseId);
+    if (members.length <= 1) return;
+    const position = members.findIndex((member) => member.id === sessionExerciseId);
+    const nextMember = members[(position + 1) % members.length];
+    onSelectExercise(nextMember.id);
+  };
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="mb-md self-start rounded-full bg-secondary px-md py-sm"
+      style={{ minHeight: 48 }}
+    >
+      <Text className="text-label font-normal text-foreground-muted">{label}</Text>
+    </Pressable>
+  );
+}
 
 export interface ExercisePageSetRow {
   setId: string | null;
@@ -180,6 +217,14 @@ export interface ExercisePageProps
   // from this rather than issuing its own query (the sheet opens from already-loaded session
   // state, E10's "no loading state of its own" rule).
   sessionExercises: ExerciseStripExercise[];
+  // The same live members list Task 1 (07-07) builds in workout.tsx — every superset-group
+  // question (final-member, partner label, detach-row partner name) is answered from this one
+  // already-loaded list, never re-derived here.
+  sessionExerciseRows: SupersetMemberInput[];
+  // Jumps the pager to another exercise — reuses the strip's own jump handler (workout.tsx's
+  // handleSelectExercise), never a second navigation mechanism, for both the partner chip's tap
+  // and (07-08) any other cross-exercise jump this page needs.
+  onSelectExercise: (sessionExerciseId: string) => void;
   // Threaded to TargetsSheet's own write-back call so it reaches the same database this page's
   // own reads came from, rather than TargetsSheet's default silently resolving getPowerSync()
   // again (05-12). Undefined in the few call sites that have never needed to override it —
@@ -214,6 +259,8 @@ export function ExercisePage({
   routineExerciseId,
   cycleId,
   sessionExercises,
+  sessionExerciseRows,
+  onSelectExercise,
   db,
   hasNote,
   noteText,
@@ -256,6 +303,15 @@ export function ExercisePage({
   const hasEquipment = hasResolvableEquipment(
     resolveEquipmentBand({ equipmentType, targetKg: null, inventory: resolvedInventory }),
   );
+
+  // The sheet's Superset/Detach rows resolve from the shared predicates, never re-derived at the
+  // render site (D-11). `nextExerciseName` mirrors formSuperset's own "next live adjacent
+  // exercise by orderIndex" pairing rule, so the row's label always names the exercise the write
+  // will actually pair with.
+  const orderedLiveRows = [...sessionExerciseRows].sort((a, b) => a.orderIndex - b.orderIndex);
+  const currentRowIndex = orderedLiveRows.findIndex((candidate) => candidate.id === sessionExerciseId);
+  const nextExerciseName = currentRowIndex === -1 ? null : (orderedLiveRows[currentRowIndex + 1]?.exerciseName ?? null);
+  const supersetPartnerName = detachRowPartnerName(sessionExerciseRows, sessionExerciseId);
 
   // A draft row's setId is null, so ExercisePageView never calls this for one (05-UI-SPEC
   // Amendment A.1) — there is no logged_set yet for a draft to annotate.
@@ -406,6 +462,33 @@ export function ExercisePage({
     else if (id === 'warmup') setActiveSheet('warmup');
   };
 
+  // Neither Superset nor Detach shows a confirmation — both are structural, reversible edits with
+  // no logged-set data loss (Switch Gym row's precedent). A rejection sets the existing
+  // setTypeError state and leaves the sheet OPEN rather than closing as if the edit applied (E4).
+  const handleFormSuperset = async () => {
+    try {
+      await formSuperset({ sessionExerciseId, sessionId }, db ?? getPowerSync());
+      closeSheet();
+      onExerciseChanged();
+    } catch {
+      setSetTypeError("Couldn't save");
+    }
+  };
+
+  const handleDetachSuperset = async () => {
+    try {
+      await detachSuperset(sessionExerciseId, db ?? getPowerSync());
+      closeSheet();
+      onExerciseChanged();
+    } catch {
+      setSetTypeError("Couldn't save");
+    }
+  };
+
+  // Every SessionExerciseActionId is dispatched explicitly — an unhandled id must not silently
+  // open the reorder sheet (the trap the plan's own instruction calls out). 'enable-per-side' and
+  // 'disable-per-side' are 07-08's territory, not yet wired, and unreachable from this sheet today
+  // since perSideAvailable defaults to false (SessionActionSheet's own visibility gate).
   const handleSessionAction = (id: SessionExerciseActionId) => {
     if (id === 'remove') setActiveSheet('remove-confirm');
     else if (id === 'swap') setActiveSheet('swap');
@@ -413,7 +496,11 @@ export function ExercisePage({
     else if (id === 'info') {
       closeSheet();
       router.push({ pathname: '/exercises/[id]', params: { id: exerciseId } });
-    } else {
+    } else if (id === 'superset') {
+      void handleFormSuperset();
+    } else if (id === 'detach-superset') {
+      void handleDetachSuperset();
+    } else if (id === 'reorder') {
       setActiveSheet('reorder');
     }
   };
@@ -434,6 +521,7 @@ export function ExercisePage({
 
   const actionBarSlot = (
     <>
+      <SupersetPartnerChip sessionExerciseRows={sessionExerciseRows} sessionExerciseId={sessionExerciseId} onSelectExercise={onSelectExercise} />
       <ExerciseActionBar hasNote={hasNote} warmupSetsEnabled onPress={handleActionPress} />
 
       {activeSheet === 'targets' ? (
@@ -521,6 +609,8 @@ export function ExercisePage({
         <SessionActionSheet
           exerciseName={exerciseName}
           hasEquipment={hasEquipment}
+          nextExerciseName={nextExerciseName}
+          supersetPartnerName={supersetPartnerName}
           onSelect={handleSessionAction}
           onCancel={closeSheet}
         />
