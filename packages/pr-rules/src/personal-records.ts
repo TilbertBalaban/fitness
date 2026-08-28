@@ -1,4 +1,4 @@
-import { PrType, WARMUP_SET_TYPE } from '@fitness/api-contracts';
+import { countsTowardRecords, PrType, SetType } from '@fitness/api-contracts';
 import { estimated1RM } from './estimated-1rm';
 
 export interface PriorBest {
@@ -33,7 +33,9 @@ export function foldPriorBest(sets: CandidateSet[]): PriorBest {
   const priorBest = emptyPriorBest();
 
   for (const set of sets) {
-    if (set.setType === WARMUP_SET_TYPE || !set.completed || set.weightKg === null) continue;
+    // D-18: excludes both warmup (never a record) and partial (a partial-ROM rep must never set
+    // heaviest_weight/best_e1rm) — drop/myorep/failure/amrap stay PR-eligible.
+    if (!countsTowardRecords(set.setType as SetType) || !set.completed || set.weightKg === null) continue;
 
     const { weightKg, reps } = set;
 
@@ -61,7 +63,10 @@ export function foldPriorBest(sets: CandidateSet[]): PriorBest {
 }
 
 export function detectPrs(candidate: CandidateSet, priorBest: PriorBest): DetectedPr[] {
-  if (candidate.setType === WARMUP_SET_TYPE || !candidate.completed || candidate.weightKg === null) {
+  // D-18: same predicate as foldPriorBest's guard above — a completed partial candidate detects
+  // no PR at all, even one heavier than every prior set, because it never became eligible to be
+  // compared in the first place.
+  if (!countsTowardRecords(candidate.setType as SetType) || !candidate.completed || candidate.weightKg === null) {
     return [];
   }
 
