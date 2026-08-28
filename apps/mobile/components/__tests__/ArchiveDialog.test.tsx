@@ -129,4 +129,64 @@ describe('ArchiveDialog', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
   });
+
+  // The 'day' subject (04-13/D-29): the union's fourth extension point, copy confirmed with the
+  // user directly rather than lifted from 04-UI-SPEC.md's Copywriting Contract (which predates D-29).
+  it('renders the exact day archive confirmation copy with the destructive fill', () => {
+    const onConfirm = jest.fn();
+    const onCancel = jest.fn();
+    const result = ArchiveDialog({ subject: 'day', onConfirm, onCancel });
+
+    const text = flatText(result);
+    expect(text).toContain('Archive Day');
+    expect(text).toContain(
+      'Archiving removes it from this program, but any workouts you logged from it stay in your history. Archive anyway?',
+    );
+
+    const pressables = findPressables(result);
+    const confirmButton = pressables.find((p) => flatText(p.props.children) === 'Archive');
+    expect(confirmButton).toBeDefined();
+    const confirmProps = confirmButton?.props as { className?: string; onPress?: () => void } | undefined;
+    expect(confirmProps?.className).toContain('bg-destructive');
+    confirmProps?.onPress?.();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('renders the day restore copy with a neutral, non-destructive confirm fill', () => {
+    const onConfirm = jest.fn();
+    const onCancel = jest.fn();
+    const result = ArchiveDialog({ subject: 'day', unarchiving: true, onConfirm, onCancel });
+
+    const text = flatText(result);
+    expect(text).toContain('Restore Day');
+    expect(text).toContain('This day will reappear in this program.');
+
+    const pressables = findPressables(result);
+    const confirmButton = pressables.find((p) => flatText(p.props.children) === 'Restore');
+    expect(confirmButton).toBeDefined();
+    const confirmProps = confirmButton?.props as { className?: string; onPress?: () => void } | undefined;
+    expect(confirmProps?.className).not.toContain('bg-destructive');
+    confirmProps?.onPress?.();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('renders the same two-button row and 48x48 control geometry for the day subject as every other subject', () => {
+    const onConfirm = jest.fn();
+    const onCancel = jest.fn();
+    const result = ArchiveDialog({ subject: 'day', onConfirm, onCancel });
+
+    const pressables = findPressables(result);
+    expect(pressables).toHaveLength(2);
+    for (const pressable of pressables) {
+      const props = pressable.props as unknown as {
+        style?: { minWidth?: number; minHeight?: number };
+        accessibilityRole?: string;
+      };
+      expect(props.style?.minWidth).toBe(48);
+      expect(props.style?.minHeight).toBe(48);
+      expect(props.accessibilityRole).toBe('button');
+    }
+  });
 });

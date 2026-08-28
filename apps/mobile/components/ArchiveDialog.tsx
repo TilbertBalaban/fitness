@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-export type ArchiveDialogSubject = 'exercise' | 'program' | 'gym';
+export type ArchiveDialogSubject = 'exercise' | 'program' | 'gym' | 'day';
 
 export interface ArchiveDialogProps {
   unarchiving?: boolean;
@@ -50,6 +50,21 @@ const COPY = {
     unarchive: {
       heading: 'Restore Gym',
       body: 'This gym will reappear in your gym list.',
+      confirmLabel: 'Restore',
+    },
+  },
+  // Confirmed with the user 2026-08-28 (D-29/04-CONTEXT.md) — not in 04-UI-SPEC.md's Copywriting
+  // Contract, because that contract predates D-29. The union's fourth extension point, no new
+  // component. 04-16 adds these rows to the contract.
+  day: {
+    archive: {
+      heading: 'Archive Day',
+      body: 'Archiving removes it from this program, but any workouts you logged from it stay in your history. Archive anyway?',
+      confirmLabel: 'Archive',
+    },
+    unarchive: {
+      heading: 'Restore Day',
+      body: 'This day will reappear in this program.',
       confirmLabel: 'Restore',
     },
   },

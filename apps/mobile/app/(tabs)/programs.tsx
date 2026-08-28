@@ -2,6 +2,7 @@ import { resolveTarget, type CycleKind, type ResolvedTarget, type TargetOverride
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { ArchiveDialog } from '@/components/ArchiveDialog';
 import { CycleStrip } from '@/components/CycleStrip';
 import { DayDeck } from '@/components/DayDeck';
 import { ErrorBanner } from '@/components/ErrorBanner';
@@ -29,7 +30,19 @@ import {
   updateCycle,
   validateCycle,
 } from '@/lib/db/programs/cycles';
-import { addDay, addExercisesToDay, moveExercise, removeDay, removeExercise, renameDay } from '@/lib/db/programs/days';
+import {
+  addDay,
+  addExercisesToDay,
+  archiveDay,
+  loadArchivedDays,
+  moveExercise,
+  removeDay,
+  removeExercise,
+  renameDay,
+  restoreDay,
+  type ArchivedDayRow,
+} from '@/lib/db/programs/days';
+import { duplicateDay } from '@/lib/db/programs/duplicate-routine';
 import {
   loadExerciseNameMap,
   loadProgramTree,
@@ -38,6 +51,7 @@ import {
   type ProgramSlot,
   type ProgramTree,
 } from '@/lib/db/programs/load-program';
+import { sortByOrderThenId } from '@/lib/db/programs/order-index';
 import { setExerciseTargets, type TargetDraft } from '@/lib/db/programs/targets';
 import { runMutation } from '@/lib/programs/mutation';
 
@@ -112,6 +126,25 @@ export function freezeSwitchLabel(frozen: boolean): string {
 // to it. Pure so ExerciseSlotRow's expand/collapse behavior is asserted without a rendered tree.
 export function nextExpandedSlotId(current: string | null, tapped: string): string | null {
   return current === tapped ? null : tapped;
+}
+
+// Own-empty-omits-header (D-29): the Archived days section renders only when there is something to
+// restore, the same convention DetailSection and the library's Archived group already follow.
+export function hasArchivedDays(archivedDays: ArchivedDayRow[]): boolean {
+  return archivedDays.length > 0;
+}
+
+// The same total order the deck uses, so a restored day does not appear to jump — sortByOrderThenId
+// is the one shared ordering rule every day-listing read renders through.
+export function orderedArchivedDays(archivedDays: ArchivedDayRow[]): ArchivedDayRow[] {
+  return sortByOrderThenId(archivedDays);
+}
+
+// Mirrors the library's `${row.name} copy` convention for duplicating a program — the two duplicate
+// operations must not name their output differently. Deduplicating names is deliberately not
+// attempted: a day name is not unique in this model.
+export function duplicateDayName(name: string): string {
+  return `${name.trim()} copy`;
 }
 
 const TARGET_FIELDS = [
@@ -208,6 +241,9 @@ export default function ProgramsScreen() {
   const [newDayName, setNewDayName] = useState('');
   const [renamingDayId, setRenamingDayId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  // Mirrors library.tsx's `confirming` shape exactly rather than inventing a second one (D-29).
+  const [confirmingDay, setConfirmingDay] = useState<{ dayId: string; unarchiving: boolean } | null>(null);
+  const [archivedDays, setArchivedDays] = useState<ArchivedDayRow[]>([]);
   const [expandedSlotId, setExpandedSlotId] = useState<string | null>(null);
   const [pickerDayId, setPickerDayId] = useState<string | null>(null);
   // View state, never persisted and never derived from the deck's page index: comparing the same
@@ -275,14 +311,21 @@ export default function ProgramsScreen() {
   // Loaded once, here, and passed into every loadProgramTree call rather than re-read per call —
   // the exercise catalog rarely changes mid-session and this screen re-renders the tree on every
   // day/exercise mutation.
+  // The archived list and the tree must never disagree about which days exist — one reload path,
+  // not two, feeding both the deck (via loadProgramTree, already filtered) and the Archived days
+  // section (via loadArchivedDays, the one deliberate exception, D-29/D-33).
   const reloadTree = useCallback(
     async (routineId: string) => {
       try {
         const db = getPowerSync();
         const names = exerciseNames ?? (await loadExerciseNameMap(db));
         if (!exerciseNames) setExerciseNames(names);
-        const loaded = await loadProgramTree(routineId, db, names);
+        const [loaded, archived] = await Promise.all([
+          loadProgramTree(routineId, db, names),
+          loadArchivedDays(routineId, db),
+        ]);
         setTree(loaded);
+        setArchivedDays(archived);
         setTreeFailed(false);
       } catch (error) {
         console.error('program tree load failed', error);
@@ -297,6 +340,7 @@ export default function ProgramsScreen() {
       void reloadTree(displayedRoutineId);
     } else {
       setTree(null);
+      setArchivedDays([]);
     }
     // reloadTree intentionally excluded: it only changes identity when exerciseNames first loads,
     // which must not re-trigger a redundant tree reload for the same displayedRoutineId.
@@ -355,6 +399,35 @@ export default function ProgramsScreen() {
     },
     [mutate],
   );
+
+  const handleDuplicateDay = useCallback(
+    async (dayId: string, name: string) => {
+      await mutate(
+        () => duplicateDay({ routineDayId: dayId, name: duplicateDayName(name) }),
+        "Couldn't duplicate that day.",
+      );
+    },
+    [mutate],
+  );
+
+  const handleArchiveDay = useCallback((dayId: string) => {
+    setConfirmingDay({ dayId, unarchiving: false });
+  }, []);
+
+  const handleRestoreDay = useCallback((dayId: string) => {
+    setConfirmingDay({ dayId, unarchiving: true });
+  }, []);
+
+  const handleConfirmDayArchive = useCallback(async () => {
+    if (!confirmingDay) return;
+    const { dayId, unarchiving } = confirmingDay;
+    setConfirmingDay(null);
+    if (unarchiving) {
+      await mutate(() => restoreDay(dayId), "Couldn't restore that day.");
+      return;
+    }
+    await mutate(() => archiveDay(dayId), "Couldn't archive that day.");
+  }, [confirmingDay, mutate]);
 
   const handleRemoveExercise = useCallback(
     async (routineExerciseId: string) => {
@@ -584,6 +657,17 @@ export default function ProgramsScreen() {
     );
   }
 
+  if (confirmingDay) {
+    return (
+      <ArchiveDialog
+        subject="day"
+        unarchiving={confirmingDay.unarchiving}
+        onConfirm={() => void handleConfirmDayArchive()}
+        onCancel={() => setConfirmingDay(null)}
+      />
+    );
+  }
+
   if (displayedRoutineId) {
     return (
       <View className="flex-1 bg-background">
@@ -803,7 +887,10 @@ export default function ProgramsScreen() {
                           <PrimaryButton label="Save" onPress={() => void handleSaveRename()} />
                         </View>
                       ) : (
-                        <View className="flex-row items-center justify-between gap-sm">
+                        // flex-wrap rather than shrinking: the row now holds up to four controls,
+                        // and R4 requires new surfaces grow downward at large font scales instead
+                        // of shrinking below the 48x48 minimum.
+                        <View className="flex-row flex-wrap items-center justify-between gap-sm">
                           <Pressable
                             onPress={() => handleStartRename(day.id, day.name)}
                             accessibilityRole="button"
@@ -812,14 +899,32 @@ export default function ProgramsScreen() {
                           >
                             <Text className="text-body font-semibold text-foreground">{day.name}</Text>
                           </Pressable>
-                          <Pressable
-                            onPress={() => void handleRemoveDay(day.id)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Remove ${day.name}`}
-                            style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <Text className="text-label font-normal text-destructive">Remove</Text>
-                          </Pressable>
+                          <View className="flex-row flex-wrap items-center gap-sm">
+                            <Pressable
+                              onPress={() => void handleDuplicateDay(day.id, day.name)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Duplicate ${day.name}`}
+                              style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Text className="text-label font-normal text-accent">Duplicate</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => handleArchiveDay(day.id)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Archive ${day.name}`}
+                              style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Text className="text-label font-normal text-destructive">Archive</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => void handleRemoveDay(day.id)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Remove ${day.name}`}
+                              style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Text className="text-label font-normal text-destructive">Remove</Text>
+                            </Pressable>
+                          </View>
                         </View>
                       )}
 
@@ -872,6 +977,31 @@ export default function ProgramsScreen() {
                   )}
                 />
               </View>
+
+              {hasArchivedDays(archivedDays) ? (
+                <View className="gap-sm">
+                  <Text className="text-body font-semibold text-foreground">Archived days</Text>
+                  {orderedArchivedDays(archivedDays).map((day) => (
+                    <View
+                      key={day.id}
+                      // Receded like an archived library row and the cycle strip's time-off chip —
+                      // "archived" and "off" read the same way: present but not active.
+                      style={{ opacity: 0.6 }}
+                      className="flex-row items-center justify-between gap-sm rounded-md bg-surface p-md"
+                    >
+                      <Text className="flex-1 text-body font-normal text-foreground">{day.name}</Text>
+                      <Pressable
+                        onPress={() => handleRestoreDay(day.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Restore ${day.name}`}
+                        style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Text className="text-label font-normal text-foreground">Restore</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
 
               <View className="gap-sm">
                 <TextField label="New day name" value={newDayName} onChangeText={setNewDayName} />
