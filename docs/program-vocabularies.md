@@ -36,6 +36,18 @@ upload queue on a legitimate offline write instead of quietly resolving to the l
 pointer design avoids this failure mode entirely: a `user_preference` PUT is never rejected for
 racing another device's activation, it just loses (or wins) last-write-wins on one row.
 
+**A training day carries its own archive stamp too (D-29, added 04-12/04-17).** `routine_day.archived_at`
+follows the same archive-is-a-timestamp rule `routine` and `exercise` already use (D-05) — archive is
+still not a status, and there is no day-level status column of any kind. `loadProgramTree`'s single
+`dayRows` query filters archived days out of every listing it feeds (the builder deck, the Home
+next-up read, and `duplicateRoutine`), while `loadArchivedDays` is the one deliberate exception —
+mirroring the `loadRoutines`/`loadLibraryRoutines` split one level up — keeping archived days
+reachable for restore. `ops/powersync/sync-rules.yaml`'s `routine_day` stream stays unfiltered and
+delivers archived rows the same as live ones (D-33): a row that leaves the user's sync bucket is
+deleted from local SQLite the moment it does, so filtering the pull query would strand the Restore
+control on every device that did not perform the archive and leave `workout_session.routine_day_id`
+pointing at a row the device no longer holds.
+
 ## `CYCLE_KINDS`
 
 A cycle is a first-class, orderable row on the `routine_cycle` table — a child of `routine`,
