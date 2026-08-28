@@ -1,4 +1,5 @@
 import { expectedPerformance } from './expected-performance';
+import { beatsPriorRepsAtSameLoad, isFailurePerformance } from './failure-progression';
 import { normalizeHistory } from './normalize-history';
 import { compareCanonicalKg, idealNextLoadKg, snapToAchievable } from './snap';
 import type { ProgressionResult, RecommendInput } from './result';
@@ -42,6 +43,22 @@ export function recommendNextPrescription(input: RecommendInput): ProgressionRes
   }
   if (topSet.rir !== null && (!Number.isFinite(topSet.rir) || topSet.rir < 0)) {
     return { kind: 'unavailable', reason: 'no_achievable_weight' };
+  }
+
+  // PRGR-03: the midpoint-plus-RIR formula has no meaning at zero reps in reserve, so a failure
+  // set decides here instead — beat the prior failure set's reps at the same stored load, or
+  // hold. This branch never raises load, so it cannot become a second way around the
+  // load-increase-pairs-with-a-rep-reset rule the branches below enforce.
+  if (isFailurePerformance(topSet)) {
+    const beat = beatsPriorRepsAtSameLoad(normalized);
+    return {
+      kind: 'recommendation',
+      weightKg: topSet.weightKg,
+      reps: beat ? Math.min(topSet.reps + 1, targetRepMax) : topSet.reps,
+      rir: targetRir,
+      basis: beat ? 'failure_rep_increase' : 'hold',
+      offeredReduction: null,
+    };
   }
 
   const achieved = topSet.reps + (topSet.rir ?? 0);
