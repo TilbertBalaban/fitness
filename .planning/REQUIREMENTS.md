@@ -88,9 +88,9 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 ### Gym Profiles & Plate Math
 
 - [x] **GYM-01**: User can create multiple gym profiles and pick which is active
-- [ ] **GYM-02**: User can configure a profile's bar types and weights, available plate denominations and counts, and unit system
+- [x] **GYM-02**: User can configure a profile's bar types and weights, available plate denominations and counts, and unit system
 - [x] **GYM-03**: User can configure machine availability, weight-stack ranges, and any built-in starting resistance
-- [ ] **GYM-04**: User can assign a gym profile to a workout and switch gyms mid-program
+- [x] **GYM-04**: User can assign a gym profile to a workout and switch gyms mid-program
 - [x] **GYM-05**: User sees a live plate breakdown while entering a barbell weight, without leaving the entry screen
 - [x] **GYM-06**: User is only ever shown loads their active profile's actual equipment can produce
 - [x] **GYM-07**: User can mark equipment unavailable mid-workout and be offered alternatives
@@ -243,9 +243,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | LOG-20 | Phase 5 — In-Gym Session Logging | Pending |
 | LOG-21 | Phase 5 — In-Gym Session Logging | Pending |
 | GYM-01 | Phase 6 — Gym Profiles & Plate Math | Complete |
-| GYM-02 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| GYM-02 | Phase 6 — Gym Profiles & Plate Math | Complete |
 | GYM-03 | Phase 6 — Gym Profiles & Plate Math | Complete |
-| GYM-04 | Phase 6 — Gym Profiles & Plate Math | Pending |
+| GYM-04 | Phase 6 — Gym Profiles & Plate Math | Complete |
 | GYM-05 | Phase 6 — Gym Profiles & Plate Math | Complete |
 | GYM-06 | Phase 6 — Gym Profiles & Plate Math | Complete |
 | GYM-07 | Phase 6 — Gym Profiles & Plate Math | Complete |
