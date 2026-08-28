@@ -13,27 +13,55 @@ const GLYPH_COLORS: Record<'light' | 'dark', { foreground: string; destructive: 
   dark: { foreground: 'rgb(250, 250, 250)', destructive: 'rgb(239, 68, 68)' },
 };
 
-export type SessionExerciseActionId = 'swap' | 'remove' | 'reorder' | 'info' | 'equipment';
+export type SessionExerciseActionId =
+  | 'swap'
+  | 'remove'
+  | 'reorder'
+  | 'info'
+  | 'equipment'
+  | 'superset'
+  | 'detach-superset'
+  | 'enable-per-side'
+  | 'disable-per-side';
 
 export interface SessionExerciseAction {
   id: SessionExerciseActionId;
+  // A static row's final display text. A row whose copy interpolates a name (superset,
+  // detach-superset) instead holds a TEMPLATE carrying a literal `{placeholder}` — resolveActionLabel
+  // below is the one place that placeholder is ever substituted, so both the label text and the
+  // sheet's own geometry stay in this one file rather than splitting resolution to the call site.
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   destructive?: boolean;
 }
 
-// D-13's overflow: a fixed five-row constant — Swap, Remove, Reorder, Info, Equipment — mirroring
-// RoutineActionSheet's own row anatomy verbatim, never reordered (UI-SPEC E10/E5 empty/zero-one-
-// many). Equipment is appended last, matching D-06's additive-only rule for a closed UI list; its
-// rendering is gated by `hasEquipment` below, so its absence from the constant is never the answer
-// — the constant always lists all five, the view decides which paint (E5 populated/partial).
+// D-13's overflow, now nine rows: Swap, Remove, Reorder, Info, Equipment (Phase 6), plus Superset,
+// Detach, and both per-side rows (Phase 7, D-11/D-21) — mirroring RoutineActionSheet's own row
+// anatomy verbatim, APPENDED after `equipment` and never reordered (UI-SPEC E10/E5 empty/zero-one-
+// many). Every conditional row's absence from render is gated in visibleActions below; the constant
+// always lists all nine, the view decides which paint (E5 populated/partial).
 export const SESSION_EXERCISE_ACTIONS: SessionExerciseAction[] = [
   { id: 'swap', label: 'Swap', icon: 'swap-horizontal-outline' },
   { id: 'remove', label: 'Remove', icon: 'trash-outline', destructive: true },
   { id: 'reorder', label: 'Reorder', icon: 'reorder-three-outline' },
   { id: 'info', label: 'Info', icon: 'information-circle-outline' },
   { id: 'equipment', label: 'Equipment', icon: 'construct-outline' },
+  { id: 'superset', label: 'Superset with {nextExerciseName}', icon: 'link-outline' },
+  { id: 'detach-superset', label: 'Detach from {partnerExerciseName}', icon: 'unlink-outline' },
+  { id: 'enable-per-side', label: 'Log Left/Right Separately', icon: 'git-compare-outline' },
+  { id: 'disable-per-side', label: 'Log as One Side', icon: 'git-merge-outline' },
 ];
+
+// The one place a label template's `{placeholder}` is ever substituted (see the field comment on
+// SessionExerciseAction.label above). Every other row's label passes through unchanged.
+function resolveActionLabel(
+  action: SessionExerciseAction,
+  { nextExerciseName, supersetPartnerName }: { nextExerciseName: string | null; supersetPartnerName: string | null },
+): string {
+  if (action.id === 'superset') return action.label.replace('{nextExerciseName}', nextExerciseName ?? '');
+  if (action.id === 'detach-superset') return action.label.replace('{partnerExerciseName}', supersetPartnerName ?? '');
+  return action.label;
+}
 
 export interface SessionActionSheetViewProps {
   exerciseName: string;
@@ -43,17 +71,45 @@ export interface SessionActionSheetViewProps {
   // resolveEquipmentBand), never re-derived here. Absent, not disabled: a bodyweight/kettlebell/etc
   // exercise structurally excludes the row rather than rendering it inert (E5 partial).
   hasEquipment: boolean;
+  // The four Phase 7 props below are all optional and additive (D-11/D-21) — every existing call
+  // site (ExercisePage today) keeps compiling and rendering exactly as it does now until 07-07/
+  // 07-08 supply real values, matching every other optional prop this shared component carries.
+  nextExerciseName?: string | null;
+  supersetPartnerName?: string | null;
+  perSideEnabled?: boolean;
+  perSideAvailable?: boolean;
   onSelect: (id: SessionExerciseActionId) => void;
   onCancel: () => void;
 }
 
 // Hook-free — mirrors RoutineActionSheet.tsx's shape verbatim: same overlay, same ScrollView, same
 // 48x48 row geometry. Remove renders in the destructive color; every other row (including
-// Equipment) in default foreground — marking equipment unavailable is never rendered as
-// destructive (UI-SPEC E5 populated). Every row is always actionable — there is no disabled-row
-// state (E10/E5 partial).
-export function SessionActionSheetView({ exerciseName, colors, hasEquipment, onSelect, onCancel }: SessionActionSheetViewProps) {
-  const visibleActions = SESSION_EXERCISE_ACTIONS.filter((action) => action.id !== 'equipment' || hasEquipment);
+// Equipment and the four Phase 7 rows) in default foreground — none of Superset/Detach/per-side is
+// destructive, all are structural, reversible edits with no data loss (UI-SPEC Color section).
+// Every row is always actionable — there is no disabled-row state (E10/E5 partial).
+export function SessionActionSheetView({
+  exerciseName,
+  colors,
+  hasEquipment,
+  nextExerciseName = null,
+  supersetPartnerName = null,
+  perSideEnabled = false,
+  perSideAvailable = false,
+  onSelect,
+  onCancel,
+}: SessionActionSheetViewProps) {
+  // One filter, one clause per conditional row, every clause in the same `!== id || condition`
+  // shape the `equipment` row already established — never a new filtering mechanism. `superset` and
+  // `detach-superset` are mutually exclusive by construction (an exercise is either groupable or
+  // already grouped), as are the per-side pair.
+  const visibleActions = SESSION_EXERCISE_ACTIONS.filter(
+    (action) =>
+      (action.id !== 'equipment' || hasEquipment) &&
+      (action.id !== 'superset' || (!supersetPartnerName && !!nextExerciseName)) &&
+      (action.id !== 'detach-superset' || !!supersetPartnerName) &&
+      (action.id !== 'enable-per-side' || (perSideAvailable && !perSideEnabled)) &&
+      (action.id !== 'disable-per-side' || (perSideAvailable && perSideEnabled)),
+  );
 
   return (
     <View className="flex-1 items-center justify-center bg-background/80 px-lg">
@@ -64,21 +120,24 @@ export function SessionActionSheetView({ exerciseName, colors, hasEquipment, onS
         <Text className="text-heading font-semibold text-foreground">{exerciseName}</Text>
 
         <View className="mt-md gap-xs">
-          {visibleActions.map((action) => (
-            <Pressable
-              key={action.id}
-              onPress={() => onSelect(action.id)}
-              accessibilityRole="button"
-              accessibilityLabel={action.label}
-              style={{ minHeight: 48 }}
-              className="flex-row items-center gap-sm rounded-md px-md py-sm"
-            >
-              <Ionicons name={action.icon} size={20} color={action.destructive ? colors.destructive : colors.foreground} />
-              <Text className={`text-body font-normal ${action.destructive ? 'text-destructive' : 'text-foreground'}`}>
-                {action.label}
-              </Text>
-            </Pressable>
-          ))}
+          {visibleActions.map((action) => {
+            const label = resolveActionLabel(action, { nextExerciseName, supersetPartnerName });
+            return (
+              <Pressable
+                key={action.id}
+                onPress={() => onSelect(action.id)}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                style={{ minHeight: 48 }}
+                className="flex-row items-center gap-sm rounded-md px-md py-sm"
+              >
+                <Ionicons name={action.icon} size={20} color={action.destructive ? colors.destructive : colors.foreground} />
+                <Text className={`text-body font-normal ${action.destructive ? 'text-destructive' : 'text-foreground'}`}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <View className="mt-lg flex-row justify-end">
@@ -100,6 +159,10 @@ export function SessionActionSheetView({ exerciseName, colors, hasEquipment, onS
 export interface SessionActionSheetProps {
   exerciseName: string;
   hasEquipment: boolean;
+  nextExerciseName?: string | null;
+  supersetPartnerName?: string | null;
+  perSideEnabled?: boolean;
+  perSideAvailable?: boolean;
   onSelect: (id: SessionExerciseActionId) => void;
   onCancel: () => void;
 }
