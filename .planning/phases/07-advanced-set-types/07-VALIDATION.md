@@ -102,7 +102,7 @@ including this plan's own new T-7-01/T-7-02/five-set-type cases).
 - `pnpm -w typecheck` — exits 0 (6 packages)
 - `pnpm -w test` — 92 suites / 1721 tests, all pass
 - `pnpm --filter api test:e2e -- poison-pill` — 17/17 pass, including this plan's own T-7-01, T-7-02 and five-set-type cases
-- `pnpm --filter mobile test:e2e:durability` — 51/51 specs pass across two independent full runs (48 pre-existing + this plan's 3 new `advanced-sets.spec.ts` cases). One pre-existing, order-dependent flake (`reorder-exercises.spec.ts`'s "reordering is idempotent") surfaced intermittently at the same position within the full sequential run in both runs, but passed cleanly every time it was run in isolation — a flake in a file this plan never touches, not a regression from this plan. See 07-09-SUMMARY.md for the isolation-run evidence.
+- `pnpm --filter mobile test:e2e:durability` — three full runs: two showed a single pre-existing, order-dependent flake (`reorder-exercises.spec.ts`'s "reordering is idempotent", a file this plan never touches) that passed cleanly every time it was run in isolation; the third run was fully clean, **51/51 specs pass, exit 0** (48 pre-existing + this plan's 3 new `advanced-sets.spec.ts` cases). See 07-09-SUMMARY.md for all three runs' evidence.
 
 **Deferred to the end-of-phase manual sweep (per `human_verify_mode: end-of-phase`, unchanged by this plan):**
 - The two rows in Manual-Only Verifications above (plain-set latency, grouped-set visual legibility)
