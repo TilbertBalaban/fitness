@@ -7,6 +7,7 @@ import { EditingWorkoutRoute } from '../components/EditingWorkoutScreen';
 import GymProfilesScreen from './gym-profiles/index';
 import NewGymScreen from './gym-profiles/new';
 import EditGymScreen from './gym-profiles/edit/[id]';
+import ProgramsScreen from './(tabs)/programs';
 import { SyncConnector } from '../lib/db/connector';
 import { loadEquipmentProfile, setActiveEquipmentProfile, type CreateEquipmentProfileInput } from '../lib/db/equipment-profiles';
 import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib/db/log-set';
@@ -40,6 +41,9 @@ import {
   readRawColumns,
   readRoutineExerciseCycleTargetsRaw,
   readEquipmentProfileRaw,
+  readRoutineCycleRaw,
+  readRoutineDayRaw,
+  readRoutineDaysRaw,
   readRoutineExerciseRaw,
   readSessionExercisesRaw,
   readWorkoutSessionRaw,
@@ -50,10 +54,12 @@ import {
   seedProgrammedSession,
   seedProgrammedSessionWithCycle,
   seedProgrammedSessionWithEquipment,
+  seedRoutineTree,
   seedSwapCandidate,
   writeCatalogVersionSentinel,
   type SeededProgrammedSession,
   type SeededProgrammedSessionWithCycle,
+  type SeededRoutineTree,
   type SeedEquipmentProfileResult,
   type SeedPriorHeaviestSetInput,
   type SeedSwapCandidateInput,
@@ -102,6 +108,8 @@ export default function DurabilityHarnessScreen() {
   const [gymEditorHarness, setGymEditorHarness] = useState<{ db: TestWriteDb; profileId: string | null } | null>(
     null,
   );
+  // 04-15's builder mount — mutually exclusive with the four above, same convention.
+  const [programsHarness, setProgramsHarness] = useState<{ db: TestWriteDb } | null>(null);
   // NewGymScreen/EditGymScreen's onSaved fires with the row's id — the only way a spec can learn
   // the id createEquipmentProfile generates server-side, mid-write, since this harness never
   // navigates on save (see NewGymScreenProps.onSaved's own doc comment). Rendered below as a plain
@@ -151,6 +159,7 @@ export default function DurabilityHarnessScreen() {
         setGymProfilesHarness(null);
         setGymEditorHarness(null);
         setLastSavedGymId(null);
+        setProgramsHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -433,6 +442,33 @@ export default function DurabilityHarnessScreen() {
         const db = requireOpenDb();
         await seedSwapCandidate(db, input);
       },
+      // 04-15's builder seam: seeds a real two-day, one-cycle program with an active pointer against
+      // the currently open() database, entirely through the shipped write helpers (test-support.ts's
+      // own doc comment) — no wiring is duplicated here.
+      async seedRoutineTree(): Promise<SeededRoutineTree> {
+        const db = requireOpenDb();
+        return seedRoutineTree(db, WORKOUT_HARNESS_USER_ID);
+      },
+      // Mounts the real Programs screen against the currently open() database, delegating entirely
+      // to ProgramsScreenProps' own db/userId override (added in the same plan) — no wiring is
+      // duplicated here.
+      async openProgramsScreen() {
+        const db = requireOpenDb();
+        setProgramsHarness({ db });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+      },
+      async readRoutineDayRaw(dayId: string) {
+        return readRoutineDayRaw(dayId);
+      },
+      async readRoutineDaysRaw(routineId: string) {
+        return readRoutineDaysRaw(routineId);
+      },
+      async readRoutineCycleRaw(cycleId: string) {
+        return readRoutineCycleRaw(cycleId);
+      },
     };
 
     setReady(true);
@@ -458,6 +494,7 @@ export default function DurabilityHarnessScreen() {
           <NewGymScreen db={gymEditorHarness.db} userId={WORKOUT_HARNESS_USER_ID} onSaved={setLastSavedGymId} />
         )
       ) : null}
+      {programsHarness ? <ProgramsScreen db={programsHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
       <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>
   );
