@@ -6,8 +6,10 @@ import { WARMUP_SET_TYPE, type EquipmentType, type ResolvedTarget, type SetType,
 import { hasResolvableEquipment, resolveEquipmentBand, type ResolvedInventory } from '@fitness/plate-math';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
-import { logSet } from '@/lib/db/log-set';
+import { logSet, updateLoggedSet } from '@/lib/db/log-set';
 import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
+import { clearSubEntries } from '@/lib/db/set-groups';
+import { ChangeSetTypeDialog } from './ChangeSetTypeDialog';
 import { EquipmentAvailabilitySheet } from './EquipmentAvailabilitySheet';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
 import { ExercisePickerModal, type PickerCatalogRow } from './ExercisePickerModal';
@@ -17,7 +19,13 @@ import { NoteSheet } from './NoteSheet';
 import { ReorderExercisesSheet } from './ReorderExercisesSheet';
 import { RemoveExerciseDialog, SessionActionSheet, type SessionExerciseActionId } from './SessionActionSheet';
 import { SetRowView, type SetRowReference, type SetRowValues } from './SetRow';
-import { setTypePickerEffect, SetTypePickerSheet } from './SetTypePickerSheet';
+import {
+  FAILURE_SET_RIR,
+  resolveSetTypeSelection,
+  setTypePickerEffect,
+  SetTypePickerSheet,
+  type SetTypeSelectionEffect,
+} from './SetTypePickerSheet';
 import { TargetsSheet } from './TargetsSheet';
 import { WarmupSheet } from './WarmupSheet';
 
@@ -122,7 +130,8 @@ type ActiveSheet =
   | 'warmup'
   | 'reorder'
   | 'equipment'
-  | 'set-type';
+  | 'set-type'
+  | 'change-set-type-confirm';
 
 export interface ExercisePageProps
   extends Omit<ExercisePageViewProps, 'colors' | 'actionBarSlot' | 'onSetLongPress' | 'onSetNumberPress'> {
@@ -196,6 +205,13 @@ export function ExercisePage({
     childCount: number;
     childSetType: SetType | null;
   } | null>(null);
+  // The selection stashed while ChangeSetTypeDialog (D-09's confirm) is open — discarded on
+  // cancel, applied (after clearSubEntries) on confirm. Never read outside the confirm flow.
+  const [pendingSetType, setPendingSetType] = useState<SetType | null>(null);
+  // E1/E2 write-failure state: a failed local write renders the shipped ErrorBanner inline and
+  // keeps whichever of the picker/confirm dialog is open on its pre-selection state, rather than
+  // closing (Phase 6 E2/E4 precedent) — cleared every time either surface opens afresh.
+  const [setTypeError, setSetTypeError] = useState<string | null>(null);
 
   const closeSheet = () => setActiveSheet(null);
 
@@ -229,36 +245,91 @@ export function ExercisePage({
       childCount,
       childSetType: (firstChild?.setType as SetType | undefined) ?? null,
     });
+    setSetTypeError(null);
     setActiveSheet('set-type');
   };
 
-  // This tracer wires exactly the two branches D-04/D-07 require for a childless drop/partial
-  // insert and for the already-active-type no-op close; every retype path (Normal/Warm-up/Myorep/
-  // Failure/AMRAP, and any insert onto a row that already has children) is 07-04's
-  // ChangeSetTypeDialog territory and closes here with no write — an explicit no-op, not a
-  // silent gap (Pitfall 6).
-  const handleSetTypeSelect = async (setType: SetType) => {
-    if (!setTypeTarget) return;
-    if (setType === setTypeTarget.setType) {
-      closeSheet();
-      return;
-    }
-    if (setTypePickerEffect(setType) === 'insert-child' && setTypeTarget.childCount === 0) {
+  // The write for a single retype/insert-child effect — never touches weight_kg, reps, completed
+  // or set_index (updateLoggedSet's named-columns-only patch discipline, CF-08). Failure
+  // additionally writes FAILURE_SET_RIR in the same act (SETS-04), so the lifter never re-enters
+  // the 0 the picker's own descriptor promises.
+  const writeSetTypeEffect = async (
+    effect: 'retype' | 'insert-child',
+    selected: SetType,
+    target: { id: string },
+  ): Promise<void> => {
+    if (effect === 'retype') {
+      await updateLoggedSet(
+        { id: target.id, setType: selected, ...(selected === 'failure' ? { rir: FAILURE_SET_RIR } : {}) },
+        db ?? getPowerSync(),
+      );
+    } else {
       await logSet(
         {
           sessionExerciseId,
-          setType,
-          parentSetId: setTypeTarget.id,
+          setType: selected,
+          parentSetId: target.id,
           weight: { value: null, unit: weightUnit },
           reps: 0,
           completed: false,
         },
         db ?? getPowerSync(),
       );
+    }
+  };
+
+  // The picker's whole behavior table (resolveSetTypeSelection, 07-04), dispatched to one of four
+  // branches — never a generic "set setType to X" handler (Pitfall 6). A drop/partial value can
+  // structurally never reach the retype branch.
+  const handleSetTypeSelect = async (selected: SetType) => {
+    if (!setTypeTarget) return;
+    const effect: SetTypeSelectionEffect = resolveSetTypeSelection({
+      selected,
+      currentSetType: setTypeTarget.setType,
+      childCount: setTypeTarget.childCount,
+      childSetType: setTypeTarget.childSetType,
+    });
+
+    if (effect === 'no-op') {
       closeSheet();
-      onExerciseChanged();
       return;
     }
+
+    if (effect === 'confirm-first') {
+      setPendingSetType(selected);
+      setSetTypeError(null);
+      setActiveSheet('change-set-type-confirm');
+      return;
+    }
+
+    try {
+      await writeSetTypeEffect(effect, selected, setTypeTarget);
+      closeSheet();
+      onExerciseChanged();
+    } catch {
+      setSetTypeError("Couldn't save");
+    }
+  };
+
+  // D-09: clearSubEntries always runs before the pending selection's own write, and both live in
+  // the same try so a failure after the delete still surfaces the write-failure banner rather than
+  // silently leaving the group half-changed from the lifter's point of view.
+  const handleConfirmChangeSetType = async () => {
+    if (!setTypeTarget || pendingSetType === null) return;
+    const selected = pendingSetType;
+    try {
+      await clearSubEntries(setTypeTarget.id, db ?? getPowerSync());
+      await writeSetTypeEffect(setTypePickerEffect(selected), selected, setTypeTarget);
+      setPendingSetType(null);
+      closeSheet();
+      onExerciseChanged();
+    } catch {
+      setSetTypeError("Couldn't save");
+    }
+  };
+
+  const handleCancelChangeSetType = () => {
+    setPendingSetType(null);
     closeSheet();
   };
 
@@ -352,8 +423,18 @@ export function ExercisePage({
           currentSetType={setTypeTarget.setType}
           childCount={setTypeTarget.childCount}
           childSetType={setTypeTarget.childSetType}
+          errorMessage={setTypeError}
           onSelect={(setType) => void handleSetTypeSelect(setType)}
           onCancel={closeSheet}
+        />
+      ) : null}
+
+      {activeSheet === 'change-set-type-confirm' && setTypeTarget ? (
+        <ChangeSetTypeDialog
+          subEntryCount={setTypeTarget.childCount}
+          errorMessage={setTypeError}
+          onConfirm={() => void handleConfirmChangeSetType()}
+          onCancel={handleCancelChangeSetType}
         />
       ) : null}
 

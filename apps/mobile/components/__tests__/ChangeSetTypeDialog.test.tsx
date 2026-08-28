@@ -61,7 +61,7 @@ describe('ChangeSetTypeDialog', () => {
     const result = ChangeSetTypeDialog({ subEntryCount: 1, onConfirm, onCancel });
 
     const pressables = findByType(result, Pressable);
-    const cancelButton = pressables.find((el) => flatText(el.props.children) === 'Cancel');
+    const cancelButton = pressables.find((el) => flatText(el.props.children as ReactNode) === 'Cancel');
     (cancelButton?.props.onPress as () => void)();
 
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -74,7 +74,7 @@ describe('ChangeSetTypeDialog', () => {
     const result = ChangeSetTypeDialog({ subEntryCount: 1, onConfirm, onCancel });
 
     const pressables = findByType(result, Pressable);
-    const confirmButton = pressables.find((el) => flatText(el.props.children) === 'Delete and Change');
+    const confirmButton = pressables.find((el) => flatText(el.props.children as ReactNode) === 'Delete and Change');
     (confirmButton?.props.onPress as () => void)();
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
