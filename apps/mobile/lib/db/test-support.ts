@@ -458,6 +458,92 @@ export async function seedPriorHeaviestSet(db: TestWriteDb, input: SeedPriorHeav
   });
 }
 
+export interface ProgressionHistoryPerformance {
+  weightKg: string | null;
+  reps: number;
+  rir: number | null;
+}
+
+export interface SeedProgressionHistoryInput {
+  exerciseId: string;
+  prescription: { targetRepMin: number; targetRepMax: number; targetRir: number };
+  // Most-recent-first, matching recommendationHistoryForSession's own most-recent-session-first
+  // ordering (index 0 becomes recommend.ts's topSet) — each entry gets its own prior, completed
+  // session, one session further back in time than the one before it.
+  performances: ProgressionHistoryPerformance[];
+}
+
+// Generalises seedPriorHeaviestSet for @fitness/progression-engine's e2e proof: N prior, already-
+// completed sessions for ONE exercise, each carrying a real session_exercise prescription snapshot
+// (seedPriorHeaviestSet writes null targets, which is fine for a personal-record assertion but
+// useless to an engine that reads the prescription) and one completed working set at the caller's
+// weight/reps/rir. Same direct-minimal-write style as seedPriorHeaviestSet: three tables per
+// session, no startSession/logSet round trip.
+export async function seedProgressionHistory(db: TestWriteDb, input: SeedProgressionHistoryInput): Promise<void> {
+  const now = Date.now();
+
+  for (const [index, performance] of input.performances.entries()) {
+    const sessionId = generateClientId();
+    const sessionExerciseId = generateClientId();
+    const loggedSetId = generateClientId();
+    // index 0 (most recent) gets the largest startedAt; each subsequent entry is a further day
+    // back — enough separation that recommendationHistoryForSession's startedAt-descending sort
+    // can never tie.
+    const priorDate = new Date(now - (index + 1) * 24 * 60 * 60 * 1000).toISOString();
+
+    await db.insert(workoutSession).values({
+      id: sessionId,
+      userId: null,
+      routineDayId: null,
+      equipmentProfileId: null,
+      startedAt: priorDate,
+      endedAt: priorDate,
+      status: 'completed',
+      deviceId: null,
+      timezone: 'UTC',
+      localDate: priorDate.slice(0, 10),
+      notes: null,
+      name: null,
+      pausedAt: null,
+      accumulatedPausedSeconds: 0,
+      restTargetAt: null,
+      serverSeq: null,
+    });
+
+    await db.insert(sessionExercise).values({
+      id: sessionExerciseId,
+      sessionId,
+      exerciseId: input.exerciseId,
+      orderIndex: 0,
+      supersetGroupId: null,
+      routineExerciseId: null,
+      targetSets: null,
+      targetRepMin: input.prescription.targetRepMin,
+      targetRepMax: input.prescription.targetRepMax,
+      targetRir: input.prescription.targetRir,
+      targetRestSeconds: null,
+      notes: null,
+      removedAt: null,
+    });
+
+    await db.insert(loggedSet).values({
+      id: loggedSetId,
+      sessionExerciseId,
+      setIndex: 1,
+      setType: 'normal',
+      weightKg: performance.weightKg,
+      reps: performance.reps,
+      rir: performance.rir,
+      side: null,
+      completed: true,
+      parentSetId: null,
+      restTakenSeconds: null,
+      loggedAt: priorDate,
+      notes: null,
+    });
+  }
+}
+
 const WORKER_PATH = '/@powersync/worker.js';
 
 // Metro inlines process.env.EXPO_PUBLIC_DURABILITY_HARNESS at build time; this direct comparison

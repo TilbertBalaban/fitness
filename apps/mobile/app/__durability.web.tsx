@@ -54,6 +54,7 @@ import {
   seedGymProfile,
   seedPriorHeaviestSet,
   seedProgrammedSession,
+  seedProgressionHistory,
   seedProgrammedSessionWithCycle,
   seedProgrammedSessionWithEquipment,
   seedRoutineTree,
@@ -64,6 +65,7 @@ import {
   type SeededRoutineTree,
   type SeedEquipmentProfileResult,
   type SeedPriorHeaviestSetInput,
+  type SeedProgressionHistoryInput,
   type SeedSwapCandidateInput,
   type TestWriteDb,
   readLoggedSetsWithGrouping,
@@ -503,6 +505,12 @@ export default function DurabilityHarnessScreen() {
       },
       async detachSuperset(sessionExerciseId: string) {
         return detachSuperset(sessionExerciseId, requireOpenDb());
+      },
+      // 08-06's PRGR-11 e2e proof: real test-support.ts writes against the currently open()
+      // database — no reimplementation. Does not touch workoutHarness state; callers use this
+      // before seedWorkoutSession/seedWorkoutSessionWithEquipment, not instead of it.
+      async seedProgressionHistory(input: SeedProgressionHistoryInput) {
+        await seedProgressionHistory(requireOpenDb(), input);
       },
     };
 
