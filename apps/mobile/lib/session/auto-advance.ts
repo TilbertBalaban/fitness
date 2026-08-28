@@ -3,6 +3,7 @@ import { WORKING_SET_TYPE } from '@fitness/api-contracts';
 export interface AutoAdvanceSetInput {
   setType: string;
   completed: boolean;
+  parentSetId: string | null;
 }
 
 export interface ShouldAutoAdvanceInput {
@@ -29,6 +30,13 @@ export interface ShouldAutoAdvanceInput {
 // and completed, the just-completed set was a warm-up, or the current exercise is already the last
 // one (no wrap-around). Filters on set_type explicitly — never infers it from set_index position
 // (RESEARCH.md Pitfall 2).
+//
+// D-10/D-19: a parent row is one set toward the prescription; a drop/myorep/partial/per-side child
+// adds volume but never increments the set count, so `sets` is filtered to parent rows
+// (parentSetId === null) BEFORE the working-set-type filter below. Without this, the moment a set
+// gains children the count inflates and advance fires mid-group — the same failure class WINDOWS
+// #136 already fixed once for a different cause (there, missing rows undercounted; here, extra
+// child rows overcount).
 export function shouldAutoAdvance({
   sets,
   enabled,
@@ -40,7 +48,8 @@ export function shouldAutoAdvance({
   if (!enabled) return null;
   if (completedSetType !== WORKING_SET_TYPE) return null;
 
-  const workingSets = sets.filter((set) => set.setType === WORKING_SET_TYPE);
+  const parentSets = sets.filter((set) => set.parentSetId === null);
+  const workingSets = parentSets.filter((set) => set.setType === WORKING_SET_TYPE);
   if (workingSets.length === 0) return null;
 
   const requiredCount = targetWorkingSets !== null && targetWorkingSets > 0 ? targetWorkingSets : workingSets.length;

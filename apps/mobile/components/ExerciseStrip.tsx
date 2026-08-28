@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { countsTowardWorkingVolume, type SetType } from '@fitness/api-contracts';
 import { Pressable, ScrollView, Text } from 'react-native';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
@@ -46,12 +47,18 @@ export function exerciseChipFraction(completedWorkingSets: number, targetSets: n
 export interface ExerciseChipSet {
   setType: string;
   completed: boolean;
+  parentSetId: string | null;
 }
 
-// Excludes warm-up rows from the count — the exact exclusion Pitfall 2 warns is easy to forget
-// since a warm-up's own set_index carries no signal that it should be skipped.
+// D-10: a parent row is one set toward the prescription; children (drop/myorep/partial/per-side
+// sub-entries) add volume but never increment the set count, so the strip fraction must exclude
+// them the same way shouldAutoAdvance does (auto-advance.ts, D-19) — otherwise a drop set on a
+// 4-set prescription reads 4/4 after two real sets. Delegates the warm-up exclusion to the shared
+// countsTowardWorkingVolume predicate (D-17/R13) rather than re-deriving it inline — this was the
+// fifth, previously-undocumented copy of that rule.
 export function countCompletedWorkingSets(sets: ExerciseChipSet[]): number {
-  return sets.filter((set) => set.setType !== 'warmup' && set.completed).length;
+  return sets.filter((set) => set.parentSetId === null && countsTowardWorkingVolume(set.setType as SetType) && set.completed)
+    .length;
 }
 
 export interface ExerciseStripExercise {

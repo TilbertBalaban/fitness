@@ -294,7 +294,11 @@ export function useEditingWorkoutScreen({ sessionId, userId, db }: UseEditingWor
   const exercises: ExerciseStripExercise[] = sessionExercises.map((exercise) => {
     const existingSets = session?.setsByExerciseId[exercise.id] ?? [];
     const completedWorkingSets = countCompletedWorkingSets(
-      existingSets.map((row) => ({ setType: row.setType, completed: rowOverrides[row.id]?.completed ?? row.completed })),
+      existingSets.map((row) => ({
+        setType: row.setType,
+        completed: rowOverrides[row.id]?.completed ?? row.completed,
+        parentSetId: row.parentSetId ?? null,
+      })),
     );
     return {
       id: exercise.id,

@@ -1,8 +1,8 @@
 import { shouldAutoAdvance } from '../auto-advance';
 
-const WORKING = { setType: 'normal', completed: true };
-const WORKING_INCOMPLETE = { setType: 'normal', completed: false };
-const WARMUP = { setType: 'warmup', completed: true };
+const WORKING = { setType: 'normal', completed: true, parentSetId: null };
+const WORKING_INCOMPLETE = { setType: 'normal', completed: false, parentSetId: null };
+const WARMUP = { setType: 'warmup', completed: true, parentSetId: null };
 
 describe('shouldAutoAdvance (LOG-13)', () => {
   it('is null when disabled, even with every working set complete', () => {
@@ -72,8 +72,8 @@ describe('shouldAutoAdvance (LOG-13)', () => {
 
   it('never infers set type from position — a warm-up at a low index and a working set at a high one still resolve correctly', () => {
     const sets = [
-      { setType: 'normal', completed: true },
-      { setType: 'warmup', completed: true },
+      { setType: 'normal', completed: true, parentSetId: null },
+      { setType: 'warmup', completed: true, parentSetId: null },
     ];
     expect(
       shouldAutoAdvance({
@@ -173,6 +173,40 @@ describe('shouldAutoAdvance (LOG-13)', () => {
         exerciseCount: 2,
         completedSetType: 'normal',
         targetWorkingSets: 3,
+      }),
+    ).toBe(1);
+  });
+
+  // D-10/D-19: children do not satisfy the prescribed set count — a parent plus its drop-set
+  // children still reads as one set toward the prescription.
+  it('is null when a drop set of one parent and three children has only satisfied 1 of 4 prescribed sets', () => {
+    const parentId = 'parent-1';
+    expect(
+      shouldAutoAdvance({
+        sets: [
+          { setType: 'normal', completed: true, parentSetId: null },
+          { setType: 'drop', completed: true, parentSetId: parentId },
+          { setType: 'drop', completed: true, parentSetId: parentId },
+          { setType: 'drop', completed: true, parentSetId: parentId },
+        ],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 3,
+        completedSetType: 'normal',
+        targetWorkingSets: 4,
+      }),
+    ).toBeNull();
+  });
+
+  it('still returns the next index once four completed parent working sets satisfy a 4-set prescription', () => {
+    expect(
+      shouldAutoAdvance({
+        sets: [WORKING, WORKING, WORKING, WORKING],
+        enabled: true,
+        currentIndex: 0,
+        exerciseCount: 3,
+        completedSetType: 'normal',
+        targetWorkingSets: 4,
       }),
     ).toBe(1);
   });
