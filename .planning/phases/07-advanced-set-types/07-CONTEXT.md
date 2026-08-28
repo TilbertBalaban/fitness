@@ -231,6 +231,21 @@ already pinned by tests. This phase writes into that schema — it does not inve
   never retroactively rewritten** (CF-08). Turning the mode off likewise leaves existing paired sets
   alone and only makes subsequent sets single.
 
+### Post-Research Resolutions (added 2026-08-28, after 07-RESEARCH.md)
+
+- **D-23:** **A parent row's set-number column renders its position among parent rows only (1, 2,
+  3…), not its raw `set_index`** (user decision at plan time). Children still render a blank
+  set-number column per the UI-SPEC's *Set Row — Badge & Grouping*. `set_index` remains strictly
+  incrementing and un-renumbered at the storage layer (CF-03) — the displayed number is a computed
+  view value derived during the parent→children tree-flatten, never written back. This resolves
+  07-RESEARCH.md Open Question 1.
+
+- **D-24:** **When a superset group's live membership shrinks to one** (the other member's
+  `session_exercise.removed_at` is set per LOG-14), **the group keeps its `superset_group_id` but the
+  "final member" rest-timer predicate evaluates against live members only** — so the surviving
+  exercise behaves like a non-superset exercise and rest starts on its own completion. Re-adding a
+  member restores paired behaviour without re-linking. This resolves 07-RESEARCH.md Open Question 2.
+
 ### Claude's Discretion
 
 The user auto-approved the recommended option for every remaining question after the myorep-parent
