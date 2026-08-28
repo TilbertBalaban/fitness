@@ -13,6 +13,12 @@ jest.mock('../../../lib/db/programs/days', () => ({
   renameDay: jest.fn(),
   removeDay: jest.fn(),
   removeExercise: jest.fn(),
+  archiveDay: jest.fn(),
+  restoreDay: jest.fn(),
+  loadArchivedDays: jest.fn(),
+}));
+jest.mock('../../../lib/db/programs/duplicate-routine', () => ({
+  duplicateDay: jest.fn(),
 }));
 // resolveLiveRoutineId stays real — it is pure, and it is the rule resolveDisplayedRoutineId is
 // asserted against (WR-08/WR-09).
@@ -47,8 +53,11 @@ import {
   FREEZE_SWITCH_TITLE,
   cycleDurationFieldValue,
   deriveProgramsScreenState,
+  duplicateDayName,
   freezeSwitchLabel,
+  hasArchivedDays,
   nextExpandedSlotId,
+  orderedArchivedDays,
   overrideDelta,
   overriddenFields,
   parseCycleDuration,
@@ -57,6 +66,7 @@ import {
   selectedCycleOf,
 } from '../programs';
 import type { RoutineSummary } from '../../../lib/db/programs/create-routine';
+import type { ArchivedDayRow } from '../../../lib/db/programs/days';
 import type { ProgramCycle, ProgramSlot } from '../../../lib/db/programs/load-program';
 
 const oneRoutine: RoutineSummary = { id: 'r-1', name: 'Push Pull Legs', status: 'draft', goal: null };
@@ -340,5 +350,54 @@ describe('resolveDisplayedRoutineId (WR-08)', () => {
 
     expect(resolveDisplayedRoutineId({ routineIdParam: 'r-archived', routines, activeRoutineId: null })).toBeNull();
     expect(deriveProgramsScreenState({ failed: false, routines, activeRoutineId: 'r-archived' })).toBe('no-active');
+  });
+});
+
+// 04-13/D-29: the Archived days section is absent, not empty, when the routine has no archived
+// days — the own-empty-omits-header convention DetailSection and the library already follow.
+describe('hasArchivedDays', () => {
+  it('is false for an empty archived list', () => {
+    expect(hasArchivedDays([])).toBe(false);
+  });
+
+  it('is true for a non-empty archived list', () => {
+    const row: ArchivedDayRow = { id: 'd-1', name: 'Push', orderIndex: 1024, archivedAt: '2026-08-28T00:00:00.000Z' };
+    expect(hasArchivedDays([row])).toBe(true);
+  });
+});
+
+describe('orderedArchivedDays', () => {
+  it('returns archived days in order-then-id order for a list given out of order', () => {
+    const rows: ArchivedDayRow[] = [
+      { id: 'd-2', name: 'Pull', orderIndex: 2048, archivedAt: '2026-08-28T00:00:00.000Z' },
+      { id: 'd-1', name: 'Push', orderIndex: 1024, archivedAt: '2026-08-28T00:00:00.000Z' },
+    ];
+
+    expect(orderedArchivedDays(rows).map((row) => row.id)).toEqual(['d-1', 'd-2']);
+  });
+
+  it('breaks a tied orderIndex by ascending id, the same total order the deck uses', () => {
+    const rows: ArchivedDayRow[] = [
+      { id: 'd-b', name: 'B', orderIndex: 1024, archivedAt: '2026-08-28T00:00:00.000Z' },
+      { id: 'd-a', name: 'A', orderIndex: 1024, archivedAt: '2026-08-28T00:00:00.000Z' },
+    ];
+
+    expect(orderedArchivedDays(rows).map((row) => row.id)).toEqual(['d-a', 'd-b']);
+  });
+});
+
+// 04-13/D-29: duplicateDayName mirrors the library's ` copy` suffix convention so the two duplicate
+// operations do not name their output differently.
+describe('duplicateDayName', () => {
+  it('suffixes the name with " copy"', () => {
+    expect(duplicateDayName('Push')).toBe('Push copy');
+  });
+
+  it('trims surrounding whitespace before suffixing', () => {
+    expect(duplicateDayName('  Push  ')).toBe('Push copy');
+  });
+
+  it('allows duplicating a duplicate, producing a distinct if inelegant name', () => {
+    expect(duplicateDayName('Push copy')).toBe('Push copy copy');
   });
 });
