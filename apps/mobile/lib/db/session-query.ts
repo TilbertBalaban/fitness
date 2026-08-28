@@ -1,5 +1,5 @@
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
-import { WORKING_SET_TYPE, WORKOUT_SESSION_STATUSES } from '@fitness/api-contracts';
+import { and, eq, inArray, isNull, notInArray } from 'drizzle-orm';
+import { WORKING_SET_TYPE, WORKING_VOLUME_EXCLUDED_SET_TYPES, WORKOUT_SESSION_STATUSES } from '@fitness/api-contracts';
 import { getPowerSync, type WriteDb } from './powersync';
 import { loadExerciseNameMap } from './programs/load-program';
 import { loggedSet, sessionExercise, workoutSession } from './schema';
@@ -213,8 +213,9 @@ export interface PreviousSetReference {
 }
 
 // set_index position never implies set_type (RESEARCH.md Pitfall 2) — warm-up rows are excluded
-// from every reference lookup below by filtering on this literal, not by index range.
-const WORKING_SET_TYPE_EXCLUSION = 'warmup';
+// from every reference lookup below via the shared D-17 predicate
+// (WORKING_VOLUME_EXCLUDED_SET_TYPES from @fitness/api-contracts), not by index range and not by
+// a locally re-derived literal.
 
 interface PickableSetRow {
   sessionExerciseId: string;
@@ -297,7 +298,7 @@ export async function previousSetReference(
           priorCandidates.map((row) => row.id),
         ),
         eq(loggedSet.setIndex, setIndex),
-        ne(loggedSet.setType, WORKING_SET_TYPE_EXCLUSION),
+        notInArray(loggedSet.setType, WORKING_VOLUME_EXCLUDED_SET_TYPES),
       ),
     );
 
@@ -385,7 +386,7 @@ export async function previousSetReferencesForSession(
           loggedSet.sessionExerciseId,
           priorCandidates.map((row) => row.id),
         ),
-        ne(loggedSet.setType, WORKING_SET_TYPE_EXCLUSION),
+        notInArray(loggedSet.setType, WORKING_VOLUME_EXCLUDED_SET_TYPES),
       ),
     );
 

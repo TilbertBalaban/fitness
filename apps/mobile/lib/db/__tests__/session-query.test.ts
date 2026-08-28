@@ -375,12 +375,12 @@ describe('loadLiveSession', () => {
   });
 });
 
-// previousSetReference/previousSetReferencesForSession build compound and()/inArray()/ne()
+// previousSetReference/previousSetReferencesForSession build compound and()/inArray()/notInArray()
 // conditions the eq()-only evaluator above can't interpret, so this fake walks the same
 // queryChunks shape one level further: a leaf clause is COLUMN OP VALUE(S) (operator one of
-// " = " / " <> " / " in ", verified empirically against the exact drizzle-orm build in this
-// workspace's lockfile), and and()/or() wrap several leaves with a joining " and "/" or " string
-// chunk between them — recursing on nested SQL nodes covers both shapes with one function.
+// " = " / " <> " / " in " / " not in ", verified empirically against the exact drizzle-orm build
+// in this workspace's lockfile), and and()/or() wrap several leaves with a joining " and "/" or "
+// string chunk between them — recursing on nested SQL nodes covers both shapes with one function.
 function isSqlNode(node: unknown): node is { queryChunks: unknown[] } {
   return !!node && typeof node === 'object' && Array.isArray((node as { queryChunks?: unknown[] }).queryChunks);
 }
@@ -434,7 +434,7 @@ function buildPredicate(table: TableLike, node: unknown): (row: Record<string, u
     const text = stringChunkText(chunk);
     if (text !== null) {
       const trimmed = text.trim();
-      if (trimmed === '=' || trimmed === '<>' || trimmed === 'in') operator = trimmed;
+      if (trimmed === '=' || trimmed === '<>' || trimmed === 'in' || trimmed === 'not in') operator = trimmed;
       continue;
     }
     if (isParamChunk(chunk) && operator && operator !== 'in') {
@@ -451,6 +451,7 @@ function buildPredicate(table: TableLike, node: unknown): (row: Record<string, u
     if (operator === '=') return rowValue === values[0];
     if (operator === '<>') return rowValue !== values[0];
     if (operator === 'in') return values.includes(rowValue);
+    if (operator === 'not in') return !values.includes(rowValue);
     return true;
   };
 }

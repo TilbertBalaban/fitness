@@ -1,5 +1,5 @@
-import { and, countDistinct, desc, eq, inArray, lt, ne, or, sql } from 'drizzle-orm';
-import { WARMUP_SET_TYPE, type WorkoutSessionStatus } from '@fitness/api-contracts';
+import { and, countDistinct, desc, eq, inArray, lt, notInArray, or, sql } from 'drizzle-orm';
+import { WORKING_VOLUME_EXCLUDED_SET_TYPES, type WorkoutSessionStatus } from '@fitness/api-contracts';
 import { getPowerSync, type WriteDb } from './powersync';
 import { loggedSet, sessionExercise, workoutSession } from './schema';
 
@@ -89,7 +89,7 @@ export async function loadHistoryPage(
 
   // A removed exercise (session_exercise.removed_at) is NOT filtered out here — removal never
   // destroyed its logged sets (05-06), and the user did those sets, so they still count.
-  const completedWorkingSet = and(eq(loggedSet.completed, true), ne(loggedSet.setType, WARMUP_SET_TYPE));
+  const completedWorkingSet = and(eq(loggedSet.completed, true), notInArray(loggedSet.setType, WORKING_VOLUME_EXCLUDED_SET_TYPES));
   const countRows = await db
     .select({
       sessionId: sessionExercise.sessionId,

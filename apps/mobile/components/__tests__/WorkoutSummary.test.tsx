@@ -72,6 +72,10 @@ function breakdownRow(overrides: Partial<ExerciseBreakdown> = {}): ExerciseBreak
     exerciseName: 'Bench Press',
     removedAt: null,
     completedSetCount: 3,
+    // Phase 7 D-10: parent-only count, distinct from completedSetCount's child-inclusive total —
+    // this fixture has no grouped rows so the two happen to match; tests that care about the
+    // split override it explicitly.
+    completedWorkingSetCount: 3,
     totalReps: 24,
     topWeightKg: '100.000',
     volumeKg: '2400.000',

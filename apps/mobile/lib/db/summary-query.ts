@@ -1,5 +1,5 @@
 import { eq, inArray } from 'drizzle-orm';
-import { CANONICAL_KG_SCALE, WARMUP_SET_TYPE, type PrType } from '@fitness/api-contracts';
+import { CANONICAL_KG_SCALE, countsTowardWorkingVolume, type PrType, type SetType } from '@fitness/api-contracts';
 import { estimated1RM } from '@fitness/pr-rules';
 import { sortMuscleTargets, type MuscleTarget, type RawMuscleTarget } from '../catalog/exercise-detail';
 import { elapsedWorkoutSeconds } from '../rest-timer';
@@ -19,7 +19,15 @@ export interface ExerciseBreakdown {
   exerciseId: string;
   exerciseName: string;
   removedAt: string | null;
+  // Child-inclusive: every countsTowardWorkingVolume row (D-17), same population as totalReps/
+  // volumeKg below. A drop set's parent AND its children all count here — this is the population
+  // used to derive weight/rep/volume/e1rm figures, not "how many sets did the lifter do."
   completedSetCount: number;
+  // D-10's counting rule: parent rows only (parentSetId === null). A drop set with two children is
+  // ONE set toward the prescription, not three — deliberately a DIFFERENT number from
+  // completedSetCount/totalReps/volumeKg above, which stay child-inclusive per D-17. Do not
+  // "simplify" this back down to completedSetCount; the two rules diverge on purpose.
+  completedWorkingSetCount: number;
   totalReps: number;
   topWeightKg: string | null;
   volumeKg: string | null;
@@ -154,6 +162,7 @@ export async function loadSessionSummary(sessionId: string, userId: string | nul
           completed: loggedSet.completed,
           loggedAt: loggedSet.loggedAt,
           notes: loggedSet.notes,
+          parentSetId: loggedSet.parentSetId,
         })
         .from(loggedSet)
         .where(inArray(loggedSet.sessionExerciseId, sessionExerciseIds))
@@ -183,8 +192,14 @@ export async function loadSessionSummary(sessionId: string, userId: string | nul
 
   for (const exercise of exerciseRows) {
     const rows = (setsBySessionExerciseId.get(exercise.id) ?? []).slice().sort((a, b) => a.setIndex - b.setIndex);
-    const workingCompleted = rows.filter((row) => row.completed && row.setType !== WARMUP_SET_TYPE);
+    const workingCompleted = rows.filter((row) => row.completed && countsTowardWorkingVolume(row.setType as SetType));
     if (workingCompleted.length === 0) continue;
+
+    // D-10: a parent row is one set toward the prescription; children (a drop set's mini-sets, a
+    // partial's sub-entry) add volume but never increment the set count. Deliberately a different
+    // filter from workingCompleted above — see ExerciseBreakdown.completedWorkingSetCount's own
+    // doc comment.
+    const completedWorkingSetCount = workingCompleted.filter((row) => row.parentSetId === null).length;
 
     trainedExerciseIds.add(exercise.exerciseId);
 
@@ -218,6 +233,7 @@ export async function loadSessionSummary(sessionId: string, userId: string | nul
       exerciseName: names.get(exercise.exerciseId) ?? 'Unknown exercise',
       removedAt: exercise.removedAt,
       completedSetCount: workingCompleted.length,
+      completedWorkingSetCount,
       totalReps,
       topWeightKg,
       volumeKg: hasWeight ? volumeSum.toFixed(CANONICAL_KG_SCALE) : null,
