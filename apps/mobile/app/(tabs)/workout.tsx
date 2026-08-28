@@ -54,6 +54,7 @@ import {
 import { exercise as exerciseTable, loggedSet, seededExercise as seededExerciseTable, userPreference, workoutSession } from '@/lib/db/schema';
 import { finishSession } from '@/lib/session/finish-session';
 import { shouldAutoAdvance } from '@/lib/session/auto-advance';
+import { isFinalGroupMember, nextSupersetMemberIndex, type SupersetMemberInput } from '@/lib/session/superset';
 import { resolveNextUp, type NextUp } from '@/lib/programs/next-up';
 import {
   cancelRestAlert,
@@ -934,6 +935,16 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     };
   });
 
+  // D-13/D-14: loadSessionTree already filters removed_at IS NULL, so this is exactly the
+  // live-members list isFinalGroupMember/nextSupersetMemberIndex require (D-24), built once
+  // beside the strip's own exercises map rather than re-derived at each call site.
+  const supersetGroupMembers: SupersetMemberInput[] = sessionExercises.map((exercise) => ({
+    id: exercise.id,
+    orderIndex: exercise.orderIndex,
+    supersetGroupId: exercise.supersetGroupId,
+    exerciseName: exercise.exerciseName,
+  }));
+
   const rowsByExercise: Record<string, ResolvedSetRow[]> = {};
   const pageDataByExercise: Record<string, ExercisePageData> = {};
   for (const exercise of sessionExercises) {
@@ -1215,7 +1226,11 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
         await writeDb.update(loggedSet).set({ restTakenSeconds }).where(eq(loggedSet.id, previousCompletedSet.id));
       }
 
-      if (mode === LIVE_MODE && liveSession) {
+      // D-13: rest starts only after the group's final live member — a non-final member's
+      // completion leaves rest_target_at untouched and schedules no alert, so the header bar
+      // simply stays dormant. An ungrouped exercise's isFinalGroupMember call always returns
+      // true, so this needs no separate branch for the ungrouped case.
+      if (mode === LIVE_MODE && liveSession && isFinalGroupMember(supersetGroupMembers, exercise.id)) {
         const newTargetMs = restTargetFrom(nowMs, exercise.targetRestSeconds);
         await writeDb
           .update(workoutSession)
@@ -1233,16 +1248,25 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
       // SessionScreenMode value, never session.status (D-32/R10).
       if (mode === LIVE_MODE) {
         const exerciseIndex = sessionExercises.findIndex((candidate) => candidate.id === exercise.id);
-        const setsAfter = [...existingSets, { setType: WORKING_SET_TYPE, completed: true, parentSetId: null }];
-        const nextIndex = shouldAutoAdvance({
-          sets: setsAfter.map((row) => ({ setType: row.setType, completed: row.completed, parentSetId: row.parentSetId ?? null })),
-          enabled: autoAdvanceEnabled,
-          currentIndex: exerciseIndex,
-          exerciseCount: sessionExercises.length,
-          completedSetType: WORKING_SET_TYPE,
-          targetWorkingSets: exercise.targetSets,
-        });
-        if (nextIndex !== null) setCurrentIndex(nextIndex);
+        // D-14: evaluated BEFORE shouldAutoAdvance, and skips it entirely when it fires — a
+        // non-final member's completion advances the pager through the group regardless of
+        // that exercise's own prescription, which shouldAutoAdvance itself is never told about
+        // (Pitfall 5, the two triggers stay separate functions).
+        const memberAdvanceIndex = nextSupersetMemberIndex(supersetGroupMembers, exerciseIndex);
+        if (memberAdvanceIndex !== null && autoAdvanceEnabled) {
+          setCurrentIndex(memberAdvanceIndex);
+        } else {
+          const setsAfter = [...existingSets, { setType: WORKING_SET_TYPE, completed: true, parentSetId: null }];
+          const nextIndex = shouldAutoAdvance({
+            sets: setsAfter.map((row) => ({ setType: row.setType, completed: row.completed, parentSetId: row.parentSetId ?? null })),
+            enabled: autoAdvanceEnabled,
+            currentIndex: exerciseIndex,
+            exerciseCount: sessionExercises.length,
+            completedSetType: WORKING_SET_TYPE,
+            targetWorkingSets: exercise.targetSets,
+          });
+          if (nextIndex !== null) setCurrentIndex(nextIndex);
+        }
       }
 
       // The row that was just the draft is now a real, existing logged_set — its own trailing
@@ -1267,20 +1291,25 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     // moves the pager.
     if (mode === LIVE_MODE && nextCompleted) {
       const exerciseIndex = sessionExercises.findIndex((candidate) => candidate.id === exercise.id);
-      const setsAfter = existingSets.map((candidate) => ({
-        setType: candidate.setType,
-        completed: candidate.id === setId ? true : (rowOverrides[candidate.id]?.completed ?? candidate.completed),
-        parentSetId: candidate.parentSetId ?? null,
-      }));
-      const nextIndex = shouldAutoAdvance({
-        sets: setsAfter,
-        enabled: autoAdvanceEnabled,
-        currentIndex: exerciseIndex,
-        exerciseCount: sessionExercises.length,
-        completedSetType: row.setType,
-        targetWorkingSets: exercise.targetSets,
-      });
-      if (nextIndex !== null) setCurrentIndex(nextIndex);
+      const memberAdvanceIndex = nextSupersetMemberIndex(supersetGroupMembers, exerciseIndex);
+      if (memberAdvanceIndex !== null && autoAdvanceEnabled) {
+        setCurrentIndex(memberAdvanceIndex);
+      } else {
+        const setsAfter = existingSets.map((candidate) => ({
+          setType: candidate.setType,
+          completed: candidate.id === setId ? true : (rowOverrides[candidate.id]?.completed ?? candidate.completed),
+          parentSetId: candidate.parentSetId ?? null,
+        }));
+        const nextIndex = shouldAutoAdvance({
+          sets: setsAfter,
+          enabled: autoAdvanceEnabled,
+          currentIndex: exerciseIndex,
+          exerciseCount: sessionExercises.length,
+          completedSetType: row.setType,
+          targetWorkingSets: exercise.targetSets,
+        });
+        if (nextIndex !== null) setCurrentIndex(nextIndex);
+      }
     }
 
     // D-27: undoing a completed set while its own timer is still running cancels the scheduled

@@ -32,6 +32,7 @@ import {
 } from '../workout';
 import type { LoggedSetRow, SessionExerciseRow } from '../../../lib/db/session-query';
 import type { WriteDb } from '../../../lib/db/powersync';
+import { isFinalGroupMember, nextSupersetMemberIndex, type SupersetMemberInput } from '../../../lib/session/superset';
 
 type AnyElement = ReactElement<Record<string, unknown>>;
 
@@ -146,6 +147,67 @@ describe('stepAmountFor', () => {
   it('is unit-dependent for weight', () => {
     expect(stepAmountFor('weight', 'kg')).toBe(2.5);
     expect(stepAmountFor('weight', 'lb')).toBe(0.5);
+  });
+});
+
+// D-13/D-14: `handleCheckmarkPress` is not exported (it lives inside the `useWorkoutScreen` hook,
+// which is stateful and cannot be direct-invoked the way WorkoutScreenView's own hook-free props
+// can — this repo carries no react-test-renderer/@testing-library harness, and this phase adds
+// zero new packages per its own threat register). These tests instead exercise the exact
+// composition `handleCheckmarkPress` performs at both call sites — `isFinalGroupMember` gating the
+// rest-scheduling block, and `nextSupersetMemberIndex` gated on the same `autoAdvanceEnabled` flag,
+// evaluated before falling through to `shouldAutoAdvance` — against `SupersetMemberInput[]`
+// fixtures built the same way workout.tsx's own `supersetGroupMembers` map is built.
+function resolveMemberAdvance(members: SupersetMemberInput[], currentIndex: number, autoAdvanceEnabled: boolean): number | null {
+  const memberAdvanceIndex = nextSupersetMemberIndex(members, currentIndex);
+  return memberAdvanceIndex !== null && autoAdvanceEnabled ? memberAdvanceIndex : null;
+}
+
+const BENCH: SupersetMemberInput = { id: 'se-bench', orderIndex: 0, supersetGroupId: 'group-1', exerciseName: 'Bench Press' };
+const ROW: SupersetMemberInput = { id: 'se-row', orderIndex: 1, supersetGroupId: 'group-1', exerciseName: 'Row' };
+const UNGROUPED: SupersetMemberInput = { id: 'se-solo', orderIndex: 2, supersetGroupId: null, exerciseName: 'Squat' };
+
+describe('handleCheckmarkPress — rest suppression and member advance (D-13, D-14)', () => {
+  it('writes no rest_target_at for the LOWER-orderIndex member of a two-member group (D-13)', () => {
+    const members = [BENCH, ROW];
+    expect(isFinalGroupMember(members, BENCH.id)).toBe(false);
+  });
+
+  it('writes rest_target_at exactly as an ungrouped exercise does for the HIGHER-orderIndex member (D-13)', () => {
+    const members = [BENCH, ROW];
+    expect(isFinalGroupMember(members, ROW.id)).toBe(true);
+  });
+
+  it('an ungrouped exercise resolves through the same unconditional isFinalGroupMember call with no branch of its own', () => {
+    const members = [BENCH, ROW, UNGROUPED];
+    expect(isFinalGroupMember(members, UNGROUPED.id)).toBe(true);
+  });
+
+  it('the survivor of a removed partner writes rest_target_at again — only the live member remains (D-24)', () => {
+    // The removed partner never appears in the live `supersetGroupMembers` list workout.tsx builds
+    // (loadSessionTree filters removed_at IS NULL before this module ever sees a row).
+    const members = [BENCH];
+    expect(isFinalGroupMember(members, BENCH.id)).toBe(true);
+  });
+
+  it('a non-final member completion moves the pager to the next member when auto-advance is enabled (D-14)', () => {
+    const members = [BENCH, ROW];
+    expect(resolveMemberAdvance(members, 0, true)).toBe(1);
+  });
+
+  it('with auto-advance disabled, a non-final member completion moves nothing (D-14)', () => {
+    const members = [BENCH, ROW];
+    expect(resolveMemberAdvance(members, 0, false)).toBeNull();
+  });
+
+  it("the superset-internal advance is evaluated first and yields nothing for the group's final member, falling through to shouldAutoAdvance", () => {
+    const members = [BENCH, ROW];
+    expect(resolveMemberAdvance(members, 1, true)).toBeNull();
+  });
+
+  it('an ungrouped exercise never triggers the member advance — nextSupersetMemberIndex is null and shouldAutoAdvance runs unchanged', () => {
+    const members = [BENCH, ROW, UNGROUPED];
+    expect(resolveMemberAdvance(members, 2, true)).toBeNull();
   });
 });
 
