@@ -11,7 +11,7 @@ import { ExerciseSlotRow } from '@/components/ExerciseSlotRow';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { TextField } from '@/components/TextField';
 import { authClient } from '@/lib/auth-client';
-import { getPowerSync } from '@/lib/db/powersync';
+import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import {
   loadActiveRoutineId,
   loadLibraryRoutines,
@@ -147,6 +147,22 @@ export function duplicateDayName(name: string): string {
   return `${name.trim()} copy`;
 }
 
+// The durability harness's own seam: mounts this exact route component against a caller-chosen
+// db/userId instead of the production singleton and the signed-in session, exactly as
+// useWorkoutScreen({ userId, db }) and GymProfilesScreenProps do. Both are undefined for every
+// real navigation to this route — production behaviour is unchanged.
+export interface ProgramsScreenProps {
+  userId?: string;
+  db?: WriteDb;
+}
+
+// The same three-way rule GymProfilesScreen and useWorkoutScreen apply inline, extracted here so a
+// suite can assert it without rendering the screen: an explicit override wins, then the signed-in
+// session, then nobody.
+export function resolveEffectiveUserId(override: string | undefined, sessionUserId: string | null | undefined): string | null {
+  return override ?? sessionUserId ?? null;
+}
+
 const TARGET_FIELDS = [
   'targetSets',
   'targetRepMin',
@@ -218,11 +234,12 @@ export function overrideDelta(base: ResolvedTarget, next: ResolvedTarget): Targe
   return delta;
 }
 
-export default function ProgramsScreen() {
+export default function ProgramsScreen({ userId: userIdOverride, db }: ProgramsScreenProps = {}) {
   const router = useRouter();
   const colors = useThemeColors();
   const session = authClient.useSession();
-  const userId = session.data?.user?.id ?? null;
+  const userId = resolveEffectiveUserId(userIdOverride, session.data?.user?.id);
+  const database = db ?? getPowerSync();
   // A program the user was sent to explicitly — the draft a duplicate just produced, which is by
   // design not the active one. Absent on every ordinary visit, where the active pointer decides.
   const { routineId: routineIdParam } = useLocalSearchParams<{ routineId?: string }>();
@@ -271,8 +288,8 @@ export default function ProgramsScreen() {
   const reload = useCallback(async () => {
     try {
       const [loaded, pointer] = await Promise.all([
-        loadLibraryRoutines(getPowerSync()),
-        userId ? loadActiveRoutineId(userId, getPowerSync()) : Promise.resolve(null),
+        loadLibraryRoutines(database),
+        userId ? loadActiveRoutineId(userId, database) : Promise.resolve(null),
       ]);
       setRoutines(loaded.filter((routine) => routine.archivedAt === null));
       setActiveRoutineId(pointer);
@@ -281,7 +298,7 @@ export default function ProgramsScreen() {
       console.error('routine load failed', error);
       setFailed(true);
     }
-  }, [userId]);
+  }, [userId, database]);
 
   useEffect(() => {
     let mounted = true;
@@ -289,8 +306,8 @@ export default function ProgramsScreen() {
     (async () => {
       try {
         const [loaded, pointer] = await Promise.all([
-          loadLibraryRoutines(getPowerSync()),
-          userId ? loadActiveRoutineId(userId, getPowerSync()) : Promise.resolve(null),
+          loadLibraryRoutines(database),
+          userId ? loadActiveRoutineId(userId, database) : Promise.resolve(null),
         ]);
         if (mounted) {
           setRoutines(loaded.filter((routine) => routine.archivedAt === null));
@@ -306,7 +323,7 @@ export default function ProgramsScreen() {
     return () => {
       mounted = false;
     };
-  }, [userId]);
+  }, [userId, database]);
 
   // Loaded once, here, and passed into every loadProgramTree call rather than re-read per call —
   // the exercise catalog rarely changes mid-session and this screen re-renders the tree on every
@@ -317,12 +334,11 @@ export default function ProgramsScreen() {
   const reloadTree = useCallback(
     async (routineId: string) => {
       try {
-        const db = getPowerSync();
-        const names = exerciseNames ?? (await loadExerciseNameMap(db));
+        const names = exerciseNames ?? (await loadExerciseNameMap(database));
         if (!exerciseNames) setExerciseNames(names);
         const [loaded, archived] = await Promise.all([
-          loadProgramTree(routineId, db, names),
-          loadArchivedDays(routineId, db),
+          loadProgramTree(routineId, database, names),
+          loadArchivedDays(routineId, database),
         ]);
         setTree(loaded);
         setArchivedDays(archived);
@@ -332,7 +348,7 @@ export default function ProgramsScreen() {
         setTreeFailed(true);
       }
     },
-    [exerciseNames],
+    [exerciseNames, database],
   );
 
   useEffect(() => {
@@ -368,46 +384,46 @@ export default function ProgramsScreen() {
       if (displayedRoutineId) await reloadTree(displayedRoutineId);
       return outcome.ok;
     },
-    [displayedRoutineId, reloadTree],
+    [displayedRoutineId, reloadTree, database],
   );
 
   const handleToggleFreeze = useCallback(
     async (updateEnabled: boolean) => {
       if (!displayedRoutineId) return;
       const outcome = await runMutation(
-        () => setProgressionFrozen(displayedRoutineId, !updateEnabled),
+        () => setProgressionFrozen(displayedRoutineId, !updateEnabled, database),
         "Couldn't change whether progression updates this program.",
       );
       setMutationError(outcome.message);
       await reload();
     },
-    [displayedRoutineId, reload],
+    [displayedRoutineId, reload, database],
   );
 
   const handleAddDay = useCallback(async () => {
     if (!displayedRoutineId) return;
     const added = await mutate(
-      () => addDay({ routineId: displayedRoutineId, name: newDayName }),
+      () => addDay({ routineId: displayedRoutineId, name: newDayName }, database),
       "Couldn't add that day.",
     );
     if (added) setNewDayName('');
-  }, [displayedRoutineId, mutate, newDayName]);
+  }, [displayedRoutineId, mutate, newDayName, database]);
 
   const handleRemoveDay = useCallback(
     async (dayId: string) => {
-      await mutate(() => removeDay(dayId), "Couldn't remove that day.");
+      await mutate(() => removeDay(dayId, database), "Couldn't remove that day.");
     },
-    [mutate],
+    [mutate, database],
   );
 
   const handleDuplicateDay = useCallback(
     async (dayId: string, name: string) => {
       await mutate(
-        () => duplicateDay({ routineDayId: dayId, name: duplicateDayName(name) }),
+        () => duplicateDay({ routineDayId: dayId, name: duplicateDayName(name) }, database),
         "Couldn't duplicate that day.",
       );
     },
-    [mutate],
+    [mutate, database],
   );
 
   const handleArchiveDay = useCallback((dayId: string) => {
@@ -423,17 +439,17 @@ export default function ProgramsScreen() {
     const { dayId, unarchiving } = confirmingDay;
     setConfirmingDay(null);
     if (unarchiving) {
-      await mutate(() => restoreDay(dayId), "Couldn't restore that day.");
+      await mutate(() => restoreDay(dayId, database), "Couldn't restore that day.");
       return;
     }
-    await mutate(() => archiveDay(dayId), "Couldn't archive that day.");
-  }, [confirmingDay, mutate]);
+    await mutate(() => archiveDay(dayId, database), "Couldn't archive that day.");
+  }, [confirmingDay, mutate, database]);
 
   const handleRemoveExercise = useCallback(
     async (routineExerciseId: string) => {
-      await mutate(() => removeExercise(routineExerciseId), "Couldn't remove that exercise.");
+      await mutate(() => removeExercise(routineExerciseId, database), "Couldn't remove that exercise.");
     },
-    [mutate],
+    [mutate, database],
   );
 
   const handleToggleExpanded = useCallback((slotId: string) => {
@@ -449,33 +465,36 @@ export default function ProgramsScreen() {
       if (!displayedRoutineId) return false;
 
       if (selectedCycleId === null) {
-        return mutate(() => setExerciseTargets(routineExerciseId, draft), "Couldn't save those targets.");
+        return mutate(() => setExerciseTargets(routineExerciseId, draft, database), "Couldn't save those targets.");
       }
 
       const slot = tree?.days.flatMap((day) => day.slots).find((candidate) => candidate.id === routineExerciseId);
       if (!slot) return false;
       return mutate(
         () =>
-          setCycleTarget({
-            routineExerciseId,
-            cycleId: selectedCycleId,
-            override: overrideDelta(baseOf(slot), draft),
-          }),
+          setCycleTarget(
+            {
+              routineExerciseId,
+              cycleId: selectedCycleId,
+              override: overrideDelta(baseOf(slot), draft),
+            },
+            database,
+          ),
         "Couldn't save those targets for this cycle.",
       );
     },
-    [displayedRoutineId, mutate, selectedCycleId, tree],
+    [displayedRoutineId, mutate, selectedCycleId, tree, database],
   );
 
   const handleResetCycleTarget = useCallback(
     async (routineExerciseId: string) => {
       if (!selectedCycleId) return;
       await mutate(
-        () => clearCycleTarget({ routineExerciseId, cycleId: selectedCycleId }),
+        () => clearCycleTarget({ routineExerciseId, cycleId: selectedCycleId }, database),
         "Couldn't reset that exercise to its base targets.",
       );
     },
-    [mutate, selectedCycleId],
+    [mutate, selectedCycleId, database],
   );
 
   const handleOpenCycleForm = useCallback(() => {
@@ -509,7 +528,7 @@ export default function ProgramsScreen() {
 
     let id: string | null = null;
     const added = await mutate(async () => {
-      id = await addCycle({ routineId: displayedRoutineId, ...draft });
+      id = await addCycle({ routineId: displayedRoutineId, ...draft }, database);
     }, "Couldn't add that cycle.");
 
     if (!added) {
@@ -523,7 +542,7 @@ export default function ProgramsScreen() {
     setCycleFormKind('training');
     setCycleFormError(null);
     setSelectedCycleId(id);
-  }, [displayedRoutineId, cycleFormDuration, cycleFormKind, cycleFormName, mutate]);
+  }, [displayedRoutineId, cycleFormDuration, cycleFormKind, cycleFormName, mutate, database]);
 
   const handleEditCycle = useCallback(
     (cycleId: string) => {
@@ -554,7 +573,7 @@ export default function ProgramsScreen() {
       return;
     }
 
-    const saved = await mutate(() => updateCycle(editingCycleId, draft), "Couldn't save that cycle.");
+    const saved = await mutate(() => updateCycle(editingCycleId, draft, database), "Couldn't save that cycle.");
     if (!saved) {
       setCycleEditError("Couldn't save that cycle.");
       return;
@@ -562,7 +581,7 @@ export default function ProgramsScreen() {
 
     setEditingCycleId(null);
     setCycleEditError(null);
-  }, [displayedRoutineId, cycleEditDuration, cycleEditKind, cycleEditName, editingCycleId, mutate]);
+  }, [displayedRoutineId, cycleEditDuration, cycleEditKind, cycleEditName, editingCycleId, mutate, database]);
 
   const handleSelectCycleEditKind = useCallback((kind: CycleKind) => {
     setCycleEditKind(kind);
@@ -582,20 +601,20 @@ export default function ProgramsScreen() {
       const afterId = withoutMoved[to]?.id ?? null;
 
       await mutate(
-        () => moveCycle({ routineId: displayedRoutineId, cycleId: editingCycleId, beforeId, afterId }),
+        () => moveCycle({ routineId: displayedRoutineId, cycleId: editingCycleId, beforeId, afterId }, database),
         "Couldn't move that cycle.",
       );
     },
-    [displayedRoutineId, editingCycleId, mutate, tree],
+    [displayedRoutineId, editingCycleId, mutate, tree, database],
   );
 
   const handleRemoveCycle = useCallback(async () => {
     if (!editingCycleId) return;
-    const removed = await mutate(() => removeCycle(editingCycleId), "Couldn't remove that cycle.");
+    const removed = await mutate(() => removeCycle(editingCycleId, database), "Couldn't remove that cycle.");
     if (!removed) return;
     if (selectedCycleId === editingCycleId) setSelectedCycleId(null);
     setEditingCycleId(null);
-  }, [editingCycleId, mutate, selectedCycleId]);
+  }, [editingCycleId, mutate, selectedCycleId, database]);
 
   // The gesture layer (DragHandle) and the Move up/down controls both funnel here — neither reads
   // or writes order_index itself, they only produce a toIndex/neighbour pair that this callback
@@ -603,23 +622,23 @@ export default function ProgramsScreen() {
   const handleReorderExercise = useCallback(
     async (routineDayId: string, exerciseId: string, beforeId: string | null, afterId: string | null) => {
       await mutate(
-        () => moveExercise({ routineDayId, exerciseId, beforeId, afterId }),
+        () => moveExercise({ routineDayId, exerciseId, beforeId, afterId }, database),
         "Couldn't reorder that exercise.",
       );
     },
-    [mutate],
+    [mutate, database],
   );
 
   const handleAddExercises = useCallback(
     async (rows: PickerCatalogRow[]) => {
       if (!pickerDayId) return;
       const added = await mutate(
-        () => addExercisesToDay({ routineDayId: pickerDayId, exerciseIds: rows.map((row) => row.id) }),
+        () => addExercisesToDay({ routineDayId: pickerDayId, exerciseIds: rows.map((row) => row.id) }, database),
         "Couldn't add those exercises.",
       );
       if (added) setPickerDayId(null);
     },
-    [mutate, pickerDayId],
+    [mutate, pickerDayId, database],
   );
 
   const handleStartRename = useCallback((dayId: string, currentName: string) => {
@@ -629,9 +648,9 @@ export default function ProgramsScreen() {
 
   const handleSaveRename = useCallback(async () => {
     if (!renamingDayId) return;
-    const renamed = await mutate(() => renameDay(renamingDayId, renameValue), "Couldn't rename that day.");
+    const renamed = await mutate(() => renameDay(renamingDayId, renameValue, database), "Couldn't rename that day.");
     if (renamed) setRenamingDayId(null);
-  }, [mutate, renamingDayId, renameValue]);
+  }, [mutate, renamingDayId, renameValue, database]);
 
   if (screenState === 'error') {
     return (

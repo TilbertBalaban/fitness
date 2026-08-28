@@ -16,6 +16,10 @@ import { AppSchema } from './powersync.web';
 import { createEquipmentProfile, ensureDefaultEquipmentProfile, type CreateEquipmentProfileInput } from './equipment-profiles';
 import { generateClientId } from './id';
 import { startWorkoutFromProgram, type StartWorkoutFromProgramSlot } from './log-set';
+import { activateRoutine } from './programs/lifecycle';
+import { createRoutine } from './programs/create-routine';
+import { addCycle } from './programs/cycles';
+import { addDay, addExercisesToDay } from './programs/days';
 import {
   bodyMetric,
   drizzleSchema,
@@ -765,4 +769,93 @@ export async function seedSwapCandidate(db: TestWriteDb, input: SeedSwapCandidat
       weightFactor: '1',
     },
   ]);
+}
+
+export interface SeededRoutineTree {
+  routineId: string;
+  dayIds: string[];
+  exerciseSlotIds: string[];
+  cycleId: string;
+}
+
+// Distinct from seedProgrammedSession's/seedProgrammedSessionWithEquipment's own exercise-id
+// prefixes, and given real names (04-15's builder mounts a picker that names its rows, unlike the
+// workout screen's tolerance for a bare, unresolvable id).
+const SEEDED_ROUTINE_TREE_EXERCISE_IDS = ['ex-routine-tree-1', 'ex-routine-tree-2'];
+
+// Seeds a real two-day program (Push, Pull), two exercises per day, one training cycle and an
+// active-program pointer — entirely through the shipped createRoutine/addDay/addExercisesToDay/
+// addCycle/activateRoutine, never a direct table insert for any of those five rows, so 04-16's
+// builder spec drives the exact same write path a real author does. Deliberately no
+// workout_session: this seed is for the builder, and starting a session would put history into
+// resolveNextUp's rotation that no builder assertion here wants.
+export async function seedRoutineTree(db: TestWriteDb, userId: string): Promise<SeededRoutineTree> {
+  for (const [index, exerciseId] of SEEDED_ROUTINE_TREE_EXERCISE_IDS.entries()) {
+    await db.insert(seededExercise).values({
+      id: exerciseId,
+      name: `Routine Tree Exercise ${index + 1}`,
+      aliases: null,
+      movementPattern: null,
+      equipmentRequired: null,
+      loadType: 'external_weight',
+      unilateral: false,
+      instructionsText: null,
+      cueText: null,
+      imageUrls: null,
+      bodyweightContributionPct: null,
+      variationOfId: null,
+      source: 'harness',
+      archivedAt: null,
+    });
+  }
+
+  const routineId = await createRoutine({ name: 'Harness Routine Tree' }, db);
+
+  const pushDayId = await addDay({ routineId, name: 'Push' }, db);
+  const pullDayId = await addDay({ routineId, name: 'Pull' }, db);
+
+  const pushExerciseIds = await addExercisesToDay(
+    { routineDayId: pushDayId, exerciseIds: SEEDED_ROUTINE_TREE_EXERCISE_IDS },
+    db,
+  );
+  const pullExerciseIds = await addExercisesToDay(
+    { routineDayId: pullDayId, exerciseIds: SEEDED_ROUTINE_TREE_EXERCISE_IDS },
+    db,
+  );
+
+  const cycleId = await addCycle({ routineId, name: 'Week 1', kind: 'training', durationDays: null }, db);
+
+  await activateRoutine({ userId, routineId }, db);
+
+  return {
+    routineId,
+    dayIds: [pushDayId, pullDayId],
+    exerciseSlotIds: [...pushExerciseIds, ...pullExerciseIds],
+    cycleId,
+  };
+}
+
+// Raw read of the routine_day row's own columns, by id — including archived_at, the column that
+// tells an archive apart from a delete, which the rendered deck alone cannot.
+export async function readRoutineDayRaw(id: string): Promise<Record<string, unknown> | null> {
+  if (!rawDb) {
+    throw new Error('readRoutineDayRaw() called before openTestPowerSync()');
+  }
+  const rows = await rawDb.getAll<Record<string, unknown>>('SELECT * FROM routine_day WHERE id = ?', [id]);
+  return rows[0] ?? null;
+}
+
+export async function readRoutineDaysRaw(routineId: string): Promise<Record<string, unknown>[]> {
+  if (!rawDb) {
+    throw new Error('readRoutineDaysRaw() called before openTestPowerSync()');
+  }
+  return rawDb.getAll<Record<string, unknown>>('SELECT * FROM routine_day WHERE routine_id = ?', [routineId]);
+}
+
+export async function readRoutineCycleRaw(id: string): Promise<Record<string, unknown> | null> {
+  if (!rawDb) {
+    throw new Error('readRoutineCycleRaw() called before openTestPowerSync()');
+  }
+  const rows = await rawDb.getAll<Record<string, unknown>>('SELECT * FROM routine_cycle WHERE id = ?', [id]);
+  return rows[0] ?? null;
 }
