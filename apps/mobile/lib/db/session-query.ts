@@ -38,6 +38,10 @@ export interface LoggedSetRow {
   completed: boolean;
   loggedAt: string;
   notes: string | null;
+  // Phase 7 D-05/D-20: additive, matching the discipline every prior optional field on this
+  // interface already follows — a plain (ungrouped, non-per-side) row carries null for both.
+  parentSetId?: string | null;
+  side?: string | null;
 }
 
 export interface LiveSessionRow {
@@ -140,6 +144,8 @@ export async function loadSessionTree(
           completed: loggedSet.completed,
           loggedAt: loggedSet.loggedAt,
           notes: loggedSet.notes,
+          parentSetId: loggedSet.parentSetId,
+          side: loggedSet.side,
         })
         .from(loggedSet)
         .where(inArray(loggedSet.sessionExerciseId, sessionExerciseIds))

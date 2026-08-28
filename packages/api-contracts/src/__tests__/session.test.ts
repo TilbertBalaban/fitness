@@ -1,8 +1,12 @@
 import {
+  countsTowardRecords,
+  countsTowardWorkingVolume,
   PR_TYPES,
+  RECORDS_EXCLUDED_SET_TYPES,
   SET_TYPES,
   WARMUP_SET_TYPE,
   WORKING_SET_TYPE,
+  WORKING_VOLUME_EXCLUDED_SET_TYPES,
   WORKOUT_SESSION_STATUSES,
 } from '../session';
 
@@ -49,5 +53,43 @@ describe('PR_TYPES', () => {
 
   it('has exactly four members', () => {
     expect(PR_TYPES.length).toBe(4);
+  });
+});
+
+// D-17: exactly warmup is excluded — the six other SET_TYPES values (including the two children
+// exclusive to grouping, drop and partial) are all genuine working effort and all count.
+describe('countsTowardWorkingVolume', () => {
+  it.each(SET_TYPES.map((setType) => [setType, setType !== 'warmup'] as const))(
+    '%s counts toward working volume: %s',
+    (setType, expected) => {
+      expect(countsTowardWorkingVolume(setType)).toBe(expected);
+    },
+  );
+
+  it('excludes exactly one of the seven values', () => {
+    const excluded = SET_TYPES.filter((setType) => !countsTowardWorkingVolume(setType));
+    expect(excluded).toEqual(['warmup']);
+  });
+});
+
+// D-18: warmup AND partial are excluded — a partial-ROM rep must never set a max-based PR.
+describe('countsTowardRecords', () => {
+  it.each(SET_TYPES.map((setType) => [setType, setType !== 'warmup' && setType !== 'partial'] as const))(
+    '%s counts toward records: %s',
+    (setType, expected) => {
+      expect(countsTowardRecords(setType)).toBe(expected);
+    },
+  );
+
+  it('excludes exactly two of the seven values', () => {
+    const excluded = SET_TYPES.filter((setType) => !countsTowardRecords(setType));
+    expect(excluded).toEqual(['warmup', 'partial']);
+  });
+});
+
+describe('WORKING_VOLUME_EXCLUDED_SET_TYPES / RECORDS_EXCLUDED_SET_TYPES', () => {
+  it('are derived from the predicates above, not a re-typed literal', () => {
+    expect(WORKING_VOLUME_EXCLUDED_SET_TYPES).toEqual(['warmup']);
+    expect(RECORDS_EXCLUDED_SET_TYPES).toEqual(['warmup', 'partial']);
   });
 });

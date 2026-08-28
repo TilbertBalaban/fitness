@@ -240,6 +240,29 @@ describe('loadSessionTree', () => {
     expect(sets.find((row) => row.id === 'ls-1')?.notes).toBe('Felt heavy today');
     expect(sets.find((row) => row.id === 'ls-2')?.notes).toBeNull();
   });
+
+  // Pitfall 1 guard: this fails the exact regression that would make every badge in Phase 7
+  // render correctly in a unit test and do nothing in the app — the SELECT no longer naming
+  // parent_set_id/side.
+  it('carries parentSetId and side on LoggedSetRow — non-null for a seeded grouped row, null for a plain one', async () => {
+    const { db } = fakeSessionDb({
+      sessionRows: [SESSION_ROW],
+      exerciseRows: [
+        { id: 'se-1', sessionId: 's-1', exerciseId: 'ex-1', orderIndex: 0, supersetGroupId: null, targetSets: null, targetRepMin: null, targetRepMax: null, targetRir: null, targetRestSeconds: null },
+      ],
+      setRows: [
+        { id: 'ls-1', sessionExerciseId: 'se-1', setIndex: 1, setType: 'normal', weightKg: '100.000', reps: 10, rir: 2, completed: true, loggedAt: 't1', parentSetId: null, side: null },
+        { id: 'ls-child', sessionExerciseId: 'se-1', setIndex: 2, setType: 'drop', weightKg: '80.000', reps: 8, rir: null, completed: true, loggedAt: 't2', parentSetId: 'ls-1', side: null },
+      ],
+    });
+
+    const result = await loadSessionTree('s-1', db);
+    const sets = result?.setsByExerciseId['se-1'] ?? [];
+
+    expect(sets.find((row) => row.id === 'ls-1')?.parentSetId).toBeNull();
+    expect(sets.find((row) => row.id === 'ls-1')?.side).toBeNull();
+    expect(sets.find((row) => row.id === 'ls-child')?.parentSetId).toBe('ls-1');
+  });
 });
 
 describe('loadLiveSession', () => {

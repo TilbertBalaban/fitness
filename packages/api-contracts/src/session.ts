@@ -21,3 +21,28 @@ export type PrType = (typeof PR_TYPES)[number];
 // references one symbol instead of a scattered string literal.
 export const WORKING_SET_TYPE: SetType = 'normal';
 export const WARMUP_SET_TYPE: SetType = 'warmup';
+
+// D-17. The single place the "which set types count toward working volume" rule lives — every
+// call site that used to inline `!== 'warmup'` must route through this instead:
+// apps/mobile/lib/db/session-query.ts, apps/mobile/lib/db/history-query.ts,
+// apps/mobile/lib/db/summary-query.ts, apps/mobile/components/ExerciseStrip.tsx, and
+// packages/pr-rules/src/personal-records.ts. `warmup` is the only excluded type — drop, myorep,
+// partial, failure and amrap are all genuine working effort and all count.
+export function countsTowardWorkingVolume(setType: SetType): boolean {
+  return setType !== WARMUP_SET_TYPE;
+}
+
+// D-18. A second, stricter predicate for PR detection: excludes `warmup` AND `partial`. A
+// partial-ROM rep must never set a `heaviest_weight` or `best_e1rm` PR — that is the one place
+// counting a partial as a full rep would produce a wrong, durable, user-visible number. Drops,
+// myoreps, failure and AMRAP sets remain PR-eligible.
+export function countsTowardRecords(setType: SetType): boolean {
+  return setType !== WARMUP_SET_TYPE && setType !== 'partial';
+}
+
+// Derived tuples for SQL callers: a Drizzle `where` clause cannot call a JavaScript predicate per
+// row, so session-query.ts/history-query.ts express the same rule as
+// `notInArray(loggedSet.setType, ...)` over these — computed FROM the predicates above so the
+// rule still lives in exactly one place.
+export const WORKING_VOLUME_EXCLUDED_SET_TYPES = SET_TYPES.filter((setType) => !countsTowardWorkingVolume(setType));
+export const RECORDS_EXCLUDED_SET_TYPES = SET_TYPES.filter((setType) => !countsTowardRecords(setType));

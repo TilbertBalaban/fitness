@@ -1,6 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { SetRowView, formatFieldValue, setRowFieldState, type SetRowViewProps } from '../SetRow';
+import { SetRowView, badgeGlyphFor, formatFieldValue, setRowFieldState, type SetRowViewProps } from '../SetRow';
 
 // Same direct-invocation technique as CycleStrip.test.tsx/DayDeck.test.tsx — SetRowView has no
 // hooks, so calling it directly exercises its real body with no renderer.
@@ -304,5 +304,58 @@ describe('SetRowView', () => {
     expect(weightField?.props.accessibilityActions).toBeUndefined();
     expect(findByType(result, View).some((el) => el.props.accessibilityLabel === 'Warm-up set')).toBe(false);
     expect(findByType(result, View).some((el) => el.props.accessibilityLabel === 'Note exists')).toBe(false);
+  });
+});
+
+describe('badgeGlyphFor', () => {
+  it('returns null for a plain normal row with no side', () => {
+    expect(badgeGlyphFor({ setType: 'normal', side: null })).toBeNull();
+  });
+
+  it('returns the correct glyph for each of the six non-normal set types', () => {
+    expect(badgeGlyphFor({ setType: 'warmup' })).toBe('W');
+    expect(badgeGlyphFor({ setType: 'drop' })).toBe('D');
+    expect(badgeGlyphFor({ setType: 'myorep' })).toBe('M');
+    expect(badgeGlyphFor({ setType: 'partial' })).toBe('P');
+    expect(badgeGlyphFor({ setType: 'failure' })).toBe('F');
+    expect(badgeGlyphFor({ setType: 'amrap' })).toBe('A');
+  });
+
+  it('returns L/R for side, taking priority over any simultaneously-set type (R14 — side wins)', () => {
+    expect(badgeGlyphFor({ setType: 'failure', side: 'left' })).toBe('L');
+    expect(badgeGlyphFor({ setType: 'failure', side: 'right' })).toBe('R');
+  });
+});
+
+describe('SetRowView — Phase 7 badge/grouping additions', () => {
+  it('renders no digit in the set-number column for a child row, and indents the row', () => {
+    const result = SetRowView(baseProps({ isChild: true, setIndex: 2 }));
+    const setNumberPressable = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Sub-entry type');
+
+    expect(setNumberPressable).toBeDefined();
+    expect(flatText(setNumberPressable)).toBe('');
+    expect((result.props.style as { paddingLeft: number })?.paddingLeft).toBe(16);
+  });
+
+  it('renders its own set number, unindented, for a parent row', () => {
+    const result = SetRowView(baseProps({ isChild: false, setIndex: 4 }));
+    const setNumberPressable = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Set 4 type');
+
+    expect(flatText(setNumberPressable)).toBe('4');
+    expect(result.props.style).toBeUndefined();
+  });
+
+  it('the set-number Pressable fires onSetNumberPress on a short tap while onLongPress still fires independently', () => {
+    const onSetNumberPress = jest.fn();
+    const onLongPress = jest.fn();
+    const result = SetRowView(baseProps({ onSetNumberPress, onLongPress, setIndex: 1 }));
+    const setNumberPressable = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Set 1 type');
+
+    (setNumberPressable?.props.onPress as () => void)();
+    expect(onSetNumberPress).toHaveBeenCalledTimes(1);
+    expect(onLongPress).not.toHaveBeenCalled();
+
+    (setNumberPressable?.props.onLongPress as () => void)();
+    expect(onLongPress).toHaveBeenCalledTimes(1);
   });
 });
