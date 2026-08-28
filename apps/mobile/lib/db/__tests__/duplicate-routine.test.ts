@@ -45,6 +45,59 @@ interface RecordedCalls {
   deletes: { table: unknown; condition: unknown }[];
 }
 
+// Copied from log-set.test.ts / programs.test.ts, per that file's own duplication convention
+// (set-groups.test.ts line 51) — each suite keeps its own copy. Needed here (unlike the rest of
+// this file's fixtures) because duplicateRoutine reads its source through loadProgramTree, whose
+// dayRows query now carries isNull(routineDay.archivedAt) — a fake that ignores the where
+// condition entirely would return an archived day's row into the copy regardless of whether the
+// production filter exists.
+type TableLike = Record<string, { name?: string } | undefined>;
+type Row = Record<string, unknown>;
+
+function propertyKeyForColumn(table: TableLike, columnName: string): string | undefined {
+  return Object.entries(table).find(([, column]) => column?.name === columnName)?.[0];
+}
+
+function collectEqualities(node: unknown, out: { column: string; value: unknown }[]): void {
+  const chunks = (node as { queryChunks?: unknown[] })?.queryChunks;
+  if (!Array.isArray(chunks)) return;
+
+  let column: string | null = null;
+  for (const chunk of chunks) {
+    const part = chunk as { queryChunks?: unknown[]; name?: string; value?: unknown };
+    if (Array.isArray(part?.queryChunks)) {
+      collectEqualities(part, out);
+      continue;
+    }
+    if (typeof part?.name === 'string') {
+      column = part.name;
+      continue;
+    }
+    if (part && 'value' in part && column !== null) {
+      if (Array.isArray(part.value)) {
+        const joined = part.value.join('');
+        if (/is\s+null/i.test(joined)) {
+          out.push({ column, value: null });
+        }
+        column = null;
+        continue;
+      }
+      out.push({ column, value: part.value });
+      column = null;
+    }
+  }
+}
+
+function rowMatches(table: TableLike, row: Row, condition: unknown): boolean {
+  const equalities: { column: string; value: unknown }[] = [];
+  collectEqualities(condition, equalities);
+  if (equalities.length === 0) return true;
+  return equalities.every(({ column, value }) => {
+    const key = propertyKeyForColumn(table, column);
+    return key !== undefined && row[key] === value;
+  });
+}
+
 function fakeDb(tableRows: TableRows[] = []) {
   const calls: RecordedCalls = { selects: [], inserts: [], updates: [], deletes: [] };
   const rowsFor = (table: unknown) => tableRows.find((entry) => entry.table === table)?.rows ?? [];
@@ -54,7 +107,11 @@ function fakeDb(tableRows: TableRows[] = []) {
       from: (table: unknown) => {
         calls.selects.push(table);
         const resolved = Promise.resolve(rowsFor(table));
-        return { where: () => resolved, then: resolved.then.bind(resolved) };
+        return {
+          where: (condition: unknown) =>
+            Promise.resolve(rowsFor(table).filter((row) => rowMatches(table as TableLike, row, condition))),
+          then: resolved.then.bind(resolved),
+        };
       },
     }),
     insert: (table: unknown) => ({
@@ -138,6 +195,7 @@ function sourceFixture(exercisesPerDay = 2): TableRows[] {
         name: `Day ${index + 1}`,
         isRestDay: false,
         routineId: 'src-r1',
+        archivedAt: null,
       })),
     },
     { table: routineExercise, rows: exerciseRows },
@@ -365,6 +423,84 @@ describe('duplicateRoutine', () => {
 
     expect(getPowerSyncMock).toHaveBeenCalledTimes(1);
   });
+
+  // The source is read through the filtered loadProgramTree (D-29/D-33) — a duplicate is a fresh
+  // draft to train from, and carrying another program's archived days into it would reintroduce
+  // rows the user put away.
+  describe('archived days (D-29/D-33)', () => {
+    function sourceFixtureWithArchivedDay(): TableRows[] {
+      return [
+        { table: routine, rows: [{ id: 'src-r1', name: 'PPL', goal: 'hypertrophy', status: 'ready' }] },
+        {
+          table: routineDay,
+          rows: [
+            { id: 'src-d1', routineId: 'src-r1', orderIndex: ORDER_INDEX_GAP, name: 'Day 1', isRestDay: false, archivedAt: null },
+            { id: 'src-d2', routineId: 'src-r1', orderIndex: ORDER_INDEX_GAP * 2, name: 'Day 2', isRestDay: false, archivedAt: null },
+            {
+              id: 'src-d-archived',
+              routineId: 'src-r1',
+              orderIndex: ORDER_INDEX_GAP * 3,
+              name: 'Retired Day',
+              isRestDay: false,
+              archivedAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+        {
+          table: routineExercise,
+          rows: [
+            {
+              id: 'src-e-archived',
+              routineDayId: 'src-d-archived',
+              orderIndex: ORDER_INDEX_GAP,
+              exerciseId: 'cat-archived',
+              targetSets: null,
+              targetRepMin: null,
+              targetRepMax: null,
+              targetRir: null,
+              targetRestSeconds: null,
+            },
+          ],
+        },
+        { table: routineCycle, rows: [] },
+        {
+          table: routineExerciseCycleTarget,
+          rows: [
+            {
+              routineExerciseId: 'src-e-archived',
+              cycleId: 'src-c1',
+              targetSets: 4,
+              targetRepMin: 5,
+              targetRepMax: 5,
+              targetRir: 1,
+              targetRestSeconds: 180,
+            },
+          ],
+        },
+      ];
+    }
+
+    it('inserts exactly two day rows, and the copied program contains no archived day — the archived day\'s exercises and overrides are not copied either', async () => {
+      const { db, calls } = fakeDb(sourceFixtureWithArchivedDay());
+
+      await duplicateRoutine({ sourceRoutineId: 'src-r1', name: 'PPL copy' }, db);
+
+      expect(insertsFor(calls, routineDay)).toHaveLength(2);
+      expect(insertsFor(calls, routineDay).map((insert) => insert.values.name)).toEqual(['Day 1', 'Day 2']);
+      expect(insertsFor(calls, routineExercise)).toHaveLength(0);
+      expect(insertsFor(calls, routineExerciseCycleTarget)).toHaveLength(0);
+    });
+
+    it('gives every inserted day row archivedAt: null', async () => {
+      const { db, calls } = fakeDb(sourceFixtureWithArchivedDay());
+
+      await duplicateRoutine({ sourceRoutineId: 'src-r1', name: 'PPL copy' }, db);
+
+      for (const insert of insertsFor(calls, routineDay)) {
+        expect(insert.values.archivedAt).toBeNull();
+      }
+    });
+  });
 });
 
 describe('duplicateDay', () => {
@@ -373,8 +509,8 @@ describe('duplicateDay', () => {
       {
         table: routineDay,
         rows: [
-          { id: 'src-d1', routineId: 'src-r1', orderIndex: ORDER_INDEX_GAP, name: 'Push', isRestDay: false },
-          { id: 'src-d2', routineId: 'src-r1', orderIndex: ORDER_INDEX_GAP * 2, name: 'Pull', isRestDay: false },
+          { id: 'src-d1', routineId: 'src-r1', orderIndex: ORDER_INDEX_GAP, name: 'Push', isRestDay: false, archivedAt: null },
+          { id: 'src-d2', routineId: 'src-r1', orderIndex: ORDER_INDEX_GAP * 2, name: 'Pull', isRestDay: false, archivedAt: null },
         ],
       },
       {
@@ -524,6 +660,30 @@ describe('duplicateDay', () => {
     await duplicateDay({ routineDayId: 'src-d1', name: 'Push (copy)' });
 
     expect(getPowerSyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('inserts its new day with archivedAt: null — duplicating an archived day produces a live one', async () => {
+    const { db, calls } = fakeDb([
+      {
+        table: routineDay,
+        rows: [
+          {
+            id: 'src-d1',
+            routineId: 'src-r1',
+            orderIndex: ORDER_INDEX_GAP,
+            name: 'Retired Day',
+            isRestDay: false,
+            archivedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+      { table: routineExercise, rows: [] },
+    ]);
+
+    await duplicateDay({ routineDayId: 'src-d1', name: 'Retired Day (copy)' }, db);
+
+    const [day] = insertsFor(calls, routineDay);
+    expect(day.values.archivedAt).toBeNull();
   });
 });
 

@@ -51,6 +51,7 @@ export const routineDay = pgTable(
     orderIndex: integer('order_index').notNull(),
     name: text('name').notNull(),
     isRestDay: boolean('is_rest_day').notNull().default(false),
+    archivedAt: timestamp('archived_at'),
   },
   (table) => [index('routine_day_routineId_idx').on(table.routineId)],
 );

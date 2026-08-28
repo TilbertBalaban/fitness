@@ -341,6 +341,7 @@ interface RoutineDayOpData {
   order_index?: number;
   name?: string;
   is_rest_day?: boolean;
+  archived_at?: string | null;
 }
 
 interface RoutineExerciseOpData {
@@ -641,6 +642,7 @@ function toRoutineDayValues(id: string, routineId: string, data: Record<string, 
     orderIndex: d.order_index ?? 0,
     name: d.name ?? '',
     isRestDay: d.is_rest_day ?? false,
+    archivedAt: d.archived_at ? new Date(d.archived_at) : null,
   };
 }
 
@@ -772,6 +774,7 @@ function isInvalidSessionExercise(data: SessionExerciseOpData): boolean {
 function isInvalidRoutineDay(data: RoutineDayOpData): boolean {
   if (data.name !== undefined && !(typeof data.name === 'string' && data.name.trim().length > 0)) return true;
   if (data.order_index !== undefined && !isNonNegativeInteger(data.order_index)) return true;
+  if (!isValidOptionalIsoOrNull(data.archived_at)) return true;
   return false;
 }
 

@@ -88,6 +88,7 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
     'server_seq',
   ],
   routine: ['id', 'user_id', 'name', 'status', 'source', 'archived_at', 'progression_frozen', 'server_seq'],
+  routine_day: ['id', 'routine_id', 'order_index', 'name', 'is_rest_day', 'archived_at'],
   exercise: [
     'id',
     'user_id',

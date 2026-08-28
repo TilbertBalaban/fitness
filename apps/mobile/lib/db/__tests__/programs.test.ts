@@ -1,13 +1,16 @@
-import { eq, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { createRoutine, loadRoutines } from '../programs/create-routine';
 import {
   addDay,
+  archiveDay,
   addExercisesToDay,
+  loadArchivedDays,
   moveDay,
   moveExercise,
   removeDay,
   removeExercise,
   renameDay,
+  restoreDay,
 } from '../programs/days';
 import { loadProgramTree } from '../programs/load-program';
 import { getPowerSync } from '../powersync';
@@ -187,6 +190,7 @@ describe('addDay', () => {
       orderIndex: 3072,
       name: 'Push',
       isRestDay: false,
+      archivedAt: null,
     });
   });
 
@@ -225,6 +229,150 @@ describe('addDay', () => {
 
       expect(getPowerSyncMock).toHaveBeenCalled();
     });
+  });
+});
+
+function fakeArchiveDb() {
+  const updateSetSpy = jest.fn();
+  const deleteSpy = jest.fn();
+  const insertSpy = jest.fn();
+  const db = {
+    update: () => ({
+      set: (values: Record<string, unknown>) => {
+        updateSetSpy(values);
+        return { where: () => Promise.resolve() };
+      },
+    }),
+    delete: () => {
+      deleteSpy();
+      return { where: () => Promise.resolve() };
+    },
+    insert: () => {
+      insertSpy();
+      return { values: () => Promise.resolve() };
+    },
+    transaction: runInFakeTransaction,
+  } as unknown as ReturnType<typeof getPowerSync>;
+  return { db, updateSetSpy, deleteSpy, insertSpy };
+}
+
+describe('archiveDay', () => {
+  it('issues exactly one update writing only archivedAt as an ISO string, and issues zero deletes', async () => {
+    const { db, updateSetSpy, deleteSpy } = fakeArchiveDb();
+
+    await archiveDay('d1', db);
+
+    expect(updateSetSpy).toHaveBeenCalledTimes(1);
+    const values = updateSetSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(values)).toEqual(['archivedAt']);
+    expect(typeof values.archivedAt).toBe('string');
+    expect(Number.isNaN(Date.parse(values.archivedAt as string))).toBe(false);
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('writes neither name, nor orderIndex, nor isRestDay', async () => {
+    const { db, updateSetSpy } = fakeArchiveDb();
+
+    await archiveDay('d1', db);
+
+    const values = updateSetSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(values.name).toBeUndefined();
+    expect(values.orderIndex).toBeUndefined();
+    expect(values.isRestDay).toBeUndefined();
+  });
+
+  describe('the database-injection seam (WINDOWS #23)', () => {
+    it('writes to an explicitly-passed database and never resolves getPowerSync', async () => {
+      getPowerSyncMock.mockClear();
+      const { db } = fakeArchiveDb();
+
+      await archiveDay('d1', db);
+
+      expect(getPowerSyncMock).not.toHaveBeenCalled();
+    });
+
+    it('falls back to getPowerSync() when no database argument is passed', async () => {
+      const { db } = fakeArchiveDb();
+      getPowerSyncMock.mockReturnValue(db);
+
+      await archiveDay('d1');
+
+      expect(getPowerSyncMock).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('restoreDay', () => {
+  it('issues exactly one update setting archivedAt to null and issues zero deletes and zero inserts', async () => {
+    const { db, updateSetSpy, deleteSpy, insertSpy } = fakeArchiveDb();
+
+    await restoreDay('d1', db);
+
+    expect(updateSetSpy).toHaveBeenCalledTimes(1);
+    expect(updateSetSpy).toHaveBeenCalledWith({ archivedAt: null });
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  describe('the database-injection seam (WINDOWS #23)', () => {
+    it('writes to an explicitly-passed database and never resolves getPowerSync', async () => {
+      getPowerSyncMock.mockClear();
+      const { db } = fakeArchiveDb();
+
+      await restoreDay('d1', db);
+
+      expect(getPowerSyncMock).not.toHaveBeenCalled();
+    });
+
+    it('falls back to getPowerSync() when no database argument is passed', async () => {
+      const { db } = fakeArchiveDb();
+      getPowerSyncMock.mockReturnValue(db);
+
+      await restoreDay('d1');
+
+      expect(getPowerSyncMock).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('loadArchivedDays', () => {
+  it('returns only the routine\'s days whose archivedAt is non-null, ordered by order then id, filtering at the SQL level', async () => {
+    const whereSpy = jest.fn();
+    const rows = [
+      { id: 'd2', name: 'Pull', orderIndex: 2048, archivedAt: '2026-01-02T00:00:00.000Z' },
+      { id: 'd1', name: 'Push', orderIndex: 1024, archivedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    const db = {
+      select: () => ({
+        from: () => ({
+          where: (condition: unknown) => {
+            whereSpy(condition);
+            return Promise.resolve(rows);
+          },
+        }),
+      }),
+      transaction: runInFakeTransaction,
+    } as unknown as ReturnType<typeof getPowerSync>;
+
+    const result = await loadArchivedDays('r1', db);
+
+    expect(whereSpy).toHaveBeenCalledWith(and(eq(routineDay.routineId, 'r1'), isNotNull(routineDay.archivedAt)));
+    expect(result.map((row) => row.id)).toEqual(['d1', 'd2']);
+  });
+
+  it('returns an empty array for a routine with no archived days', async () => {
+    const db = {
+      select: () => ({
+        from: () => ({
+          where: () => Promise.resolve([]),
+        }),
+      }),
+      transaction: runInFakeTransaction,
+    } as unknown as ReturnType<typeof getPowerSync>;
+
+    const result = await loadArchivedDays('r1', db);
+
+    expect(result).toEqual([]);
   });
 });
 
@@ -435,6 +583,20 @@ describe('moveDay', () => {
 
     expect(updateCalls).toEqual([{ values: { orderIndex: 1536 }, condition: eq(routineDay.id, 'd1') }]);
   });
+
+  it('over a routine containing an archived day still computes a single midpoint for a move between two live neighbours — the archived row keeps its order_index and does not force a renumber', async () => {
+    const siblings = [
+      { id: 'd2', orderIndex: 1024 },
+      { id: 'archived-d', orderIndex: 9999 },
+      { id: 'd3', orderIndex: 2048 },
+      { id: 'd1', orderIndex: 5000 },
+    ];
+    const { db, updateCalls } = fakeReorderDb(siblings);
+
+    await moveDay({ routineId: 'r1', dayId: 'd1', beforeId: 'd2', afterId: 'd3' }, db);
+
+    expect(updateCalls).toEqual([{ values: { orderIndex: 1536 }, condition: eq(routineDay.id, 'd1') }]);
+  });
 });
 
 describe('removeExercise', () => {
@@ -558,6 +720,106 @@ function fakeLoadProgramDb(rows: FakeLoadProgramRows) {
   } as unknown as ReturnType<typeof getPowerSync>;
   return { db, getSelectCount: () => selectCount };
 }
+
+// Copied from log-set.test.ts, per that file's own duplication convention (set-groups.test.ts
+// line 51) — each suite keeps its own copy rather than sharing a module. fakeLoadProgramDb's
+// `where` takes no argument and returns its rows unconditionally, so it cannot prove a filter;
+// this store walks drizzle's real query chunks and resolves rows against the actual conditions
+// the shipped helpers pass.
+type TableLike = Record<string, { name?: string } | undefined>;
+type Row = Record<string, unknown>;
+
+function propertyKeyForColumn(table: TableLike, columnName: string): string | undefined {
+  return Object.entries(table).find(([, column]) => column?.name === columnName)?.[0];
+}
+
+// collectEqualities handles eq() only in log-set.test.ts's original form: an isNull() chunk
+// carries an array `value` that the scalar branch skips, so an unextended walker matches every
+// row. Extended here to recognise an is-null fragment: when a chunk carries an array `value`
+// whose joined text is an is-null fragment and a column name is currently held, push
+// { column, value: null } and clear the held column, exactly as the scalar branch does.
+function collectEqualities(node: unknown, out: { column: string; value: unknown }[]): void {
+  const chunks = (node as { queryChunks?: unknown[] })?.queryChunks;
+  if (!Array.isArray(chunks)) return;
+
+  let column: string | null = null;
+  for (const chunk of chunks) {
+    const part = chunk as { queryChunks?: unknown[]; name?: string; value?: unknown };
+    if (Array.isArray(part?.queryChunks)) {
+      collectEqualities(part, out);
+      continue;
+    }
+    if (typeof part?.name === 'string') {
+      column = part.name;
+      continue;
+    }
+    if (part && 'value' in part && column !== null) {
+      if (Array.isArray(part.value)) {
+        const joined = part.value.join('');
+        if (/is\s+null/i.test(joined)) {
+          out.push({ column, value: null });
+        }
+        column = null;
+        continue;
+      }
+      out.push({ column, value: part.value });
+      column = null;
+    }
+  }
+}
+
+function rowMatches(table: TableLike, row: Row, condition: unknown): boolean {
+  const equalities: { column: string; value: unknown }[] = [];
+  collectEqualities(condition, equalities);
+  if (equalities.length === 0) return true;
+  return equalities.every(({ column, value }) => {
+    const key = propertyKeyForColumn(table, column);
+    return key !== undefined && row[key] === value;
+  });
+}
+
+interface FakeConditionRow {
+  table: unknown;
+  row: Row;
+}
+
+// A tiny in-memory table set that resolves every select's `where` against the row data, rather
+// than returning a fixed fixture regardless of the condition passed. Used only for the
+// archived-day filter assertions below, which need to prove deleting the filter turns the case
+// red.
+function conditionResolvingDb(seedRows: FakeConditionRow[]) {
+  const db = {
+    select: (projection: Record<string, { name?: string }>) => ({
+      from: (table: TableLike) => ({
+        where: (condition: unknown) => {
+          const matched = seedRows.filter((seed) => seed.table === table && rowMatches(table, seed.row, condition));
+          return Promise.resolve(
+            matched.map(({ row }) => {
+              const projected: Row = {};
+              for (const [alias, column] of Object.entries(projection)) {
+                const key = propertyKeyForColumn(table, column?.name ?? alias) ?? alias;
+                projected[alias] = row[key] ?? null;
+              }
+              return projected;
+            }),
+          );
+        },
+      }),
+    }),
+    transaction: runInFakeTransaction,
+  } as unknown as ReturnType<typeof getPowerSync>;
+  return db;
+}
+
+describe('collectEqualities (isNull extension)', () => {
+  it('collects { column: "archived_at", value: null } from an isNull(routineDay.archivedAt) condition', () => {
+    const equalities: { column: string; value: unknown }[] = [];
+
+    collectEqualities(isNull(routineDay.archivedAt), equalities);
+
+    expect(equalities).toEqual([{ column: 'archived_at', value: null }]);
+  });
+});
 
 describe('loadProgramTree', () => {
   it('issues exactly five selects — one per table — for a 3-day, 12-exercise, 4-cycle, 7-override routine', async () => {
@@ -781,6 +1043,78 @@ describe('loadProgramTree', () => {
     const tree = await loadProgramTree('r1', db, new Map());
 
     expect(tree?.days[0].slots[0].exerciseName).toBe('Unknown exercise');
+  });
+
+  // Runs against conditionResolvingDb, not fakeLoadProgramDb — deleting isNull(routineDay.archivedAt)
+  // from load-program.ts must turn these red, which fakeLoadProgramDb's unconditional `where` cannot
+  // prove (D-29/D-33).
+  describe('filters archived days at the SQL level', () => {
+    it('returns two days and the archived one is absent from tree.days, given three days one of which carries archivedAt', async () => {
+      const db = conditionResolvingDb([
+        { table: routine, row: { id: 'r1', name: 'Program', goal: null, status: 'draft' } },
+        { table: routineDay, row: { id: 'd1', routineId: 'r1', orderIndex: 1024, name: 'Day 1', isRestDay: false, archivedAt: null } },
+        { table: routineDay, row: { id: 'd-archived', routineId: 'r1', orderIndex: 1536, name: 'Retired Day', isRestDay: false, archivedAt: '2026-01-01T00:00:00.000Z' } },
+        { table: routineDay, row: { id: 'd2', routineId: 'r1', orderIndex: 2048, name: 'Day 2', isRestDay: false, archivedAt: null } },
+      ]);
+
+      const tree = await loadProgramTree('r1', db, new Map());
+
+      expect(tree?.days.map((day) => day.id)).toEqual(['d1', 'd2']);
+    });
+
+    it("still returns the archived day's live siblings in their original relative order — filtering a day does not renumber or reorder the rest", async () => {
+      const db = conditionResolvingDb([
+        { table: routine, row: { id: 'r1', name: 'Program', goal: null, status: 'draft' } },
+        { table: routineDay, row: { id: 'd1', routineId: 'r1', orderIndex: 1024, name: 'Day 1', isRestDay: false, archivedAt: null } },
+        { table: routineDay, row: { id: 'd-archived', routineId: 'r1', orderIndex: 1536, name: 'Retired Day', isRestDay: false, archivedAt: '2026-01-01T00:00:00.000Z' } },
+        { table: routineDay, row: { id: 'd2', routineId: 'r1', orderIndex: 2048, name: 'Day 2', isRestDay: false, archivedAt: null } },
+      ]);
+
+      const tree = await loadProgramTree('r1', db, new Map());
+
+      expect(tree?.days.map((day) => day.orderIndex)).toEqual([1024, 2048]);
+    });
+
+    it('does not surface a routine_exercise belonging to an archived day anywhere in the returned tree, because its parent day is gone from the day list', async () => {
+      const db = conditionResolvingDb([
+        { table: routine, row: { id: 'r1', name: 'Program', goal: null, status: 'draft' } },
+        { table: routineDay, row: { id: 'd1', routineId: 'r1', orderIndex: 1024, name: 'Day 1', isRestDay: false, archivedAt: null } },
+        { table: routineDay, row: { id: 'd-archived', routineId: 'r1', orderIndex: 2048, name: 'Retired Day', isRestDay: false, archivedAt: '2026-01-01T00:00:00.000Z' } },
+        {
+          table: routineExercise,
+          row: {
+            id: 're-orphaned',
+            routineDayId: 'd-archived',
+            orderIndex: 1024,
+            exerciseId: 'ex-1',
+            targetSets: null,
+            targetRepMin: null,
+            targetRepMax: null,
+            targetRir: null,
+            targetRestSeconds: null,
+          },
+        },
+      ]);
+
+      const tree = await loadProgramTree('r1', db, new Map());
+
+      const allSlotIds = tree?.days.flatMap((day) => day.slots.map((slot) => slot.id)) ?? [];
+      expect(allSlotIds).not.toContain('re-orphaned');
+      expect(tree?.days.map((day) => day.id)).toEqual(['d1']);
+    });
+
+    it('returns a tree with zero days, not null, for a routine whose days are all archived', async () => {
+      const db = conditionResolvingDb([
+        { table: routine, row: { id: 'r1', name: 'All Archived', goal: null, status: 'draft' } },
+        { table: routineDay, row: { id: 'd1', routineId: 'r1', orderIndex: 1024, name: 'Day 1', isRestDay: false, archivedAt: '2026-01-01T00:00:00.000Z' } },
+        { table: routineDay, row: { id: 'd2', routineId: 'r1', orderIndex: 2048, name: 'Day 2', isRestDay: false, archivedAt: '2026-01-02T00:00:00.000Z' } },
+      ]);
+
+      const tree = await loadProgramTree('r1', db, new Map());
+
+      expect(tree).not.toBeNull();
+      expect(tree?.days).toEqual([]);
+    });
   });
 });
 
