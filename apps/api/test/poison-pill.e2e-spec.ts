@@ -98,6 +98,7 @@ interface SessionExerciseFields {
   target_rep_max?: number | null;
   target_rir?: number | null;
   target_rest_seconds?: number | null;
+  superset_group_id?: string | null;
 }
 
 function sessionExerciseOp(id: string, fields: SessionExerciseFields): SyncCrudOp {
@@ -458,5 +459,145 @@ describe('logged_set validation (e2e, WR-03)', () => {
     const body: SyncPushResponse = childRes.body;
     expect(body.applied).toContain(childOp.op_id);
     expect(await loggedSetRow(childId)).toBeDefined();
+  });
+});
+
+// 07-RESEARCH.md's Security Domain names two threat patterns this suite predates (it was written
+// before D-16's session-only superset design existed) and instructs this plan to add a case for
+// each rather than assume the existing two-user/two-session patterns above already cover them by
+// name. This block also pins, by test rather than by reading sync.service.ts, that the sync layer
+// needs no change for the five newly-written set_type values (T-7-01, T-7-02, Phase 7).
+describe('Grouped-set boundary containment (e2e, T-7-01/T-7-02, Phase 7)', () => {
+  async function seedParentSet(cookie: string): Promise<{ seId: string; parentId: string }> {
+    const sessionId = randomUUID();
+    const seId = randomUUID();
+    const parentId = randomUUID();
+    const res = await push(cookie, [
+      workoutSessionOp(sessionId),
+      sessionExerciseOp(seId, { session_id: sessionId }),
+      loggedSetOp(parentId, seId, { set_index: 1, set_type: 'normal' }),
+    ]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([]);
+    return { seId, parentId };
+  }
+
+  it('T-7-01: a cross-user parent_set_id reference does not graft onto or mutate the referenced user’s session tree', async () => {
+    const cookieA = await signUp('grafting-victim');
+    const cookieB = await signUp('grafting-attacker');
+
+    const sessionA = randomUUID();
+    const seA = randomUUID();
+    const parentSetA = randomUUID();
+    const resA = await push(cookieA, [
+      workoutSessionOp(sessionA),
+      sessionExerciseOp(seA, { session_id: sessionA }),
+      loggedSetOp(parentSetA, seA, { set_index: 1 }),
+    ]);
+    expect((resA.body as SyncPushResponse).rejected).toEqual([]);
+
+    const sessionB = randomUUID();
+    const seB = randomUUID();
+    const graftedChildId = randomUUID();
+    const graftOp = loggedSetOp(graftedChildId, seB, { set_index: 1, parent_set_id: parentSetA });
+    const resB = await push(cookieB, [workoutSessionOp(sessionB), sessionExerciseOp(seB, { session_id: sessionB }), graftOp]);
+    const bodyB: SyncPushResponse = resB.body;
+
+    // Pinned current behaviour, not assumed: rootTypeOf resolves a logged_set op's aggregate
+    // through its OWN session_exercise_id only (sync.service.ts's resolveSessionExerciseIdForLoggedSet)
+    // — parent_set_id never participates in ownership resolution, and the self-referencing FK on
+    // logged_set.parent_set_id has no per-user scope, so the op applies inside user B's own
+    // aggregate rather than being rejected.
+    expect(bodyB.rejected).toEqual([]);
+    expect(bodyB.applied).toContain(graftOp.op_id);
+
+    const graftedRow = await pg.query('SELECT session_exercise_id, parent_set_id FROM logged_set WHERE id = $1', [
+      graftedChildId,
+    ]);
+    expect(graftedRow.rows[0].session_exercise_id).toBe(seB);
+    expect(graftedRow.rows[0].parent_set_id).toBe(parentSetA);
+
+    // The point of this case: whichever outcome the server produces for B's push, A's own session
+    // tree is byte-unchanged — the grafted child lives entirely inside B's aggregate and never
+    // attaches to A's set, A's session_exercise or A's workout_session.
+    const aRows = await pg.query('SELECT id FROM logged_set WHERE session_exercise_id = $1', [seA]);
+    expect(aRows.rows.map((r) => r.id)).toEqual([parentSetA]);
+  });
+
+  it('T-7-02: a superset_group_id shared across two sessions never merges the two exercises into one group on a session-scoped read', async () => {
+    const cookie = await signUp('cross-session-superset');
+    const groupId = randomUUID();
+
+    const session1 = randomUUID();
+    const se1 = randomUUID();
+    const session2 = randomUUID();
+    const se2 = randomUUID();
+    const seedRes = await push(cookie, [
+      workoutSessionOp(session1),
+      sessionExerciseOp(se1, { session_id: session1 }),
+      workoutSessionOp(session2),
+      sessionExerciseOp(se2, { session_id: session2 }),
+    ]);
+    expect((seedRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    // superset_group_id has no server-side FK and no shape check beyond string-or-null
+    // (isInvalidSessionExercise) — 07-RESEARCH's Security Domain flags this explicitly. The server
+    // accepts the same group id on session_exercise rows in two different sessions.
+    const groupRes = await push(cookie, [
+      sessionExerciseOp(se1, { session_id: session1, superset_group_id: groupId }),
+      sessionExerciseOp(se2, { session_id: session2, superset_group_id: groupId }),
+    ]);
+    expect((groupRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    // Containment is client-side by construction, not server-enforced: formSuperset
+    // (apps/mobile/lib/db/session-mutations.ts) scopes both writes by sessionId, and every read
+    // predicate in apps/mobile/lib/session/superset.ts (supersetMembers and everything built on it)
+    // resolves group membership from a single session's already-loaded exercise list — it never
+    // queries across sessions. A session-scoped read (session_id AND superset_group_id, exactly the
+    // shape a real client query takes) sees only its own session's member, even though the shared
+    // group id round-trips through the server with no complaint.
+    const session1Members = await pg.query(
+      'SELECT id FROM session_exercise WHERE session_id = $1 AND superset_group_id = $2',
+      [session1, groupId],
+    );
+    const session2Members = await pg.query(
+      'SELECT id FROM session_exercise WHERE session_id = $1 AND superset_group_id = $2',
+      [session2, groupId],
+    );
+    expect(session1Members.rows.map((r) => r.id)).toEqual([se1]);
+    expect(session2Members.rows.map((r) => r.id)).toEqual([se2]);
+
+    const bothSessionsShareTheGroupId = await pg.query(
+      'SELECT session_id FROM session_exercise WHERE superset_group_id = $1 ORDER BY session_id',
+      [groupId],
+    );
+    expect(bothSessionsShareTheGroupId.rows).toHaveLength(2);
+  });
+
+  it('accepts a logged_set PUT for each of the five newly-written set_type values with a non-null parent_set_id and a side, and reads back every value intact — the concrete evidence that sync.service.ts needs no change for this phase', async () => {
+    const cookie = await signUp('five-set-types-no-sync-change');
+    const { seId, parentId } = await seedParentSet(cookie);
+    const newlyWrittenSetTypes = ['drop', 'myorep', 'partial', 'failure', 'amrap'] as const;
+    const ids = newlyWrittenSetTypes.map(() => randomUUID());
+    const ops = newlyWrittenSetTypes.map((setType, i) =>
+      loggedSetOp(ids[i], seId, {
+        set_index: i + 2,
+        set_type: setType,
+        parent_set_id: parentId,
+        side: i % 2 === 0 ? 'left' : 'right',
+      }),
+    );
+
+    const res = await push(cookie, ops);
+    const body: SyncPushResponse = res.body;
+    expect(body.rejected).toEqual([]);
+    for (const op of ops) {
+      expect(body.applied).toContain(op.op_id);
+    }
+
+    const { rows } = await pg.query('SELECT id, set_type FROM logged_set WHERE id = ANY($1::text[])', [ids]);
+    const setTypeById = new Map(rows.map((r) => [r.id as string, r.set_type as string]));
+    for (let i = 0; i < newlyWrittenSetTypes.length; i++) {
+      expect(setTypeById.get(ids[i])).toBe(newlyWrittenSetTypes[i]);
+    }
   });
 });
