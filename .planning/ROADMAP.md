@@ -528,6 +528,10 @@ Plans:
 - [ ] Phase 01 test 13: offline cold-start after a genuinely elapsed multi-week gap renders authenticated UI with no sign-out (D-01/D-02)
 - [ ] Phase 01 test 14: on-device cookie header accepted by the server and session row deleted on explicit sign-out
 - [ ] Phase 01 test 15: maximum OS accessibility font-scale wrap-and-grow on iOS and Android
+- [ ] Phase 05 test 1 (LOG SC2): log a normal set on a phone — tap previous weight, tap previous reps, tap the checkmark; confirm exactly two taps to autofill plus completion and that the docked keypad never covers the field being edited at any OS font scale
+- [ ] Phase 05 test 2 (LOG SC3): complete a set on a real iOS/Android device, background the app and lock the screen; the scheduled expo-notifications rest alert fires audibly/visibly when the wall-clock target elapses
+- [ ] Phase 05 test 3 (D-23): deny the notification permission on a real device, then complete a set — countdown still runs, in-app sound/haptic fires, and a persistent inline note states background alerts are off with a path to enable them
+- [ ] Phase 05 test 4 (WINDOWS #112): personal_record round trip across two devices — log a PR-setting set on device A and confirm it appears on device B after both sync (PowerSync pull path against a restarted service)
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
 ### Phase 999.2: Human verification sweep — web target (BACKLOG)
@@ -553,11 +557,11 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Cross-Platform Foundation | 11/11 | In Progress|  |
+| 1. Cross-Platform Foundation | 11/11 | Complete    | 2026-08-19 |
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
-| 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
-| 5. In-Gym Session Logging | 16/16 | In Progress|  |
+| 4. Program Builder | 11/11 | In Progress|  |
+| 5. In-Gym Session Logging | 16/16 | Complete    | 2026-08-28 |
 | 6. Gym Profiles & Plate Math | 8/8 | Complete    | 2026-08-28 |
 | 7. Advanced Set Types | 5/9 | In Progress|  |
 | 8. Progression Engine | 0/TBD | Not started | - |

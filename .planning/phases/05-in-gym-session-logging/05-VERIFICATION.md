@@ -1,7 +1,7 @@
 ---
 phase: 05-in-gym-session-logging
 verified: 2026-08-26T11:26:06Z
-status: human_needed
+status: passed
 score: 16/16 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -14,6 +14,11 @@ re_verification:
   gaps_remaining: []
   regressions: []
 behavior_unverified_items: []
+human_verification_disposition: >-
+  Relocated to ROADMAP Phase 999.1 (native verification sweep) by user decision on
+  2026-08-28 during /gsd-start. All four items require a physical iOS/Android device or a
+  second synced client; this machine has neither Xcode nor the Android SDK. All 16
+  must-haves were verified by automated suites. The items are tracked, not dropped.
 human_verification:
   - test: "Log a normal set on a phone: tap the previous weight, tap the previous reps, tap the checkmark. Confirm this is exactly two taps to autofill plus completion, and that the docked keypad never visually covers the field being edited at any OS font scale."
     expected: "Matches Roadmap SC2 — at most two taps in the common case, keypad never hides the value."
