@@ -55,7 +55,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A component needing platform-specific behavior can be written as `.web.tsx` and the shared code picks it up automatically
   4. The API carries an explicit version from its first request, so a months-old mobile build can never be broken by a server deploy
 
-**Plans**: 11/11 plans executed (10/11 executed; 1 gap-closure plan pending — see `01-VERIFICATION.md`)
+**Plans**: 17/17 plans executed (11 original + 6 gap closure) (10/11 executed; 1 gap-closure plan pending — see `01-VERIFICATION.md`)
 
 Plans:
 **Wave 1**
@@ -265,24 +265,24 @@ Plans:
 
 **Gap Wave 1**
 
-- [ ] 04-12-PLAN.md — `routine_day.archived_at`: the column, the sync path, the write helpers, the filtered read
+- [x] 04-12-PLAN.md — `routine_day.archived_at`: the column, the sync path, the write helpers, the filtered read
 
 **Gap Wave 2** *(blocked on Gap Wave 1 completion)*
 
-- [ ] 04-13-PLAN.md — The day page reaches them: Archive, Restore and Duplicate Day
-- [ ] 04-14-PLAN.md — Mark Ready, archived days out of the rotation, and the history-safety regression
+- [x] 04-13-PLAN.md — The day page reaches them: Archive, Restore and Duplicate Day
+- [x] 04-14-PLAN.md — Mark Ready, archived days out of the rotation, and the history-safety regression
 
 **Gap Wave 3** *(blocked on Gap Wave 2 completion)*
 
-- [ ] 04-15-PLAN.md — The Programs screen's injection seam and a programs mount in the durability harness
+- [x] 04-15-PLAN.md — The Programs screen's injection seam and a programs mount in the durability harness
 
 **Gap Wave 4** *(blocked on Gap Wave 3 completion)*
 
-- [ ] 04-16-PLAN.md — Executed browser proof: day duplicate/archive/restore and the time-off conversion
+- [x] 04-16-PLAN.md — Executed browser proof: day duplicate/archive/restore and the time-off conversion
 
 **Gap Wave 5** *(blocked on Gap Wave 4 completion)*
 
-- [ ] 04-17-PLAN.md — The requirements ledger and the two contracts that drifted from it
+- [x] 04-17-PLAN.md — The requirements ledger and the two contracts that drifted from it
 
 ### Phase 5: In-Gym Session Logging
 
@@ -583,7 +583,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Cross-Platform Foundation | 11/11 | Complete    | 2026-08-19 |
 | 2. Data Model & Sync Engine | 13/13 | Complete    | 2026-08-17 |
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
-| 4. Program Builder | 11/11 | In Progress|  |
+| 4. Program Builder | 17/17 | Complete    | 2026-08-28 |
 | 5. In-Gym Session Logging | 16/16 | Complete    | 2026-08-28 |
 | 6. Gym Profiles & Plate Math | 8/8 | Complete    | 2026-08-28 |
 | 7. Advanced Set Types | 5/9 | In Progress|  |
