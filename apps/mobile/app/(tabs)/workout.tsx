@@ -663,6 +663,8 @@ export function WorkoutScreenView({
               sessionExercises={exercises}
               sessionExerciseRows={supersetGroupMembers}
               onSelectExercise={onSelectExercise}
+              perSideOverride={perSideOverrideByExercise[exercise.id]}
+              onSetPerSideOverride={(value) => onSetPerSideOverride(exercise.id, value)}
               db={db}
               hasNote={pageData.hasNote}
               noteText={pageData.noteText}

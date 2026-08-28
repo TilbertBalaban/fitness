@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { WARMUP_SET_TYPE, type EquipmentType, type ResolvedTarget, type SetType, type WeightUnit } from '@fitness/api-contracts';
+import { WARMUP_SET_TYPE, WORKING_SET_TYPE, type EquipmentType, type ResolvedTarget, type SetType, type WeightUnit } from '@fitness/api-contracts';
 import { hasResolvableEquipment, resolveEquipmentBand, type ResolvedInventory } from '@fitness/plate-math';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
@@ -12,6 +12,7 @@ import { detachSuperset, formSuperset, removeSessionExercise, swapSessionExercis
 import { addSubEntry, clearSubEntries, removeSubEntry } from '@/lib/db/set-groups';
 import { resolveGroupAddControls, type GroupAddControl } from '@/lib/session/set-row-builders';
 import { detachRowPartnerName, supersetMembers, supersetPartnerLabel, type SupersetMemberInput } from '@/lib/session/superset';
+import { isPerSideMode, type PerSideRowInput } from '@/lib/session/per-side';
 import { ChangeSetTypeDialog } from './ChangeSetTypeDialog';
 import { EquipmentAvailabilitySheet } from './EquipmentAvailabilitySheet';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
@@ -225,6 +226,11 @@ export interface ExercisePageProps
   // handleSelectExercise), never a second navigation mechanism, for both the partner chip's tap
   // and (07-08) any other cross-exercise jump this page needs.
   onSelectExercise: (sessionExerciseId: string) => void;
+  // D-21's ephemeral per-exercise override (undefined defers to isPerSideMode's own
+  // derived-from-data default) and its setter — both threaded from the screen state Task 2 (07-08)
+  // added in workout.tsx, never a second, page-local override.
+  perSideOverride: boolean | undefined;
+  onSetPerSideOverride: (value: boolean) => void;
   // Threaded to TargetsSheet's own write-back call so it reaches the same database this page's
   // own reads came from, rather than TargetsSheet's default silently resolving getPowerSync()
   // again (05-12). Undefined in the few call sites that have never needed to override it —
@@ -261,6 +267,8 @@ export function ExercisePage({
   sessionExercises,
   sessionExerciseRows,
   onSelectExercise,
+  perSideOverride,
+  onSetPerSideOverride,
   db,
   hasNote,
   noteText,
@@ -312,6 +320,21 @@ export function ExercisePage({
   const currentRowIndex = orderedLiveRows.findIndex((candidate) => candidate.id === sessionExerciseId);
   const nextExerciseName = currentRowIndex === -1 ? null : (orderedLiveRows[currentRowIndex + 1]?.exerciseName ?? null);
   const supersetPartnerName = detachRowPartnerName(sessionExerciseRows, sessionExerciseId);
+
+  // D-21: the sheet's per-side rows resolve from the one shared predicate over this page's own
+  // already-loaded `rows`, never re-derived inside SessionActionSheet or at a second call site.
+  // The trailing draft row (setId null) carries no side of its own and is excluded before the
+  // predicate ever sees it — isPerSideMode only asks whether an EXISTING logged_set carries a side.
+  const perSideRows: PerSideRowInput[] = rows
+    .filter((row): row is typeof row & { setId: string } => row.setId !== null)
+    .map((row) => ({
+      id: row.setId,
+      parentSetId: row.parentSetId ?? null,
+      side: row.side ?? null,
+      setType: row.setType ?? WORKING_SET_TYPE,
+      completed: row.completed,
+    }));
+  const perSideEnabled = isPerSideMode(perSideRows, perSideOverride);
 
   // A draft row's setId is null, so ExercisePageView never calls this for one (05-UI-SPEC
   // Amendment A.1) — there is no logged_set yet for a draft to annotate.
@@ -485,10 +508,22 @@ export function ExercisePage({
     }
   };
 
+  // Neither per-side row writes to the database and neither shows a confirmation — D-22 already
+  // guarantees no existing logged set is rewritten in either direction, so there is nothing
+  // destructive to confirm. Neither calls onExerciseChanged, because nothing was persisted; the
+  // next set the lifter logs is where the mode takes effect (UI-SPEC "Per-Side Logging").
+  const handleEnablePerSide = () => {
+    onSetPerSideOverride(true);
+    closeSheet();
+  };
+
+  const handleDisablePerSide = () => {
+    onSetPerSideOverride(false);
+    closeSheet();
+  };
+
   // Every SessionExerciseActionId is dispatched explicitly — an unhandled id must not silently
-  // open the reorder sheet (the trap the plan's own instruction calls out). 'enable-per-side' and
-  // 'disable-per-side' are 07-08's territory, not yet wired, and unreachable from this sheet today
-  // since perSideAvailable defaults to false (SessionActionSheet's own visibility gate).
+  // open the reorder sheet (the trap the plan's own instruction calls out).
   const handleSessionAction = (id: SessionExerciseActionId) => {
     if (id === 'remove') setActiveSheet('remove-confirm');
     else if (id === 'swap') setActiveSheet('swap');
@@ -500,6 +535,10 @@ export function ExercisePage({
       void handleFormSuperset();
     } else if (id === 'detach-superset') {
       void handleDetachSuperset();
+    } else if (id === 'enable-per-side') {
+      handleEnablePerSide();
+    } else if (id === 'disable-per-side') {
+      handleDisablePerSide();
     } else if (id === 'reorder') {
       setActiveSheet('reorder');
     }
@@ -611,6 +650,8 @@ export function ExercisePage({
           hasEquipment={hasEquipment}
           nextExerciseName={nextExerciseName}
           supersetPartnerName={supersetPartnerName}
+          perSideEnabled={perSideEnabled}
+          perSideAvailable
           onSelect={handleSessionAction}
           onCancel={closeSheet}
         />

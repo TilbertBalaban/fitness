@@ -173,6 +173,12 @@ export function EditingWorkoutScreenView({
               sessionExercises={exercises}
               sessionExerciseRows={EMPTY_SUPERSET_MEMBERS}
               onSelectExercise={onSelectExercise}
+              // D-21's override is screen state this correction subtree does not carry — the mode
+              // still derives correctly from each row's already-logged `side` with no override
+              // (isPerSideMode's own default), so the toggle rows are a no-op here rather than
+              // wired to state that does not exist, matching D-32's precedent above exactly.
+              perSideOverride={undefined}
+              onSetPerSideOverride={() => {}}
               hasNote={pageData.hasNote}
               noteText={pageData.noteText}
               // A past, already-completed workout has no live equipment band or Equipment
