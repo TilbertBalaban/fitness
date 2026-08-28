@@ -44,6 +44,7 @@ export default defineConfig({
         'equipment-availability.spec.ts',
         'switch-gym.spec.ts',
         'program-day-lifecycle.spec.ts',
+        'advanced-sets.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },
