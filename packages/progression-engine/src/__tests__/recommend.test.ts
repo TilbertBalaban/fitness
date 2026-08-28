@@ -1,3 +1,4 @@
+import { DEFAULT_PROGRESSION_PREFERENCE } from '@fitness/api-contracts';
 import { resolveInventory, type EquipmentProfileLike } from '@fitness/plate-math';
 import { recommendNextPrescription } from '../recommend';
 import type { ExerciseSessionSets, LoggedSetInput, RecommendInput } from '../result';
@@ -37,6 +38,7 @@ function baseInput(overrides: Partial<RecommendInput> = {}): RecommendInput {
     prescription: { targetRepMin: 7, targetRepMax: 9, targetRir: 2 },
     equipmentType: 'barbell',
     inventory: inventoryFrom({ plates: [{ weightKg: '10.000', pairCount: 1 }] }),
+    preference: DEFAULT_PROGRESSION_PREFERENCE,
     ...overrides,
   };
 }
@@ -86,6 +88,29 @@ describe('recommendNextPrescription', () => {
     const result = recommendNextPrescription(
       baseInput({
         inventory: coarseInventory,
+        sessions: sessionsWith([loggedSet({ weightKg: '100.000', reps: 12, rir: 3 })]),
+      }),
+    );
+    // Under the default widen_rep_range_first preference, the range-ceiling was already reached
+    // (reps 12 >= targetRepMax 9), but the coarse inventory can't produce a heavier achievable
+    // load -- achievability, not preference, is what falls this back to a rep advance, reported
+    // as range_widened since the mode's own step was already a load-raise attempt.
+    expect(result).toEqual({
+      kind: 'recommendation',
+      weightKg: '100.000',
+      reps: 9,
+      rir: 2,
+      basis: 'range_widened',
+      offeredReduction: null,
+    });
+  });
+
+  it('falls back to a plain rep advance under match_previous_weight when the gym increment is too coarse to move', () => {
+    const coarseInventory = inventoryFrom({ plates: [{ weightKg: '50.000', pairCount: 1 }] });
+    const result = recommendNextPrescription(
+      baseInput({
+        inventory: coarseInventory,
+        preference: 'match_previous_weight',
         sessions: sessionsWith([loggedSet({ weightKg: '100.000', reps: 12, rir: 3 })]),
       }),
     );
@@ -281,5 +306,77 @@ describe('recommendNextPrescription', () => {
     expect(atThreshold.reps).toBe(belowThreshold.reps);
     expect(belowThreshold.offeredReduction).toBeNull();
     expect(atThreshold.offeredReduction).not.toBeNull();
+  });
+
+  it('produces a different recommendation under each D-07 preference for the same below-ceiling surplus', () => {
+    // Fine-grained plates so the ideal load computed from this surplus (achieved 12, expected 10)
+    // snaps to an achievable weight above 100, letting match_previous_weight's early raise
+    // actually land -- this is the divergence point the two modes exist to produce.
+    const fineInventory = inventoryFrom({
+      plates: [
+        { weightKg: '20.000', pairCount: 4 },
+        { weightKg: '1.250', pairCount: 2 },
+      ],
+    });
+    const belowCeilingSession = sessionsWith([loggedSet({ weightKg: '100.000', reps: 7, rir: 5 })]);
+
+    const widened = recommendNextPrescription(
+      baseInput({ inventory: fineInventory, preference: 'widen_rep_range_first', sessions: belowCeilingSession }),
+    );
+    const matched = recommendNextPrescription(
+      baseInput({ inventory: fineInventory, preference: 'match_previous_weight', sessions: belowCeilingSession }),
+    );
+
+    expect(widened).toEqual({
+      kind: 'recommendation',
+      weightKg: '100.000',
+      reps: 8,
+      rir: 2,
+      basis: 'range_widened',
+      offeredReduction: null,
+    });
+    expect(matched).toEqual({
+      kind: 'recommendation',
+      weightKg: '105.000',
+      reps: 7,
+      rir: 2,
+      basis: 'load_increase',
+      offeredReduction: null,
+    });
+  });
+
+  it('holds identically under both preferences on a shortfall, since a hold is not a load-versus-reps choice', () => {
+    const shortfallSession = sessionsWith([loggedSet({ weightKg: '100.000', reps: 6, rir: 1 })]);
+    const widened = recommendNextPrescription(
+      baseInput({ preference: 'widen_rep_range_first', sessions: shortfallSession }),
+    );
+    const matched = recommendNextPrescription(
+      baseInput({ preference: 'match_previous_weight', sessions: shortfallSession }),
+    );
+    expect(widened).toEqual(matched);
+    expect(widened).toMatchObject({ basis: 'shortfall_hold' });
+  });
+
+  it('progresses identically under both preferences on a failure set, since a failure is not a load-versus-reps choice', () => {
+    const failureSessions: ExerciseSessionSets[] = [
+      { sessionId: 'sess-recent', sets: [loggedSet({ id: 'a', rir: 0, reps: 11, weightKg: '100.000' })] },
+      { sessionId: 'sess-older', sets: [loggedSet({ id: 'b', rir: 0, reps: 10, weightKg: '100.000' })] },
+    ];
+    const widened = recommendNextPrescription(
+      baseInput({
+        prescription: { targetRepMin: 7, targetRepMax: 15, targetRir: 2 },
+        preference: 'widen_rep_range_first',
+        sessions: failureSessions,
+      }),
+    );
+    const matched = recommendNextPrescription(
+      baseInput({
+        prescription: { targetRepMin: 7, targetRepMax: 15, targetRir: 2 },
+        preference: 'match_previous_weight',
+        sessions: failureSessions,
+      }),
+    );
+    expect(widened).toEqual(matched);
+    expect(widened).toMatchObject({ basis: 'failure_rep_increase' });
   });
 });

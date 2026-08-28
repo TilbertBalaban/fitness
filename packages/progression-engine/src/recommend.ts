@@ -1,6 +1,7 @@
 import { expectedPerformance } from './expected-performance';
 import { beatsPriorRepsAtSameLoad, isFailurePerformance } from './failure-progression';
 import { normalizeHistory } from './normalize-history';
+import { resolveProgressionStep } from './preference';
 import { achievedPerformanceFor, classifyPerformance } from './rir-band';
 import { countConsecutiveShortfalls, offeredReductionFor } from './shortfall';
 import { compareCanonicalKg, idealNextLoadKg, snapToAchievable } from './snap';
@@ -112,6 +113,27 @@ export function recommendNextPrescription(input: RecommendInput): ProgressionRes
     };
   }
 
+  // D-07: the one place a surplus's outcome depends on the preference. `resolveProgressionStep`
+  // decides only the kind of step; achievability below is what can still fall it back to a rep
+  // advance regardless of preference, so the preference can never produce an unloadable weight.
+  const repAdvanceBasis = input.preference === 'widen_rep_range_first' ? 'range_widened' : 'rep_increase';
+  const step = resolveProgressionStep({
+    performance: topSet,
+    prescription: { targetRepMin, targetRepMax },
+    preference: input.preference,
+  });
+
+  if (step.kind === 'advance_reps') {
+    return {
+      kind: 'recommendation',
+      weightKg: topSet.weightKg,
+      reps: step.reps,
+      rir: targetRir,
+      basis: repAdvanceBasis,
+      offeredReduction: null,
+    };
+  }
+
   const idealKg = idealNextLoadKg(topSet.weightKg, achieved - expected);
   const snappedKg = snapToAchievable({ targetKg: idealKg, equipmentType: input.equipmentType, inventory: input.inventory });
   if (snappedKg === null) {
@@ -122,7 +144,7 @@ export function recommendNextPrescription(input: RecommendInput): ProgressionRes
     return {
       kind: 'recommendation',
       weightKg: snappedKg,
-      reps: targetRepMin,
+      reps: step.reps,
       rir: targetRir,
       basis: 'load_increase',
       offeredReduction: null,
@@ -134,7 +156,7 @@ export function recommendNextPrescription(input: RecommendInput): ProgressionRes
     weightKg: topSet.weightKg,
     reps: cappedRepIncrease,
     rir: targetRir,
-    basis: 'rep_increase',
+    basis: repAdvanceBasis,
     offeredReduction: null,
   };
 }
