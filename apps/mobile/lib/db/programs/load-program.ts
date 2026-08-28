@@ -1,5 +1,5 @@
 import type { CycleKind, TargetOverride } from '@fitness/api-contracts';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { getPowerSync, type WriteDb } from '../powersync';
 import { exercise, routine, routineCycle, routineDay, routineExercise, routineExerciseCycleTarget, seededExercise } from '../schema';
 import { sortByOrderThenId } from './order-index';
@@ -82,7 +82,7 @@ export async function loadProgramTree(
   const dayRows = await db
     .select({ id: routineDay.id, orderIndex: routineDay.orderIndex, name: routineDay.name, isRestDay: routineDay.isRestDay })
     .from(routineDay)
-    .where(eq(routineDay.routineId, routineId));
+    .where(and(eq(routineDay.routineId, routineId), isNull(routineDay.archivedAt)));
 
   const dayIds = dayRows.map((row) => row.id);
   const exerciseRows = dayIds.length

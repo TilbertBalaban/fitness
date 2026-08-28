@@ -87,6 +87,7 @@ export async function duplicateRoutine(
         orderIndex: day.orderIndex,
         name: day.name,
         isRestDay: day.isRestDay,
+        archivedAt: null,
       });
 
       for (const slot of day.slots) {
@@ -207,6 +208,7 @@ export async function duplicateDay(
       orderIndex: appendOrderIndex(siblings.map((row) => row.orderIndex)),
       name: trimmed,
       isRestDay: sourceDay.isRestDay,
+      archivedAt: null,
     });
 
     const slotIdBySourceId = new Map<string, string>();

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import { generateClientId } from '../id';
 import { getPowerSync, type WriteDb, type WriteTx } from '../powersync';
 import { routineDay, routineExercise } from '../schema';
@@ -30,6 +30,7 @@ export async function addDay({ routineId, name }: AddDayInput, db: WriteDb = get
     orderIndex: appendOrderIndex(existingRows.map((row) => row.orderIndex)),
     name: trimmed,
     isRestDay: false,
+    archivedAt: null,
   });
 
   return id;
@@ -49,6 +50,38 @@ export async function renameDay(dayId: string, name: string, db: WriteDb = getPo
 // already removes.
 export async function removeDay(dayId: string, db: WriteDb = getPowerSync()): Promise<void> {
   await db.delete(routineDay).where(eq(routineDay.id, dayId));
+}
+
+// A timestamp, never a delete (D-05, D-29/D-33): workout_session.routine_day_id points into this
+// day with no foreign key, so a destroyed day orphans history that cannot be reconstructed.
+// Deliberately no pointer reconciliation of the kind archiveRoutine performs — a day is not
+// addressed by user_preference, so there is nothing to clear.
+export async function archiveDay(dayId: string, db: WriteDb = getPowerSync()): Promise<void> {
+  await db.update(routineDay).set({ archivedAt: new Date().toISOString() }).where(eq(routineDay.id, dayId));
+}
+
+export async function restoreDay(dayId: string, db: WriteDb = getPowerSync()): Promise<void> {
+  await db.update(routineDay).set({ archivedAt: null }).where(eq(routineDay.id, dayId));
+}
+
+export interface ArchivedDayRow {
+  id: string;
+  name: string;
+  orderIndex: number;
+  archivedAt: string | null;
+}
+
+// Deliberately a second read rather than a flag on loadProgramTree: the same loadRoutines /
+// loadLibraryRoutines split one level up, keeping the tree read total instead of conditionally
+// partial. This is the one deliberate exception to "the archived-day filter lives in
+// loadProgramTree alone" (D-29/D-33).
+export async function loadArchivedDays(routineId: string, db: WriteDb = getPowerSync()): Promise<ArchivedDayRow[]> {
+  const rows = await db
+    .select({ id: routineDay.id, name: routineDay.name, orderIndex: routineDay.orderIndex, archivedAt: routineDay.archivedAt })
+    .from(routineDay)
+    .where(and(eq(routineDay.routineId, routineId), isNotNull(routineDay.archivedAt)));
+
+  return sortByOrderThenId(rows);
 }
 
 export interface SiblingRow {
