@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useColorScheme } from 'nativewind';
 import { ScrollView, Text, View } from 'react-native';
 import { WARMUP_SET_TYPE, type EquipmentType, type ResolvedTarget, type SetType, type WeightUnit } from '@fitness/api-contracts';
 import { hasResolvableEquipment, resolveEquipmentBand, type ResolvedInventory } from '@fitness/plate-math';
@@ -8,7 +9,8 @@ import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, updateLoggedSet } from '@/lib/db/log-set';
 import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
-import { clearSubEntries } from '@/lib/db/set-groups';
+import { addSubEntry, clearSubEntries, removeSubEntry } from '@/lib/db/set-groups';
+import { resolveGroupAddControls, type GroupAddControl } from '@/lib/session/set-row-builders';
 import { ChangeSetTypeDialog } from './ChangeSetTypeDialog';
 import { EquipmentAvailabilitySheet } from './EquipmentAvailabilitySheet';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
@@ -18,7 +20,7 @@ import type { KeypadField } from './NumericKeypad';
 import { NoteSheet } from './NoteSheet';
 import { ReorderExercisesSheet } from './ReorderExercisesSheet';
 import { RemoveExerciseDialog, SessionActionSheet, type SessionExerciseActionId } from './SessionActionSheet';
-import { SetRowView, type SetRowReference, type SetRowValues } from './SetRow';
+import { resolveSetRowColors, SetGroupAddControl, SetRowView, type SetRowReference, type SetRowValues } from './SetRow';
 import {
   FAILURE_SET_RIR,
   resolveSetTypeSelection,
@@ -67,6 +69,10 @@ export interface ExercisePageViewProps {
   onFieldPress: (setId: string | null, field: KeypadField, currentValue: string | null) => void;
   onReferenceTap: (setId: string | null, field: 'weight' | 'reps') => void;
   onCheckmarkPress: (setId: string | null) => void;
+  // Task 3 (07-05): D-08's "+ Add {type}" control and the per-child remove glyph. Both optional —
+  // a caller supplying neither (WorkoutSummary.tsx's correction rows) renders unchanged (R15).
+  onAddSubEntry?: (parentSetId: string) => void;
+  onRemoveChild?: (setId: string) => void;
 }
 
 // Hook-free — direct-invocable by a test, matching CycleStripView/DayDeckView. `rows` arrives
@@ -88,33 +94,60 @@ export function ExercisePageView({
   onFieldPress,
   onReferenceTap,
   onCheckmarkPress,
+  onAddSubEntry,
+  onRemoveChild,
 }: ExercisePageViewProps) {
+  // Task 3 (07-05): resolved once per render, from the rows this component already has — never
+  // re-derived per row. Keyed by the group's own LAST row (the last child, or the parent itself
+  // for a childless myorep, D-07) so the control renders directly beneath the correct row without
+  // resolveGroupAddControls itself needing to know about row *position* (it only knows kind and
+  // completion).
+  const visibleAddControls = resolveGroupAddControls(rows).filter((control) => control.visible);
+  const addControlByLastRowId = new Map<string, GroupAddControl>();
+  for (const control of visibleAddControls) {
+    const children = rows.filter((candidate) => candidate.parentSetId === control.parentSetId);
+    const lastRow = children.length > 0 ? children[children.length - 1] : rows.find((candidate) => candidate.setId === control.parentSetId);
+    if (lastRow?.setId) addControlByLastRowId.set(lastRow.setId, control);
+  }
+
   return (
     <View className="flex-1 bg-background">
       <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 }}>
         <Text className="mb-md text-heading font-semibold text-foreground">{exerciseName}</Text>
         {actionBarSlot ?? null}
-        {rows.map((row) => (
-          <SetRowView
-            key={row.setId ?? `draft-${row.setIndex}`}
-            setIndex={row.displaySetIndex ?? row.setIndex}
-            values={row.values}
-            reference={row.reference}
-            completed={row.completed}
-            activeField={activeField && activeField.setId === row.setId ? activeField.field : null}
-            colors={colors}
-            warmup={row.setType === WARMUP_SET_TYPE}
-            hasNote={row.noteText !== null && row.noteText !== undefined}
-            setType={row.setType}
-            side={row.side ?? null}
-            isChild={row.parentSetId != null}
-            onSetNumberPress={row.setId && onSetNumberPress ? () => onSetNumberPress(row.setId as string) : undefined}
-            onLongPress={row.setId && onSetLongPress ? () => onSetLongPress(row.setId as string) : undefined}
-            onFieldPress={(field) => onFieldPress(row.setId, field, row.values[field])}
-            onReferenceTap={(field) => onReferenceTap(row.setId, field)}
-            onCheckmarkPress={() => onCheckmarkPress(row.setId)}
-          />
-        ))}
+        {rows.flatMap((row) => {
+          const key = row.setId ?? `draft-${row.setIndex}`;
+          const isChild = row.parentSetId != null;
+          const elements: ReactNode[] = [
+            <SetRowView
+              key={key}
+              setIndex={row.displaySetIndex ?? row.setIndex}
+              values={row.values}
+              reference={row.reference}
+              completed={row.completed}
+              activeField={activeField && activeField.setId === row.setId ? activeField.field : null}
+              colors={colors}
+              warmup={row.setType === WARMUP_SET_TYPE}
+              hasNote={row.noteText !== null && row.noteText !== undefined}
+              setType={row.setType}
+              side={row.side ?? null}
+              isChild={isChild}
+              onSetNumberPress={row.setId && onSetNumberPress ? () => onSetNumberPress(row.setId as string) : undefined}
+              onLongPress={row.setId && onSetLongPress ? () => onSetLongPress(row.setId as string) : undefined}
+              onFieldPress={(field) => onFieldPress(row.setId, field, row.values[field])}
+              onReferenceTap={(field) => onReferenceTap(row.setId, field)}
+              onCheckmarkPress={() => onCheckmarkPress(row.setId)}
+              onRemoveChild={isChild && row.setId && onRemoveChild ? () => onRemoveChild(row.setId as string) : undefined}
+            />,
+          ];
+          const control = row.setId ? addControlByLastRowId.get(row.setId) : undefined;
+          if (control) {
+            elements.push(
+              <SetGroupAddControl key={`${key}-add`} label={control.label} onPress={() => onAddSubEntry?.(control.parentSetId)} />,
+            );
+          }
+          return elements;
+        })}
       </ScrollView>
     </View>
   );
@@ -194,7 +227,9 @@ export function ExercisePage({
   onReferenceTap,
   onCheckmarkPress,
 }: ExercisePageProps) {
-  const colors = useThemeColors();
+  const themeColors = useThemeColors();
+  const { colorScheme } = useColorScheme();
+  const colors = resolveSetRowColors(themeColors, colorScheme);
   const router = useRouter();
   const [activeSheet, setActiveSheet] = useState<ActiveSheet | null>(null);
   const [setNoteTarget, setSetNoteTarget] = useState<{ id: string; text: string | null } | null>(null);
@@ -331,6 +366,34 @@ export function ExercisePage({
   const handleCancelChangeSetType = () => {
     setPendingSetType(null);
     closeSheet();
+  };
+
+  // Task 3 (07-05): D-08's "+ Add {type}" control. Resolves the group's kind from the same
+  // resolveGroupAddControls output ExercisePageView already rendered the control from — never a
+  // second, independently-derived kind. A failed write leaves the group exactly as it was
+  // (addSubEntry writes nothing on its own guard failure, and a downstream write failure surfaces
+  // the existing setTypeError banner) rather than optimistically adding a row.
+  const handleAddSubEntry = async (parentSetId: string) => {
+    const control = resolveGroupAddControls(rows).find((candidate) => candidate.parentSetId === parentSetId);
+    if (!control) return;
+    try {
+      await addSubEntry({ sessionExerciseId, parentSetId, setType: control.kind }, db ?? getPowerSync());
+      onExerciseChanged();
+    } catch {
+      setSetTypeError("Couldn't save");
+    }
+  };
+
+  // The per-child remove glyph — deliberately un-confirmed (UI-SPEC), unlike D-09's group-level
+  // delete. A failed write leaves the row present rather than optimistically removing it — the E3
+  // error-state backstop this plan carries.
+  const handleRemoveChild = async (setId: string) => {
+    try {
+      await removeSubEntry(setId, db ?? getPowerSync());
+      onExerciseChanged();
+    } catch {
+      setSetTypeError("Couldn't save");
+    }
   };
 
   const handleActionPress = (id: ExerciseActionId) => {
@@ -515,6 +578,8 @@ export function ExercisePage({
       onFieldPress={onFieldPress}
       onReferenceTap={onReferenceTap}
       onCheckmarkPress={onCheckmarkPress}
+      onAddSubEntry={(parentSetId) => void handleAddSubEntry(parentSetId)}
+      onRemoveChild={(setId) => void handleRemoveChild(setId)}
     />
   );
 }

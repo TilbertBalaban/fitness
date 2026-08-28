@@ -16,6 +16,13 @@ const DESTRUCTIVE_COLORS: Record<'light' | 'dark', string> = {
 
 export type SetRowColors = ThemeColors & { destructive?: string };
 
+// Shared by SetRow's own wrapper and ExercisePage's — one place resolves colorScheme into the
+// destructive value, so the two call sites this row family has can never drift onto different
+// reds.
+export function resolveSetRowColors(themeColors: ThemeColors, colorScheme: 'light' | 'dark' | null | undefined): SetRowColors {
+  return { ...themeColors, destructive: DESTRUCTIVE_COLORS[colorScheme === 'dark' ? 'dark' : 'light'] };
+}
+
 export type SetRowFieldState = 'active' | 'populated' | 'empty';
 
 // Drives the field's cursor-bar affordance: an active field always shows the cursor regardless of
@@ -377,9 +384,5 @@ export interface SetRowProps {
 export function SetRow(props: SetRowProps) {
   const themeColors = useThemeColors();
   const { colorScheme } = useColorScheme();
-  const colors: SetRowColors = {
-    ...themeColors,
-    destructive: DESTRUCTIVE_COLORS[colorScheme === 'dark' ? 'dark' : 'light'],
-  };
-  return <SetRowView {...props} colors={colors} />;
+  return <SetRowView {...props} colors={resolveSetRowColors(themeColors, colorScheme)} />;
 }
