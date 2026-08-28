@@ -88,24 +88,48 @@ describe('exerciseChipFraction', () => {
 describe('countCompletedWorkingSets', () => {
   it('counts only completed, non-warm-up sets', () => {
     const count = countCompletedWorkingSets([
-      { setType: 'normal', completed: true },
-      { setType: 'normal', completed: false },
-      { setType: 'warmup', completed: true },
+      { setType: 'normal', completed: true, parentSetId: null },
+      { setType: 'normal', completed: false, parentSetId: null },
+      { setType: 'warmup', completed: true, parentSetId: null },
     ]);
     expect(count).toBe(1);
   });
 
   it('a completed warm-up row leaves the count unchanged versus the same rows without it', () => {
     const withoutWarmup = countCompletedWorkingSets([
-      { setType: 'normal', completed: true },
-      { setType: 'normal', completed: true },
+      { setType: 'normal', completed: true, parentSetId: null },
+      { setType: 'normal', completed: true, parentSetId: null },
     ]);
     const withCompletedWarmup = countCompletedWorkingSets([
-      { setType: 'normal', completed: true },
-      { setType: 'normal', completed: true },
-      { setType: 'warmup', completed: true },
+      { setType: 'normal', completed: true, parentSetId: null },
+      { setType: 'normal', completed: true, parentSetId: null },
+      { setType: 'warmup', completed: true, parentSetId: null },
     ]);
     expect(withCompletedWarmup).toBe(withoutWarmup);
+  });
+
+  // D-10: a completed parent counts as 1; its completed children add volume but never increment
+  // the set count — a drop set of a parent plus three children on a 4-set prescription must read
+  // 1/4, not 4/4.
+  it('counts a completed parent working set as 1 and its completed children as 0', () => {
+    const parentId = 'parent-1';
+    const count = countCompletedWorkingSets([
+      { setType: 'normal', completed: true, parentSetId: null },
+      { setType: 'drop', completed: true, parentSetId: parentId },
+      { setType: 'drop', completed: true, parentSetId: parentId },
+      { setType: 'drop', completed: true, parentSetId: parentId },
+    ]);
+    expect(count).toBe(1);
+  });
+
+  it('counts a completed drop/myorep/failure/amrap PARENT row (no parent of its own) as 1 — the exclusion is warm-up-only', () => {
+    const count = countCompletedWorkingSets([
+      { setType: 'drop', completed: true, parentSetId: null },
+      { setType: 'myorep', completed: true, parentSetId: null },
+      { setType: 'failure', completed: true, parentSetId: null },
+      { setType: 'amrap', completed: true, parentSetId: null },
+    ]);
+    expect(count).toBe(4);
   });
 });
 
