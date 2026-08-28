@@ -2,8 +2,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { DEFAULT_PROGRESSION_PREFERENCE, type ProgressionPreference } from '@fitness/api-contracts';
 
 import { AppearanceControl } from '@/components/AppearanceControl';
+import { SelectField, type SelectFieldOption } from '@/components/SelectField';
 import { SignOutDialog } from '@/components/SignOutDialog';
 import { authClient } from '@/lib/auth-client';
 import {
@@ -11,7 +13,13 @@ import {
   loadEquipmentProfiles,
   resolveLiveEquipmentProfileId,
 } from '@/lib/db/equipment-profiles';
-import { loadWorkoutPreferences, setWorkoutPreference, type WorkoutPreferences } from '@/lib/db/preferences';
+import {
+  loadProgressionPreference,
+  loadWorkoutPreferences,
+  setProgressionPreference,
+  setWorkoutPreference,
+  type WorkoutPreferences,
+} from '@/lib/db/preferences';
 import { getAlertPermission, openAlertSettings, type AlertPermission } from '@/lib/rest-alert';
 import { signOut } from '@/lib/sign-out';
 import { useThemeColors } from '@/lib/theme-colors';
@@ -43,6 +51,36 @@ export function ToggleRow({ label, value, onToggle }: { label: string; value: bo
         <Text className={`text-label font-semibold ${value ? 'text-white' : 'text-foreground-muted'}`}>{value ? 'On' : 'Off'}</Text>
       </View>
     </Pressable>
+  );
+}
+
+const PROGRESSION_PREFERENCE_OPTIONS: SelectFieldOption[] = [
+  { value: 'widen_rep_range_first', label: 'Add reps before weight' },
+  { value: 'match_previous_weight', label: 'Match my last weight' },
+];
+
+// D-07. A closed two-value set, so SelectField's chip picker fits without a new form primitive.
+export function ProgressionPreferenceRow({
+  value,
+  onChange,
+}: {
+  value: ProgressionPreference;
+  onChange: (value: ProgressionPreference) => void;
+}) {
+  return (
+    <View className="gap-xs">
+      <SelectField
+        label="Progression style"
+        value={value}
+        options={PROGRESSION_PREFERENCE_OPTIONS}
+        placeholder="Choose a progression style"
+        onChange={(next) => onChange(next as ProgressionPreference)}
+      />
+      <Text className="text-label font-normal text-foreground-muted">
+        Decides whether we suggest more reps before a heavier weight, or hold the weight steady until you are
+        ready to jump up.
+      </Text>
+    </View>
   );
 }
 
@@ -107,12 +145,15 @@ export default function ProfileScreen() {
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [preferences, setPreferences] = useState<WorkoutPreferences>(DEFAULT_PREFERENCES);
+  const [progressionPreference, setProgressionPreferenceState] = useState<ProgressionPreference>(
+    DEFAULT_PROGRESSION_PREFERENCE,
+  );
   const [notificationPermission, setNotificationPermission] = useState<AlertPermission>('undetermined');
   const [activeGymName, setActiveGymName] = useState<string | undefined>(undefined);
 
   // An all-settled read, not Promise.all: a failure resolving the active gym's name must never
   // prevent the workout preferences or notification permission from loading, and vice versa — the
-  // screen still issues one read pass per focus, but each of its four reads fails independently.
+  // screen still issues one read pass per focus, but each of its five reads fails independently.
   // getAlertPermission is a read, never a prompt (it never calls requestPermissionsAsync) — safe on
   // every focus, including after the user changes the OS-level answer in Settings and returns.
   useFocusEffect(
@@ -120,15 +161,18 @@ export default function ProfileScreen() {
       let active = true;
       void (async () => {
         if (!userId) return;
-        const [preferencesResult, permissionResult, gymProfilesResult, activeGymIdResult] = await Promise.allSettled([
-          loadWorkoutPreferences(userId),
-          getAlertPermission(),
-          loadEquipmentProfiles(userId),
-          loadActiveEquipmentProfileId(userId),
-        ]);
+        const [preferencesResult, progressionPreferenceResult, permissionResult, gymProfilesResult, activeGymIdResult] =
+          await Promise.allSettled([
+            loadWorkoutPreferences(userId),
+            loadProgressionPreference(userId),
+            getAlertPermission(),
+            loadEquipmentProfiles(userId),
+            loadActiveEquipmentProfileId(userId),
+          ]);
         if (!active) return;
 
         if (preferencesResult.status === 'fulfilled') setPreferences(preferencesResult.value);
+        if (progressionPreferenceResult.status === 'fulfilled') setProgressionPreferenceState(progressionPreferenceResult.value);
         if (permissionResult.status === 'fulfilled') setNotificationPermission(permissionResult.value);
 
         if (gymProfilesResult.status === 'fulfilled' && activeGymIdResult.status === 'fulfilled') {
@@ -152,6 +196,15 @@ export default function ProfileScreen() {
       await setWorkoutPreference(userId, key, nextValue);
     },
     [userId, preferences],
+  );
+
+  const setProgressionPreferenceChoice = useCallback(
+    async (nextValue: ProgressionPreference) => {
+      if (!userId) return;
+      setProgressionPreferenceState(nextValue);
+      await setProgressionPreference(userId, nextValue);
+    },
+    [userId],
   );
 
   // signOut consults pendingWriteCount and only calls this when the count is above zero, so the
@@ -204,6 +257,10 @@ export default function ProfileScreen() {
             label="Warm-up suggestions"
             value={preferences.warmupSetsEnabled}
             onToggle={() => void togglePreference('warmupSetsEnabled')}
+          />
+          <ProgressionPreferenceRow
+            value={progressionPreference}
+            onChange={(next) => void setProgressionPreferenceChoice(next)}
           />
           <NotificationRow permission={notificationPermission} onTurnOn={() => void openAlertSettings()} />
         </View>

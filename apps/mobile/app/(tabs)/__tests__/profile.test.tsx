@@ -18,7 +18,7 @@ jest.mock('@/lib/theme-colors', () => ({
   }),
 }));
 
-import { GymRow, NotificationRow, ToggleRow } from '../profile';
+import { GymRow, NotificationRow, ProgressionPreferenceRow, ToggleRow } from '../profile';
 
 function findText(node: unknown, out: string[] = []): string[] {
   if (node === null || node === undefined || typeof node === 'boolean') return out;
@@ -80,6 +80,55 @@ describe('NotificationRow (D-22)', () => {
     const [, turnOnButton] = result.props.children as [unknown, { props: { onPress: () => void } }];
     turnOnButton.props.onPress();
     expect(onTurnOn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ProgressionPreferenceRow (D-07)', () => {
+  interface OptionPressable {
+    props: { accessibilityLabel: string; accessibilityState: { selected: boolean }; onPress: () => void };
+  }
+
+  // SelectField is a custom component element (not yet executed), unlike ToggleRow/GymRow's own
+  // host-element output — invoking its own function is required to reach the option Pressables it
+  // renders internally, mirroring the mocked-hook direct-invocation technique this file already
+  // uses for GymRow.
+  function renderOptions(value: 'widen_rep_range_first' | 'match_previous_weight', onChange = jest.fn()) {
+    const result = ProgressionPreferenceRow({ value, onChange }) as { props: { children: unknown[] } };
+    const [selectFieldElement] = result.props.children as [{ type: (props: unknown) => unknown; props: unknown }, unknown];
+    const selectFieldOutput = selectFieldElement.type(selectFieldElement.props) as { props: { children: unknown[] } };
+    const optionsView = selectFieldOutput.props.children.find(
+      (child): child is { props: { children: OptionPressable[] } } =>
+        Array.isArray((child as { props?: { children?: unknown } } | null)?.props?.children),
+    );
+    if (!optionsView) throw new Error('options row not found');
+    return { pressables: optionsView.props.children, onChange };
+  }
+
+  it('renders with the persisted value selected', () => {
+    const { pressables } = renderOptions('match_previous_weight');
+    const selected = pressables.find((p) => p.props.accessibilityLabel === 'Match my last weight');
+    const other = pressables.find((p) => p.props.accessibilityLabel === 'Add reps before weight');
+    expect(selected?.props.accessibilityState.selected).toBe(true);
+    expect(other?.props.accessibilityState.selected).toBe(false);
+  });
+
+  it('renders the default selection for an account with no preference row', () => {
+    const { pressables } = renderOptions('widen_rep_range_first');
+    const selected = pressables.find((p) => p.props.accessibilityLabel === 'Add reps before weight');
+    expect(selected?.props.accessibilityState.selected).toBe(true);
+  });
+
+  it('choosing the other option calls onChange with that value', () => {
+    const { pressables, onChange } = renderOptions('widen_rep_range_first');
+    const other = pressables.find((p) => p.props.accessibilityLabel === 'Match my last weight');
+    other?.props.onPress();
+    expect(onChange).toHaveBeenCalledWith('match_previous_weight');
+  });
+
+  it('describes what the setting changes without citing a source or coach', () => {
+    const result = ProgressionPreferenceRow({ value: 'widen_rep_range_first', onChange: jest.fn() });
+    const text = findText(result);
+    expect(text.join(' ')).toMatch(/reps before a heavier weight/i);
   });
 });
 
