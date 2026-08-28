@@ -2,6 +2,8 @@ import { serializeEquipmentJson } from '@fitness/api-contracts';
 import { warmupSets } from '@fitness/pr-rules';
 import {
   addExerciseToSession,
+  detachSuperset,
+  formSuperset,
   generateWarmupSets,
   removeSessionExercise,
   reorderSessionExercises,
@@ -644,5 +646,125 @@ describe('session-mutations — the database-injection seam (WINDOWS #23)', () =
     await setNote({ level: 'exercise', id: 'se-1', text: 'x' });
 
     expect(getPowerSyncMock).toHaveBeenCalled();
+  });
+});
+
+describe('formSuperset — session-scoped superset formation (D-11, D-15, D-16, T-7-02)', () => {
+  it('pairs an exercise with its live next-adjacent exercise, writing one fresh group id onto both rows and no others', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 0, supersetGroupId: null, removedAt: null });
+    store.seed(sessionExercise, { id: 'se-2', sessionId: 's-1', orderIndex: 1, supersetGroupId: null, removedAt: null });
+    store.seed(sessionExercise, { id: 'se-3', sessionId: 's-1', orderIndex: 2, supersetGroupId: null, removedAt: null });
+
+    const result = await formSuperset({ sessionExerciseId: 'se-1', sessionId: 's-1' }, store.db);
+
+    expect(result.paired).toBe(true);
+    expect(result.partnerId).toBe('se-2');
+    const byId = new Map(store.rowsOf(sessionExercise).map((row) => [row.id, row.supersetGroupId]));
+    expect(byId.get('se-1')).toBe(result.groupId);
+    expect(byId.get('se-2')).toBe(result.groupId);
+    expect(byId.get('se-3')).toBeNull();
+  });
+
+  it('reports no pairing and writes nothing for the last live exercise in the session', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 0, supersetGroupId: null, removedAt: null });
+    store.seed(sessionExercise, { id: 'se-2', sessionId: 's-1', orderIndex: 1, supersetGroupId: null, removedAt: null });
+
+    const result = await formSuperset({ sessionExerciseId: 'se-2', sessionId: 's-1' }, store.db);
+
+    expect(result).toEqual({ paired: false, groupId: null, partnerId: null });
+    expect(store.rowsOf(sessionExercise).every((row) => row.supersetGroupId === null)).toBe(true);
+  });
+
+  it("reuses the next-adjacent exercise's existing group id rather than minting a new one", async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 0, supersetGroupId: null, removedAt: null });
+    store.seed(sessionExercise, { id: 'se-2', sessionId: 's-1', orderIndex: 1, supersetGroupId: 'g-existing', removedAt: null });
+
+    const result = await formSuperset({ sessionExerciseId: 'se-1', sessionId: 's-1' }, store.db);
+
+    expect(result.groupId).toBe('g-existing');
+    const byId = new Map(store.rowsOf(sessionExercise).map((row) => [row.id, row.supersetGroupId]));
+    expect(byId.get('se-1')).toBe('g-existing');
+    expect(byId.get('se-2')).toBe('g-existing');
+  });
+
+  it('a chain of pairwise taps produces one three-member group sharing the same id, not two overlapping pairs (D-15)', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 0, supersetGroupId: null, removedAt: null });
+    store.seed(sessionExercise, { id: 'se-2', sessionId: 's-1', orderIndex: 1, supersetGroupId: null, removedAt: null });
+    store.seed(sessionExercise, { id: 'se-3', sessionId: 's-1', orderIndex: 2, supersetGroupId: null, removedAt: null });
+
+    await formSuperset({ sessionExerciseId: 'se-1', sessionId: 's-1' }, store.db);
+    await formSuperset({ sessionExerciseId: 'se-2', sessionId: 's-1' }, store.db);
+
+    const groupIds = new Set(store.rowsOf(sessionExercise).map((row) => row.supersetGroupId));
+    expect(groupIds.size).toBe(1);
+    expect(groupIds.has(null)).toBe(false);
+  });
+
+  it('skips a removed exercise when resolving the next adjacent one', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 0, supersetGroupId: null, removedAt: null });
+    store.seed(sessionExercise, {
+      id: 'se-2',
+      sessionId: 's-1',
+      orderIndex: 1,
+      supersetGroupId: null,
+      removedAt: '2026-08-28T00:00:00.000Z',
+    });
+    store.seed(sessionExercise, { id: 'se-3', sessionId: 's-1', orderIndex: 2, supersetGroupId: null, removedAt: null });
+
+    const result = await formSuperset({ sessionExerciseId: 'se-1', sessionId: 's-1' }, store.db);
+
+    expect(result.partnerId).toBe('se-3');
+    const byId = new Map(store.rowsOf(sessionExercise).map((row) => [row.id, row.supersetGroupId]));
+    expect(byId.get('se-2')).toBeNull();
+  });
+
+  it('only pairs within the given sessionId, ignoring a same-order-index row from another session', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 0, supersetGroupId: null, removedAt: null });
+    store.seed(sessionExercise, { id: 'se-x', sessionId: 's-other', orderIndex: 1, supersetGroupId: null, removedAt: null });
+
+    const result = await formSuperset({ sessionExerciseId: 'se-1', sessionId: 's-1' }, store.db);
+
+    expect(result).toEqual({ paired: false, groupId: null, partnerId: null });
+  });
+
+  it('never writes to routine_exercise (D-16) — days.ts:148 and duplicate-routine.ts:99 stay true', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', sessionId: 's-1', orderIndex: 0, supersetGroupId: null, removedAt: null });
+    store.seed(sessionExercise, { id: 'se-2', sessionId: 's-1', orderIndex: 1, supersetGroupId: null, removedAt: null });
+    store.seed(routineExercise, { id: 're-1', supersetGroupId: null });
+
+    await formSuperset({ sessionExerciseId: 'se-1', sessionId: 's-1' }, store.db);
+
+    expect(store.rowsOf(routineExercise)[0].supersetGroupId).toBeNull();
+  });
+});
+
+describe('detachSuperset — clears exactly the named row, leaves the partner intact (D-24, T-7-16)', () => {
+  it('clears superset_group_id on exactly the named row and leaves the other member unchanged', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', supersetGroupId: 'g1' });
+    store.seed(sessionExercise, { id: 'se-2', supersetGroupId: 'g1' });
+
+    await detachSuperset('se-1', store.db);
+
+    const byId = new Map(store.rowsOf(sessionExercise).map((row) => [row.id, row.supersetGroupId]));
+    expect(byId.get('se-1')).toBeNull();
+    expect(byId.get('se-2')).toBe('g1');
+  });
+
+  it('never writes to routine_exercise (D-16)', async () => {
+    const store = inMemoryDb();
+    store.seed(sessionExercise, { id: 'se-1', supersetGroupId: 'g1' });
+    store.seed(routineExercise, { id: 're-1', supersetGroupId: 'unchanged' });
+
+    await detachSuperset('se-1', store.db);
+
+    expect(store.rowsOf(routineExercise)[0].supersetGroupId).toBe('unchanged');
   });
 });

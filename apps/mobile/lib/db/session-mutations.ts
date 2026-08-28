@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { isEmptyOverride, WARMUP_SET_TYPE, type EquipmentType, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
 import { achievableBarbellLoads, achievableDumbbellLoads, roundToAchievable, type ResolvedInventory } from '@fitness/plate-math';
 import { warmupSets } from '@fitness/pr-rules';
+import { generateClientId } from './id';
 import { addSessionExercise, logSet } from './log-set';
 import { getPowerSync, type WriteDb, type WriteHandle, type WriteTx } from './powersync';
 import { loadSessionInventory } from './session-equipment';
@@ -295,4 +296,85 @@ export async function reorderSessionExercises(
         .where(and(eq(sessionExercise.id, orderedIds[index]), eq(sessionExercise.sessionId, sessionId)));
     }
   });
+}
+
+export interface FormSupersetInput {
+  sessionExerciseId: string;
+  sessionId: string;
+}
+
+export interface FormSupersetResult {
+  paired: boolean;
+  groupId: string | null;
+  partnerId: string | null;
+}
+
+interface OrderRow {
+  id: string;
+  orderIndex: number;
+  supersetGroupId: string | null;
+  removedAt: string | null;
+}
+
+// D-11: pairs the named exercise with the next adjacent LIVE exercise in session order — a removed
+// exercise (removed_at set) is filtered out in JS after the select, rather than relying on a SQL
+// IS NULL clause, so "next adjacent" skips it exactly like every other live-only read in this
+// codebase. The candidate rows are resolved from a query scoped by sessionId, never from a
+// caller-supplied group id, so the client cannot mint a cross-session group (T-7-02). Resolves the
+// group id in priority order: the partner's own existing group id — this is how a chain of
+// pairwise taps yields ONE group of three or more rather than two overlapping pairs (D-15) — else
+// this exercise's own existing id, else a fresh generateClientId(). Both rows are written in a
+// single db.transaction, each `where` scoped by both row id and sessionId, mirroring
+// reorderSessionExercises's own discipline. D-16: never writes routine_exercise — days.ts:148 and
+// duplicate-routine.ts:99 stay true after this call.
+export async function formSuperset(
+  { sessionExerciseId, sessionId }: FormSupersetInput,
+  db: WriteDb = getPowerSync(),
+): Promise<FormSupersetResult> {
+  const rows = (await db
+    .select({
+      id: sessionExercise.id,
+      orderIndex: sessionExercise.orderIndex,
+      supersetGroupId: sessionExercise.supersetGroupId,
+      removedAt: sessionExercise.removedAt,
+    })
+    .from(sessionExercise)
+    .where(eq(sessionExercise.sessionId, sessionId))) as OrderRow[];
+
+  const ordered = rows
+    .filter((row) => row.removedAt === null)
+    .slice()
+    .sort((a, b) => a.orderIndex - b.orderIndex);
+  const currentIndex = ordered.findIndex((row) => row.id === sessionExerciseId);
+  const partner = currentIndex === -1 ? undefined : ordered[currentIndex + 1];
+
+  if (!partner) {
+    return { paired: false, groupId: null, partnerId: null };
+  }
+
+  const current = ordered[currentIndex];
+  const groupId = partner.supersetGroupId ?? current.supersetGroupId ?? generateClientId();
+
+  await db.transaction(async (tx: WriteTx) => {
+    await tx
+      .update(sessionExercise)
+      .set({ supersetGroupId: groupId })
+      .where(and(eq(sessionExercise.id, current.id), eq(sessionExercise.sessionId, sessionId)));
+    await tx
+      .update(sessionExercise)
+      .set({ supersetGroupId: groupId })
+      .where(and(eq(sessionExercise.id, partner.id), eq(sessionExercise.sessionId, sessionId)));
+  });
+
+  return { paired: true, groupId, partnerId: partner.id };
+}
+
+// D-24: deliberately does NOT clear the partner's group id — Task 1's isFinalGroupMember already
+// treats a one-live-member group as behaving like no group at all, so leaving the survivor's id
+// intact is what lets re-adding a member later restore paired behaviour with no re-linking step. Do
+// not "tidy up" the partner's id here; that would break the guarantee D-24 depends on. Scoped by
+// row id only (T-7-16) — clearing this session_exercise row's own column cannot mutate any other
+// session's row, so no sessionId parameter is needed. D-16: never writes routine_exercise.
+export async function detachSuperset(sessionExerciseId: string, db: WriteDb = getPowerSync()): Promise<void> {
+  await db.update(sessionExercise).set({ supersetGroupId: null }).where(eq(sessionExercise.id, sessionExerciseId));
 }
