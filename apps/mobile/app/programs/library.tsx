@@ -15,6 +15,7 @@ import {
   archiveRoutine,
   loadActiveRoutineId,
   loadLibraryRoutines,
+  markRoutineReady,
   renameRoutine,
   resolveLiveRoutineId,
   restoreRoutine,
@@ -143,6 +144,7 @@ export function buildLibraryListItems(
 }
 
 const ACTIVATE = 'activate';
+const MARK_READY = 'mark-ready';
 const DUPLICATE = 'duplicate';
 const RENAME = 'rename';
 const ARCHIVE = 'archive';
@@ -156,6 +158,10 @@ export function actionsForRow(row: LibraryRoutineRow, isActive: boolean): Routin
   // archived program is never the active one, so offering the action would advertise a state that
   // archiveRoutine immediately undoes.
   if (!isActive && !archived) actions.push({ key: ACTIVATE, label: 'Activate' });
+  // Hidden rather than disabled, for the same reason as Activate above: an action that cannot
+  // change anything advertises a state the write would immediately undo. Not gated on isActive
+  // (D-31) — being trained and being finished being authored are independent facts.
+  if (!archived && row.status !== 'ready') actions.push({ key: MARK_READY, label: 'Mark Ready' });
   actions.push({ key: DUPLICATE, label: 'Duplicate' });
   actions.push({ key: RENAME, label: 'Rename' });
   actions.push(
@@ -248,6 +254,9 @@ export default function ProgramLibraryScreen() {
             () => activateRoutine({ userId, routineId: row.id }),
             `Couldn't make ${row.name} the active program.`,
           );
+          return;
+        case MARK_READY:
+          await mutate(() => markRoutineReady(row.id), `Couldn't mark ${row.name} ready.`);
           return;
         case DUPLICATE: {
           let duplicateId: string | null = null;
