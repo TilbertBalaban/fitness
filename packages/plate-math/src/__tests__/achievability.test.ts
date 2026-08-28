@@ -2,6 +2,7 @@ import { resolveInventory, type EquipmentProfileLike } from '../inventory';
 import {
   achievableBarbellLoads,
   achievableDumbbellLoads,
+  achievableLoadsForEquipmentType,
   achievableMachineLoads,
   isAchievable,
   nearestLoadable,
@@ -179,6 +180,30 @@ describe('nearestLoadable', () => {
 
   it('both sides are null against an empty achievable set', () => {
     expect(nearestLoadable('50.000', [])).toEqual({ lower: null, higher: null });
+  });
+});
+
+describe('achievableLoadsForEquipmentType', () => {
+  const inventory = inventoryFrom({
+    plates: [{ weightKg: '20.000', pairCount: 1 }],
+    dumbbells: [{ weightKg: '10.000' }],
+  });
+
+  it('resolves barbell against the whole inventory', () => {
+    expect(achievableLoadsForEquipmentType('barbell', inventory)).toEqual(achievableBarbellLoads(inventory));
+  });
+
+  it('resolves dumbbell against the whole inventory', () => {
+    expect(achievableLoadsForEquipmentType('dumbbell', inventory)).toEqual(achievableDumbbellLoads(inventory));
+  });
+
+  it('resolves an equipment type with no modelled increment to an empty set', () => {
+    expect(achievableLoadsForEquipmentType('machine', inventory)).toEqual([]);
+  });
+
+  it('resolves a null equipment type or a null inventory to an empty set', () => {
+    expect(achievableLoadsForEquipmentType(null, inventory)).toEqual([]);
+    expect(achievableLoadsForEquipmentType('barbell', null)).toEqual([]);
   });
 });
 

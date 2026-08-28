@@ -1,4 +1,4 @@
-import type { SetType } from '@fitness/api-contracts';
+import type { EquipmentType, SetType } from '@fitness/api-contracts';
 import type { ResolvedInventory } from '@fitness/plate-math';
 
 export interface LoggedSetInput {
@@ -35,7 +35,7 @@ export interface RecommendInput {
     targetRepMax: number | null;
     targetRir: number | null;
   };
-  equipmentType: string | null;
+  equipmentType: EquipmentType | null;
   inventory: ResolvedInventory | null;
 }
 

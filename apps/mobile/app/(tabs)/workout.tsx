@@ -24,8 +24,7 @@ import { RestTimerBar } from '@/components/RestTimerBar';
 import { DiscardWorkoutDialog } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
 import {
-  achievableBarbellLoads,
-  achievableDumbbellLoads,
+  achievableLoadsForEquipmentType,
   resolveEquipmentBand,
   roundToAchievable,
   type EquipmentBandState,
@@ -148,21 +147,6 @@ async function loadExerciseEquipmentTypeMap(
   for (const row of seededRows) map.set(row.id, (row.equipmentRequired as EquipmentType | null) ?? null);
   for (const row of customRows) map.set(row.id, (row.equipmentRequired as EquipmentType | null) ?? null);
   return map;
-}
-
-// D-09's tap-to-autofill rounding needs the achievable set matching the CURRENT exercise's
-// equipment type. Barbell/dumbbell resolve directly against the whole inventory (achievability.ts's
-// own single-argument builders); machine/cable selection additionally depends on band.ts's
-// name-then-id machine ordering (06-02's GYM-03 decision), which stays that file's one observable
-// point per its own SUMMARY — duplicating it here would create the exact second-order-of-truth risk
-// that decision was written to avoid, so machine/cable resolves to no achievable set and the
-// autofill falls through to "write the logged value unchanged" (the same null-rounder behaviour
-// D-09 already specifies for "nothing achievable").
-function achievableLoadsForEquipmentType(equipmentType: EquipmentType | null, inventory: ResolvedInventory | null): string[] {
-  if (equipmentType === null || inventory === null) return [];
-  if (equipmentType === 'barbell' || equipmentType === 'ez_bar') return achievableBarbellLoads(inventory);
-  if (equipmentType === 'dumbbell') return achievableDumbbellLoads(inventory);
-  return [];
 }
 
 export interface WorkoutScreenRead {

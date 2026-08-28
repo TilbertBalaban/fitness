@@ -1,4 +1,4 @@
-import { CANONICAL_KG_SCALE, type EquipmentMachine } from '@fitness/api-contracts';
+import { CANONICAL_KG_SCALE, type EquipmentMachine, type EquipmentType } from '@fitness/api-contracts';
 import type { ResolvedInventory } from './inventory';
 
 export type RoundDirection = 'nearest' | 'down' | 'up';
@@ -128,6 +128,25 @@ export function achievableDumbbellLoads(inventory: ResolvedInventory): string[] 
 // endpoints only rather than looping (T-06-07) — a machine record with a nonsensical increment
 // must still resolve to something, never spin.
 const MAX_MACHINE_STEPS = 10_000;
+
+// Moved from apps/mobile/app/(tabs)/workout.tsx (D-09's tap-to-autofill rounding) so the engine's
+// snapping and the workout screen's autofill both answer "what can this gym produce" from the
+// same function. Barbell/dumbbell resolve directly against the whole inventory (this module's own
+// single-argument builders); machine/cable selection additionally depends on band.ts's
+// name-then-id machine ordering (06-02's GYM-03 decision), which stays that file's one observable
+// point per its own SUMMARY — duplicating it here would create the exact second-order-of-truth risk
+// that decision was written to avoid, so machine/cable resolves to no achievable set and callers
+// fall through to "the target unchanged" (the same null-rounder behaviour D-09 already specifies
+// for "nothing achievable").
+export function achievableLoadsForEquipmentType(
+  equipmentType: EquipmentType | null,
+  inventory: ResolvedInventory | null,
+): string[] {
+  if (equipmentType === null || inventory === null) return [];
+  if (equipmentType === 'barbell' || equipmentType === 'ez_bar') return achievableBarbellLoads(inventory);
+  if (equipmentType === 'dumbbell') return achievableDumbbellLoads(inventory);
+  return [];
+}
 
 export function achievableMachineLoads(machine: EquipmentMachine): string[] {
   if (machine.stackMinKg === null || machine.stackMaxKg === null) return [];
