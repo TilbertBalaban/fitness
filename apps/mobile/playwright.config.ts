@@ -45,6 +45,7 @@ export default defineConfig({
         'switch-gym.spec.ts',
         'program-day-lifecycle.spec.ts',
         'advanced-sets.spec.ts',
+        'progression-recommendation.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },
