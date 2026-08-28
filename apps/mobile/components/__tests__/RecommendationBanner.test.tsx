@@ -85,6 +85,57 @@ describe('RecommendationBanner — recommendation branch', () => {
   });
 });
 
+describe('RecommendationBanner — offered reduction', () => {
+  const shortfallHoldWithOffer: ProgressionResult = {
+    kind: 'recommendation',
+    weightKg: '100.000',
+    reps: 7,
+    rir: 2,
+    basis: 'shortfall_hold',
+    offeredReduction: { weightKg: '80.000', reps: 7 },
+  };
+  const shortfallHoldWithoutOffer: ProgressionResult = {
+    kind: 'recommendation',
+    weightKg: '100.000',
+    reps: 7,
+    rir: 2,
+    basis: 'shortfall_hold',
+    offeredReduction: null,
+  };
+
+  it('renders the offer beneath the recommendation, as a second, distinct line', () => {
+    const result = RecommendationBanner(baseProps({ result: shortfallHoldWithOffer }));
+    const texts = textOf(result);
+
+    expect(texts).toHaveLength(2);
+    expect(texts[0]).toContain('100.00 kg');
+    expect(texts[1]).toContain('80.00 kg');
+    expect(texts[1]).not.toEqual(texts[0]);
+  });
+
+  it('converts the offered weight for display through the shared formatter', () => {
+    const result = RecommendationBanner(baseProps({ result: shortfallHoldWithOffer, weightUnit: 'lb' }));
+    const texts = textOf(result);
+
+    expect(texts[1]).toContain('lb');
+    expect(texts[1]).not.toContain('kg');
+  });
+
+  it('renders nothing extra when the offer is null', () => {
+    const result = RecommendationBanner(baseProps({ result: shortfallHoldWithoutOffer }));
+    const texts = textOf(result);
+
+    expect(texts).toHaveLength(1);
+  });
+
+  it('never attributes the offer to a source, coach or published method', () => {
+    const result = RecommendationBanner(baseProps({ result: shortfallHoldWithOffer }));
+    const texts = textOf(result);
+
+    expect(texts.join(' ')).not.toMatch(/macrofactor|stronger by science|renaissance periodization|research[- ]backed|science[- ]based/i);
+  });
+});
+
 describe('RecommendationBanner — no_history branch', () => {
   it('renders a pick-your-own-starting-weight line, never a fabricated number', () => {
     const result = RecommendationBanner(baseProps({ result: { kind: 'no_history' } }));
