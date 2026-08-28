@@ -25,12 +25,23 @@ interface RawRoutineExercise {
   [key: string]: unknown;
 }
 
+interface RawRoutineCycle {
+  id: string;
+  routine_id: string;
+  order_index: number;
+  name: string;
+  kind: string;
+  duration_days: number | null;
+  [key: string]: unknown;
+}
+
 interface ProgramsHarness {
   openWithFilename(dbFilename: string): Promise<void>;
   seedRoutineTree(): Promise<SeededRoutineTree>;
   openProgramsScreen(): Promise<void>;
   readRoutineDayRaw(dayId: string): Promise<RawRoutineDay | null>;
   readRoutineDaysRaw(routineId: string): Promise<RawRoutineDay[]>;
+  readRoutineCycleRaw(cycleId: string): Promise<RawRoutineCycle | null>;
   readRoutineExercise(routineExerciseId: string): Promise<RawRoutineExercise | null>;
 }
 
@@ -78,6 +89,13 @@ async function readExercise(page: Page, routineExerciseId: string): Promise<RawR
     ({ globalKey, routineExerciseId }) =>
       (window as unknown as HarnessWindow)[globalKey].readRoutineExercise(routineExerciseId),
     { globalKey: DURABILITY_HARNESS_GLOBAL, routineExerciseId },
+  );
+}
+
+async function readCycle(page: Page, cycleId: string): Promise<RawRoutineCycle | null> {
+  return page.evaluate(
+    ({ globalKey, cycleId }) => (window as unknown as HarnessWindow)[globalKey].readRoutineCycleRaw(cycleId),
+    { globalKey: DURABILITY_HARNESS_GLOBAL, cycleId },
   );
 }
 
@@ -152,4 +170,57 @@ test('duplicating, archiving and restoring a training day, driven end to end', a
   // Pull was never touched by any of the three operations above.
   const finalPullRow = await readDay(page, pullDayId);
   expect(finalPullRow?.archived_at ?? null).toBeNull();
+});
+
+test('converting a cycle to time off with a duration writes kind and duration_days together', async ({ page }) => {
+  const dbFilename = `fitness-program-day-lifecycle-cycle-ok-${Date.now()}.db`;
+  await openHarness(page, dbFilename);
+  const seeded = await seedAndOpen(page);
+
+  await page.getByRole('button', { name: 'Week 1, training cycle' }).click();
+  await page.getByRole('button', { name: 'Edit Cycle', exact: true }).click();
+
+  // Absent for a non-time-off kind — the conditional render is the form's whole shape.
+  await expect(page.getByLabel('Days off', { exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Make Time off', exact: true }).click();
+  await expect(page.getByLabel('Days off', { exact: true })).toBeVisible();
+
+  await page.getByLabel('Days off', { exact: true }).fill('7');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect
+    .poll(() => readCycle(page, seeded.cycleId).then((row) => row?.kind ?? null))
+    .toBe('time_off');
+  const savedCycle = await readCycle(page, seeded.cycleId);
+  expect(savedCycle?.duration_days).toBe(7);
+
+  // The form closed on a successful save — the field it staged its edit through is gone.
+  await expect(page.getByLabel('Days off', { exact: true })).toHaveCount(0);
+});
+
+test('converting a cycle to time off with no duration writes nothing', async ({ page }) => {
+  const dbFilename = `fitness-program-day-lifecycle-cycle-fail-${Date.now()}.db`;
+  await openHarness(page, dbFilename);
+  const seeded = await seedAndOpen(page);
+
+  await page.getByRole('button', { name: 'Week 1, training cycle' }).click();
+  await page.getByRole('button', { name: 'Edit Cycle', exact: true }).click();
+  await page.getByRole('button', { name: 'Make Time off', exact: true }).click();
+
+  const durationField = page.getByLabel('Days off', { exact: true });
+  await expect(durationField).toBeVisible();
+  await expect(durationField).toHaveValue('');
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  // The form stays open and the validation message is what the user sees...
+  await expect(durationField).toBeVisible();
+  await expect(page.getByText('Time off needs a length in days.', { exact: true })).toBeVisible();
+
+  // ...but the load-bearing half is the stored row: a form that showed the error after already
+  // writing the kind would be the same trap wearing a warning label.
+  const unchangedCycle = await readCycle(page, seeded.cycleId);
+  expect(unchangedCycle?.kind).toBe('training');
+  expect(unchangedCycle?.duration_days ?? null).toBeNull();
 });
