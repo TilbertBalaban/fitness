@@ -382,7 +382,7 @@ Plans:
   4. User can superset two adjacent exercises and the rest timer starts only after both are done, then detach them again
   5. User can log different weights and reps for left and right on a unilateral exercise
 
-**Plans**: 1/9 plans executed
+**Plans**: 5/9 plans executed
 
 Plans:
 **Wave 1**
@@ -391,14 +391,14 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 07-02-PLAN.md — Working-volume and records predicates across every query call site; partials excluded from PRs
-- [ ] 07-03-PLAN.md — Grouped rows never inflate the count: auto-advance and the strip fraction read parents only
-- [ ] 07-04-PLAN.md — The picker's full behavior table, the counted destructive confirm, and failure at 0 RIR
+- [x] 07-02-PLAN.md — Working-volume and records predicates across every query call site; partials excluded from PRs
+- [x] 07-03-PLAN.md — Grouped rows never inflate the count: auto-advance and the strip fraction read parents only
+- [x] 07-04-PLAN.md — The picker's full behavior table, the counted destructive confirm, and failure at 0 RIR
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [ ] 07-05-PLAN.md — Groups you can grow: myoreps, partials, the "+ Add {type}" control, and per-child removal
-- [ ] 07-06-PLAN.md — Superset formation and detach: the group predicate module and four new action-sheet rows
+- [x] 07-06-PLAN.md — Superset formation and detach: the group predicate module and four new action-sheet rows
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -559,7 +559,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
 | 5. In-Gym Session Logging | 16/16 | In Progress|  |
 | 6. Gym Profiles & Plate Math | 8/8 | Complete    | 2026-08-28 |
-| 7. Advanced Set Types | 1/9 | In Progress|  |
+| 7. Advanced Set Types | 5/9 | In Progress|  |
 | 8. Progression Engine | 0/TBD | Not started | - |
 | 9. Records & Client Analytics | 0/TBD | Not started | - |
 | 10. Server Analytics & Reconciliation | 0/TBD | Not started | - |
