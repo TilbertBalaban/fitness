@@ -1,4 +1,4 @@
-import { loadWorkoutPreferences, setWorkoutPreference } from '../preferences';
+import { loadProgressionPreference, loadWorkoutPreferences, setProgressionPreference, setWorkoutPreference } from '../preferences';
 import { getPowerSync } from '../powersync';
 import { userPreference } from '../schema';
 
@@ -134,6 +134,82 @@ describe('setWorkoutPreference', () => {
     getPowerSyncMock.mockReturnValue(db);
 
     await setWorkoutPreference('u-1', 'autoAdvanceEnabled', true);
+
+    expect(getPowerSyncMock).toHaveBeenCalled();
+  });
+});
+
+describe('loadProgressionPreference', () => {
+  it('returns the stored value when a row exists', async () => {
+    const { db } = fakeDb([{ table: userPreference, rows: [{ progressionPreference: 'match_previous_weight' }] }]);
+
+    await expect(loadProgressionPreference('u-1', db)).resolves.toBe('match_previous_weight');
+  });
+
+  it('returns the default when no row exists', async () => {
+    const { db } = fakeDb();
+
+    await expect(loadProgressionPreference('u-1', db)).resolves.toBe('widen_rep_range_first');
+  });
+
+  it('returns the default when the stored value is not a recognised member', async () => {
+    const { db } = fakeDb([{ table: userPreference, rows: [{ progressionPreference: 'some_corrupted_value' }] }]);
+
+    await expect(loadProgressionPreference('u-1', db)).resolves.toBe('widen_rep_range_first');
+  });
+});
+
+describe('setProgressionPreference', () => {
+  it('inserts a full row with sensible defaults when none exists', async () => {
+    const { db, calls } = fakeDb();
+
+    await setProgressionPreference('u-1', 'match_previous_weight', db);
+
+    expect(calls.updates).toHaveLength(0);
+    expect(calls.inserts).toHaveLength(1);
+    expect(calls.inserts[0].table).toBe(userPreference);
+    expect(calls.inserts[0].values).toEqual({
+      id: 'u-1',
+      userId: 'u-1',
+      weightUnit: 'kg',
+      progressionPreference: 'match_previous_weight',
+      defaultEquipmentProfileId: null,
+      activeRoutineId: null,
+      autoAdvanceEnabled: true,
+      warmupSetsEnabled: true,
+    });
+  });
+
+  it('writes exactly its own column when a row already exists, leaving weightUnit, activeRoutineId and both flags untouched', async () => {
+    const { db, calls } = fakeDb([
+      {
+        table: userPreference,
+        rows: [
+          {
+            id: 'u-1',
+            weightUnit: 'lb',
+            activeRoutineId: 'routine-1',
+            autoAdvanceEnabled: false,
+            warmupSetsEnabled: false,
+            progressionPreference: 'widen_rep_range_first',
+          },
+        ],
+      },
+    ]);
+
+    await setProgressionPreference('u-1', 'match_previous_weight', db);
+
+    expect(calls.inserts).toHaveLength(0);
+    expect(calls.updates).toHaveLength(1);
+    expect(calls.updates[0].table).toBe(userPreference);
+    expect(calls.updates[0].values).toEqual({ progressionPreference: 'match_previous_weight' });
+  });
+
+  it('falls back to getPowerSync when no database is passed', async () => {
+    const { db } = fakeDb();
+    getPowerSyncMock.mockReturnValue(db);
+
+    await setProgressionPreference('u-1', 'widen_rep_range_first');
 
     expect(getPowerSyncMock).toHaveBeenCalled();
   });
