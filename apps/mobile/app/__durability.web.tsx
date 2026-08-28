@@ -14,6 +14,8 @@ import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib
 import { loadSessionPersonalRecords } from '../lib/db/personal-record';
 import { completeSession, discardSession, pauseSession, resumeSession } from '../lib/db/session-lifecycle';
 import { deleteSession, duplicateSession, renameSession } from '../lib/db/history-mutations';
+import { addSubEntry, removeSubEntry } from '../lib/db/set-groups';
+import { formSuperset, detachSuperset } from '../lib/db/session-mutations';
 import { loadHistoryPage } from '../lib/db/history-query';
 import { previousSetReference } from '../lib/db/session-query';
 import { loadNextUp } from '../lib/db/programs/next-up-query';
@@ -64,6 +66,9 @@ import {
   type SeedPriorHeaviestSetInput,
   type SeedSwapCandidateInput,
   type TestWriteDb,
+  readLoggedSetsWithGrouping,
+  seedSupersetPair,
+  type SeededSupersetPair,
 } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
 import { SessionModeProvider } from '../lib/session/session-mode';
@@ -468,6 +473,36 @@ export default function DurabilityHarnessScreen() {
       },
       async readRoutineCycleRaw(cycleId: string) {
         return readRoutineCycleRaw(cycleId);
+      },
+      // 07-09's grouped-set e2e proof (advanced-sets.spec.ts): real stored parentage/side per row,
+      // not the rendered text SetRow produces — delegates to the real readLoggedSetsWithGrouping.
+      async readLoggedSetsWithGrouping(sessionExerciseId: string) {
+        return readLoggedSetsWithGrouping(sessionExerciseId);
+      },
+      // Seeds a deterministic adjacent session_exercise pair via the real seedProgrammedSession, so
+      // the superset spec has two live members to pair without depending on whatever
+      // seedProgrammedSession happens to produce — then mounts WorkoutHarnessScreen, matching
+      // seedWorkoutSession's own seed-then-mount convention above.
+      async seedSupersetPair(): Promise<SeededSupersetPair> {
+        const db = requireOpenDb();
+        const seeded = await seedSupersetPair(db, WORKOUT_HARNESS_USER_ID);
+        setWorkoutHarness({ db });
+        return seeded;
+      },
+      // Real set-groups.ts writes against the currently open() database — no reimplementation.
+      async addSubEntry(input: Parameters<typeof addSubEntry>[0]) {
+        return addSubEntry(input, requireOpenDb());
+      },
+      async removeSubEntry(setId: string) {
+        return removeSubEntry(setId, requireOpenDb());
+      },
+      // Real session-mutations.ts writes against the currently open() database — the same
+      // formSuperset/detachSuperset ExercisePage.tsx dispatches, no reimplementation.
+      async formSuperset(input: Parameters<typeof formSuperset>[0]) {
+        return formSuperset(input, requireOpenDb());
+      },
+      async detachSuperset(sessionExerciseId: string) {
+        return detachSuperset(sessionExerciseId, requireOpenDb());
       },
     };
 
