@@ -576,6 +576,10 @@ Plans:
 - [ ] Phase 06 test 5 (06-07-D3): Switch Gym mid-session — menu row order, destructive Discard styling, no-confirmation sheet, logged sets keep their displayed weight
 - [ ] Phase 04 test 4: swipe/drag between DayDeck pages while a duplicated or archived day sits in the deck — paging works across the archived-filtered day count and the drag handle still reorders with an odd number of live days
 - [ ] Phase 04 test 5: visual review at default and maximum OS font scale of the cycle strip's three chip tones, the day page's Duplicate/Archive/Restore controls, the Archived days section (0.6 opacity, 48x48 Restore) and the Edit Cycle form's Days off field — header wraps rather than shrinks, nothing overflows
+- [ ] Phase 07 test 1 (SC1 "no slower"): log 5 consecutive plain working sets — no set-type change, no grouping, no per-side, no superset — and confirm the tap sequence and perceived responsiveness match the Phase 5 flow exactly
+- [ ] Phase 07 test 2 (SC2): log a drop set, a myorep cluster (activation set plus rest-pause mini-sets), and a full set followed by partials — each group reads as one logical set at a glance (indentation, badge glyph, blank child set-number column). Note myorep and partial have no dedicated e2e case; only drop set was exercised end to end
+- [ ] Phase 07 test 3 (SETS-04): tap a completed set's number, pick Failure — the row keeps its weight/reps, shows an F badge, and reads 0 RIR with no further input
+- [ ] Phase 07 test 4 (SETS-07/08): open an exercise's overflow sheet, tap Superset — both chips show the link glyph and the page header shows the partner pill with correct light/dark colours
 - [ ] (append human-judgment web items from phases 01-12 as each phase defers them)
 
 ## Progress
