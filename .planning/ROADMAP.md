@@ -382,12 +382,12 @@ Plans:
   4. User can superset two adjacent exercises and the rest timer starts only after both are done, then detach them again
   5. User can log different weights and reps for left and right on a unilateral exercise
 
-**Plans**: 9 plans
+**Plans**: 1/9 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — Tracer: a drop-set sub-entry, from the set-number tap to an indented child row
+- [x] 07-01-PLAN.md — Tracer: a drop-set sub-entry, from the set-number tap to an indented child row
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -559,7 +559,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
 | 5. In-Gym Session Logging | 16/16 | In Progress|  |
 | 6. Gym Profiles & Plate Math | 8/8 | Complete    | 2026-08-28 |
-| 7. Advanced Set Types | 0/TBD | Not started | - |
+| 7. Advanced Set Types | 1/9 | In Progress|  |
 | 8. Progression Engine | 0/TBD | Not started | - |
 | 9. Records & Client Analytics | 0/TBD | Not started | - |
 | 10. Server Analytics & Reconciliation | 0/TBD | Not started | - |
