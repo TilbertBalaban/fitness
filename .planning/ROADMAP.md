@@ -450,11 +450,29 @@ Plans:
   5. Missing sessions never produces a reduced recommendation; falling short holds the prescription, and a reduction is only suggested after 2–3 consecutive misses
   6. The same rule code runs on client and server, so a recommendation can never differ between them
 
-**Plans**: TBD
+**Plans**: 6 plans
 
 Plans:
+**Wave 1**
 
-- [ ] 08-01: TBD during `/gsd-plan-phase 8`
+- [ ] 08-01-PLAN.md — Tracer: fill `packages/progression-engine`, snap through plate-math, render a recommendation at exercise start
+- [ ] 08-02-PLAN.md — D-07's progression preference: vocabulary, column on both sides of sync, push validator, Profile dial
+
+**Wave 2** *(blocked on 08-01)*
+
+- [ ] 08-03-PLAN.md — Normalise Phase 7's set vocabulary (per-side on the weaker side, drops through the top set) and the failure-set rule
+
+**Wave 3** *(blocked on 08-03)*
+
+- [ ] 08-04-PLAN.md — Shortfall streak, RIR tolerance band, and the layoff invariance PRGR-08 demands
+
+**Wave 4** *(blocked on 08-02 and 08-04)*
+
+- [ ] 08-05-PLAN.md — The preference branch in the engine, threaded from `user_preference` to the workout screen
+
+**Wave 5** *(blocked on 08-05)*
+
+- [ ] 08-06-PLAN.md — Client/server parity fixture run by three suites, and the real-browser offline proof
 
 ### Phase 9: Records & Client Analytics
 
