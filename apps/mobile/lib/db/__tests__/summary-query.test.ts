@@ -147,6 +147,88 @@ describe('loadSessionSummary — breakdown inclusion (must_haves)', () => {
   });
 });
 
+describe('loadSessionSummary — D-10 set count vs D-17 volume split (Phase 7)', () => {
+  it('counts a drop set’s parent and two children as one completed working set, while reps and volume include all three rows', async () => {
+    const { db } = fakeDb({
+      workoutSessionRows: [SESSION_ROW],
+      sessionExerciseRows: [{ id: 'se-1', sessionId: 's-1', exerciseId: 'ex-1', orderIndex: 0, removedAt: null }],
+      loggedSetRows: [
+        {
+          id: 'ls-parent',
+          sessionExerciseId: 'se-1',
+          setIndex: 1,
+          setType: 'normal',
+          weightKg: '100.000',
+          reps: 8,
+          rir: 2,
+          completed: true,
+          loggedAt: '2026-08-24T09:05:00.000Z',
+          parentSetId: null,
+        },
+        {
+          id: 'ls-child-1',
+          sessionExerciseId: 'se-1',
+          setIndex: 2,
+          setType: 'drop',
+          weightKg: '80.000',
+          reps: 6,
+          rir: 1,
+          completed: true,
+          loggedAt: '2026-08-24T09:06:00.000Z',
+          parentSetId: 'ls-parent',
+        },
+        {
+          id: 'ls-child-2',
+          sessionExerciseId: 'se-1',
+          setIndex: 3,
+          setType: 'drop',
+          weightKg: '60.000',
+          reps: 6,
+          rir: 0,
+          completed: true,
+          loggedAt: '2026-08-24T09:07:00.000Z',
+          parentSetId: 'ls-parent',
+        },
+      ],
+    });
+
+    const result = await loadSessionSummary('s-1', 'user-1', db);
+    const row = result?.breakdown[0];
+
+    // D-10: one parent, two children — one set toward the prescription, not three.
+    expect(row?.completedWorkingSetCount).toBe(1);
+    // D-17: volume/reps stay child-inclusive — all three rows contributed real working effort.
+    expect(row?.completedSetCount).toBe(3);
+    expect(row?.totalReps).toBe(20);
+    expect(row?.volumeKg).toBe((100 * 8 + 80 * 6 + 60 * 6).toFixed(3));
+  });
+
+  it('omits an exercise whose only completed rows are warm-ups from the breakdown entirely (edge SETS-06/empty)', async () => {
+    const { db } = fakeDb({
+      workoutSessionRows: [SESSION_ROW],
+      sessionExerciseRows: [{ id: 'se-1', sessionId: 's-1', exerciseId: 'ex-1', orderIndex: 0, removedAt: null }],
+      loggedSetRows: [
+        {
+          id: 'ls-warmup',
+          sessionExerciseId: 'se-1',
+          setIndex: 1,
+          setType: 'warmup',
+          weightKg: '40.000',
+          reps: 10,
+          rir: 4,
+          completed: true,
+          loggedAt: '2026-08-24T09:00:00.000Z',
+          parentSetId: null,
+        },
+      ],
+    });
+
+    const result = await loadSessionSummary('s-1', 'user-1', db);
+
+    expect(result?.breakdown).toHaveLength(0);
+  });
+});
+
 describe('loadSessionSummary — bestE1rmKg validity cutoff (D-31)', () => {
   it('is null when every completed set is past the E1RM validity cutoff', async () => {
     const overCutoffReps = E1RM_MAX_VALID_REPS + 5;

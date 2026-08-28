@@ -100,6 +100,54 @@ describe('detectPrs', () => {
     expect(result).toEqual([]);
   });
 
+  it('produces no PRs for a completed partial candidate, even one heavier than every prior set (D-18)', () => {
+    const prior: PriorBest = {
+      heaviestWeight: 100,
+      bestE1rm: 100 * (1 + 5 / 30),
+      mostRepsAtWeight: new Map([[100, 5]]),
+      bestSetVolume: 500,
+    };
+    const result = detectPrs(candidate({ weightKg: 500, reps: 1, setType: 'partial' }), prior);
+
+    expect(result).toEqual([]);
+  });
+
+  it.each(['drop', 'myorep', 'failure', 'amrap'])(
+    'remains fully PR-eligible for a completed %s-typed first-ever set (D-18)',
+    (setType) => {
+      const prior = emptyPriorBest();
+      const result = detectPrs(candidate({ weightKg: 100, reps: 5, setType }), prior);
+
+      expect(result.map((pr) => pr.prType)).toEqual([
+        'heaviest_weight',
+        'best_e1rm',
+        'most_reps_at_weight',
+        'best_set_volume',
+      ]);
+    },
+  );
+
+  it('a heavier partial does not consume the heaviest-weight record — a subsequent full set at that weight still yields heaviest_weight (D-18)', () => {
+    const prior: PriorBest = {
+      heaviestWeight: 90,
+      bestE1rm: null,
+      mostRepsAtWeight: new Map([[90, 5]]),
+      bestSetVolume: null,
+    };
+
+    const partialResult = detectPrs(candidate({ weightKg: 500, reps: 1, setType: 'partial' }), prior);
+    expect(partialResult).toEqual([]);
+
+    const foldedAfterPartial = foldPriorBest([
+      candidate({ weightKg: 90, reps: 5, completed: true }),
+      candidate({ weightKg: 500, reps: 1, completed: true, setType: 'partial' }),
+    ]);
+    expect(foldedAfterPartial.heaviestWeight).toBe(90);
+
+    const fullSetResult = detectPrs(candidate({ weightKg: 100, reps: 5 }), foldedAfterPartial);
+    expect(fullSetResult.find((pr) => pr.prType === 'heaviest_weight')).toEqual({ prType: 'heaviest_weight', value: 100 });
+  });
+
   it('produces no PRs for an uncompleted candidate', () => {
     const prior = emptyPriorBest();
     const result = detectPrs(candidate({ completed: false }), prior);
@@ -170,5 +218,18 @@ describe('foldPriorBest', () => {
     const result = foldPriorBest([]);
 
     expect(result).toEqual(emptyPriorBest());
+  });
+
+  it('skips a completed partial set with a real weight — it contributes to no prior-best field (D-18)', () => {
+    const result = foldPriorBest([candidate({ weightKg: 500, reps: 1, completed: true, setType: 'partial' })]);
+
+    expect(result).toEqual(emptyPriorBest());
+  });
+
+  it.each(['drop', 'myorep', 'failure', 'amrap'])('folds a completed %s-typed set into prior best (D-18)', (setType) => {
+    const result = foldPriorBest([candidate({ weightKg: 100, reps: 5, completed: true, setType })]);
+
+    expect(result.heaviestWeight).toBe(100);
+    expect(result.mostRepsAtWeight.get(100)).toBe(5);
   });
 });
