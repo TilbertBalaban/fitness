@@ -455,24 +455,24 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 08-01-PLAN.md — Tracer: fill `packages/progression-engine`, snap through plate-math, render a recommendation at exercise start
-- [ ] 08-02-PLAN.md — D-07's progression preference: vocabulary, column on both sides of sync, push validator, Profile dial
+- [x] 08-01-PLAN.md — Tracer: fill `packages/progression-engine`, snap through plate-math, render a recommendation at exercise start
+- [x] 08-02-PLAN.md — D-07's progression preference: vocabulary, column on both sides of sync, push validator, Profile dial
 
 **Wave 2** *(blocked on 08-01)*
 
-- [ ] 08-03-PLAN.md — Normalise Phase 7's set vocabulary (per-side on the weaker side, drops through the top set) and the failure-set rule
+- [x] 08-03-PLAN.md — Normalise Phase 7's set vocabulary (per-side on the weaker side, drops through the top set) and the failure-set rule
 
 **Wave 3** *(blocked on 08-03)*
 
-- [ ] 08-04-PLAN.md — Shortfall streak, RIR tolerance band, and the layoff invariance PRGR-08 demands
+- [x] 08-04-PLAN.md — Shortfall streak, RIR tolerance band, and the layoff invariance PRGR-08 demands
 
 **Wave 4** *(blocked on 08-02 and 08-04)*
 
-- [ ] 08-05-PLAN.md — The preference branch in the engine, threaded from `user_preference` to the workout screen
+- [x] 08-05-PLAN.md — The preference branch in the engine, threaded from `user_preference` to the workout screen
 
 **Wave 5** *(blocked on 08-05)*
 
-- [ ] 08-06-PLAN.md — Client/server parity fixture run by three suites, and the real-browser offline proof
+- [x] 08-06-PLAN.md — Client/server parity fixture run by three suites, and the real-browser offline proof
 
 ### Phase 9: Records & Client Analytics
 
@@ -614,7 +614,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. In-Gym Session Logging | 16/16 | Complete    | 2026-08-28 |
 | 6. Gym Profiles & Plate Math | 8/8 | Complete    | 2026-08-28 |
 | 7. Advanced Set Types | 9/9 | Complete    | 2026-08-28 |
-| 8. Progression Engine | 0/TBD | Not started | - |
+| 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
 | 9. Records & Client Analytics | 0/TBD | Not started | - |
 | 10. Server Analytics & Reconciliation | 0/TBD | Not started | - |
 | 11. Program Generation | 0/TBD | Not started | - |
