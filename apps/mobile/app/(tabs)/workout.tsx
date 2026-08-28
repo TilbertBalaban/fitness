@@ -920,7 +920,11 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   const exercises: ExerciseStripExercise[] = sessionExercises.map((exercise) => {
     const existingSets = liveSession?.setsByExerciseId[exercise.id] ?? [];
     const completedWorkingSets = countCompletedWorkingSets(
-      existingSets.map((row) => ({ setType: row.setType, completed: rowOverrides[row.id]?.completed ?? row.completed })),
+      existingSets.map((row) => ({
+        setType: row.setType,
+        completed: rowOverrides[row.id]?.completed ?? row.completed,
+        parentSetId: row.parentSetId ?? null,
+      })),
     );
     return {
       id: exercise.id,
@@ -1229,9 +1233,9 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
       // SessionScreenMode value, never session.status (D-32/R10).
       if (mode === LIVE_MODE) {
         const exerciseIndex = sessionExercises.findIndex((candidate) => candidate.id === exercise.id);
-        const setsAfter = [...existingSets, { setType: WORKING_SET_TYPE, completed: true }];
+        const setsAfter = [...existingSets, { setType: WORKING_SET_TYPE, completed: true, parentSetId: null }];
         const nextIndex = shouldAutoAdvance({
-          sets: setsAfter.map((row) => ({ setType: row.setType, completed: row.completed })),
+          sets: setsAfter.map((row) => ({ setType: row.setType, completed: row.completed, parentSetId: row.parentSetId ?? null })),
           enabled: autoAdvanceEnabled,
           currentIndex: exerciseIndex,
           exerciseCount: sessionExercises.length,
@@ -1266,6 +1270,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
       const setsAfter = existingSets.map((candidate) => ({
         setType: candidate.setType,
         completed: candidate.id === setId ? true : (rowOverrides[candidate.id]?.completed ?? candidate.completed),
+        parentSetId: candidate.parentSetId ?? null,
       }));
       const nextIndex = shouldAutoAdvance({
         sets: setsAfter,
