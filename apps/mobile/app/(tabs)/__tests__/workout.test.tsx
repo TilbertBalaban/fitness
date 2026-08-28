@@ -33,6 +33,8 @@ import {
 import type { LoggedSetRow, SessionExerciseRow } from '../../../lib/db/session-query';
 import type { WriteDb } from '../../../lib/db/powersync';
 import { isFinalGroupMember, nextSupersetMemberIndex, type SupersetMemberInput } from '../../../lib/session/superset';
+import { isPerSideMode, parentsAwaitingRightSide, SIDE_LEFT, SIDE_RIGHT, sideForNewSet, type PerSideRowInput } from '../../../lib/session/per-side';
+import { shouldAutoAdvance } from '../../../lib/session/auto-advance';
 
 type AnyElement = ReactElement<Record<string, unknown>>;
 
@@ -211,6 +213,82 @@ describe('handleCheckmarkPress — rest suppression and member advance (D-13, D-
   });
 });
 
+// D-20/D-21/D-22: `handleCheckmarkPress` is not exported (same constraint as the superset block
+// above), so these tests exercise the exact composition both of its completion call sites perform
+// — `sideForNewSet` deciding the draft branch's `side:` argument, and `parentsAwaitingRightSide`
+// deciding which parent ids the completion handler calls `addSubEntry` for — against
+// `PerSideRowInput[]` fixtures built the same shape `existingSets` (a `LoggedSetRow[]`) already is.
+function perSideRow(overrides: Partial<PerSideRowInput> & Pick<PerSideRowInput, 'id'>): PerSideRowInput {
+  return { parentSetId: null, side: null, setType: 'normal', completed: true, ...overrides };
+}
+
+describe('handleCheckmarkPress — per-side stamping and the automatic right child (D-20, D-21, D-22)', () => {
+  it('stamps side left on the trailing draft when per-side mode is on, and a null side when it is off', () => {
+    const paired = [perSideRow({ id: 'p1', side: SIDE_LEFT }), perSideRow({ id: 'c1', parentSetId: 'p1', side: SIDE_RIGHT })];
+    expect(sideForNewSet(paired, undefined)).toBe(SIDE_LEFT);
+
+    const plain = [perSideRow({ id: 'p1' })];
+    expect(sideForNewSet(plain, undefined)).toBeNull();
+  });
+
+  it('one right child is owed immediately after the draft branch completes a left-side parent', () => {
+    const rows = [perSideRow({ id: 'p1', side: SIDE_LEFT, completed: true })];
+    expect(parentsAwaitingRightSide(rows)).toEqual(['p1']);
+  });
+
+  it('re-ticking an already-paired left parent creates no second right child — exactly one right child exists', () => {
+    const rows = [
+      perSideRow({ id: 'p1', side: SIDE_LEFT, completed: true }),
+      perSideRow({ id: 'c1', parentSetId: 'p1', side: SIDE_RIGHT, completed: false }),
+    ];
+    expect(parentsAwaitingRightSide(rows)).toEqual([]);
+    expect(rows.filter((row) => row.parentSetId === 'p1' && row.side === SIDE_RIGHT)).toHaveLength(1);
+  });
+
+  it('un-ticking a left parent leaves its right child in place — the child row is untouched by the now-incomplete parent', () => {
+    const beforeUntick = [
+      perSideRow({ id: 'p1', side: SIDE_LEFT, completed: true }),
+      perSideRow({ id: 'c1', parentSetId: 'p1', side: SIDE_RIGHT, completed: false }),
+    ];
+    // Un-ticking flips only the parent's own completed flag (the toggle branch's un-complete path)
+    // — the child row is never named by any un-tick write, so it survives byte-for-byte.
+    const afterUntick = [{ ...beforeUntick[0], completed: false }, beforeUntick[1]];
+    expect(afterUntick.find((row) => row.id === 'c1')).toEqual(beforeUntick[1]);
+    expect(parentsAwaitingRightSide(afterUntick)).toEqual([]);
+  });
+
+  it('turning per-side mode off leaves an existing paired row untouched and only makes the NEXT set single (D-22)', () => {
+    const rows = [
+      perSideRow({ id: 'p1', side: SIDE_LEFT, completed: true }),
+      perSideRow({ id: 'c1', parentSetId: 'p1', side: SIDE_RIGHT, completed: true }),
+    ];
+    expect(isPerSideMode(rows, false)).toBe(false);
+    expect(sideForNewSet(rows, false)).toBeNull();
+    // The existing pair's own rows are never read by isPerSideMode/sideForNewSet with an override —
+    // they simply stay in `rows`, exactly as passed in, unmodified.
+    expect(rows).toEqual([
+      perSideRow({ id: 'p1', side: SIDE_LEFT, completed: true }),
+      perSideRow({ id: 'c1', parentSetId: 'p1', side: SIDE_RIGHT, completed: true }),
+    ]);
+  });
+
+  it('a completed per-side pair contributes exactly 1 to shouldAutoAdvance\'s count — the right child is filtered out by its own parentSetId (D-10/D-19)', () => {
+    const sets = [
+      { setType: 'normal', completed: true, parentSetId: null },
+      { setType: 'normal', completed: true, parentSetId: 'p1' },
+    ];
+    const nextIndex = shouldAutoAdvance({
+      sets,
+      enabled: true,
+      currentIndex: 0,
+      exerciseCount: 2,
+      completedSetType: 'normal',
+      targetWorkingSets: 1,
+    });
+    expect(nextIndex).toBe(1);
+  });
+});
+
 const LOGGED_ROW: LoggedSetRow = {
   id: 'ls-1',
   sessionExerciseId: 'se-1',
@@ -369,6 +447,8 @@ function baseViewProps(overrides: Partial<WorkoutScreenViewProps> = {}): Workout
     activeGymId: 'gym-1',
     exercises: [{ id: 'se-1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3 }],
     supersetGroupMembers: [{ id: 'se-1', orderIndex: 0, supersetGroupId: null, exerciseName: 'Bench Press' }],
+    perSideOverrideByExercise: {},
+    onSetPerSideOverride: jest.fn(),
     currentExerciseId: 'se-1',
     currentIndex: 0,
     pagerWidth: 375,

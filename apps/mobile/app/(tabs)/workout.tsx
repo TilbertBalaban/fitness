@@ -1,4 +1,4 @@
-import { fromCanonicalKg, toCanonicalKg, WORKING_SET_TYPE, type EquipmentType, type WeightUnit } from '@fitness/api-contracts';
+import { fromCanonicalKg, toCanonicalKg, WORKING_SET_TYPE, type EquipmentType, type SetType, type WeightUnit } from '@fitness/api-contracts';
 import { eq, inArray } from 'drizzle-orm';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -33,6 +33,7 @@ import {
 } from '@fitness/plate-math';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, startWorkoutFromProgram, updateLoggedSet } from '@/lib/db/log-set';
+import { addSubEntry } from '@/lib/db/set-groups';
 import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
 import type { ProgramCycle, ProgramDay } from '@/lib/db/programs/load-program';
 import { loadWorkoutPreferences } from '@/lib/db/preferences';
@@ -55,6 +56,7 @@ import { exercise as exerciseTable, loggedSet, seededExercise as seededExerciseT
 import { finishSession } from '@/lib/session/finish-session';
 import { shouldAutoAdvance } from '@/lib/session/auto-advance';
 import { isFinalGroupMember, nextSupersetMemberIndex, type SupersetMemberInput } from '@/lib/session/superset';
+import { parentsAwaitingRightSide, sideForNewSet, SIDE_RIGHT, type PerSideRowInput } from '@/lib/session/per-side';
 import { resolveNextUp, type NextUp } from '@/lib/programs/next-up';
 import {
   cancelRestAlert,
@@ -256,6 +258,19 @@ function findMostRecentCompletedSet(
   return best;
 }
 
+// The PerSideRowInput[] shape parentsAwaitingRightSide/sideForNewSet need, built from the same
+// LoggedSetRow[]+overrides pair every other completion computation in this file already reads —
+// never a second, independently-derived merge.
+function perSideRowsFor(existingSets: LoggedSetRow[], rowOverrides: Record<string, RowOverride>): PerSideRowInput[] {
+  return existingSets.map((row) => ({
+    id: row.id,
+    parentSetId: row.parentSetId ?? null,
+    side: row.side ?? null,
+    setType: row.setType,
+    completed: rowOverrides[row.id]?.completed ?? row.completed,
+  }));
+}
+
 export interface HeaderTimerBarData {
   sessionId: string;
   startedAtMs: number;
@@ -285,6 +300,11 @@ export interface WorkoutScreenViewProps {
   // threaded here so ExercisePage's Superset/Detach rows and partner chip answer every
   // group-membership question from this one already-loaded list too.
   supersetGroupMembers: SupersetMemberInput[];
+  // D-21's ephemeral per-exercise override, keyed by session_exercise id — undefined for an
+  // exercise that has never had the toggle touched, letting isPerSideMode fall through to its own
+  // derived-from-data default.
+  perSideOverrideByExercise: Record<string, boolean>;
+  onSetPerSideOverride: (exerciseId: string, value: boolean) => void;
   currentExerciseId: string | null;
   currentIndex: number;
   pagerWidth: number;
@@ -422,6 +442,8 @@ export function WorkoutScreenView({
   activeGymId,
   exercises,
   supersetGroupMembers,
+  perSideOverrideByExercise,
+  onSetPerSideOverride,
   currentExerciseId,
   currentIndex,
   pagerWidth,
@@ -748,6 +770,10 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   // decide what an exercise's own band content is (Task 3).
   const [equipmentTypeByExerciseId, setEquipmentTypeByExerciseId] = useState<Map<string, EquipmentType | null>>(new Map());
   const [draftValuesByExercise, setDraftValuesByExercise] = useState<Record<string, SetRowValues>>({});
+  // D-21's ephemeral per-exercise override: undefined means "derive from data" (isPerSideMode's own
+  // default), true/false wins outright over the derived value. Survives a reload() (which refetches
+  // without remounting) and is deliberately never persisted — no new column, D-21.
+  const [perSideOverrideByExercise, setPerSideOverrideByExercise] = useState<Record<string, boolean>>({});
   const [rowOverrides, setRowOverrides] = useState<Record<string, RowOverride>>({});
   const [starting, setStarting] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -1214,17 +1240,33 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
       const outstandingTargetAt = liveSession?.session.restTargetAt ?? null;
       const previousCompletedSet = outstandingTargetAt !== null ? findMostRecentCompletedSet(liveSession, rowOverrides) : null;
 
-      await logSet(
+      const side = sideForNewSet(perSideRowsFor(existingSets, rowOverrides), perSideOverrideByExercise[exercise.id]);
+      const newSetId = await logSet(
         {
           sessionExerciseId: exercise.id,
           weight: { value: draftValues.weight, unit: weightUnit },
           reps: Number(draftValues.reps),
           rir: draftValues.rir === null ? null : Number(draftValues.rir),
+          side,
           completed: true,
           now,
         },
         db,
       );
+
+      // D-20: the right child is created automatically once the left parent is marked complete —
+      // never via a "+" tap (per-side is always exactly two entries, never an open-ended group).
+      // parentsAwaitingRightSide's own idempotency is what keeps this safe to re-evaluate on every
+      // completion rather than needing a flag at this call site.
+      const rowsAfterDraft: PerSideRowInput[] = [
+        ...perSideRowsFor(existingSets, rowOverrides),
+        { id: newSetId, parentSetId: null, side, setType: WORKING_SET_TYPE, completed: true },
+      ];
+      for (const parentId of parentsAwaitingRightSide(rowsAfterDraft)) {
+        const parent = rowsAfterDraft.find((candidate) => candidate.id === parentId);
+        if (!parent) continue;
+        await addSubEntry({ sessionExerciseId: exercise.id, parentSetId: parentId, setType: parent.setType as SetType, side: SIDE_RIGHT }, db);
+      }
 
       // The column already exists and, before this plan, was never written (D-26) — records the
       // seconds actually elapsed between the previous set's completion and this one, independent
@@ -1294,6 +1336,20 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     const nextCompleted = !currentCompleted;
     await updateLoggedSet({ id: setId, completed: nextCompleted }, db);
     setRowOverrides((current) => ({ ...current, [setId]: { ...current[setId], completed: nextCompleted } }));
+
+    // D-20: the same automatic right-child creation as the draft branch above, for the
+    // existing-row toggle path — re-ticking an already-paired left parent creates no second right
+    // child (parentsAwaitingRightSide returns nothing once one exists), and un-ticking never
+    // reaches this block at all (nextCompleted is false), so an already-logged right child is never
+    // touched by an un-tick (CF-08).
+    if (nextCompleted) {
+      const rowsAfterToggle = perSideRowsFor(existingSets, { ...rowOverrides, [setId]: { ...rowOverrides[setId], completed: nextCompleted } });
+      for (const parentId of parentsAwaitingRightSide(rowsAfterToggle)) {
+        const parent = rowsAfterToggle.find((candidate) => candidate.id === parentId);
+        if (!parent) continue;
+        await addSubEntry({ sessionExerciseId: exercise.id, parentSetId: parentId, setType: parent.setType as SetType, side: SIDE_RIGHT }, db);
+      }
+    }
 
     // LOG-13: only a transition INTO completed can trigger auto-advance — unchecking a row never
     // moves the pager.
@@ -1448,6 +1504,9 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     activeGymId: sessionRow?.equipmentProfileId ?? null,
     exercises,
     supersetGroupMembers,
+    perSideOverrideByExercise,
+    onSetPerSideOverride: (exerciseId: string, value: boolean) =>
+      setPerSideOverrideByExercise((current) => ({ ...current, [exerciseId]: value })),
     currentExerciseId: currentExercise?.id ?? null,
     currentIndex: safeIndex,
     pagerWidth,
