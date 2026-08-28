@@ -3,6 +3,7 @@ import { useColorScheme } from 'nativewind';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SET_TYPES, type SetType } from '@fitness/api-contracts';
 import { useThemeColors } from '@/lib/theme-colors';
+import { ErrorBanner } from './ErrorBanner';
 
 // Mirrors SessionActionSheet.tsx's own local resolution exactly: ThemeColors (lib/theme-colors.ts)
 // carries only accent/foregroundMuted/surface, so foreground/destructive are resolved here, the
@@ -33,13 +34,50 @@ if (SET_TYPE_PICKER_ROWS.length !== SET_TYPES.length) {
   throw new Error('SET_TYPE_PICKER_ROWS must carry exactly one row per SET_TYPES entry (CF-02)');
 }
 
-export type SetTypePickerEffect = 'retype' | 'insert-child';
+export type SetTypeSelectionEffect = 'retype' | 'insert-child' | 'confirm-first' | 'no-op';
 
-// Pitfall 6's per-row dispatch table, never a generic "set setType to X" handler. Drop Set and
-// Partial insert a child beneath an unchanged parent (D-04/D-07); every other row retypes the
-// tapped row itself.
-export function setTypePickerEffect(setType: SetType): SetTypePickerEffect {
-  return setType === 'drop' || setType === 'partial' ? 'insert-child' : 'retype';
+// SETS-04: selecting Failure writes rir 0 in the same act as the type change, so the lifter never
+// re-types the value the picker's own descriptor promises ("Taken to failure, logged at 0 RIR").
+export const FAILURE_SET_RIR = 0;
+
+export interface ResolveSetTypeSelectionInput {
+  selected: SetType;
+  currentSetType: SetType;
+  childCount: number;
+  childSetType: SetType | null;
+}
+
+// The picker's real contract (UI-SPEC "Set-Type Picker Sheet" behavior table), not a generic
+// "set setType to X" handler (Pitfall 6). Drop Set and Partial can NEVER produce `retype` — a
+// drop/partial value must never land on a parent row (D-07); they only ever insert a child beneath
+// an unchanged parent, no-op when the group is already that kind, or confirm-first when the group
+// is a different kind and would be destroyed by the switch.
+export function resolveSetTypeSelection({
+  selected,
+  currentSetType,
+  childCount,
+  childSetType,
+}: ResolveSetTypeSelectionInput): SetTypeSelectionEffect {
+  if (selected === currentSetType) return 'no-op';
+
+  if (selected === 'drop' || selected === 'partial') {
+    if (childCount === 0) return 'insert-child';
+    return childSetType === selected ? 'no-op' : 'confirm-first';
+  }
+
+  if (childCount === 0) return 'retype';
+  return 'confirm-first';
+}
+
+// The childless-case shorthand the tracer test already pins — kept as the tiny two-value surface
+// 07-01 shipped, defined in terms of resolveSetTypeSelection rather than duplicating its table.
+// `currentSetType` is deliberately a value distinct from `setType` (never equal, whichever setType
+// is passed) so the no-op branch is structurally unreachable here — this shorthand only ever
+// answers "what would this row's tap do if it had no children and wasn't already this type".
+export function setTypePickerEffect(setType: SetType): 'retype' | 'insert-child' {
+  const otherType: SetType = setType === 'normal' ? 'warmup' : 'normal';
+  const effect = resolveSetTypeSelection({ selected: setType, currentSetType: otherType, childCount: 0, childSetType: null });
+  return effect as 'retype' | 'insert-child';
 }
 
 export interface SetTypePickerSheetColors {
@@ -54,6 +92,10 @@ export interface SetTypePickerSheetViewProps {
   childCount: number;
   childSetType: SetType | null;
   colors: SetTypePickerSheetColors;
+  // E1 error state (UI-SPEC): a failed local write on selection renders the shipped ErrorBanner
+  // here instead of dismissing — the sheet stays open on its pre-selection state (Phase 6 E2/E4
+  // write-failure precedent) so the change is never silently lost.
+  errorMessage?: string | null;
   onSelect: (setType: SetType) => void;
   onCancel: () => void;
 }
@@ -62,7 +104,7 @@ export interface SetTypePickerSheetViewProps {
 // max-w-[400px]/rounded-md/p-lg card. The currently-active row renders semibold accent with a
 // trailing checkmark (mirrors the Switch Gym Sheet's active-row treatment). No Cancel row —
 // tapping the overlay, or any row including the already-active one, dismisses.
-export function SetTypePickerSheetView({ setNumber, currentSetType, colors, onSelect, onCancel }: SetTypePickerSheetViewProps) {
+export function SetTypePickerSheetView({ setNumber, currentSetType, colors, errorMessage, onSelect, onCancel }: SetTypePickerSheetViewProps) {
   return (
     <Pressable
       onPress={onCancel}
@@ -76,6 +118,8 @@ export function SetTypePickerSheetView({ setNumber, currentSetType, colors, onSe
           contentContainerStyle={{ flexGrow: 1 }}
         >
           <Text className="text-heading font-semibold text-foreground">{`Set ${setNumber} Type`}</Text>
+
+          {errorMessage ? <ErrorBanner message={errorMessage} /> : null}
 
           <View className="mt-md gap-xs">
             {SET_TYPE_PICKER_ROWS.map((row) => {
@@ -111,6 +155,7 @@ export interface SetTypePickerSheetProps {
   currentSetType: SetType;
   childCount: number;
   childSetType: SetType | null;
+  errorMessage?: string | null;
   onSelect: (setType: SetType) => void;
   onCancel: () => void;
 }

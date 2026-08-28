@@ -33,23 +33,48 @@ risk this phase introduces.
 
 ## `SET_TYPES`
 
-| Value | Meaning | Written by Phase 5? |
+| Value | Meaning | Where it's written |
 |---|---|---|
-| `normal` | A working set (`WORKING_SET_TYPE`) | Yes |
-| `warmup` | A warm-up set (`WARMUP_SET_TYPE`) | Yes |
-| `drop` | A drop set | Reserved for Phase 7 |
-| `myorep` | A myorep set | Reserved for Phase 7 |
-| `partial` | A partial-rep set | Reserved for Phase 7 |
-| `failure` | A to-failure set | Reserved for Phase 7 |
-| `amrap` | An as-many-reps-as-possible set | Reserved for Phase 7 |
+| `normal` | A working set (`WORKING_SET_TYPE`) | The Set-Type Picker Sheet (retype), or a set's default type at creation |
+| `warmup` | A warm-up set (`WARMUP_SET_TYPE`) | The Set-Type Picker Sheet (retype), or the Warm-up sheet's generated ladder |
+| `drop` | A drop set | The Set-Type Picker Sheet — a sub-entry inserted beneath an unchanged `normal` parent (D-04/D-07) |
+| `myorep` | A myorep set | The Set-Type Picker Sheet — retypes the tapped row itself, which becomes the group's activation set (D-07: "the parent IS the activation set") |
+| `partial` | A partial-rep set | The Set-Type Picker Sheet — a sub-entry inserted beneath an unchanged `normal` parent (D-04/D-07) |
+| `failure` | A to-failure set | The Set-Type Picker Sheet (retype) — always written together with `rir = 0` in the same act (SETS-04) |
+| `amrap` | An as-many-reps-as-possible set | The Set-Type Picker Sheet (retype) |
 
 `SET_TYPES = ['normal', 'warmup', 'drop', 'myorep', 'partial', 'failure', 'amrap']` is deliberately
 closed to exactly these seven values, enforced by the `logged_set_set_type_check` Postgres CHECK
-constraint. `sync.service.ts` already anticipated all seven literals before this phase — this
-phase formalises the existing vocabulary as a published `@fitness/api-contracts` tuple rather than
-inventing a new one. **This phase's UI only ever writes `normal` and `warmup`**; the remaining five
-values are reserved and unwritten until Phase 7 wires drop sets, myoreps, partials, failure sets
-and AMRAP sets into the logging UI.
+constraint. `sync.service.ts` already anticipated all seven literals since Phase 5 formalised the
+vocabulary as a published `@fitness/api-contracts` tuple. **As of Phase 7, all seven values are
+written** — there is no longer a reserved/unwritten subset. `drop` and `partial` only ever appear
+on a child row (`parent_set_id` non-null); the other five can appear on a parent row, a plain
+ungrouped row, or (for `myorep`) on both a parent and its own children. Grouping itself is
+annotation via `parent_set_id`, never a different storage shape (CF-03) — a drop set, a myorep
+ladder and a per-side pair are all still one `logged_set` row per set, related to their parent by
+that single column.
+
+### `countsTowardWorkingVolume` / `countsTowardRecords`
+
+Two derived predicates in `packages/api-contracts/src/session.ts`, following this doc's own
+established pattern (`docs/program-vocabularies.md`'s "resolution runs through exactly one
+exported function" discipline) for publishing a rule beside the closed vocabulary it reads,
+rather than letting each call site re-derive it inline:
+
+- **`countsTowardWorkingVolume(setType)`** excludes only `warmup` — `drop`, `myorep`, `partial`,
+  `failure` and `amrap` are all genuine working effort and all count toward working volume and the
+  exercise's completion fraction.
+- **`countsTowardRecords(setType)`** excludes `warmup` **and** `partial` — a partial-ROM rep must
+  never set a `heaviest_weight` or `best_e1rm` personal record, which is the one place counting a
+  partial as a full rep would produce a wrong, durable, user-visible number. Drops, myoreps,
+  failure and AMRAP sets remain PR-eligible.
+
+Every read path that used to inline a `!== 'warmup'`/`!== 'partial'` literal comparison
+(`apps/mobile/lib/db/session-query.ts`, `history-query.ts`, `summary-query.ts`,
+`apps/mobile/components/ExerciseStrip.tsx`, `packages/pr-rules/src/personal-records.ts`) must call
+one of these two named predicates instead — the rule lives in exactly one place even where a SQL
+`where` clause needs it expressed as the derived `WORKING_VOLUME_EXCLUDED_SET_TYPES` /
+`RECORDS_EXCLUDED_SET_TYPES` literal tuples.
 
 ## `PR_TYPES`
 
