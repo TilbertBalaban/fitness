@@ -243,7 +243,7 @@ Shape-rooted UI **state** coverage, produced by `ui-consideration-probe` over th
 surfaces this phase describes. Empty-state and error-state **copy** is not restated here — it lives in
 **Copywriting Contract** and is referenced by the rows below.
 
-**Coverage:** 40 applicable · 40 resolved (35 explicit, 5 backstop) · 0 unresolved
+**Coverage:** 40 applicable · 40 resolved (36 explicit, 4 backstop) · 0 unresolved
 
 ### E1 — Set-Type Picker Sheet
 
@@ -307,7 +307,7 @@ surfaces this phase describes. Empty-state and error-state **copy** is not resta
 
 ### E5 — Exercise Strip link badge & Exercise Page partner chip
 
-*Element kinds:* `static-content`, `interactive-control`, `nav`
+*Element kinds:* `static-content`, `interactive-control`, `nav`, `list-collection`
 
 | State | Verification | Contract |
 |-------|--------------|----------|
