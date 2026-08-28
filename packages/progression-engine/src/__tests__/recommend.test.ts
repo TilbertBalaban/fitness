@@ -67,9 +67,9 @@ describe('recommendNextPrescription', () => {
     }
   });
 
-  it('holds the weight and same weight/reps when reps-plus-RIR does not exceed expected performance', () => {
+  it('holds the weight and same weight/reps when reps-plus-RIR falls within the tolerance band of expected performance', () => {
     const result = recommendNextPrescription(
-      baseInput({ sessions: sessionsWith([loggedSet({ weightKg: '100.000', reps: 7, rir: 1 })]) }),
+      baseInput({ sessions: sessionsWith([loggedSet({ weightKg: '100.000', reps: 7, rir: 2 })]) }),
     );
     expect(result).toEqual({
       kind: 'recommendation',
@@ -207,5 +207,79 @@ describe('recommendNextPrescription', () => {
       basis: 'hold',
       offeredReduction: null,
     });
+  });
+
+  it('returns shortfall_hold with no offer when the shortfall streak is below the threshold', () => {
+    const shortfallSet = (id: string) => loggedSet({ id, weightKg: '100.000', reps: 6, rir: 1 });
+    const result = recommendNextPrescription(
+      baseInput({
+        sessions: [
+          { sessionId: 's2', sets: [shortfallSet('a')] },
+          { sessionId: 's1', sets: [shortfallSet('b')] },
+        ],
+      }),
+    );
+    expect(result).toEqual({
+      kind: 'recommendation',
+      weightKg: '100.000',
+      reps: 7,
+      rir: 2,
+      basis: 'shortfall_hold',
+      offeredReduction: null,
+    });
+  });
+
+  it('returns shortfall_hold with a populated offer when the shortfall streak reaches the threshold', () => {
+    const roomyInventory = inventoryFrom({ plates: [{ weightKg: '10.000', pairCount: 5 }] });
+    const shortfallSet = (id: string) => loggedSet({ id, weightKg: '100.000', reps: 6, rir: 1 });
+    const result = recommendNextPrescription(
+      baseInput({
+        inventory: roomyInventory,
+        sessions: [
+          { sessionId: 's3', sets: [shortfallSet('a')] },
+          { sessionId: 's2', sets: [shortfallSet('b')] },
+          { sessionId: 's1', sets: [shortfallSet('c')] },
+        ],
+      }),
+    );
+    expect(result).toEqual({
+      kind: 'recommendation',
+      weightKg: '100.000',
+      reps: 7,
+      rir: 2,
+      basis: 'shortfall_hold',
+      offeredReduction: { weightKg: '80.000', reps: 7 },
+    });
+  });
+
+  it('keeps the recommendation weight and reps identical whether or not an offer is attached', () => {
+    const roomyInventory = inventoryFrom({ plates: [{ weightKg: '10.000', pairCount: 5 }] });
+    const shortfallSet = (id: string) => loggedSet({ id, weightKg: '100.000', reps: 6, rir: 1 });
+    const belowThreshold = recommendNextPrescription(
+      baseInput({
+        inventory: roomyInventory,
+        sessions: [
+          { sessionId: 's2', sets: [shortfallSet('a')] },
+          { sessionId: 's1', sets: [shortfallSet('b')] },
+        ],
+      }),
+    );
+    const atThreshold = recommendNextPrescription(
+      baseInput({
+        inventory: roomyInventory,
+        sessions: [
+          { sessionId: 's3', sets: [shortfallSet('a')] },
+          { sessionId: 's2', sets: [shortfallSet('b')] },
+          { sessionId: 's1', sets: [shortfallSet('c')] },
+        ],
+      }),
+    );
+    if (belowThreshold.kind !== 'recommendation' || atThreshold.kind !== 'recommendation') {
+      throw new Error('expected both results to be recommendations');
+    }
+    expect(atThreshold.weightKg).toBe(belowThreshold.weightKg);
+    expect(atThreshold.reps).toBe(belowThreshold.reps);
+    expect(belowThreshold.offeredReduction).toBeNull();
+    expect(atThreshold.offeredReduction).not.toBeNull();
   });
 });

@@ -9,11 +9,23 @@ export interface RecommendationBannerProps {
   colors: ThemeColors;
 }
 
+// PRGR-09/D-05: the offer is a second, visually and textually distinct line — it is never the
+// recommendation itself. It arrives already built (weight, reps); this component only formats it
+// for display, the same as the recommendation's own weight, and adds no accept control — automatic
+// acceptance of a reduction is explicitly deferred, and an accept path would need a write target
+// this phase does not have.
 function renderRecommendation(result: Extract<ProgressionResult, { kind: 'recommendation' }>, weightUnit: WeightUnit) {
   const weightLabel = formatWeight(result.weightKg, weightUnit);
   const repsLabel = result.rir !== null ? `${result.reps} reps @ RIR ${result.rir}` : `${result.reps} reps`;
   return (
-    <Text className="mb-md text-body font-semibold text-foreground">{`Next: ${weightLabel} × ${repsLabel}`}</Text>
+    <>
+      <Text className="mb-md text-body font-semibold text-foreground">{`Next: ${weightLabel} × ${repsLabel}`}</Text>
+      {result.offeredReduction !== null ? (
+        <Text className="mb-md text-body font-normal text-foreground-muted">
+          {`A lighter option is available if you'd rather take it: ${formatWeight(result.offeredReduction.weightKg, weightUnit)} × ${result.offeredReduction.reps} reps.`}
+        </Text>
+      ) : null}
+    </>
   );
 }
 

@@ -1,6 +1,8 @@
 import { expectedPerformance } from './expected-performance';
 import { beatsPriorRepsAtSameLoad, isFailurePerformance } from './failure-progression';
 import { normalizeHistory } from './normalize-history';
+import { achievedPerformanceFor, classifyPerformance } from './rir-band';
+import { countConsecutiveShortfalls, offeredReductionFor } from './shortfall';
 import { compareCanonicalKg, idealNextLoadKg, snapToAchievable } from './snap';
 import type { ProgressionResult, RecommendInput } from './result';
 
@@ -61,9 +63,30 @@ export function recommendNextPrescription(input: RecommendInput): ProgressionRes
     };
   }
 
-  const achieved = topSet.reps + (topSet.rir ?? 0);
-  const surplusReps = achieved - expected;
+  const achieved = achievedPerformanceFor(topSet);
+  const verdict = classifyPerformance(achieved, expected);
   const cappedRepIncrease = Math.min(topSet.reps + 1, targetRepMax);
+
+  // PRGR-09/D-05: a shortfall holds the prescription outright — the weight and reps below are
+  // identical to the plain within-band hold. The streak and its offer ride on `offeredReduction`
+  // alone; they never change the recommendation itself.
+  if (verdict === 'shortfall') {
+    const streak = countConsecutiveShortfalls(normalized, input.prescription);
+    return {
+      kind: 'recommendation',
+      weightKg: topSet.weightKg,
+      reps: targetRepMin,
+      rir: targetRir,
+      basis: 'shortfall_hold',
+      offeredReduction: offeredReductionFor({
+        streak,
+        weightKg: topSet.weightKg,
+        reps: targetRepMin,
+        equipmentType: input.equipmentType,
+        inventory: input.inventory,
+      }),
+    };
+  }
 
   if (topSet.weightKg === null) {
     // PLAT-08: a bodyweight movement has no load axis to raise — it progresses on reps alone,
@@ -71,14 +94,14 @@ export function recommendNextPrescription(input: RecommendInput): ProgressionRes
     return {
       kind: 'recommendation',
       weightKg: null,
-      reps: surplusReps > 0 ? cappedRepIncrease : targetRepMin,
+      reps: verdict === 'surplus' ? cappedRepIncrease : targetRepMin,
       rir: targetRir,
-      basis: surplusReps > 0 ? 'rep_increase' : 'hold',
+      basis: verdict === 'surplus' ? 'rep_increase' : 'hold',
       offeredReduction: null,
     };
   }
 
-  if (surplusReps <= 0) {
+  if (verdict !== 'surplus') {
     return {
       kind: 'recommendation',
       weightKg: topSet.weightKg,
@@ -89,7 +112,7 @@ export function recommendNextPrescription(input: RecommendInput): ProgressionRes
     };
   }
 
-  const idealKg = idealNextLoadKg(topSet.weightKg, surplusReps);
+  const idealKg = idealNextLoadKg(topSet.weightKg, achieved - expected);
   const snappedKg = snapToAchievable({ targetKg: idealKg, equipmentType: input.equipmentType, inventory: input.inventory });
   if (snappedKg === null) {
     return { kind: 'unavailable', reason: 'no_achievable_weight' };
