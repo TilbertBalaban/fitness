@@ -194,6 +194,27 @@ describe('loadNextUp — a bounded number of queries', () => {
 
     expect(getWhereTables()).toContain(workoutSession);
   });
+
+  // D-33/04-12: loadNextUp reads days through loadProgramTree's single filtered query rather than
+  // owning a day select of its own. Structural only — this fake's where() ignores the condition and
+  // returns fixed rows regardless, so it cannot prove archived rows are actually excluded. That
+  // behavioural proof lives in programs.test.ts's condition-resolving store (04-12) and in the
+  // browser suite (04-15).
+  it('carries a where clause on the day select it inherits from loadProgramTree', async () => {
+    const { db, getWhereTables } = fakeNextUpDb(programFixture(3, 1));
+
+    await loadNextUp(USER_ID, db);
+
+    expect(getWhereTables()).toContain(routineDay);
+  });
+
+  it('issues no day select of its own — the select count for a full load stays at the shipped bound', async () => {
+    const { db, getSelectCount } = fakeNextUpDb(programFixture(3, 1));
+
+    await loadNextUp(USER_ID, db);
+
+    expect(getSelectCount()).toBe(12);
+  });
 });
 
 describe('loadNextUp — what it returns', () => {

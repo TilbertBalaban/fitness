@@ -74,6 +74,15 @@ describe('countableHistory', () => {
     expect(countableHistory(history, DAYS).map((row) => row.id)).toEqual(['s1']);
   });
 
+  // D-29: resolveNextUp takes `days` as a pure argument, so an archived day is expressed here the
+  // same way a deleted one is — absent from the list the caller passed, which is exactly what the
+  // filtered loadProgramTree read produces (04-12). This is identical to the deleted-day case above
+  // by construction: countableHistory cannot distinguish "archived" from "deleted" and must not.
+  it('excludes a session logged against a day that has since been archived', () => {
+    const history = [session('s1', 'a', '2026-01-01'), session('s2', 'archived-day', '2026-01-02')];
+    expect(countableHistory(history, DAYS).map((row) => row.id)).toEqual(['s1']);
+  });
+
   it('orders by localDate, then startedAt, then id', () => {
     const history = [
       session('s3', 'c', '2026-01-02', 'completed', '2026-01-02T09:00:00.000Z'),
@@ -96,6 +105,11 @@ describe('lastLoggedDayIndex', () => {
 
   it('is null when the most recently logged day has since been deleted from the routine', () => {
     const history = [...rotationHistory(2), session('s9', 'deleted-day', '2026-01-09')];
+    expect(lastLoggedDayIndex(history, DAYS)).toBeNull();
+  });
+
+  it('is null when the most recently logged day has since been archived (D-29 mirror)', () => {
+    const history = [...rotationHistory(2), session('s9', 'archived-day', '2026-01-09')];
     expect(lastLoggedDayIndex(history, DAYS)).toBeNull();
   });
 });
@@ -437,6 +451,72 @@ describe('resolveNextUp — a day deleted after being logged against', () => {
       today: '2026-01-03',
     });
     expect(result.kind).toBe('workout');
+  });
+});
+
+// D-29: the Home rotation must inherit the archived-day filter rather than own a second one.
+// resolveNextUp is pure and takes `days` as an argument, so these cases mirror the deleted-day
+// describe block above exactly — "archived" here means only "absent from the days list the caller
+// passed", the same shape a deleted day already produces. The behavioural proof that loadNextUp's
+// `days` argument actually excludes archived rows lives in next-up-query.test.ts (structural, this
+// suite is pure) and in programs.test.ts's condition-resolving store (04-12).
+describe('resolveNextUp — an archived day (D-29 mirror of the deleted-day path)', () => {
+  const w1 = cycle('w1', 1024, 'training');
+  const w2 = cycle('w2', 2048, 'training');
+
+  it('rewinds rather than skips: a session against a now-archived middle day stops consuming a rotation position', () => {
+    const remaining = [day('a', 1024), day('c', 3072)];
+    const history = [
+      session('s0', 'a', '2026-01-01'),
+      session('s1', 'archived-day', '2026-01-02'),
+      session('s2', 'c', '2026-01-03'),
+    ];
+
+    // The archived-day session drops out; only the two sessions against days that still exist count.
+    expect(countableHistory(history, remaining)).toHaveLength(2);
+
+    const result = resolveNextUp<TestDay, TestCycle>({
+      routine: ROUTINE,
+      days: remaining,
+      cycles: [w1, w2],
+      history,
+      today: '2026-01-04',
+    });
+
+    // Two countable sessions against a two-day routine consume exactly one full rotation, landing
+    // in cycle w2 at day 'a' — not a position further ahead as if the archived day's session still
+    // counted toward the cycle walk.
+    expect(result).toMatchObject({ kind: 'workout', cycle: w2, day: remaining[0] });
+  });
+
+  it('falls back silently to day index 0 (Pitfall-5) when the most recent session named an archived day', () => {
+    const remaining = [day('a', 1024), day('c', 3072)];
+    const history = [session('s0', 'a', '2026-01-01'), session('s1', 'archived-day', '2026-01-02')];
+
+    expect(lastLoggedDayIndex(history, remaining)).toBeNull();
+
+    const result = resolveNextUp<TestDay, TestCycle>({
+      routine: ROUTINE,
+      days: remaining,
+      cycles: [w1],
+      history,
+      today: '2026-01-03',
+    });
+
+    expect(result).toMatchObject({ kind: 'workout', day: remaining[0] });
+    expect(result.kind).not.toBe('program-complete');
+  });
+
+  it('resolves to no-days rather than throwing when every day in the routine is archived', () => {
+    const result = resolveNextUp<TestDay, TestCycle>({
+      routine: ROUTINE,
+      days: [],
+      cycles: [w1],
+      history: [session('s0', 'now-archived', '2026-01-01')],
+      today: '2026-01-02',
+    });
+
+    expect(result.kind).toBe('no-days');
   });
 });
 
