@@ -82,6 +82,7 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
     'id',
     'user_id',
     'weight_unit',
+    'progression_preference',
     'active_routine_id',
     'auto_advance_enabled',
     'warmup_sets_enabled',

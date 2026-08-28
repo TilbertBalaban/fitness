@@ -1,5 +1,10 @@
 import { eq } from 'drizzle-orm';
-import type { WeightUnit } from '@fitness/api-contracts';
+import {
+  DEFAULT_PROGRESSION_PREFERENCE,
+  isProgressionPreference,
+  type ProgressionPreference,
+  type WeightUnit,
+} from '@fitness/api-contracts';
 import { getPowerSync, type WriteDb } from './powersync';
 import { userPreference } from './schema';
 
@@ -60,5 +65,43 @@ export async function setWorkoutPreference(
     autoAdvanceEnabled: DEFAULT_PREFERENCES.autoAdvanceEnabled,
     warmupSetsEnabled: DEFAULT_PREFERENCES.warmupSetsEnabled,
     [key]: value,
+  });
+}
+
+// D-07. Narrowed through isProgressionPreference rather than a bare cast, so a value synced from
+// a future build or a corrupted row degrades to the default instead of reaching the engine as an
+// unhandled branch.
+export async function loadProgressionPreference(userId: string, db: WriteDb = getPowerSync()): Promise<ProgressionPreference> {
+  const [row] = await db
+    .select({ progressionPreference: userPreference.progressionPreference })
+    .from(userPreference)
+    .where(eq(userPreference.id, userId));
+  return isProgressionPreference(row?.progressionPreference) ? row.progressionPreference : DEFAULT_PROGRESSION_PREFERENCE;
+}
+
+// Same insert-or-update singleton pattern as setWorkoutPreference above — writes exactly the
+// progression_preference column, leaving weight_unit, active_routine_id and both boolean dials
+// untouched on an update, and defaulting every other column sensibly on a first-ever insert.
+export async function setProgressionPreference(
+  userId: string,
+  value: ProgressionPreference,
+  db: WriteDb = getPowerSync(),
+): Promise<void> {
+  const [existing] = await db.select({ id: userPreference.id }).from(userPreference).where(eq(userPreference.id, userId));
+
+  if (existing) {
+    await db.update(userPreference).set({ progressionPreference: value }).where(eq(userPreference.id, userId));
+    return;
+  }
+
+  await db.insert(userPreference).values({
+    id: userId,
+    userId,
+    weightUnit: DEFAULT_WEIGHT_UNIT,
+    progressionPreference: value,
+    defaultEquipmentProfileId: null,
+    activeRoutineId: null,
+    autoAdvanceEnabled: DEFAULT_PREFERENCES.autoAdvanceEnabled,
+    warmupSetsEnabled: DEFAULT_PREFERENCES.warmupSetsEnabled,
   });
 }

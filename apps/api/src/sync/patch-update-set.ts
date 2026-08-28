@@ -100,6 +100,7 @@ export interface UserPreferenceValues {
   id: string;
   userId: string;
   weightUnit: string;
+  progressionPreference: string;
   defaultEquipmentProfileId: string | null;
   activeRoutineId: string | null;
   autoAdvanceEnabled: boolean;
@@ -310,6 +311,7 @@ export const USER_PREFERENCE_PATCH_FIELDS: PatchFieldMap<UserPreferenceValues> =
   id: null,
   userId: null,
   weightUnit: 'weight_unit',
+  progressionPreference: 'progression_preference',
   defaultEquipmentProfileId: 'default_equipment_profile_id',
   activeRoutineId: 'active_routine_id',
   autoAdvanceEnabled: 'auto_advance_enabled',

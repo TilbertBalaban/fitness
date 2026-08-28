@@ -11,6 +11,8 @@ import {
   WORKOUT_SESSION_STATUSES,
   SET_TYPES as SET_TYPE_TUPLE,
   PR_TYPES as PR_TYPE_TUPLE,
+  DEFAULT_PROGRESSION_PREFERENCE,
+  isProgressionPreference,
   isEquipmentProfilePlates,
   isEquipmentDumbbellIncrements,
   isEquipmentMachineAvailability,
@@ -304,6 +306,7 @@ interface RoutineOpData {
 
 interface UserPreferenceOpData {
   weight_unit?: string;
+  progression_preference?: string;
   default_equipment_profile_id?: string | null;
   active_routine_id?: string | null;
   auto_advance_enabled?: boolean;
@@ -557,6 +560,7 @@ function toUserPreferenceValues(
     id,
     userId,
     weightUnit: d.weight_unit ?? 'kg',
+    progressionPreference: d.progression_preference ?? DEFAULT_PROGRESSION_PREFERENCE,
     defaultEquipmentProfileId: d.default_equipment_profile_id ?? null,
     activeRoutineId: d.active_routine_id ?? null,
     autoAdvanceEnabled: d.auto_advance_enabled ?? true,
@@ -831,7 +835,7 @@ function isInvalidRoutineExerciseCycleTarget(data: RoutineExerciseCycleTargetOpD
 
 // Validated against the column each field targets before applying (T-02-05). An op failing
 // validation is rejected invalid_field and never reaches the apply phase.
-function hasInvalidField(op: SyncCrudOp): boolean {
+export function hasInvalidField(op: SyncCrudOp): boolean {
   if (op.op === 'DELETE') return false;
   const data = (op.data ?? {}) as Record<string, unknown>;
 
@@ -950,6 +954,9 @@ function hasInvalidField(op: SyncCrudOp): boolean {
   if (op.type === 'user_preference') {
     const d = data as UserPreferenceOpData;
     if (d.weight_unit !== undefined && !(typeof d.weight_unit === 'string' && WEIGHT_UNITS.has(d.weight_unit))) {
+      return true;
+    }
+    if (d.progression_preference !== undefined && !isProgressionPreference(d.progression_preference)) {
       return true;
     }
     if (

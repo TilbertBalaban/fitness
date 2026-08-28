@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import { bigint, boolean, pgTable, text } from 'drizzle-orm/pg-core';
+import { DEFAULT_PROGRESSION_PREFERENCE } from '@fitness/api-contracts';
 import { user } from '../schema';
 
 // Single TEXT PRIMARY KEY id, deterministically equal to user_id — not keyed on user_id itself,
@@ -18,6 +19,9 @@ export const userPreference = pgTable('user_preference', {
     .unique()
     .references(() => user.id, { onDelete: 'cascade' }),
   weightUnit: text('weight_unit').notNull(),
+  // D-07: two-value closed set (widen the rep range before adding load, vs. match the previous
+  // weight), the same shape as weightUnit above rather than the boolean dials below.
+  progressionPreference: text('progression_preference').notNull().default(DEFAULT_PROGRESSION_PREFERENCE),
   defaultEquipmentProfileId: text('default_equipment_profile_id'),
   // Nullable pointer to the one routine this user is running (D-14/PROG-08). No .references() —
   // following defaultEquipmentProfileId's precedent above: a foreign key here would turn archiving
