@@ -382,11 +382,35 @@ Plans:
   4. User can superset two adjacent exercises and the rest timer starts only after both are done, then detach them again
   5. User can log different weights and reps for left and right on a unilateral exercise
 
-**Plans**: TBD
+**Plans**: 9 plans
 
 Plans:
+**Wave 1**
 
-- [ ] 07-01: TBD during `/gsd-plan-phase 7`
+- [ ] 07-01-PLAN.md — Tracer: a drop-set sub-entry, from the set-number tap to an indented child row
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 07-02-PLAN.md — Working-volume and records predicates across every query call site; partials excluded from PRs
+- [ ] 07-03-PLAN.md — Grouped rows never inflate the count: auto-advance and the strip fraction read parents only
+- [ ] 07-04-PLAN.md — The picker's full behavior table, the counted destructive confirm, and failure at 0 RIR
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 07-05-PLAN.md — Groups you can grow: myoreps, partials, the "+ Add {type}" control, and per-child removal
+- [ ] 07-06-PLAN.md — Superset formation and detach: the group predicate module and four new action-sheet rows
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 07-07-PLAN.md — Superset behaviour: rest suppression, member advance, link badge, and partner chip
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 07-08-PLAN.md — Per-side logging: the derived mode, the left-side stamp, and the automatic right-side child
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 07-09-PLAN.md — Sync-boundary threat verification, the durability e2e proof, and the validation sign-off
 
 ### Phase 8: Progression Engine
 
