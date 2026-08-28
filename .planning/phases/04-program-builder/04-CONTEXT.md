@@ -91,6 +91,18 @@ The user delegated every schema-level decision. These are not coin flips: `routi
 
 - **D-28:** **"New program" offers blank or duplicate-an-existing as the first choice.** PROG-07 needs duplication anyway; surfacing it at creation is where it is actually useful. On a truly empty account, blank is the only live option.
 
+### Gap-closure decisions — resolved with the user 2026-08-28 (`/gsd-start`)
+
+These four answer the open questions the verifier raised in `04-VERIFICATION.md`, including A-PROG-07, which `04-11-PLAN.md` carried as an explicitly UNRESOLVED planner assumption. They are binding inputs to the gap-closure plans.
+
+- **D-29:** **"Individual workouts" in PROG-07 means `routine_day`, and day-level archive/restore ships in full.** Add `routine_day.archived_at`, filter archived days out of every day-listing read path and out of `ops/powersync/sync-rules.yaml`, and wire both a Duplicate Day control (to the already-written, already-tested `duplicateDay`) and an Archive/Restore Day control into the day page. The requirement text is honoured as written rather than amended to match what shipped. Archived days must not appear in `resolveNextUp`'s rotation. — **Reversibility:** the schema column is one-way once synced; the UI is not.
+
+- **D-30:** **The Edit Cycle form gains a "Days off" duration field, wired to the orphaned `setCycleDuration`.** Render it the same way the creation form already does. This closes the trap where switching an existing cycle to `time_off` yields `durationDays === null` — a chip in the strip that `resolveNextUp` silently steps over with no way to repair it short of deleting the cycle. Blocking the kind switch was considered and rejected: it leaves the user unable to convert a cycle at all. — **Reversibility:** reversible.
+
+- **D-31:** **A program becomes `ready` through an explicit "Mark Ready" action in the routine action sheet**, wired to the orphaned `markRoutineReady`. This matches D-15's reading of `status` as the "finished authoring" fact and makes `partitionRoutines`' currently-unreachable `ready` bucket and the library row's status word real. Advancing implicitly on first activation was rejected — it conflates "I am training this" with "I have finished writing it", and would make a finished-but-inactive program unrepresentable. — **Reversibility:** reversible.
+
+- **D-32:** **PROG-09's wording is amended from "upcoming workouts" to "the next workout"** in `REQUIREMENTS.md`, with the amendment recorded. Home keeps its single `NextUpCard`. The verifier established that the substance of PROG-09 is served — the full sequence is visible in the Programs tab day deck — but that the scope reduction had been justified by citing D-27, which is a *placement* decision, not a scope cap. The correction removes that authority drift rather than leaving a plural requirement marked Complete against a singular implementation. No code change. — **Reversibility:** reversible; `resolveNextUp` already computes cycle position, so extending to N cards later stays additive.
+
 ### Claude's Discretion
 
 The user delegated every schema-level area (D-09 through D-20 above resolve them explicitly rather than leaving them open) and asked to be consulted on UI only. The following remain genuinely open for research and planning:
