@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 117
+open_count: 118
 waived_count: 4
 fixed_count: 24
-total_count: 145
-last_updated: 2026-08-28T10:48:02.164Z
+total_count: 146
+last_updated: 2026-08-28T15:18:35.060Z
 ---
 
 # Broken Windows Ledger
@@ -160,6 +160,7 @@ last_updated: 2026-08-28T10:48:02.164Z
 | 146 | 06 | deviation | apps/mobile/components/NumericKeypad.tsx |  | 06-05 Task 2: NumericKeypad.tsx (not in either task's declared files) type-aliases PlateStripBandData = PlateStripProps and constructed the old {inventory, targetKg, unit} shape; Task 2's rewrite of PlateStripView to take an already-resolved EquipmentBandState broke it. Replaced the type alias with an explicit PlateStripBandData interface {state, unit, onNeighbourPress, onRecoveryPress} and updated the one JSX call site — a genuine typecheck blocker, fixed within the same commit. | open |  | 2026-08-27T16:56:26.514Z |  |
 | 147 | 06 | deviation | apps/mobile/app/(tabs)/workout.tsx |  | 06-06 Task 3: equipmentType/resolvedInventory/equipmentProfileId were threaded from workout.tsx into ExercisePage even though neither workout.tsx nor EditingWorkoutScreen.tsx was in 06-06's declared files_modified — ExercisePage's new required props had no other data source, and 06-05's own SUMMARY had already flagged workout.tsx as the intended 06-06 integration point. EditingWorkoutScreen.tsx's historical-editing call site passes null for all three (D-11). | open |  | 2026-08-27T16:56:30.246Z |  |
 | 148 | 07 | deviation | apps/mobile/lib/db/session-mutations.ts |  | 07-06-PLAN.md Task 2 acceptance criterion 'grep -c routineExercise is 0' is unsatisfiable as literally written — the file already legitimately imports/uses routineExercise (13 pre-existing occurrences) for Phase 4/5 writeBackTargets/resolveWriteBackTarget target write-back, unrelated to this plan. Verified instead that formSuperset/detachSuperset themselves reference only sessionExercise (D-16 intent honored). | open |  | 2026-08-28T10:48:02.164Z |  |
+| 149 | 04 | deviation | ops/powersync/sync-rules.yaml |  | routine_day stream query deliberately not filtered by archived_at, against D-29's literal text — a filter would delete an archived day from every device that did not perform the archive, making restore unreachable; withdrawn/resolved as D-33 in 04-CONTEXT.md | open |  | 2026-08-28T15:18:35.060Z |  |
 
 ````json
 [
@@ -1901,6 +1902,18 @@ last_updated: 2026-08-28T10:48:02.164Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-28T10:48:02.164Z",
+    "resolved_at": null
+  },
+  {
+    "id": 149,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "ops/powersync/sync-rules.yaml",
+    "line": null,
+    "description": "routine_day stream query deliberately not filtered by archived_at, against D-29's literal text — a filter would delete an archived day from every device that did not perform the archive, making restore unreachable; withdrawn/resolved as D-33 in 04-CONTEXT.md",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-28T15:18:35.060Z",
     "resolved_at": null
   }
 ]
