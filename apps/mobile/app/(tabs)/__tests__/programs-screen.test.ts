@@ -62,6 +62,7 @@ import {
   overriddenFields,
   parseCycleDuration,
   resolveDisplayedRoutineId,
+  resolveEffectiveUserId,
   resolveSlotTargets,
   selectedCycleOf,
 } from '../programs';
@@ -399,5 +400,23 @@ describe('duplicateDayName', () => {
 
   it('allows duplicating a duplicate, producing a distinct if inelegant name', () => {
     expect(duplicateDayName('Push copy')).toBe('Push copy copy');
+  });
+});
+
+// 04-15: the injection seam the durability harness mounts through — the same three-way rule
+// GymProfilesScreen and useWorkoutScreen apply inline, extracted here so it is assertable without
+// rendering the screen.
+describe('resolveEffectiveUserId', () => {
+  it('honours an explicit override over the session', () => {
+    expect(resolveEffectiveUserId('override-user', 'session-user')).toBe('override-user');
+  });
+
+  it('falls back to the session id when no override is given', () => {
+    expect(resolveEffectiveUserId(undefined, 'session-user')).toBe('session-user');
+  });
+
+  it('is null when neither an override nor a session user exists', () => {
+    expect(resolveEffectiveUserId(undefined, null)).toBeNull();
+    expect(resolveEffectiveUserId(undefined, undefined)).toBeNull();
   });
 });
