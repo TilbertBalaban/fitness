@@ -125,6 +125,9 @@ importers:
       '@fitness/pr-rules':
         specifier: workspace:*
         version: link:../../packages/pr-rules
+      '@fitness/progression-engine':
+        specifier: workspace:*
+        version: link:../../packages/progression-engine
       '@op-engineering/op-sqlite':
         specifier: ^18.0.0
         version: 18.0.0(react-native@0.86.2(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
@@ -313,7 +316,26 @@ importers:
         version: 5.9.3
 
   packages/progression-engine:
+    dependencies:
+      '@fitness/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
+      '@fitness/plate-math':
+        specifier: workspace:*
+        version: link:../plate-math
     devDependencies:
+      '@types/jest':
+        specifier: ^30.0.0
+        version: 30.0.0
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      jest:
+        specifier: ^30.0.0
+        version: 30.4.2(@types/node@22.20.1)(ts-node@10.9.2(@types/node@22.20.1)(typescript@5.9.3))
+      ts-jest:
+        specifier: ^29.2.5
+        version: 29.4.12(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2(@types/node@22.20.1))(typescript@5.9.3)
       typescript:
         specifier: ^5.9.2
         version: 5.9.3

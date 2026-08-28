@@ -101,10 +101,20 @@ function baseProps(overrides: Partial<EditingWorkoutScreenViewProps> = {}): Edit
 function renderCurrentExercisePage(result: ReactNode, exercise: { id: string; name: string; completedWorkingSets: number; targetSets: number }) {
   const [pager] = findByType(result, ExercisePagerView);
   const pageElement = (pager.props.renderExercise as (ex: typeof exercise) => AnyElement)(exercise);
-  const { exerciseName, rows, activeField, onFieldPress, onReferenceTap, onCheckmarkPress } = pageElement.props as unknown as Parameters<
-    typeof ExercisePageView
-  >[0];
-  return ExercisePageView({ exerciseName, rows, activeField, onFieldPress, onReferenceTap, onCheckmarkPress, colors: COLORS, actionBarSlot: undefined });
+  const { exerciseName, rows, activeField, weightUnit, recommendation, onFieldPress, onReferenceTap, onCheckmarkPress } =
+    pageElement.props as unknown as Parameters<typeof ExercisePageView>[0];
+  return ExercisePageView({
+    exerciseName,
+    rows,
+    activeField,
+    weightUnit,
+    recommendation,
+    onFieldPress,
+    onReferenceTap,
+    onCheckmarkPress,
+    colors: COLORS,
+    actionBarSlot: undefined,
+  });
 }
 
 describe('EditingWorkoutScreenView', () => {

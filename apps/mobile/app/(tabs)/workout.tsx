@@ -24,17 +24,19 @@ import { RestTimerBar } from '@/components/RestTimerBar';
 import { DiscardWorkoutDialog } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
 import {
-  achievableBarbellLoads,
-  achievableDumbbellLoads,
+  achievableLoadsForEquipmentType,
   resolveEquipmentBand,
   roundToAchievable,
   type EquipmentBandState,
   type ResolvedInventory,
 } from '@fitness/plate-math';
+import type { ExerciseSessionSets, ProgressionResult } from '@fitness/progression-engine';
+import { recommendNextPrescription } from '@fitness/progression-engine';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { logSet, startWorkoutFromProgram, updateLoggedSet } from '@/lib/db/log-set';
 import { addSubEntry } from '@/lib/db/set-groups';
 import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
+import { recommendationHistoryForSession } from '@/lib/db/programs/recommendation-query';
 import type { ProgramCycle, ProgramDay } from '@/lib/db/programs/load-program';
 import { loadWorkoutPreferences } from '@/lib/db/preferences';
 import { addExerciseToSession } from '@/lib/db/session-mutations';
@@ -148,21 +150,6 @@ async function loadExerciseEquipmentTypeMap(
   for (const row of seededRows) map.set(row.id, (row.equipmentRequired as EquipmentType | null) ?? null);
   for (const row of customRows) map.set(row.id, (row.equipmentRequired as EquipmentType | null) ?? null);
   return map;
-}
-
-// D-09's tap-to-autofill rounding needs the achievable set matching the CURRENT exercise's
-// equipment type. Barbell/dumbbell resolve directly against the whole inventory (achievability.ts's
-// own single-argument builders); machine/cable selection additionally depends on band.ts's
-// name-then-id machine ordering (06-02's GYM-03 decision), which stays that file's one observable
-// point per its own SUMMARY — duplicating it here would create the exact second-order-of-truth risk
-// that decision was written to avoid, so machine/cable resolves to no achievable set and the
-// autofill falls through to "write the logged value unchanged" (the same null-rounder behaviour
-// D-09 already specifies for "nothing achievable").
-function achievableLoadsForEquipmentType(equipmentType: EquipmentType | null, inventory: ResolvedInventory | null): string[] {
-  if (equipmentType === null || inventory === null) return [];
-  if (equipmentType === 'barbell' || equipmentType === 'ez_bar') return achievableBarbellLoads(inventory);
-  if (equipmentType === 'dumbbell') return achievableDumbbellLoads(inventory);
-  return [];
 }
 
 export interface WorkoutScreenRead {
@@ -324,6 +311,10 @@ export interface WorkoutScreenViewProps {
   // second, independently-computed query of its own (R11, T-06-06).
   equipmentTypeByExerciseId: Map<string, EquipmentType | null>;
   resolvedInventory: ResolvedInventory | null;
+  // The tracer slice (08-01): recommendNextPrescription's already-computed result per
+  // session_exercise, resolved once here and memoised on the batched history read, exactly as
+  // bandState is memoised above it — ExercisePage/RecommendationBanner perform no computation.
+  recommendationBySessionExerciseId: Record<string, ProgressionResult | null>;
   equipmentProfileId: string | null;
   starting: boolean;
   // Replaces the old canStartWorkout/nextUpHeading pair (Task 1): the view derives every
@@ -455,6 +446,7 @@ export function WorkoutScreenView({
   onBandRecoveryPress,
   equipmentTypeByExerciseId,
   resolvedInventory,
+  recommendationBySessionExerciseId,
   equipmentProfileId,
   starting,
   nextUp,
@@ -670,6 +662,7 @@ export function WorkoutScreenView({
               noteText={pageData.noteText}
               equipmentType={equipmentTypeByExerciseId.get(pageData.exerciseId) ?? null}
               resolvedInventory={resolvedInventory}
+              recommendation={recommendationBySessionExerciseId[pageData.sessionExerciseId] ?? null}
               equipmentProfileId={equipmentProfileId}
               onExerciseChanged={onExerciseChanged}
               onFieldPress={(setId, field, currentValue) => onFieldPress(exercise.id, setId, field, currentValue)}
@@ -771,6 +764,10 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   // D-14's per-exercise equipment type, loaded alongside the inventory — the band needs both to
   // decide what an exercise's own band content is (Task 3).
   const [equipmentTypeByExerciseId, setEquipmentTypeByExerciseId] = useState<Map<string, EquipmentType | null>>(new Map());
+  // 08-01's tracer slice: the batched prior-session read (D-03, derived on read, never persisted),
+  // keyed by session_exercise id — resolved alongside resolvedInventory/equipmentTypeByExerciseId
+  // above, the same async-resolve-into-state shape.
+  const [recommendationHistory, setRecommendationHistory] = useState<Record<string, ExerciseSessionSets[]>>({});
   const [draftValuesByExercise, setDraftValuesByExercise] = useState<Record<string, SetRowValues>>({});
   // D-21's ephemeral per-exercise override: undefined means "derive from data" (isPerSideMode's own
   // default), true/false wins outright over the derived value. Survives a reload() (which refetches
@@ -853,10 +850,12 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
           session.exercises.map((sessionExercise) => sessionExercise.exerciseId),
           db,
         ).then(setEquipmentTypeByExerciseId);
+        void recommendationHistoryForSession(session.session.id, db).then(setRecommendationHistory);
       } else {
         setReferenceMap({});
         setResolvedInventory(null);
         setEquipmentTypeByExerciseId(new Map());
+        setRecommendationHistory({});
       }
     },
     [db],
@@ -952,6 +951,33 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
       inventory: resolvedInventory,
     });
   }, [activeField, activeEquipmentType, resolvedInventory, weightUnit]);
+
+  // 08-01's tracer slice: recommendNextPrescription called once per exercise here, memoised on the
+  // batched history read, the session's own exercises (whose targetRepMin/targetRepMax/targetRir
+  // columns are Task 1's prescription snapshot — never routine_exercise's live targets), the
+  // resolved inventory and the equipment-type map — the view itself performs no computation,
+  // exactly as bandState above it.
+  const recommendationBySessionExerciseId = useMemo<Record<string, ProgressionResult | null>>(() => {
+    const map: Record<string, ProgressionResult | null> = {};
+    for (const exercise of sessionExercises) {
+      const sessions = recommendationHistory[exercise.id];
+      if (sessions === undefined) {
+        map[exercise.id] = null;
+        continue;
+      }
+      map[exercise.id] = recommendNextPrescription({
+        sessions,
+        prescription: {
+          targetRepMin: exercise.targetRepMin,
+          targetRepMax: exercise.targetRepMax,
+          targetRir: exercise.targetRir,
+        },
+        equipmentType: equipmentTypeByExerciseId.get(exercise.exerciseId) ?? null,
+        inventory: resolvedInventory,
+      });
+    }
+    return map;
+  }, [sessionExercises, recommendationHistory, equipmentTypeByExerciseId, resolvedInventory]);
 
   const exercises: ExerciseStripExercise[] = sessionExercises.map((exercise) => {
     const existingSets = liveSession?.setsByExerciseId[exercise.id] ?? [];
@@ -1520,6 +1546,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
     onBandRecoveryPress: handleBandRecoveryPress,
     equipmentTypeByExerciseId,
     resolvedInventory,
+    recommendationBySessionExerciseId,
     equipmentProfileId: liveSession?.session.equipmentProfileId ?? null,
     starting,
     nextUp,
