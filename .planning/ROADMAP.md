@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Exercise Catalog** - ~900 seeded exercises, muscle taxonomy, load types, custom exercises (completed 2026-08-20)
 - [ ] **Phase 4: Program Builder** - Author routines with days, cycles, and per-exercise targets
 - [ ] **Phase 5: In-Gym Session Logging** - The core loop: log a full offline workout without friction *(dogfooding starts here)*
-- [ ] **Phase 6: Gym Profiles & Plate Math** - Multi-gym equipment config and equipment-aware plate calculation
+- [x] **Phase 6: Gym Profiles & Plate Math** - Multi-gym equipment config and equipment-aware plate calculation (completed 2026-08-28)
 - [ ] **Phase 7: Advanced Set Types** - Supersets, drop sets, myoreps, partials, warm-ups, per-side logging
 - [ ] **Phase 8: Progression Engine** - Rule-based "what to lift next", offline, increment-aware
 - [ ] **Phase 9: Records & Client Analytics** - PR detection and on-device volume, trends, and per-exercise history
@@ -506,6 +506,22 @@ Plans:
 - [ ] Phase 01 test 15: maximum OS accessibility font-scale wrap-and-grow on iOS and Android
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
+### Phase 999.2: Human verification sweep — web target (BACKLOG)
+
+**Goal**: Run every deferred human-judgment UAT checkpoint against the finished web build in a single pass, once all phases are built
+**Source phase**: all (project-wide policy)
+**Deferred at**: 2026-08-28 — by user decision during `/gsd-verify-work 06`
+**Policy**: UAT items requiring live human interaction or subjective visual judgment on the **web** target are skipped in every phase and accumulate here. Items provable by the automated unit/e2e suites are NOT deferred and still gate each phase normally. Native (iOS/Android) items go to Phase 999.1, not here.
+**Prerequisites**: A running dev server + API against a clean database, and a browser session driven by hand
+**Accumulated items**:
+
+- [x] Phase 06 test 1: cold start — kill dev server/API, clear ephemeral state, boot both from scratch; migration applies cleanly and the seeded "My Gym" profile renders with its plate band (completed 2026-08-28)
+- [ ] Phase 06 test 2 (06-01-D2): plate strip renders inside Phase 5's reserved 40px band without shifting the keypad digit grid
+- [ ] Phase 06 test 3 (06-03-D1): Gym Profiles click-through from the Profile tab — create/set-active/edit/duplicate/archive/restore, collapsed archived section, active-gym accent styling
+- [ ] Phase 06 test 4 (06-04-D7): create a gym in lb, add plates and a machine, save and reopen — values read back exactly as typed, stepper floors at zero
+- [ ] Phase 06 test 5 (06-07-D3): Switch Gym mid-session — menu row order, destructive Discard styling, no-confirmation sheet, logged sets keep their displayed weight
+- [ ] (append human-judgment web items from phases 01-12 as each phase defers them)
+
 ## Progress
 
 **Execution Order:**
@@ -518,7 +534,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Exercise Catalog | 17/17 | Complete    | 2026-08-20 |
 | 4. Program Builder | 11/11 | Complete    | 2026-08-23 |
 | 5. In-Gym Session Logging | 16/16 | In Progress|  |
-| 6. Gym Profiles & Plate Math | 8/8 | In Progress|  |
+| 6. Gym Profiles & Plate Math | 8/8 | Complete    | 2026-08-28 |
 | 7. Advanced Set Types | 0/TBD | Not started | - |
 | 8. Progression Engine | 0/TBD | Not started | - |
 | 9. Records & Client Analytics | 0/TBD | Not started | - |

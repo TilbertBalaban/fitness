@@ -26,6 +26,22 @@ you what to lift next time.
 - [x] NestJS backend API with real user accounts and multi-device sync
       *Validated in Phase 02: two browser contexts on one account each logging offline both
       converge after reconnect with no logged set lost. Device half deferred to Phase 999.1.*
+- [x] Multi-gym profiles with per-location equipment configuration
+      *Validated in Phase 06: gym-profiles-plate-math. A user can create, edit, duplicate, set
+      active, archive and restore multiple gyms, each with its own bar weight, plate denominations
+      with per-denomination pair counts, dumbbell weights and named machines (stack min/max/
+      increment/base resistance), in either kg or lb. Every weight is stored in canonical kilograms
+      and round-trips exactly. Proven in a real browser by `gym-profiles.spec.ts`. A session
+      snapshots the gym it was started at and can be restamped mid-session without re-deriving
+      already-logged sets (`switch-gym.spec.ts`).*
+- [x] Plate calculator scoped to available equipment
+      *Validated in Phase 06: gym-profiles-plate-math. A live per-side plate breakdown renders in
+      the keypad's reserved band while entering a barbell weight, honouring the active gym's real
+      pair counts. Loads the gym cannot make are named as their two nearest achievable neighbours;
+      tap-to-autofill and generated warm-ups only ever produce achievable loads. Equipment can be
+      marked unavailable for a single session, which subtracts from the resolved inventory feeding
+      the band, the rounder and substitute suggestions alike. Proven by `plate-strip.spec.ts` and
+      `equipment-availability.spec.ts`.*
 
 ### Active
 
@@ -37,8 +53,6 @@ you what to lift next time.
 - [ ] Granular set logging: sets, reps, weight, RIR, rest timer, failure sets
 - [ ] Advanced set types: supersets, drop sets, partial reps, myoreps
 - [ ] Asymmetrical (left/right) per-side tracking
-- [ ] Plate calculator scoped to available equipment
-- [ ] Multi-gym profiles with per-location equipment configuration
 - [ ] Rule-based progression engine — recommends when to add weight or reps
 - [ ] Analytics: volume and progress charts by muscle group, workout history, trends
 - [ ] PR detection and highlighting
@@ -90,6 +104,8 @@ you what to lift next time.
 | Rule-based progression, not AI | Mirrors MacroFactor's deliberate design; deterministic rules are testable and explainable | — Pending |
 | Accounts + multi-device sync in scope | Phone and browser must converge; deferring auth would force a data model rewrite later | ✓ Validated in Phase 02 — two browser contexts on one account converge after both log offline. Device half deferred to Phase 999.1 |
 | No nutrition tracking | MacroFactor's macro coaching is a separate product surface; including it would multiply scope | — Pending |
+| Canonical kilograms as the single stored weight unit | A gym profile's display unit (kg/lb) is presentation; storing one canonical unit keeps the plate solver, rounder and sync payloads free of unit ambiguity | ✓ Validated in Phase 06 — every weight round-trips through exact decimal strings with no floating-point arithmetic (`toCanonicalKg` throws rather than coerces), proven by a real-browser lb-profile create/reopen |
+| A session snapshots its gym rather than reading the active one | History must stay truthful: re-deriving a past session against today's active gym would silently rewrite what was lifted | ✓ Validated in Phase 06 — `loadSessionInventory` reads the session's own snapshot, and a mid-session gym restamp leaves already-logged sets' displayed weights untouched |
 
 ## Evolution
 
@@ -120,4 +136,4 @@ the app sits on is in place and proven, not assumed.
 Next: Phase 03 — Exercise Catalog.
 
 ---
-*Last updated: 2026-08-17 after Phase 02 completion*
+*Last updated: 2026-08-28 after Phase 06 completion*

@@ -1,23 +1,30 @@
 ---
 phase: 06-gym-profiles-plate-math
 verified: 2026-08-28T07:39:24Z
-status: human_needed
+status: passed
 score: 4/4 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
+human_verification_deferred_to: "ROADMAP Phase 999.2 — Human verification sweep (web target)"
+human_verification_deferred_at: 2026-08-28
 human_verification:
+
   - test: "Cold Start Smoke Test — kill dev server/API, clear ephemeral state, boot both from scratch, load the workout screen"
     expected: "Both boot without errors; equipment-profile schema/migration applies cleanly; the seeded 'My Gym' profile appears and the plate band renders on first load"
     why_human: "Requires a live device/browser boot sequence and visual confirmation of first paint; not something a unit/e2e suite substitutes for. User explicitly skipped this UAT item."
+
   - test: "Plate strip renders in the reserved band (06-01-D2) — type a loadable barbell weight on the keypad"
     expected: "The per-side plate stack renders inside Phase 5's reserved 40px band, and the keypad digit grid does not shift or move"
     why_human: "Visual layout confirmation (no shift in an adjacent, unrelated UI region) is not assertable by the automated suite. Recorded as WINDOWS.md — covered by the automated e2e assertion on rendered content, but not the layout-stability claim. User explicitly skipped this UAT item."
+
   - test: "Gym Profiles click-through from the Profile tab (06-03-D1)"
     expected: "Profile tab's Gym Profiles row names the active gym and opens the list; every configured gym is visible; create/set-active/edit/duplicate/archive/restore all work; archived gyms sit in a collapsed trailing section; active gym pinned first with accent styling"
     why_human: "Interactive click-through and visual styling confirmation. Recorded as WINDOWS.md #141 (unrun-verify, open). User explicitly skipped this UAT item."
+
   - test: "Create a gym in lb and reopen it (06-04-D7)"
     expected: "On the web target: create a gym in lb, add 45/25 lb plates with two pairs each, add a machine with a 20-200 stack in 10 steps, save, reopen — every value reads back exactly as typed, and the plate count stepper refuses to go below zero"
     why_human: "Interactive/visual confirmation of the specific manual flow. The equivalent data flow is covered by gym-profiles.spec.ts's real-browser proof (confirmed passing in this verification run), but not the specific interactive confirmation. Recorded as WINDOWS.md #142 (unrun-verify, open). User explicitly skipped this UAT item."
+
   - test: "Switch Gym mid-session (06-07-D3)"
     expected: "Session menu shows Switch Gym between Session Note and Discard, Discard last and destructively styled; selecting it opens the sheet with no confirmation; tapping a non-active gym restamps and dismisses; the active row dismisses without a write; previously logged sets keep their displayed weight"
     why_human: "Interactive session-menu row order/color confirmation. The functional behavior (restamp, past-set weight preservation) is covered by switch-gym.spec.ts, which was re-run fresh in this verification and passed. Recorded as WINDOWS.md #143 (unrun-verify, open). User explicitly skipped this UAT item."
