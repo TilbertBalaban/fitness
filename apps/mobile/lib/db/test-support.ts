@@ -859,3 +859,47 @@ export async function readRoutineCycleRaw(id: string): Promise<Record<string, un
   const rows = await rawDb.getAll<Record<string, unknown>>('SELECT * FROM routine_cycle WHERE id = ?', [id]);
   return rows[0] ?? null;
 }
+
+// 07-09's grouped-set e2e cases: the same raw read readLoggedSetsRaw performs, narrowed to the
+// columns a spec actually needs to assert stored parentage against — parent_set_id and side — so a
+// drop-set/per-side/superset case can prove the real stored shape rather than only the rendered
+// text SetRow produces.
+export interface LoggedSetGroupingRow {
+  id: string;
+  set_index: number;
+  set_type: string;
+  parent_set_id: string | null;
+  side: string | null;
+}
+
+export async function readLoggedSetsWithGrouping(sessionExerciseId: string): Promise<LoggedSetGroupingRow[]> {
+  if (!rawDb) {
+    throw new Error('readLoggedSetsWithGrouping() called before openTestPowerSync()');
+  }
+  return rawDb.getAll<LoggedSetGroupingRow>(
+    'SELECT id, set_index, set_type, parent_set_id, side FROM logged_set WHERE session_exercise_id = ? ORDER BY set_index',
+    [sessionExerciseId],
+  );
+}
+
+export interface SeededSupersetPair {
+  sessionId: string;
+  sessionExerciseIds: [string, string];
+}
+
+// seedProgrammedSession's own return shape (SeededProgrammedExercise[]) carries routineExerciseId/
+// exerciseId per slot, never the client-generated session_exercise id addSessionExercise assigns
+// internally (startWorkoutFromProgram discards it) — so a superset spec needing a deterministic
+// adjacent pair to hand formSuperset reads it back here, ordered by order_index, rather than
+// depending on whatever seedProgrammedSession happens to produce. Delegates entirely to the real
+// seedProgrammedSession and readSessionExercisesRaw above; no second seeding path.
+export async function seedSupersetPair(db: TestWriteDb, userId?: string): Promise<SeededSupersetPair> {
+  const { sessionId } = await seedProgrammedSession(db, userId);
+  const rows = await readSessionExercisesRaw(sessionId);
+  const ordered = rows.slice().sort((a, b) => (a.order_index as number) - (b.order_index as number));
+  const [first, second] = ordered;
+  if (!first || !second) {
+    throw new Error(`seedSupersetPair: expected two session_exercise rows, got ${ordered.length}`);
+  }
+  return { sessionId, sessionExerciseIds: [first.id as string, second.id as string] };
+}

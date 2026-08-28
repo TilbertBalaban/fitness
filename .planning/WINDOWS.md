@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 120
+open_count: 121
 waived_count: 4
 fixed_count: 25
-total_count: 149
-last_updated: 2026-08-28T17:09:09.731Z
+total_count: 150
+last_updated: 2026-08-28T18:00:51.116Z
 ---
 
 # Broken Windows Ledger
@@ -164,6 +164,7 @@ last_updated: 2026-08-28T17:09:09.731Z
 | 150 | 04 | unrun-verify | apps/mobile/app/(tabs)/programs.tsx |  | The four day-page controls (Duplicate, Archive, Restore, plus the pre-existing Remove) have been observed on neither iOS nor Android — no Xcode, no Android SDK in this worktree (ROADMAP Phase 999.1); the web observation lands in 04-15. | open |  | 2026-08-28T15:29:10.796Z |  |
 | 151 | 04 | unrun-verify | apps/mobile/e2e/program-day-lifecycle.spec.ts |  | Duplicate/archive/restore day and time-off cycle conversion have been observed only in a web browser (Chromium via Playwright) — no Xcode, no Android SDK in this worktree (ROADMAP Phase 999.1 native sweep). | open |  | 2026-08-28T16:14:09.256Z |  |
 | 152 | 07 | deviation | apps/mobile/components/ExercisePage.tsx |  | setTypeError set on a rejected formSuperset/detachSuperset write is not yet visibly rendered by SessionActionSheet (no errorMessage prop; SessionActionSheet.tsx was out of 07-07's file scope) | open |  | 2026-08-28T17:09:09.731Z |  |
+| 153 | 07 | deviation | apps/mobile/e2e/reorder-exercises.spec.ts |  | Pre-existing, order-dependent flake in the full durability sequential run: reordering is idempotent intermittently fails right after the preceding drag test, but passes cleanly every time it is run in isolation. Discovered while proving 07-09's own advanced-sets.spec.ts additions; not caused by this plan (no file this plan touches overlaps reorder-exercises.spec.ts or its own reorder path). | open |  | 2026-08-28T18:00:51.116Z |  |
 
 ````json
 [
@@ -1953,6 +1954,18 @@ last_updated: 2026-08-28T17:09:09.731Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-28T17:09:09.731Z",
+    "resolved_at": null
+  },
+  {
+    "id": 153,
+    "kind": "deviation",
+    "phase": "07",
+    "file": "apps/mobile/e2e/reorder-exercises.spec.ts",
+    "line": null,
+    "description": "Pre-existing, order-dependent flake in the full durability sequential run: reordering is idempotent intermittently fails right after the preceding drag test, but passes cleanly every time it is run in isolation. Discovered while proving 07-09's own advanced-sets.spec.ts additions; not caused by this plan (no file this plan touches overlaps reorder-exercises.spec.ts or its own reorder path).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-28T18:00:51.116Z",
     "resolved_at": null
   }
 ]
