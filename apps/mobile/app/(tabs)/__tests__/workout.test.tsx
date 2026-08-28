@@ -11,6 +11,8 @@ jest.mock('../../exercises', () => ({ loadCatalogRows: jest.fn() }));
 
 import type { ReactElement, ReactNode } from 'react';
 import { Pressable, Text } from 'react-native';
+import { resolveInventory } from '@fitness/plate-math';
+import { recommendNextPrescription } from '@fitness/progression-engine';
 import { PrimaryButton } from '../../../components/PrimaryButton';
 import { NumericKeypadView } from '../../../components/NumericKeypad';
 import { SetRowView } from '../../../components/SetRow';
@@ -727,6 +729,62 @@ describe('WorkoutScreenView', () => {
     const [banner] = findByType(page, RecommendationBanner);
     const bannerResult = RecommendationBanner(banner.props as unknown as Parameters<typeof RecommendationBanner>[0]);
     expect(flatText(bannerResult)).toContain('102.50 kg');
+  });
+
+  it('renders a different recommendation for the two D-07 preferences on the same seeded history (08-05)', () => {
+    const exercise = { id: 'se-1', name: 'Bench Press', completedWorkingSets: 1, targetSets: 1 };
+    const rows = buildSetRows([LOGGED_ROW], {}, { weight: null, reps: '12', rir: '2' }, 'kg', null);
+    const inventory = resolveInventory({
+      nativeUnit: 'kg',
+      barbellWeightKg: '20.000',
+      plates: [
+        { weightKg: '20.000', pairCount: 4 },
+        { weightKg: '1.250', pairCount: 2 },
+      ],
+      dumbbells: [],
+      machines: [],
+    });
+    const sessions = [
+      { sessionId: 'sess-1', sets: [{ id: 's1', parentSetId: null, setType: 'normal' as const, weightKg: '100.000', reps: 7, rir: 5, side: null, completed: true }] },
+    ];
+    const prescription = { targetRepMin: 7, targetRepMax: 9, targetRir: 2 };
+
+    const widened = recommendNextPrescription({
+      sessions,
+      prescription,
+      equipmentType: 'barbell',
+      inventory,
+      preference: 'widen_rep_range_first',
+    });
+    const matched = recommendNextPrescription({
+      sessions,
+      prescription,
+      equipmentType: 'barbell',
+      inventory,
+      preference: 'match_previous_weight',
+    });
+
+    const widenedPage = renderCurrentExercisePage(
+      WorkoutScreenView(
+        baseViewProps({ exercises: [exercise], rowsByExercise: { 'se-1': rows }, recommendationBySessionExerciseId: { 'se-1': widened } }),
+      ),
+      exercise,
+    );
+    const matchedPage = renderCurrentExercisePage(
+      WorkoutScreenView(
+        baseViewProps({ exercises: [exercise], rowsByExercise: { 'se-1': rows }, recommendationBySessionExerciseId: { 'se-1': matched } }),
+      ),
+      exercise,
+    );
+
+    const [widenedBanner] = findByType(widenedPage, RecommendationBanner);
+    const [matchedBanner] = findByType(matchedPage, RecommendationBanner);
+    const widenedText = flatText(RecommendationBanner(widenedBanner.props as unknown as Parameters<typeof RecommendationBanner>[0]));
+    const matchedText = flatText(RecommendationBanner(matchedBanner.props as unknown as Parameters<typeof RecommendationBanner>[0]));
+
+    expect(widenedText).not.toBe(matchedText);
+    expect(widenedText).toContain('100.00 kg');
+    expect(matchedText).toContain('105.00 kg');
   });
 
   it('renders the no_history banner when the exercise has no recommendation yet', () => {

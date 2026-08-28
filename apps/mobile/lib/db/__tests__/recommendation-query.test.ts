@@ -1,6 +1,7 @@
+import { DEFAULT_PROGRESSION_PREFERENCE } from '@fitness/api-contracts';
 import { recommendationHistoryForSession, RECENT_SESSION_WINDOW } from '../programs/recommendation-query';
 import { getPowerSync } from '../powersync';
-import { loggedSet, sessionExercise, workoutSession } from '../schema';
+import { loggedSet, sessionExercise, userPreference, workoutSession } from '../schema';
 
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
 
@@ -91,13 +92,20 @@ interface FakeRows {
   sessionExerciseRows?: Record<string, unknown>[];
   workoutSessionRows?: Record<string, unknown>[];
   loggedSetRows?: Record<string, unknown>[];
+  userPreferenceRows?: Record<string, unknown>[];
 }
 
-function fakeRecommendationDb({ sessionExerciseRows = [], workoutSessionRows = [], loggedSetRows = [] }: FakeRows) {
+function fakeRecommendationDb({
+  sessionExerciseRows = [],
+  workoutSessionRows = [],
+  loggedSetRows = [],
+  userPreferenceRows = [],
+}: FakeRows) {
   const tables = new Map<unknown, [TableLike, Record<string, unknown>[]]>([
     [sessionExercise, [sessionExercise as unknown as TableLike, sessionExerciseRows]],
     [workoutSession, [workoutSession as unknown as TableLike, workoutSessionRows]],
     [loggedSet, [loggedSet as unknown as TableLike, loggedSetRows]],
+    [userPreference, [userPreference as unknown as TableLike, userPreferenceRows]],
   ]);
 
   const db = {
@@ -116,6 +124,7 @@ function fakeRecommendationDb({ sessionExerciseRows = [], workoutSessionRows = [
 }
 
 const CURRENT_SESSION = 's-current';
+const CURRENT_USER = 'user-1';
 const CURRENT_SE = { id: 'se-current', sessionId: CURRENT_SESSION, exerciseId: 'ex-bench' };
 const PRIOR_SE_1 = { id: 'se-prior-1', sessionId: 's-prior-1', exerciseId: 'ex-bench' };
 const PRIOR_SE_2 = { id: 'se-prior-2', sessionId: 's-prior-2', exerciseId: 'ex-bench' };
@@ -148,18 +157,18 @@ describe('recommendationHistoryForSession', () => {
       ],
     });
 
-    const result = await recommendationHistoryForSession(CURRENT_SESSION, db);
+    const result = await recommendationHistoryForSession(CURRENT_SESSION, CURRENT_USER, db);
 
-    expect(result['se-current'].map((entry) => entry.sessionId)).toEqual(['s-prior-2', 's-prior-1']);
-    expect(result['se-current'].every((entry) => entry.sessionId !== CURRENT_SESSION)).toBe(true);
+    expect(result.history['se-current'].map((entry) => entry.sessionId)).toEqual(['s-prior-2', 's-prior-1']);
+    expect(result.history['se-current'].every((entry) => entry.sessionId !== CURRENT_SESSION)).toBe(true);
   });
 
   it('yields an entry with an empty session list, not a missing key, when an exercise has no prior history', async () => {
     const db = fakeRecommendationDb({ sessionExerciseRows: [CURRENT_SE] });
 
-    const result = await recommendationHistoryForSession(CURRENT_SESSION, db);
+    const result = await recommendationHistoryForSession(CURRENT_SESSION, CURRENT_USER, db);
 
-    expect(result['se-current']).toEqual([]);
+    expect(result.history['se-current']).toEqual([]);
   });
 
   it('never includes the current session own rows', async () => {
@@ -172,12 +181,12 @@ describe('recommendationHistoryForSession', () => {
       ],
     });
 
-    const result = await recommendationHistoryForSession(CURRENT_SESSION, db);
+    const result = await recommendationHistoryForSession(CURRENT_SESSION, CURRENT_USER, db);
 
     // A row scoped to se-current is never a prior candidate — the returned bucket has exactly one
     // session and that session's one set is the prior row, never the current session's own.
-    expect(result['se-current']).toHaveLength(1);
-    expect(result['se-current'][0].sets.map((set) => set.id)).toEqual(['ls-prior']);
+    expect(result.history['se-current']).toHaveLength(1);
+    expect(result.history['se-current'][0].sets.map((set) => set.id)).toEqual(['ls-prior']);
   });
 
   it('caps the returned sessions at RECENT_SESSION_WINDOW', async () => {
@@ -195,16 +204,43 @@ describe('recommendationHistoryForSession', () => {
       workoutSessionRows: priorSessions,
     });
 
-    const result = await recommendationHistoryForSession(CURRENT_SESSION, db);
+    const result = await recommendationHistoryForSession(CURRENT_SESSION, CURRENT_USER, db);
 
-    expect(result['se-current']).toHaveLength(RECENT_SESSION_WINDOW);
+    expect(result.history['se-current']).toHaveLength(RECENT_SESSION_WINDOW);
   });
 
-  it('returns an empty result keyed by nothing when the session has no exercises', async () => {
+  it('returns an empty history keyed by nothing when the session has no exercises', async () => {
     const db = fakeRecommendationDb({});
 
-    const result = await recommendationHistoryForSession(CURRENT_SESSION, db);
+    const result = await recommendationHistoryForSession(CURRENT_SESSION, CURRENT_USER, db);
 
-    expect(result).toEqual({});
+    expect(result.history).toEqual({});
+  });
+
+  it('returns the documented default preference for a signed-out session', async () => {
+    const db = fakeRecommendationDb({ sessionExerciseRows: [CURRENT_SE] });
+
+    const result = await recommendationHistoryForSession(CURRENT_SESSION, null, db);
+
+    expect(result.preference).toBe(DEFAULT_PROGRESSION_PREFERENCE);
+  });
+
+  it('returns the documented default preference when the user has no preference row yet', async () => {
+    const db = fakeRecommendationDb({ sessionExerciseRows: [CURRENT_SE] });
+
+    const result = await recommendationHistoryForSession(CURRENT_SESSION, CURRENT_USER, db);
+
+    expect(result.preference).toBe(DEFAULT_PROGRESSION_PREFERENCE);
+  });
+
+  it("reads the signed-in user's stored progression preference", async () => {
+    const db = fakeRecommendationDb({
+      sessionExerciseRows: [CURRENT_SE],
+      userPreferenceRows: [{ id: CURRENT_USER, progressionPreference: 'match_previous_weight' }],
+    });
+
+    const result = await recommendationHistoryForSession(CURRENT_SESSION, CURRENT_USER, db);
+
+    expect(result.preference).toBe('match_previous_weight');
   });
 });

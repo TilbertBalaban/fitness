@@ -1,5 +1,7 @@
 import { eq, inArray } from 'drizzle-orm';
+import { DEFAULT_PROGRESSION_PREFERENCE, type ProgressionPreference } from '@fitness/api-contracts';
 import type { ExerciseSessionSets, LoggedSetInput } from '@fitness/progression-engine';
+import { loadProgressionPreference } from '../preferences';
 import { getPowerSync, type WriteDb } from '../powersync';
 import { loggedSet, sessionExercise, workoutSession } from '../schema';
 
@@ -16,6 +18,14 @@ interface PriorSessionExerciseRow {
   exerciseId: string;
 }
 
+export interface RecommendationInputsForSession {
+  history: Record<string, ExerciseSessionSets[]>;
+  // D-07: read here, joined to this module's own history read, rather than a second read issued
+  // by the screen — 08-02's loadProgressionPreference is what narrows a corrupted or future-build
+  // value to the default; this module never reads the raw column itself.
+  preference: ProgressionPreference;
+}
+
 // D-16/D-14: reads logged history and the session's own prescription snapshot, never
 // routine_exercise's live targets — editing a program must not change what a logged workout is
 // compared against (Phase 4's D-01, resolvePrescriptionForCycle's snapshot-on-use precedent).
@@ -24,8 +34,14 @@ interface PriorSessionExerciseRow {
 // per-exercise query inside a loop (PITFALLS §13).
 export async function recommendationHistoryForSession(
   sessionId: string,
+  userId: string | null,
   db: WriteDb = getPowerSync(),
-): Promise<Record<string, ExerciseSessionSets[]>> {
+): Promise<RecommendationInputsForSession> {
+  // A signed-out account (userId null) falls back to the documented default rather than to a
+  // locally invented value — the same fallback loadProgressionPreference itself applies to a
+  // preference-less row, just applied one layer earlier since there is no row to read at all.
+  const preference = userId ? await loadProgressionPreference(userId, db) : DEFAULT_PROGRESSION_PREFERENCE;
+
   const currentExerciseRows = await db
     .select({ id: sessionExercise.id, exerciseId: sessionExercise.exerciseId })
     .from(sessionExercise)
@@ -33,7 +49,7 @@ export async function recommendationHistoryForSession(
 
   const result: Record<string, ExerciseSessionSets[]> = {};
   for (const row of currentExerciseRows) result[row.id] = [];
-  if (currentExerciseRows.length === 0) return result;
+  if (currentExerciseRows.length === 0) return { history: result, preference };
 
   const exerciseIds = [...new Set(currentExerciseRows.map((row) => row.exerciseId))];
 
@@ -42,7 +58,7 @@ export async function recommendationHistoryForSession(
     .from(sessionExercise)
     .where(inArray(sessionExercise.exerciseId, exerciseIds));
   const priorCandidates = priorExerciseRows.filter((row) => row.sessionId !== sessionId);
-  if (priorCandidates.length === 0) return result;
+  if (priorCandidates.length === 0) return { history: result, preference };
 
   const priorSessionIds = [...new Set(priorCandidates.map((row) => row.sessionId))];
   const priorSessionRows = await db
@@ -111,5 +127,5 @@ export async function recommendationHistoryForSession(
     });
   }
 
-  return result;
+  return { history: result, preference };
 }

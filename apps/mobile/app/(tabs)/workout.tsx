@@ -1,4 +1,13 @@
-import { fromCanonicalKg, toCanonicalKg, WORKING_SET_TYPE, type EquipmentType, type SetType, type WeightUnit } from '@fitness/api-contracts';
+import {
+  DEFAULT_PROGRESSION_PREFERENCE,
+  fromCanonicalKg,
+  toCanonicalKg,
+  WORKING_SET_TYPE,
+  type EquipmentType,
+  type ProgressionPreference,
+  type SetType,
+  type WeightUnit,
+} from '@fitness/api-contracts';
 import { eq, inArray } from 'drizzle-orm';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -768,6 +777,10 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   // keyed by session_exercise id — resolved alongside resolvedInventory/equipmentTypeByExerciseId
   // above, the same async-resolve-into-state shape.
   const [recommendationHistory, setRecommendationHistory] = useState<Record<string, ExerciseSessionSets[]>>({});
+  // D-07: the stored preference, read alongside recommendationHistory above through the same
+  // batched read — defaults to the documented default until the read resolves or when no user/no
+  // row exists, never a locally invented value.
+  const [progressionPreference, setProgressionPreference] = useState<ProgressionPreference>(DEFAULT_PROGRESSION_PREFERENCE);
   const [draftValuesByExercise, setDraftValuesByExercise] = useState<Record<string, SetRowValues>>({});
   // D-21's ephemeral per-exercise override: undefined means "derive from data" (isPerSideMode's own
   // default), true/false wins outright over the derived value. Survives a reload() (which refetches
@@ -850,15 +863,19 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
           session.exercises.map((sessionExercise) => sessionExercise.exerciseId),
           db,
         ).then(setEquipmentTypeByExerciseId);
-        void recommendationHistoryForSession(session.session.id, db).then(setRecommendationHistory);
+        void recommendationHistoryForSession(session.session.id, userId, db).then((inputs) => {
+          setRecommendationHistory(inputs.history);
+          setProgressionPreference(inputs.preference);
+        });
       } else {
         setReferenceMap({});
         setResolvedInventory(null);
         setEquipmentTypeByExerciseId(new Map());
         setRecommendationHistory({});
+        setProgressionPreference(DEFAULT_PROGRESSION_PREFERENCE);
       }
     },
-    [db],
+    [db, userId],
   );
 
   const loadersFor = useCallback(
@@ -974,10 +991,11 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
         },
         equipmentType: equipmentTypeByExerciseId.get(exercise.exerciseId) ?? null,
         inventory: resolvedInventory,
+        preference: progressionPreference,
       });
     }
     return map;
-  }, [sessionExercises, recommendationHistory, equipmentTypeByExerciseId, resolvedInventory]);
+  }, [sessionExercises, recommendationHistory, equipmentTypeByExerciseId, resolvedInventory, progressionPreference]);
 
   const exercises: ExerciseStripExercise[] = sessionExercises.map((exercise) => {
     const existingSets = liveSession?.setsByExerciseId[exercise.id] ?? [];
