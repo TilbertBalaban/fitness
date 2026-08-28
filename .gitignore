@@ -19,3 +19,4 @@ apps/mobile/playwright-report/
 # GSD runtime state
 .gsd/
 .planning/.worktree-manifests/
+.planning/research/.cache/
