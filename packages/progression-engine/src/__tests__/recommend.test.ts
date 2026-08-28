@@ -136,4 +136,76 @@ describe('recommendNextPrescription', () => {
       offeredReduction: null,
     });
   });
+
+  it('returns failure_rep_increase with the same weight and one more rep when a failure set beats the prior one at the same load', () => {
+    const result = recommendNextPrescription(
+      baseInput({
+        prescription: { targetRepMin: 7, targetRepMax: 15, targetRir: 2 },
+        sessions: [
+          { sessionId: 'sess-recent', sets: [loggedSet({ id: 'a', rir: 0, reps: 11, weightKg: '100.000' })] },
+          { sessionId: 'sess-older', sets: [loggedSet({ id: 'b', rir: 0, reps: 10, weightKg: '100.000' })] },
+        ],
+      }),
+    );
+    expect(result).toEqual({
+      kind: 'recommendation',
+      weightKg: '100.000',
+      reps: 12,
+      rir: 2,
+      basis: 'failure_rep_increase',
+      offeredReduction: null,
+    });
+  });
+
+  it('holds at the same weight and rep target when a failure set does not beat the prior one', () => {
+    const result = recommendNextPrescription(
+      baseInput({
+        sessions: [
+          { sessionId: 'sess-recent', sets: [loggedSet({ id: 'a', rir: 0, reps: 10, weightKg: '100.000' })] },
+          { sessionId: 'sess-older', sets: [loggedSet({ id: 'b', rir: 0, reps: 10, weightKg: '100.000' })] },
+        ],
+      }),
+    );
+    expect(result).toEqual({
+      kind: 'recommendation',
+      weightKg: '100.000',
+      reps: 10,
+      rir: 2,
+      basis: 'hold',
+      offeredReduction: null,
+    });
+  });
+
+  it('holds when a failure set has no prior failure set to compare against', () => {
+    const result = recommendNextPrescription(
+      baseInput({ sessions: sessionsWith([loggedSet({ rir: 0, reps: 10, weightKg: '100.000' })]) }),
+    );
+    expect(result).toEqual({
+      kind: 'recommendation',
+      weightKg: '100.000',
+      reps: 10,
+      rir: 2,
+      basis: 'hold',
+      offeredReduction: null,
+    });
+  });
+
+  it('produces exactly one recommendation for the exercise, derived from the weaker side, from raw per-side rows through the public entry point', () => {
+    const result = recommendNextPrescription(
+      baseInput({
+        sessions: sessionsWith([
+          loggedSet({ id: 'left', side: 'left', weightKg: '100.000', reps: 12, rir: 3 }),
+          loggedSet({ id: 'right', parentSetId: 'left', side: 'right', weightKg: '80.000', reps: 8, rir: 1 }),
+        ]),
+      }),
+    );
+    expect(result).toEqual({
+      kind: 'recommendation',
+      weightKg: '80.000',
+      reps: 7,
+      rir: 2,
+      basis: 'hold',
+      offeredReduction: null,
+    });
+  });
 });
