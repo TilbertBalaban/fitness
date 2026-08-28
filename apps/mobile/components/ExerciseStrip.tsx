@@ -66,6 +66,10 @@ export interface ExerciseStripExercise {
   name: string;
   completedWorkingSets: number;
   targetSets: number;
+  // D-12/D-13: decorative and informational only — the link glyph it drives is not its own
+  // Pressable, and is orthogonal to the chip's completion tone (E5 partial). Optional so every
+  // existing caller (WorkoutSummary.tsx's correction rows) renders unchanged (R15).
+  supersetGroupId?: string | null;
 }
 
 export interface ExerciseStripViewProps {
@@ -95,17 +99,21 @@ export function ExerciseStripView({ exercises, currentExerciseId, colors, onSele
         const fraction = exerciseChipFraction(exercise.completedWorkingSets, exercise.targetSets);
         const drawsAccent = tone.borderTone === 'accent';
 
+        const isPaired = exercise.supersetGroupId != null;
+
         return (
           <Pressable
             key={exercise.id}
             onPress={() => onSelectExercise(exercise.id)}
             accessibilityRole="button"
             accessibilityState={{ selected: isCurrent }}
-            accessibilityLabel={`${exercise.name}, ${fraction.kind === 'complete' ? 'complete' : fraction.text}`}
+            accessibilityLabel={`${exercise.name}, ${fraction.kind === 'complete' ? 'complete' : fraction.text}${
+              isPaired ? ', superset' : ''
+            }`}
             className={`items-start justify-center rounded-md border px-md py-sm ${
               drawsAccent ? 'border-accent' : 'border-foreground-muted'
             } ${tone.fill === 'secondary' ? 'bg-secondary' : 'bg-surface'}`}
-            style={{ minWidth: 48, minHeight: 48, borderStyle: tone.borderStyle }}
+            style={{ minWidth: 48, minHeight: 48, borderStyle: tone.borderStyle, position: 'relative' }}
           >
             <Text className={`text-label font-normal ${drawsAccent ? 'text-accent' : 'text-foreground'}`}>{exercise.name}</Text>
             {fraction.kind === 'complete' ? (
@@ -113,6 +121,9 @@ export function ExerciseStripView({ exercises, currentExerciseId, colors, onSele
             ) : (
               <Text className="text-label font-normal text-foreground-muted">{fraction.text}</Text>
             )}
+            {isPaired ? (
+              <Ionicons name="link-outline" size={12} color={colors.foregroundMuted} style={{ position: 'absolute', top: 4, right: 4 }} />
+            ) : null}
           </Pressable>
         );
       })}

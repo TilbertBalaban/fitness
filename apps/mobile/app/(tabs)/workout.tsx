@@ -932,6 +932,7 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
       name: exercise.exerciseName,
       completedWorkingSets,
       targetSets: exercise.targetSets ?? 0,
+      supersetGroupId: exercise.supersetGroupId,
     };
   });
 
