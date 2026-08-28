@@ -1,9 +1,12 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Pressable, Text } from 'react-native';
-import { SET_TYPES } from '@fitness/api-contracts';
+import { SET_TYPES, type SetType } from '@fitness/api-contracts';
+import { ErrorBanner } from '../ErrorBanner';
 import {
+  FAILURE_SET_RIR,
   SET_TYPE_PICKER_ROWS,
   SetTypePickerSheetView,
+  resolveSetTypeSelection,
   setTypePickerEffect,
   type SetTypePickerSheetViewProps,
 } from '../SetTypePickerSheet';
@@ -71,6 +74,101 @@ describe('setTypePickerEffect', () => {
   });
 });
 
+describe('FAILURE_SET_RIR', () => {
+  it('is exactly 0', () => {
+    expect(FAILURE_SET_RIR).toBe(0);
+  });
+});
+
+describe('resolveSetTypeSelection — the full behavior table (07-04)', () => {
+  it('resolves Normal/Warm-up/Myorep/Failure/AMRAP to retype on a childless row', () => {
+    for (const selected of ['normal', 'warmup', 'myorep', 'failure', 'amrap'] as const) {
+      const currentSetType: SetType = selected === 'normal' ? 'warmup' : 'normal';
+      expect(resolveSetTypeSelection({ selected, currentSetType, childCount: 0, childSetType: null })).toBe('retype');
+    }
+  });
+
+  it('resolves Drop Set and Partial to insert-child on a childless row', () => {
+    expect(resolveSetTypeSelection({ selected: 'drop', currentSetType: 'normal', childCount: 0, childSetType: null })).toBe(
+      'insert-child',
+    );
+    expect(resolveSetTypeSelection({ selected: 'partial', currentSetType: 'normal', childCount: 0, childSetType: null })).toBe(
+      'insert-child',
+    );
+  });
+
+  it("resolves the row's own currently-active type to no-op, childless", () => {
+    for (const setType of SET_TYPES) {
+      expect(
+        resolveSetTypeSelection({ selected: setType, currentSetType: setType, childCount: 0, childSetType: null }),
+      ).toBe('no-op');
+    }
+  });
+
+  it('resolves Drop Set on a group already carrying drop children to no-op', () => {
+    expect(
+      resolveSetTypeSelection({ selected: 'drop', currentSetType: 'normal', childCount: 1, childSetType: 'drop' }),
+    ).toBe('no-op');
+  });
+
+  it('resolves Partial on a group already carrying partial children to no-op', () => {
+    expect(
+      resolveSetTypeSelection({ selected: 'partial', currentSetType: 'normal', childCount: 2, childSetType: 'partial' }),
+    ).toBe('no-op');
+  });
+
+  it('resolves Drop Set on a group carrying a different child kind to confirm-first', () => {
+    expect(
+      resolveSetTypeSelection({ selected: 'drop', currentSetType: 'normal', childCount: 1, childSetType: 'partial' }),
+    ).toBe('confirm-first');
+  });
+
+  it('resolves Partial on a group carrying a different child kind to confirm-first', () => {
+    expect(
+      resolveSetTypeSelection({ selected: 'partial', currentSetType: 'normal', childCount: 1, childSetType: 'drop' }),
+    ).toBe('confirm-first');
+  });
+
+  it('resolves Normal/Warm-up/Failure/AMRAP on a grouped row to confirm-first (D-09)', () => {
+    for (const selected of ['warmup', 'failure', 'amrap'] as const) {
+      expect(
+        resolveSetTypeSelection({ selected, currentSetType: 'normal', childCount: 1, childSetType: 'drop' }),
+      ).toBe('confirm-first');
+    }
+    // 'normal' selected against a currentSetType it doesn't already equal (warmup-typed parent
+    // with a mismatched drop child, an edge case R13/R14 tolerate but never produce from this UI).
+    expect(
+      resolveSetTypeSelection({ selected: 'normal', currentSetType: 'warmup', childCount: 1, childSetType: 'drop' }),
+    ).toBe('confirm-first');
+  });
+
+  it('resolves Myorep on a myorep-shaped group to no-op, not confirm-first', () => {
+    expect(
+      resolveSetTypeSelection({ selected: 'myorep', currentSetType: 'myorep', childCount: 1, childSetType: 'myorep' }),
+    ).toBe('no-op');
+  });
+
+  it('resolves Myorep on a grouped row of a different kind to confirm-first', () => {
+    expect(
+      resolveSetTypeSelection({ selected: 'myorep', currentSetType: 'normal', childCount: 1, childSetType: 'drop' }),
+    ).toBe('confirm-first');
+  });
+
+  it('never resolves drop or partial to retype, under every child-state combination', () => {
+    const childCounts = [0, 1, 3];
+    const childSetTypes: (SetType | null)[] = [null, 'drop', 'partial', 'myorep'];
+    for (const selected of ['drop', 'partial'] as const) {
+      for (const currentSetType of SET_TYPES) {
+        for (const childCount of childCounts) {
+          for (const childSetType of childSetTypes) {
+            expect(resolveSetTypeSelection({ selected, currentSetType, childCount, childSetType })).not.toBe('retype');
+          }
+        }
+      }
+    }
+  });
+});
+
 describe('SetTypePickerSheetView', () => {
   it('renders exactly seven rows, each holding the 48 minimum height', () => {
     const result = SetTypePickerSheetView(baseProps());
@@ -124,5 +222,16 @@ describe('SetTypePickerSheetView', () => {
     (result.props.onPress as () => void)();
 
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the ErrorBanner with the supplied errorMessage', () => {
+    const result = SetTypePickerSheetView(baseProps({ errorMessage: "Couldn't save" }));
+    const [banner] = findByType(result, ErrorBanner);
+    expect(banner?.props.message).toBe("Couldn't save");
+  });
+
+  it('renders no ErrorBanner when errorMessage is not supplied', () => {
+    const result = SetTypePickerSheetView(baseProps({ errorMessage: null }));
+    expect(findByType(result, ErrorBanner)).toHaveLength(0);
   });
 });
