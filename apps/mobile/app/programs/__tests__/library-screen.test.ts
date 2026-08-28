@@ -12,6 +12,7 @@ jest.mock('../../../lib/db/programs/lifecycle', () => ({
   archiveRoutine: jest.fn(),
   loadActiveRoutineId: jest.fn(),
   loadLibraryRoutines: jest.fn(),
+  markRoutineReady: jest.fn(),
   renameRoutine: jest.fn(),
   restoreRoutine: jest.fn(),
 }));
@@ -300,6 +301,40 @@ describe('actionsForRow', () => {
 
     expect(archive?.destructive).toBe(true);
     expect(restore?.destructive).toBeUndefined();
+  });
+
+  // D-31: an explicit act is the only way status leaves 'draft'. Mark Ready sits between Activate
+  // and Duplicate so the sheet's order never reshuffles between rows.
+  it('offers Mark Ready on a draft row, between Activate and Duplicate', () => {
+    const keys = actionsForRow(row({ id: 'r1', status: 'draft' }), false).map((action) => action.key);
+
+    expect(keys).toEqual(['activate', 'mark-ready', 'duplicate', 'rename', 'archive']);
+    const markReady = actionsForRow(row({ id: 'r1', status: 'draft' }), false).find(
+      (action) => action.key === 'mark-ready',
+    );
+    expect(markReady?.label).toBe('Mark Ready');
+  });
+
+  it('omits Mark Ready once a program is already ready', () => {
+    const keys = actionsForRow(row({ id: 'r1', status: 'ready' }), false).map((action) => action.key);
+
+    expect(keys).not.toContain('mark-ready');
+  });
+
+  it('omits Mark Ready on an archived row', () => {
+    const keys = actionsForRow(row({ id: 'r1', status: 'draft', archivedAt: '2026-01-01T00:00:00Z' }), false).map(
+      (action) => action.key,
+    );
+
+    expect(keys).not.toContain('mark-ready');
+  });
+
+  // D-31's rejection of implicit advancement: being the active program and being a finished program
+  // are independent facts, so activation must not gate Mark Ready.
+  it('still offers Mark Ready on the active draft row', () => {
+    const keys = actionsForRow(row({ id: 'r1', status: 'draft' }), true).map((action) => action.key);
+
+    expect(keys).toEqual(['mark-ready', 'duplicate', 'rename', 'archive']);
   });
 });
 

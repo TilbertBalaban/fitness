@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 119
+open_count: 118
 waived_count: 4
-fixed_count: 24
+fixed_count: 25
 total_count: 147
-last_updated: 2026-08-28T15:29:10.796Z
+last_updated: 2026-08-28T15:30:59.775Z
 ---
 
 # Broken Windows Ledger
@@ -100,7 +100,7 @@ last_updated: 2026-08-28T15:29:10.796Z
 | 86 | 04 | deviation | apps/mobile/app/programs/_layout.tsx |  | Security-relevant: authorization for every /programs/* route comes from the root layout's single protected 'programs' registration, not from anything inside the segment. Mirrors the T-03-58 entry recorded for /exercises. Deleting _layout.tsx silently hoists both routes out of the guard — the route-guard suite's Case B is the tripwire. | open |  | 2026-08-22T13:45:25.474Z |  |
 | 87 | 04 | deviation | apps/mobile/app/programs/library.tsx |  | The UI-SPEC's 'Delete Draft' action is NOT shipped. The server's HARD_DELETE_FORBIDDEN (apps/api/src/sync/sync.service.ts) rejects every routine DELETE with no draft/never-logged nuance, so a client delete would emit an op the server rejects and the row would resurrect on next sync. Archive is offered for every program instead. Needs a server-side carve-out (allow routine DELETE when no workout_session.routine_day_id references any of its days) before the UI can offer it. | open |  | 2026-08-22T13:45:25.803Z |  |
 | 88 | 04 | deviation | apps/mobile/lib/db/programs/duplicate-routine.ts |  | duplicateRoutine writes supersetGroupId, progressionSchemeId and notes as null rather than copying them, because loadProgramTree's ProgramSlot does not carry them. Harmless today (all three are always null — addExercisesToDay is their only writer and hardcodes them), but the moment any phase makes one writable this becomes silent data loss on duplication. The fix is to widen ProgramSlot so every tree consumer sees them, not to add a second read here. | open |  | 2026-08-22T13:45:26.811Z |  |
-| 89 | 04 | stub | apps/mobile/lib/db/programs/lifecycle.ts |  | markRoutineReady is implemented and tested but has no UI call site: the UI-SPEC's action sheet enumerates four actions and does not include a draft->ready transition, so nothing in the shipped app can move a routine out of 'draft'. Needs either a UI affordance or an explicit decision that status advances implicitly. | open |  | 2026-08-22T13:45:27.350Z |  |
+| 89 | 04 | stub | apps/mobile/lib/db/programs/lifecycle.ts |  | markRoutineReady is implemented and tested but has no UI call site: the UI-SPEC's action sheet enumerates four actions and does not include a draft->ready transition, so nothing in the shipped app can move a routine out of 'draft'. Needs either a UI affordance or an explicit decision that status advances implicitly. | fixed |  | 2026-08-22T13:45:27.350Z | 2026-08-28T15:30:59.775Z |
 | 90 | 04 | deviation | apps/mobile/components/RoutineActionSheet.tsx |  | Three files outside 04-11's declared files_modified were touched, all additively: RoutineActionSheet.tsx created (the UI-SPEC binds the '...' trigger to it and no earlier plan built it), ArchiveDialog.tsx gained an optional subject prop so the program copy lands verbatim (existing call sites and its shipped test untouched and green), and new.tsx landed in Task 2's commit because the route-guard assertion on the segment's children needs the route to exist. | open |  | 2026-08-22T13:45:27.676Z |  |
 | 91 | 04 | deviation | apps/api/src/sync/sync.service.ts |  | CR-01 shipped: applyBatch keyed aggregates on the bare client-chosen root id with no type discriminator, so a two-op batch reusing one id under two root types routed the ownership check at the wrong table and let any authenticated user overwrite and re-own a shared seeded catalog exercise. Confirmed exploitable end-to-end against a running server (HTTP 201, both ops applied, zero rejected); because exercise.user_id cascades on user delete, deleting the attacking account then hard-deleted the shared row for every user. Caught by 04-REVIEW.md, not by the 207 green e2e tests. Fixed by keying aggregates and ownership lookups on (root table, root id) and removing rootTypeByRootId; permanent e2e cover added for both the seeded-catalog and cross-user routine variants. | fixed |  | 2026-08-23T09:25:24.682Z | 2026-08-23T09:25:45.802Z |
 | 92 | 04 | deviation | apps/api/src/sync/sync.service.ts |  | WR-12 shipped and now fixed: USER_EXERCISE_PREFERENCE_PATCH_FIELDS.exerciseId: null meant 'write unconditionally', not 'never write' as four comments in patch-update-set.ts claimed, and toUserExercisePreferenceValues read the client's exercise_id — so a PATCH or PUT naming a different exercise silently re-targeted an existing preference row, moving an archived/never-suggest flag onto another movement. Fixed by resolving exercise_id database-first from the existing batched root query (zero extra queries), matching every other parent resolver's precedence; the four inverted comments and the PatchFieldMap contract were rewritten. Two e2e regressions added, both confirmed failing pre-fix. | open |  | 2026-08-23T10:07:32.284Z |  |
@@ -1192,10 +1192,10 @@ last_updated: 2026-08-28T15:29:10.796Z
     "file": "apps/mobile/lib/db/programs/lifecycle.ts",
     "line": null,
     "description": "markRoutineReady is implemented and tested but has no UI call site: the UI-SPEC's action sheet enumerates four actions and does not include a draft->ready transition, so nothing in the shipped app can move a routine out of 'draft'. Needs either a UI affordance or an explicit decision that status advances implicitly.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-22T13:45:27.350Z",
-    "resolved_at": null
+    "resolved_at": "2026-08-28T15:30:59.775Z"
   },
   {
     "id": 90,

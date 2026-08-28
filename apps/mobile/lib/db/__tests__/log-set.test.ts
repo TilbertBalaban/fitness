@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { addSessionExercise, logSet, setSessionDate, startSession, startWorkoutFromProgram } from '../log-set';
 import { captureCalendarDay } from '../../calendar-day';
 import { getPowerSync } from '../powersync';
-import { removeDay, removeExercise } from '../programs/days';
+import { archiveDay, removeDay, removeExercise, restoreDay } from '../programs/days';
 import { setExerciseTargets } from '../programs/targets';
 import {
   routine,
@@ -842,6 +842,50 @@ describe('PROG-11 — editing a program never changes a logged session', () => {
 
     expect(store.rowsOf(routine)[0].archivedAt).toBe('2026-08-21T00:00:00.000Z');
     expect(targetsOf(snapshot())).toEqual(BASE_TARGETS);
+    expectNoRoutineReadsSince(store);
+  });
+
+  // D-01/D-29: archiving a day is not a delete, so success criterion 4 has to hold against it just
+  // as it holds against every editing helper above. The server-side proof that archiving emits no
+  // tombstones and leaves children present is 04-12's program-sync e2e; these are the client half.
+  it('leaves the snapshot untouched when the day it was logged against is archived', async () => {
+    const { store, snapshot } = await seedProgramAndSnapshot({ override: { targetSets: 5 } });
+
+    await archiveDay('d-1', store.db);
+
+    expect(targetsOf(snapshot())).toEqual({ ...BASE_TARGETS, targetSets: 5 });
+    expectNoRoutineReadsSince(store);
+  });
+
+  it('leaves the logged session pointing at the same routine_day_id, and the row itself still present, after an archive', async () => {
+    const { store } = await seedProgramAndSnapshot();
+    store.seed(workoutSession, { id: 's-1', routineDayId: 'd-1', status: 'completed' });
+
+    await archiveDay('d-1', store.db);
+
+    expect(store.rowsOf(workoutSession)[0].routineDayId).toBe('d-1');
+    expect(store.rowsOf(routineDay).map((row) => row.id)).toEqual(['d-1']);
+  });
+
+  it('does not cascade: an archived day keeps its routine_exercise and routine_exercise_cycle_target children', async () => {
+    const { store } = await seedProgramAndSnapshot({ override: { targetSets: 5 } });
+
+    await archiveDay('d-1', store.db);
+
+    expect(store.rowsOf(routineExercise).map((row) => row.id)).toEqual(['re-1']);
+    expect(store.rowsOf(routineExerciseCycleTarget).map((row) => row.id)).toEqual(['cet-1']);
+  });
+
+  it('leaves the snapshot untouched by an archive-then-restore round trip', async () => {
+    const { store, snapshot } = await seedProgramAndSnapshot({ override: { targetSets: 5 } });
+    store.seed(workoutSession, { id: 's-1', routineDayId: 'd-1', status: 'completed' });
+
+    await archiveDay('d-1', store.db);
+    await restoreDay('d-1', store.db);
+
+    expect(store.rowsOf(routineDay)[0].archivedAt).toBeNull();
+    expect(targetsOf(snapshot())).toEqual({ ...BASE_TARGETS, targetSets: 5 });
+    expect(store.rowsOf(workoutSession)[0].routineDayId).toBe('d-1');
     expectNoRoutineReadsSince(store);
   });
 });
