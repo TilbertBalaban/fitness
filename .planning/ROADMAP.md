@@ -576,6 +576,8 @@ Plans:
 - [ ] Phase 04 test 1: on a real iOS/Android build, drag-reorder exercises in a day via the grip, exercise the Duplicate/Archive/Restore Day controls, and use Mark Ready — order survives re-entry, the four header controls behave as browser-proven, Mark Ready flips the library subtitle to Ready
 - [ ] Phase 04 test 2 (WINDOWS #60/#67): restart the PowerSync Service against ops/powersync/sync-rules.yaml, then create a routine_cycle, a routine_exercise_cycle_target and an archived routine_day on device A — all three arrive on device B, the archived day with archived_at intact per D-33's deliberately unfiltered stream
 - [ ] Phase 04 test 3 (WINDOWS #59): two devices both offline each activate a different program, then reconnect — exactly one active program after both pushes land
+- [ ] Phase 08 test 1: on a real iOS/Android build, use the Profile progression-preference picker (widen rep range vs match previous weight), then open an exercise with logged history and read the RecommendationBanner — the dial changes what is recommended and the banner renders correctly natively
+- [ ] Phase 08 test 2 (WINDOWS #154): run the client/server parity fixture, or an equivalent probe, on a real on-device Hermes build — the parity runners currently exercise only Node and V8, so success criterion 6 is unproven on the JS engine the shipped native app actually uses
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
 ### Phase 999.2: Human verification sweep — web target (BACKLOG)
@@ -598,6 +600,7 @@ Plans:
 - [ ] Phase 07 test 2 (SC2): log a drop set, a myorep cluster (activation set plus rest-pause mini-sets), and a full set followed by partials — each group reads as one logical set at a glance (indentation, badge glyph, blank child set-number column). Note myorep and partial have no dedicated e2e case; only drop set was exercised end to end
 - [ ] Phase 07 test 3 (SETS-04): tap a completed set's number, pick Failure — the row keeps its weight/reps, shows an F badge, and reads 0 RIR with no further input
 - [ ] Phase 07 test 4 (SETS-07/08): open an exercise's overflow sheet, tap Superset — both chips show the link glyph and the page header shows the partner pill with correct light/dark colours
+- [ ] Phase 08 test 3: visually review the Profile "Workout settings" progression-preference chip picker (label, spacing, selected-state styling) and the RecommendationBanner's light/dark theming and copy legibility at default and maximum OS font scale
 - [ ] (append human-judgment web items from phases 01-12 as each phase defers them)
 
 ## Progress
