@@ -226,7 +226,7 @@ Plans:
   3. User can activate, freeze, duplicate, archive, and restore programs, and see the active program's upcoming workouts with its targets
   4. Editing a program never changes what any already-logged workout shows
 
-**Plans**: 11/11 plans executed
+**Plans**: 17 plans (11/11 executed; 6 gap-closure plans added 2026-08-28)
 
 Plans:
 **Wave 1**
@@ -260,6 +260,29 @@ Plans:
 
 - [x] 04-10-PLAN.md — Home "next up": position derived from logged history
 - [x] 04-11-PLAN.md — The program library: duplicate, archive, restore, activate, freeze
+
+**Gap closure** *(04-VERIFICATION.md `gaps_found`; resolved by D-29 – D-32, 2026-08-28. Waves below restart at 1 — the eleven plans above are already executed.)*
+
+**Gap Wave 1**
+
+- [ ] 04-12-PLAN.md — `routine_day.archived_at`: the column, the sync path, the write helpers, the filtered read
+
+**Gap Wave 2** *(blocked on Gap Wave 1 completion)*
+
+- [ ] 04-13-PLAN.md — The day page reaches them: Archive, Restore and Duplicate Day
+- [ ] 04-14-PLAN.md — Mark Ready, archived days out of the rotation, and the history-safety regression
+
+**Gap Wave 3** *(blocked on Gap Wave 2 completion)*
+
+- [ ] 04-15-PLAN.md — The Programs screen's injection seam and a programs mount in the durability harness
+
+**Gap Wave 4** *(blocked on Gap Wave 3 completion)*
+
+- [ ] 04-16-PLAN.md — Executed browser proof: day duplicate/archive/restore and the time-off conversion
+
+**Gap Wave 5** *(blocked on Gap Wave 4 completion)*
+
+- [ ] 04-17-PLAN.md — The requirements ledger and the two contracts that drifted from it
 
 ### Phase 5: In-Gym Session Logging
 
