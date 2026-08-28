@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 119
+open_count: 120
 waived_count: 4
 fixed_count: 25
-total_count: 148
-last_updated: 2026-08-28T16:14:09.256Z
+total_count: 149
+last_updated: 2026-08-28T17:09:09.731Z
 ---
 
 # Broken Windows Ledger
@@ -163,6 +163,7 @@ last_updated: 2026-08-28T16:14:09.256Z
 | 149 | 04 | deviation | ops/powersync/sync-rules.yaml |  | routine_day stream query deliberately not filtered by archived_at, against D-29's literal text — a filter would delete an archived day from every device that did not perform the archive, making restore unreachable; withdrawn/resolved as D-33 in 04-CONTEXT.md | open |  | 2026-08-28T15:18:35.060Z |  |
 | 150 | 04 | unrun-verify | apps/mobile/app/(tabs)/programs.tsx |  | The four day-page controls (Duplicate, Archive, Restore, plus the pre-existing Remove) have been observed on neither iOS nor Android — no Xcode, no Android SDK in this worktree (ROADMAP Phase 999.1); the web observation lands in 04-15. | open |  | 2026-08-28T15:29:10.796Z |  |
 | 151 | 04 | unrun-verify | apps/mobile/e2e/program-day-lifecycle.spec.ts |  | Duplicate/archive/restore day and time-off cycle conversion have been observed only in a web browser (Chromium via Playwright) — no Xcode, no Android SDK in this worktree (ROADMAP Phase 999.1 native sweep). | open |  | 2026-08-28T16:14:09.256Z |  |
+| 152 | 07 | deviation | apps/mobile/components/ExercisePage.tsx |  | setTypeError set on a rejected formSuperset/detachSuperset write is not yet visibly rendered by SessionActionSheet (no errorMessage prop; SessionActionSheet.tsx was out of 07-07's file scope) | open |  | 2026-08-28T17:09:09.731Z |  |
 
 ````json
 [
@@ -1940,6 +1941,18 @@ last_updated: 2026-08-28T16:14:09.256Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-28T16:14:09.256Z",
+    "resolved_at": null
+  },
+  {
+    "id": 152,
+    "kind": "deviation",
+    "phase": "07",
+    "file": "apps/mobile/components/ExercisePage.tsx",
+    "line": null,
+    "description": "setTypeError set on a rejected formSuperset/detachSuperset write is not yet visibly rendered by SessionActionSheet (no errorMessage prop; SessionActionSheet.tsx was out of 07-07's file scope)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-28T17:09:09.731Z",
     "resolved_at": null
   }
 ]

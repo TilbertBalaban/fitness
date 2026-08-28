@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text } from 'react-native';
 import {
   countCompletedWorkingSets,
@@ -212,5 +213,74 @@ describe('ExerciseStripView', () => {
     (addChip?.props.onPress as () => void)();
 
     expect(onAddExercise).toHaveBeenCalledTimes(1);
+  });
+
+  // D-12/D-13: the link glyph is decorative and orthogonal to the chip's completion tone — it
+  // never becomes a fourth chip state, a new Pressable, or a change to the chip's tone/fraction.
+  it('renders no link glyph for a chip with a null supersetGroupId', () => {
+    const result = ExerciseStripView(
+      baseProps({ exercises: [{ id: 'e1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3, supersetGroupId: null }] }),
+    );
+
+    expect(findByType(result, Ionicons).some((el) => el.props.name === 'link-outline')).toBe(false);
+  });
+
+  it('renders no link glyph for a chip with an absent supersetGroupId', () => {
+    const result = ExerciseStripView(
+      baseProps({ exercises: [{ id: 'e1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3 }] }),
+    );
+
+    expect(findByType(result, Ionicons).some((el) => el.props.name === 'link-outline')).toBe(false);
+  });
+
+  it('renders exactly one link glyph for a chip with a non-null supersetGroupId', () => {
+    const result = ExerciseStripView(
+      baseProps({
+        exercises: [{ id: 'e1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3, supersetGroupId: 'group-1' }],
+      }),
+    );
+
+    expect(findByType(result, Ionicons).filter((el) => el.props.name === 'link-outline')).toHaveLength(1);
+  });
+
+  it('the link glyph is not a Pressable of its own — the chip still carries exactly one onPress', () => {
+    const result = ExerciseStripView(
+      baseProps({
+        exercises: [{ id: 'e1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3, supersetGroupId: 'group-1' }],
+      }),
+    );
+    const chip = findByType(result, Pressable).find((el) => el.props.accessibilityLabel?.toString().startsWith('Bench Press'));
+
+    expect(chip).toBeDefined();
+    expect(findByType(chip, Pressable)).toHaveLength(1);
+  });
+
+  it("the chip's tone class string is identical with and without a supersetGroupId", () => {
+    const withoutGroup = ExerciseStripView(
+      baseProps({ exercises: [{ id: 'e1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3 }] }),
+    );
+    const withGroup = ExerciseStripView(
+      baseProps({
+        exercises: [{ id: 'e1', name: 'Bench Press', completedWorkingSets: 0, targetSets: 3, supersetGroupId: 'group-1' }],
+      }),
+    );
+    const chipWithoutGroup = findByType(withoutGroup, Pressable).find((el) => el.props.accessibilityLabel?.toString().startsWith('Bench Press'));
+    const chipWithGroup = findByType(withGroup, Pressable).find((el) => el.props.accessibilityLabel?.toString().startsWith('Bench Press'));
+
+    expect(chipWithGroup?.props.className).toBe(chipWithoutGroup?.props.className);
+  });
+
+  it('carries the accessibility label superset suffix only when paired', () => {
+    const result = ExerciseStripView(
+      baseProps({
+        exercises: [
+          { id: 'e1', name: 'Bench Press', completedWorkingSets: 1, targetSets: 3, supersetGroupId: 'group-1' },
+          { id: 'e2', name: 'Squat', completedWorkingSets: 1, targetSets: 3, supersetGroupId: null },
+        ],
+      }),
+    );
+
+    expect(findByType(result, Pressable).some((el) => el.props.accessibilityLabel === 'Bench Press, 1/3, superset')).toBe(true);
+    expect(findByType(result, Pressable).some((el) => el.props.accessibilityLabel === 'Squat, 1/3')).toBe(true);
   });
 });

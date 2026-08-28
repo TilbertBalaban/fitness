@@ -44,11 +44,18 @@ import {
   type RowOverride,
 } from '@/lib/session/set-row-builders';
 import { resolveSessionScreenMode, SessionModeProvider } from '@/lib/session/session-mode';
+import type { SupersetMemberInput } from '@/lib/session/superset';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 const DEFAULT_WEIGHT_UNIT: WeightUnit = 'kg';
 const HISTORY_ROUTE = '/(tabs)/history';
 const LIVE_WORKOUT_ROUTE = '/(tabs)/workout';
+// D-32: this subtree structurally excludes the live-session rest/auto-advance machinery — a past,
+// already-completed workout has no notion of "resting between sets," and the Superset/Detach
+// overflow rows and partner chip 07-07 adds are gated on the same live-only concept, so this
+// screen supplies an always-empty members list rather than threading real superset_group_id data
+// through a subtree that has no in-progress pager to advance.
+const EMPTY_SUPERSET_MEMBERS: SupersetMemberInput[] = [];
 
 export type EditingWorkoutScreenState = 'error' | 'loading' | 'ready';
 
@@ -164,6 +171,8 @@ export function EditingWorkoutScreenView({
               routineExerciseId={pageData.routineExerciseId}
               cycleId={pageData.cycleId}
               sessionExercises={exercises}
+              sessionExerciseRows={EMPTY_SUPERSET_MEMBERS}
+              onSelectExercise={onSelectExercise}
               hasNote={pageData.hasNote}
               noteText={pageData.noteText}
               // A past, already-completed workout has no live equipment band or Equipment
