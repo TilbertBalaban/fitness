@@ -95,10 +95,20 @@ async function logSecondExerciseWorkingSet(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Mark set complete' }).click();
 }
 
+// The heading being visible does not mean the rows have stopped moving. The sheet measures its
+// first row in onLayout and stores that height in state, so it renders once at the SLOT_ROW_HEIGHT
+// fallback and again at the measured height, shifting every row in between. A boundingBox() taken
+// across that shift names coordinates the handle has already left, mouse.down() then lands on
+// nothing, and the drag is never begun — the drop is silently never committed and the assertion
+// fails against an unchanged order rather than a wrong one. hover() waits for actionability, which
+// includes the element holding still across two consecutive animation frames, so every boundingBox()
+// the callers take afterwards is measured against the settled layout.
 async function openReorderSheet(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'More' }).first().click();
   await page.getByRole('button', { name: 'Reorder', exact: true }).click();
   await expect(page.getByText('Reorder Exercises', { exact: true })).toBeVisible();
+  const firstHandle = reorderHandles(page).first();
+  if (await firstHandle.count()) await firstHandle.hover();
 }
 
 // The two rows are otherwise identical ("Unknown exercise"); the fraction logSecondExerciseWorkingSet
@@ -113,6 +123,7 @@ function reorderHandles(page: Page): Locator {
 // translationY was last recorded), but multiple intermediate moves is what a real drag produces and
 // is what the dispatch's own read_first calls out as load-bearing for the capture contract.
 async function dragHandleTo(page: Page, fromHandle: Locator, targetY: number): Promise<void> {
+  await fromHandle.hover();
   const box = await fromHandle.boundingBox();
   if (!box) throw new Error('drag handle has no bounding box — is it visible?');
   const startX = box.x + box.width / 2;
@@ -150,6 +161,7 @@ test('dragging the second exercise above the first commits the new order', async
   const handles = reorderHandles(page);
   const firstRowHandle = handles.nth(0);
   const secondRowHandle = handles.nth(1);
+  await secondRowHandle.hover();
   const firstRowBox = await firstRowHandle.boundingBox();
   if (!firstRowBox) throw new Error('first row handle has no bounding box');
 
@@ -179,6 +191,7 @@ test('reordering is idempotent', async ({ page }) => {
 
   await openReorderSheet(page);
   const handlesBeforeDrop = reorderHandles(page);
+  await handlesBeforeDrop.nth(1).hover();
   const firstRowBoxBeforeDrop = await handlesBeforeDrop.nth(0).boundingBox();
   if (!firstRowBoxBeforeDrop) throw new Error('first row handle has no bounding box');
   await dragHandleTo(page, handlesBeforeDrop.nth(1), firstRowBoxBeforeDrop.y + firstRowBoxBeforeDrop.height / 2);
