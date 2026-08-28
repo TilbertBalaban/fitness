@@ -52,6 +52,44 @@ function noteActionProps(onLongPress: (() => void) | undefined) {
   };
 }
 
+// D-02's generalized badge slot: one glyph, `warmup`'s W carried forward verbatim, five more
+// literals added for Phase 7's newly-writable set types. No entry for `normal` — a plain working
+// set shows no type badge at all (R15).
+export const SET_TYPE_BADGE_GLYPH: Record<string, string> = {
+  warmup: 'W',
+  drop: 'D',
+  myorep: 'M',
+  partial: 'P',
+  failure: 'F',
+  amrap: 'A',
+};
+
+const BADGE_ACCESSIBILITY_LABEL: Record<string, string> = {
+  W: 'Warm-up set',
+  D: 'Drop set',
+  M: 'Myorep set',
+  P: 'Partial set',
+  F: 'Failure set',
+  A: 'AMRAP set',
+  L: 'Left side',
+  R: 'Right side',
+};
+
+export interface BadgeGlyphInput {
+  setType?: string;
+  side?: string | null;
+}
+
+// R14 — the badge slot renders at most one glyph, ever. Side wins over type (UI-SPEC Color
+// section): once a set is grouped by side, which side it belongs to is the more load-bearing
+// piece of information for reading the row correctly.
+export function badgeGlyphFor({ setType, side }: BadgeGlyphInput): string | null {
+  if (side === 'left') return 'L';
+  if (side === 'right') return 'R';
+  if (setType === undefined) return null;
+  return SET_TYPE_BADGE_GLYPH[setType] ?? null;
+}
+
 export interface SetRowViewProps {
   setIndex: number;
   values: SetRowValues;
@@ -59,10 +97,16 @@ export interface SetRowViewProps {
   completed: boolean;
   activeField: KeypadField | null;
   colors: ThemeColors;
-  // All three optional and additive — a caller that supplies none of them (WorkoutSummary.tsx's
+  // All optional and additive — a caller that supplies none of them (WorkoutSummary.tsx's
   // summary-correction rows) renders and behaves exactly as it did before these existed.
   warmup?: boolean;
   hasNote?: boolean;
+  // Phase 7 D-02/D-05/D-06/D-20. `warmup` above keeps working as a synonym for `setType ===
+  // 'warmup'` so WorkoutSummary.tsx's correction rows (which never pass `setType`) are untouched.
+  setType?: string;
+  side?: string | null;
+  isChild?: boolean;
+  onSetNumberPress?: () => void;
   onLongPress?: () => void;
   onFieldPress: (field: KeypadField) => void;
   onReferenceTap: (field: 'weight' | 'reps') => void;
@@ -133,17 +177,18 @@ function renderSetField({ field, label, value, active, completed, colors, onPres
 }
 
 // 14px circle, bg-secondary, muted Label glyph, ahead of the set-number column (05-UI-SPEC §Set
-// Row) — rendered from inside the row itself so every SetRowView consumer gets it, not only the
-// one caller (ExercisePageView) that happened to wrap the row from outside (WINDOWS #109).
-function renderWarmupBadge() {
+// Row, generalized by D-02) — rendered from inside the row itself so every SetRowView consumer
+// gets it, not only the one caller (ExercisePageView) that happened to wrap the row from outside
+// (WINDOWS #109). One slot, one glyph, ever (R14).
+function renderTypeBadge(glyph: string, label: string) {
   return (
     <View
-      accessibilityLabel="Warm-up set"
+      accessibilityLabel={label}
       className="items-center justify-center rounded-full bg-secondary"
       style={{ width: 14, height: 14, marginRight: 4 }}
     >
       <Text className="text-label font-normal text-foreground-muted" style={{ fontSize: 9, lineHeight: 12 }}>
-        W
+        {glyph}
       </Text>
     </View>
   );
@@ -168,29 +213,37 @@ export function SetRowView({
   colors,
   warmup,
   hasNote,
+  setType,
+  side,
+  isChild,
+  onSetNumberPress,
   onLongPress,
   onFieldPress,
   onReferenceTap,
   onCheckmarkPress,
 }: SetRowViewProps) {
+  const glyph = badgeGlyphFor({ setType: warmup ? 'warmup' : setType, side });
+
   return (
     <Pressable
       onLongPress={onLongPress}
       accessibilityHint="Long press to add a note"
       className="flex-row items-center gap-xs border-b border-foreground-muted/20 py-sm"
+      style={isChild ? { paddingLeft: 16 } : undefined}
       {...noteActionProps(onLongPress)}
     >
-      {warmup ? renderWarmupBadge() : null}
+      {glyph ? renderTypeBadge(glyph, BADGE_ACCESSIBILITY_LABEL[glyph] ?? glyph) : null}
 
       <View style={{ width: 24, minHeight: 24, alignItems: 'center', justifyContent: 'center' }}>
         <Pressable
+          onPress={onSetNumberPress}
           onLongPress={onLongPress}
           accessibilityRole="button"
-          accessibilityLabel={`Set ${setIndex} type`}
+          accessibilityLabel={isChild ? 'Sub-entry type' : `Set ${setIndex} type`}
           style={{ minHeight: 24, minWidth: 24, alignItems: 'center', justifyContent: 'center' }}
           {...noteActionProps(onLongPress)}
         >
-          <Text className="text-body font-normal text-foreground">{setIndex}</Text>
+          {isChild ? null : <Text className="text-body font-normal text-foreground">{setIndex}</Text>}
         </Pressable>
       </View>
 
@@ -258,6 +311,10 @@ export interface SetRowProps {
   activeField: KeypadField | null;
   warmup?: boolean;
   hasNote?: boolean;
+  setType?: string;
+  side?: string | null;
+  isChild?: boolean;
+  onSetNumberPress?: () => void;
   onLongPress?: () => void;
   onFieldPress: (field: KeypadField) => void;
   onReferenceTap: (field: 'weight' | 'reps') => void;

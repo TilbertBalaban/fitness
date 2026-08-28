@@ -2,10 +2,11 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
-import { WARMUP_SET_TYPE, type EquipmentType, type ResolvedTarget, type WeightUnit } from '@fitness/api-contracts';
+import { WARMUP_SET_TYPE, type EquipmentType, type ResolvedTarget, type SetType, type WeightUnit } from '@fitness/api-contracts';
 import { hasResolvableEquipment, resolveEquipmentBand, type ResolvedInventory } from '@fitness/plate-math';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
+import { logSet } from '@/lib/db/log-set';
 import { removeSessionExercise, swapSessionExercise } from '@/lib/db/session-mutations';
 import { EquipmentAvailabilitySheet } from './EquipmentAvailabilitySheet';
 import { ExerciseActionBar, type ExerciseActionId } from './ExerciseActionBar';
@@ -16,6 +17,7 @@ import { NoteSheet } from './NoteSheet';
 import { ReorderExercisesSheet } from './ReorderExercisesSheet';
 import { RemoveExerciseDialog, SessionActionSheet, type SessionExerciseActionId } from './SessionActionSheet';
 import { SetRowView, type SetRowReference, type SetRowValues } from './SetRow';
+import { setTypePickerEffect, SetTypePickerSheet } from './SetTypePickerSheet';
 import { TargetsSheet } from './TargetsSheet';
 import { WarmupSheet } from './WarmupSheet';
 
@@ -33,6 +35,10 @@ export interface ExercisePageSetRow {
   // Null/undefined on the trailing draft row (no logged_set to annotate yet) and on any existing
   // row with no note — drives SetRowView's note dot.
   noteText?: string | null;
+  // Phase 7 D-05/D-20 — additive, same discipline as setType above.
+  parentSetId?: string | null;
+  side?: string | null;
+  displaySetIndex?: number;
 }
 
 export interface ExercisePageActiveField {
@@ -48,6 +54,8 @@ export interface ExercisePageViewProps {
   actionBarSlot?: ReactNode;
   // A draft row (null setId) supplies no handler — there is no logged_set yet to annotate.
   onSetLongPress?: (setId: string) => void;
+  // Same null-setId guard as onSetLongPress — the trailing draft row has no logged_set to retype.
+  onSetNumberPress?: (setId: string) => void;
   onFieldPress: (setId: string | null, field: KeypadField, currentValue: string | null) => void;
   onReferenceTap: (setId: string | null, field: 'weight' | 'reps') => void;
   onCheckmarkPress: (setId: string | null) => void;
@@ -68,6 +76,7 @@ export function ExercisePageView({
   colors,
   actionBarSlot,
   onSetLongPress,
+  onSetNumberPress,
   onFieldPress,
   onReferenceTap,
   onCheckmarkPress,
@@ -80,7 +89,7 @@ export function ExercisePageView({
         {rows.map((row) => (
           <SetRowView
             key={row.setId ?? `draft-${row.setIndex}`}
-            setIndex={row.setIndex}
+            setIndex={row.displaySetIndex ?? row.setIndex}
             values={row.values}
             reference={row.reference}
             completed={row.completed}
@@ -88,6 +97,10 @@ export function ExercisePageView({
             colors={colors}
             warmup={row.setType === WARMUP_SET_TYPE}
             hasNote={row.noteText !== null && row.noteText !== undefined}
+            setType={row.setType}
+            side={row.side ?? null}
+            isChild={row.parentSetId != null}
+            onSetNumberPress={row.setId && onSetNumberPress ? () => onSetNumberPress(row.setId as string) : undefined}
             onLongPress={row.setId && onSetLongPress ? () => onSetLongPress(row.setId as string) : undefined}
             onFieldPress={(field) => onFieldPress(row.setId, field, row.values[field])}
             onReferenceTap={(field) => onReferenceTap(row.setId, field)}
@@ -99,9 +112,20 @@ export function ExercisePageView({
   );
 }
 
-type ActiveSheet = 'targets' | 'note' | 'set-note' | 'session' | 'remove-confirm' | 'swap' | 'warmup' | 'reorder' | 'equipment';
+type ActiveSheet =
+  | 'targets'
+  | 'note'
+  | 'set-note'
+  | 'session'
+  | 'remove-confirm'
+  | 'swap'
+  | 'warmup'
+  | 'reorder'
+  | 'equipment'
+  | 'set-type';
 
-export interface ExercisePageProps extends Omit<ExercisePageViewProps, 'colors' | 'actionBarSlot' | 'onSetLongPress'> {
+export interface ExercisePageProps
+  extends Omit<ExercisePageViewProps, 'colors' | 'actionBarSlot' | 'onSetLongPress' | 'onSetNumberPress'> {
   sessionExerciseId: string;
   exerciseId: string;
   sessionId: string;
@@ -165,6 +189,13 @@ export function ExercisePage({
   const router = useRouter();
   const [activeSheet, setActiveSheet] = useState<ActiveSheet | null>(null);
   const [setNoteTarget, setSetNoteTarget] = useState<{ id: string; text: string | null } | null>(null);
+  const [setTypeTarget, setSetTypeTarget] = useState<{
+    id: string;
+    setType: SetType;
+    displaySetNumber: number;
+    childCount: number;
+    childSetType: SetType | null;
+  } | null>(null);
 
   const closeSheet = () => setActiveSheet(null);
 
@@ -181,6 +212,54 @@ export function ExercisePage({
     const row = rows.find((candidate) => candidate.setId === setId);
     setSetNoteTarget({ id: setId, text: row?.noteText ?? null });
     setActiveSheet('set-note');
+  };
+
+  // Mirrors handleSetLongPress exactly — a draft row's null setId is guarded by
+  // ExercisePageView's own onSetNumberPress wiring (the same null-setId check onSetLongPress
+  // already uses), so this is never called for the trailing draft row.
+  const handleSetNumberPress = (setId: string) => {
+    const row = rows.find((candidate) => candidate.setId === setId);
+    if (!row || !row.setType) return;
+    const firstChild = rows.find((candidate) => candidate.parentSetId === setId);
+    const childCount = rows.filter((candidate) => candidate.parentSetId === setId).length;
+    setSetTypeTarget({
+      id: setId,
+      setType: row.setType as SetType,
+      displaySetNumber: row.displaySetIndex ?? row.setIndex,
+      childCount,
+      childSetType: (firstChild?.setType as SetType | undefined) ?? null,
+    });
+    setActiveSheet('set-type');
+  };
+
+  // This tracer wires exactly the two branches D-04/D-07 require for a childless drop/partial
+  // insert and for the already-active-type no-op close; every retype path (Normal/Warm-up/Myorep/
+  // Failure/AMRAP, and any insert onto a row that already has children) is 07-04's
+  // ChangeSetTypeDialog territory and closes here with no write — an explicit no-op, not a
+  // silent gap (Pitfall 6).
+  const handleSetTypeSelect = async (setType: SetType) => {
+    if (!setTypeTarget) return;
+    if (setType === setTypeTarget.setType) {
+      closeSheet();
+      return;
+    }
+    if (setTypePickerEffect(setType) === 'insert-child' && setTypeTarget.childCount === 0) {
+      await logSet(
+        {
+          sessionExerciseId,
+          setType,
+          parentSetId: setTypeTarget.id,
+          weight: { value: null, unit: weightUnit },
+          reps: 0,
+          completed: false,
+        },
+        db ?? getPowerSync(),
+      );
+      closeSheet();
+      onExerciseChanged();
+      return;
+    }
+    closeSheet();
   };
 
   const handleActionPress = (id: ExerciseActionId) => {
@@ -267,6 +346,17 @@ export function ExercisePage({
         />
       ) : null}
 
+      {activeSheet === 'set-type' && setTypeTarget ? (
+        <SetTypePickerSheet
+          setNumber={setTypeTarget.displaySetNumber}
+          currentSetType={setTypeTarget.setType}
+          childCount={setTypeTarget.childCount}
+          childSetType={setTypeTarget.childSetType}
+          onSelect={(setType) => void handleSetTypeSelect(setType)}
+          onCancel={closeSheet}
+        />
+      ) : null}
+
       {activeSheet === 'warmup' ? (
         <WarmupSheet
           sessionExerciseId={sessionExerciseId}
@@ -340,6 +430,7 @@ export function ExercisePage({
       colors={colors}
       actionBarSlot={actionBarSlot}
       onSetLongPress={handleSetLongPress}
+      onSetNumberPress={handleSetNumberPress}
       onFieldPress={onFieldPress}
       onReferenceTap={onReferenceTap}
       onCheckmarkPress={onCheckmarkPress}

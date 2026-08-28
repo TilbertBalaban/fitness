@@ -39,6 +39,10 @@ export interface RowOverride {
 
 export interface ResolvedSetRow {
   setId: string | null;
+  // The RAW storage index — resolveReference keys the previous-actual lookup off THIS value, so it
+  // must never shift when a child consumes an index (CF-03, D-23). Never rendered directly in the
+  // set-number column once displaySetIndex exists — that column reads displaySetIndex for a parent
+  // and nothing for a child.
   setIndex: number;
   values: SetRowValues;
   reference: SetRowReference;
@@ -49,6 +53,13 @@ export interface ResolvedSetRow {
   // Null on the trailing draft row (no logged_set exists yet to carry a note) and on any existing
   // row with no note — feeds SetRowView's hasNote dot and the set-level NoteSheet's initial text.
   noteText?: string | null;
+  // Phase 7 D-05/D-20: additive. Null/undefined on a plain row and on the trailing draft.
+  parentSetId?: string | null;
+  side?: string | null;
+  // D-23: the row's position among parent rows only (1, 2, 3…), computed during the
+  // parent-then-children flatten below — never the raw setIndex, never written back to storage.
+  // Undefined on every child row; set on every parent row and on the trailing draft.
+  displaySetIndex?: number;
 }
 
 interface BuildSetRowsActiveField {
@@ -76,14 +87,67 @@ function resolveReference(
   return { weight: fromCanonicalKg(ref.weightKg, weightUnit), reps: String(ref.reps) };
 }
 
-// Warm-up rows always render ahead of working rows, regardless of raw set_index — RESEARCH.md
+// Warm-up rows always render ahead of every other row, regardless of raw set_index — RESEARCH.md
 // Pitfall 2: set_index is a flat, strictly-incrementing counter across the whole session_exercise,
-// not a "which came first" signal, so a warm-up added after working sets already exist would sort
-// after them without this explicit bucket-then-concat step.
+// not a "which came first" signal. Warm-ups are never grouped (D-07/D-20 restrict a parent role to
+// normal/myorep rows), so bucketing them first and THEN tree-flattening the remainder is the
+// correct composition order (07-RESEARCH.md Assumption A1).
+//
+// The remainder is flattened parent-then-children: a row with a null parentSetId is a parent and
+// keeps its incoming relative order; every other row is grouped by its parentSetId and emitted
+// immediately after that parent, sorted by ascending setIndex with a stable comparator (Array.sort
+// is stable in this runtime, so a tie on setIndex preserves incoming relative order rather than
+// reordering nondeterministically). A row whose parentSetId names an id absent from this input (an
+// orphan) is appended after every parent group rather than dropped — a logged set is never
+// silently invisible (07-RESEARCH.md Pitfall 2 / T-7-03).
 function orderForDisplay(existingSets: LoggedSetRow[]): LoggedSetRow[] {
   const warmups = existingSets.filter((row) => row.setType === 'warmup');
-  const working = existingSets.filter((row) => row.setType !== 'warmup');
-  return [...warmups, ...working];
+  const nonWarmups = existingSets.filter((row) => row.setType !== 'warmup');
+
+  const parents = nonWarmups.filter((row) => (row.parentSetId ?? null) === null);
+  const parentIds = new Set(parents.map((row) => row.id));
+
+  const childrenByParent = new Map<string, LoggedSetRow[]>();
+  const orphans: LoggedSetRow[] = [];
+  for (const row of nonWarmups) {
+    const parentSetId = row.parentSetId ?? null;
+    if (parentSetId === null) continue;
+    if (!parentIds.has(parentSetId)) {
+      orphans.push(row);
+      continue;
+    }
+    const group = childrenByParent.get(parentSetId) ?? [];
+    group.push(row);
+    childrenByParent.set(parentSetId, group);
+  }
+  for (const group of childrenByParent.values()) {
+    group.sort((a, b) => a.setIndex - b.setIndex);
+  }
+
+  const flattened: LoggedSetRow[] = [];
+  for (const parent of parents) {
+    flattened.push(parent);
+    flattened.push(...(childrenByParent.get(parent.id) ?? []));
+  }
+  flattened.push(...orphans);
+
+  return [...warmups, ...flattened];
+}
+
+interface BlankSubEntryInput {
+  parentSetId?: string | null;
+  completed: boolean;
+  reps: number;
+  weightKg: string | null;
+}
+
+// The shape a freshly inserted, not-yet-filled sub-entry has: logged_set.reps is NOT NULL and
+// cannot store "no value", so a child row awaiting its first real number is stored with reps 0.
+// A three-field agreement, never an inference from position (07-RESEARCH.md Pitfall 2) — a real
+// 0-rep child the lifter deliberately logged as failed-before-a-rep would also need `completed`
+// true or a non-null weight to distinguish itself, which this predicate requires exactly.
+export function isBlankSubEntry(row: BlankSubEntryInput): boolean {
+  return (row.parentSetId ?? null) !== null && !row.completed && row.reps === 0 && row.weightKg === null;
 }
 
 // Existing rows (DB truth, patched by any local override not yet reflected by a reload) plus
@@ -98,16 +162,24 @@ export function buildSetRows(
   referenceContext: BuildSetRowsReferenceContext = EMPTY_REFERENCE_CONTEXT,
 ): ResolvedSetRow[] {
   const ordered = orderForDisplay(existingSets);
+  // D-23: a parent's displayed set number is its position among parent rows only — a running
+  // count kept in the same pass as the row map, never a second traversal and never written back
+  // to row.setIndex (which stays the raw storage value resolveReference keys off, CF-03).
+  let parentCount = 0;
   const rows: ResolvedSetRow[] = ordered.map((row) => {
     const override = rowOverrides[row.id];
     const weightKg = override?.weightKg !== undefined ? override.weightKg : row.weightKg;
     const reps = override?.reps !== undefined ? override.reps : row.reps;
     const rir = override?.rir !== undefined ? override.rir : row.rir;
     const completed = override?.completed !== undefined ? override.completed : row.completed;
+    const parentSetId = row.parentSetId ?? null;
+    const side = row.side ?? null;
+
+    const blank = isBlankSubEntry({ parentSetId, completed, reps, weightKg });
 
     let values: SetRowValues = {
-      weight: fromCanonicalKg(weightKg, weightUnit),
-      reps: String(reps),
+      weight: blank ? null : fromCanonicalKg(weightKg, weightUnit),
+      reps: blank ? null : String(reps),
       rir: rir === null ? null : String(rir),
     };
     if (activeField && activeField.setId === row.id && activeField.touched) {
@@ -115,8 +187,20 @@ export function buildSetRows(
     }
 
     const reference = resolveReference(referenceContext.sessionExerciseId, row.setIndex, referenceContext.referenceMap, weightUnit);
+    const displaySetIndex = parentSetId === null ? ++parentCount : undefined;
 
-    return { setId: row.id, setIndex: row.setIndex, values, reference, completed, setType: row.setType, noteText: row.notes };
+    return {
+      setId: row.id,
+      setIndex: row.setIndex,
+      values,
+      reference,
+      completed,
+      setType: row.setType,
+      noteText: row.notes,
+      parentSetId,
+      side,
+      displaySetIndex,
+    };
   });
 
   let draft = draftValues;
@@ -131,7 +215,17 @@ export function buildSetRows(
   // historical set for this position.
   const draftSetIndex = existingSets.length === 0 ? 1 : Math.max(...existingSets.map((row) => row.setIndex)) + 1;
   const draftReference = resolveReference(referenceContext.sessionExerciseId, draftSetIndex, referenceContext.referenceMap, weightUnit);
-  rows.push({ setId: null, setIndex: draftSetIndex, values: draft, reference: draftReference, completed: false, noteText: null });
+  rows.push({
+    setId: null,
+    setIndex: draftSetIndex,
+    values: draft,
+    reference: draftReference,
+    completed: false,
+    noteText: null,
+    parentSetId: null,
+    side: null,
+    displaySetIndex: parentCount + 1,
+  });
 
   return rows;
 }

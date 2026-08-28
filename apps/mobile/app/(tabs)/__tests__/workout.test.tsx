@@ -186,6 +186,9 @@ describe('buildSetRows', () => {
       reference: { weight: null, reps: null },
       completed: false,
       noteText: null,
+      parentSetId: null,
+      side: null,
+      displaySetIndex: 1,
     });
   });
 
