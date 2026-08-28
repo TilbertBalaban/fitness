@@ -46,19 +46,28 @@ function baseProps(overrides: Partial<SessionActionSheetViewProps> = {}): Sessio
 }
 
 describe('SESSION_EXERCISE_ACTIONS', () => {
-  it('is exactly five entries, in the order Swap, Remove, Reorder, Info, Equipment', () => {
+  it('is exactly nine entries, in the order Swap, Remove, Reorder, Info, Equipment, Superset, Detach, Enable Per-Side, Disable Per-Side', () => {
     expect(SESSION_EXERCISE_ACTIONS.map((action) => action.id)).toEqual([
       'swap',
       'remove',
       'reorder',
       'info',
       'equipment',
+      'superset',
+      'detach-superset',
+      'enable-per-side',
+      'disable-per-side',
     ]);
   });
 
-  it('marks only Remove as destructive', () => {
+  it('marks only Remove as destructive — the four new rows are all structural, reversible edits', () => {
     const destructiveIds = SESSION_EXERCISE_ACTIONS.filter((action) => action.destructive).map((action) => action.id);
     expect(destructiveIds).toEqual(['remove']);
+  });
+
+  it('appends the four new rows after equipment without moving swap/equipment (index pin)', () => {
+    expect(SESSION_EXERCISE_ACTIONS[0].id).toBe('swap');
+    expect(SESSION_EXERCISE_ACTIONS[4].id).toBe('equipment');
   });
 });
 
@@ -152,6 +161,120 @@ describe('SessionActionSheetView', () => {
     (row?.props.onPress as () => void)();
 
     expect(onSelect).toHaveBeenCalledWith('equipment');
+  });
+
+  it('with none of the four new props supplied, renders exactly the row set it rendered before this plan (back-compat)', () => {
+    const withoutEquipment = SessionActionSheetView(baseProps({ hasEquipment: false }));
+    expect(
+      findByType(withoutEquipment, Pressable)
+        .map((el) => el.props.accessibilityLabel)
+        .filter((label) => label !== 'Cancel'),
+    ).toEqual(['Swap', 'Remove', 'Reorder', 'Info']);
+
+    const withEquipment = SessionActionSheetView(baseProps({ hasEquipment: true }));
+    expect(
+      findByType(withEquipment, Pressable)
+        .map((el) => el.props.accessibilityLabel)
+        .filter((label) => label !== 'Cancel'),
+    ).toEqual(['Swap', 'Remove', 'Reorder', 'Info', 'Equipment']);
+  });
+
+  it('shows the Superset row, naming the next exercise, when not already grouped and a next exercise exists', () => {
+    const result = SessionActionSheetView(baseProps({ nextExerciseName: 'Bent Over Row' }));
+    const labels = findByType(result, Pressable).map((el) => el.props.accessibilityLabel);
+    expect(labels).toContain('Superset with Bent Over Row');
+  });
+
+  it('hides the Superset row when there is no next exercise to pair with', () => {
+    const result = SessionActionSheetView(baseProps({ nextExerciseName: null }));
+    const labels = findByType(result, Pressable).map((el) => el.props.accessibilityLabel);
+    expect(labels.some((label) => (label as string).startsWith('Superset with'))).toBe(false);
+  });
+
+  it('hides the Superset row when the exercise is already in a group', () => {
+    const result = SessionActionSheetView(
+      baseProps({ nextExerciseName: 'Bent Over Row', supersetPartnerName: 'Bench Press' }),
+    );
+    const labels = findByType(result, Pressable).map((el) => el.props.accessibilityLabel);
+    expect(labels.some((label) => (label as string).startsWith('Superset with'))).toBe(false);
+  });
+
+  it('shows the Detach row, naming the partner, when the exercise is already in a group', () => {
+    const result = SessionActionSheetView(baseProps({ supersetPartnerName: 'Bench Press' }));
+    const labels = findByType(result, Pressable).map((el) => el.props.accessibilityLabel);
+    expect(labels).toContain('Detach from Bench Press');
+  });
+
+  it('hides the Detach row when the exercise is not in a group', () => {
+    const result = SessionActionSheetView(baseProps({ supersetPartnerName: null }));
+    const labels = findByType(result, Pressable).map((el) => el.props.accessibilityLabel);
+    expect(labels.some((label) => (label as string).startsWith('Detach from'))).toBe(false);
+  });
+
+  it('Superset and Detach are mutually exclusive: never both visible at once', () => {
+    const grouped = SessionActionSheetView(baseProps({ nextExerciseName: 'X', supersetPartnerName: 'Y' }));
+    const groupedLabels = findByType(grouped, Pressable).map((el) => el.props.accessibilityLabel as string);
+    expect(groupedLabels.some((label) => label.startsWith('Superset with'))).toBe(false);
+    expect(groupedLabels.some((label) => label.startsWith('Detach from'))).toBe(true);
+  });
+
+  it('shows "Log Left/Right Separately" when per-side is available and not yet enabled', () => {
+    const result = SessionActionSheetView(baseProps({ perSideAvailable: true, perSideEnabled: false }));
+    const labels = findByType(result, Pressable).map((el) => el.props.accessibilityLabel);
+    expect(labels).toContain('Log Left/Right Separately');
+    expect(labels).not.toContain('Log as One Side');
+  });
+
+  it('shows "Log as One Side" when per-side is available and already enabled', () => {
+    const result = SessionActionSheetView(baseProps({ perSideAvailable: true, perSideEnabled: true }));
+    const labels = findByType(result, Pressable).map((el) => el.props.accessibilityLabel);
+    expect(labels).toContain('Log as One Side');
+    expect(labels).not.toContain('Log Left/Right Separately');
+  });
+
+  it('hides both per-side rows when per-side is not available for this exercise', () => {
+    const result = SessionActionSheetView(baseProps({ perSideAvailable: false, perSideEnabled: true }));
+    const labels = findByType(result, Pressable).map((el) => el.props.accessibilityLabel);
+    expect(labels).not.toContain('Log Left/Right Separately');
+    expect(labels).not.toContain('Log as One Side');
+  });
+
+  it('all four new rows resolve the default foreground colour, never destructive', () => {
+    const result = SessionActionSheetView(
+      baseProps({
+        nextExerciseName: 'Bent Over Row',
+        supersetPartnerName: 'Bench Press',
+        perSideAvailable: true,
+        perSideEnabled: true,
+      }),
+    );
+    const newRowLabels = ['Detach from Bench Press', 'Log as One Side'];
+    for (const label of newRowLabels) {
+      const row = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === label);
+      const text = findByType(row, Text)[0];
+      expect((text?.props.className as string)).toContain('text-foreground');
+      expect((text?.props.className as string)).not.toContain('text-destructive');
+    }
+  });
+
+  it('every new row still holds the 48-height floor', () => {
+    const result = SessionActionSheetView(
+      baseProps({ nextExerciseName: 'X', perSideAvailable: true, perSideEnabled: false }),
+    );
+    for (const pressable of findByType(result, Pressable)) {
+      const style = pressable.props.style as { minHeight?: number };
+      expect(style?.minHeight).toBe(48);
+    }
+  });
+
+  it('tapping Superset/Detach/per-side rows calls onSelect with the row id', () => {
+    const onSelect = jest.fn();
+    const result = SessionActionSheetView(baseProps({ supersetPartnerName: 'Bench Press', onSelect }));
+    const row = findByType(result, Pressable).find((el) => el.props.accessibilityLabel === 'Detach from Bench Press');
+
+    (row?.props.onPress as () => void)();
+
+    expect(onSelect).toHaveBeenCalledWith('detach-superset');
   });
 });
 
