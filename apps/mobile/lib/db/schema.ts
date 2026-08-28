@@ -1,4 +1,5 @@
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { DEFAULT_PROGRESSION_PREFERENCE } from '@fitness/api-contracts';
 
 // Mirrors apps/api/src/db/schema/*.ts. Column names stay snake_case and identical to the Postgres
 // tables so the two stay structurally comparable (schema-parity's client-side analog). server_seq
@@ -268,6 +269,7 @@ export const userPreference = sqliteTable('user_preference', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),
   weightUnit: text('weight_unit').notNull(),
+  progressionPreference: text('progression_preference').notNull().default(DEFAULT_PROGRESSION_PREFERENCE),
   defaultEquipmentProfileId: text('default_equipment_profile_id'),
   activeRoutineId: text('active_routine_id'),
   autoAdvanceEnabled: integer('auto_advance_enabled', { mode: 'boolean' }).notNull().default(true),
