@@ -42,7 +42,7 @@ export interface RecommendInput {
   inventory: ResolvedInventory | null;
 }
 
-export type RecommendationBasis = 'load_increase' | 'rep_increase' | 'hold';
+export type RecommendationBasis = 'load_increase' | 'rep_increase' | 'hold' | 'failure_rep_increase';
 
 export type UnavailableReason = 'incomplete_prescription' | 'no_achievable_weight' | 'equipment_unavailable';
 
