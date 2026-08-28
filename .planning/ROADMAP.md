@@ -555,6 +555,9 @@ Plans:
 - [ ] Phase 05 test 2 (LOG SC3): complete a set on a real iOS/Android device, background the app and lock the screen; the scheduled expo-notifications rest alert fires audibly/visibly when the wall-clock target elapses
 - [ ] Phase 05 test 3 (D-23): deny the notification permission on a real device, then complete a set — countdown still runs, in-app sound/haptic fires, and a persistent inline note states background alerts are off with a path to enable them
 - [ ] Phase 05 test 4 (WINDOWS #112): personal_record round trip across two devices — log a PR-setting set on device A and confirm it appears on device B after both sync (PowerSync pull path against a restarted service)
+- [ ] Phase 04 test 1: on a real iOS/Android build, drag-reorder exercises in a day via the grip, exercise the Duplicate/Archive/Restore Day controls, and use Mark Ready — order survives re-entry, the four header controls behave as browser-proven, Mark Ready flips the library subtitle to Ready
+- [ ] Phase 04 test 2 (WINDOWS #60/#67): restart the PowerSync Service against ops/powersync/sync-rules.yaml, then create a routine_cycle, a routine_exercise_cycle_target and an archived routine_day on device A — all three arrive on device B, the archived day with archived_at intact per D-33's deliberately unfiltered stream
+- [ ] Phase 04 test 3 (WINDOWS #59): two devices both offline each activate a different program, then reconnect — exactly one active program after both pushes land
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
 ### Phase 999.2: Human verification sweep — web target (BACKLOG)
@@ -571,6 +574,8 @@ Plans:
 - [ ] Phase 06 test 3 (06-03-D1): Gym Profiles click-through from the Profile tab — create/set-active/edit/duplicate/archive/restore, collapsed archived section, active-gym accent styling
 - [ ] Phase 06 test 4 (06-04-D7): create a gym in lb, add plates and a machine, save and reopen — values read back exactly as typed, stepper floors at zero
 - [ ] Phase 06 test 5 (06-07-D3): Switch Gym mid-session — menu row order, destructive Discard styling, no-confirmation sheet, logged sets keep their displayed weight
+- [ ] Phase 04 test 4: swipe/drag between DayDeck pages while a duplicated or archived day sits in the deck — paging works across the archived-filtered day count and the drag handle still reorders with an odd number of live days
+- [ ] Phase 04 test 5: visual review at default and maximum OS font scale of the cycle strip's three chip tones, the day page's Duplicate/Archive/Restore controls, the Archived days section (0.6 opacity, 48x48 Restore) and the Edit Cycle form's Days off field — header wraps rather than shrinks, nothing overflows
 - [ ] (append human-judgment web items from phases 01-12 as each phase defers them)
 
 ## Progress

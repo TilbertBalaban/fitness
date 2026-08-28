@@ -1,127 +1,51 @@
 ---
 phase: 04-program-builder
-verified: 2026-08-22T14:00:18Z
-verified_against_commit: e0718ed
-status: gaps_found
-score: 3/4 roadmap success criteria verified (9/11 requirements met, 2 partially met)
+verified: 2026-08-28T20:05:00Z
+verified_against_commit: f3253f9
+status: passed
+score: 4/4 roadmap success criteria verified (11/11 requirements met)
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "PROG-07 — User can duplicate, archive, and restore programs AND individual workouts"
-    status: partial
-    reason: >-
-      The program half is fully shipped and reachable. The "individual workouts" half is not.
-      duplicateDay is implemented, tested and exported but has ZERO UI call sites — no screen,
-      action sheet or control in the shipped app invokes it. Archive/restore of an individual
-      workout (routine_day) does not exist in any form: routine_day carries no archived_at column
-      and the only day-level removal is a hard delete. REQUIREMENTS.md marks PROG-07 "Complete";
-      that is an overclaim. 04-11-PLAN.md carries this as an explicitly UNRESOLVED planner
-      assumption (A-PROG-07) that was never resolved with the user.
-    artifacts:
-      - path: "apps/mobile/lib/db/programs/duplicate-routine.ts"
-        issue: "duplicateDay (lines 128-238) is orphaned — grep across apps/mobile/app and apps/mobile/components returns 0 non-test references"
-      - path: "apps/mobile/app/programs/library.tsx"
-        issue: "actionsForRow enumerates Activate / Duplicate / Rename / Archive|Restore — all program-scoped; no day-scoped action exists"
-      - path: "apps/mobile/app/(tabs)/programs.tsx"
-        issue: "The day-page header offers Rename and Remove only — no Duplicate Day control"
-      - path: "apps/api/src/db/schema/program.ts"
-        issue: "routineDay has no archivedAt column, so archive/restore of an individual workout is not representable"
-    missing:
-      - "A 'Duplicate Day' control on the day page (or day action sheet) wired to duplicateDay"
-      - "An explicit, user-confirmed resolution of A-PROG-07: either add routine_day.archived_at + filtered read paths, or amend PROG-07's wording so 'individual workouts' means logged sessions (already safe via PROG-11)"
-      - "Correct REQUIREMENTS.md PROG-07 from Complete to Partial until one of the above lands"
-  - truth: "PROG-06 — User can schedule planned time off within a program"
-    status: partial
-    reason: >-
-      Creating a time-off cycle works and is validated (validateCycle rejects a time_off cycle with
-      no duration). But setCycleDuration is orphaned — no UI calls it — and the shipped Edit Cycle
-      form offers a "Make Time off" kind switch that calls setCycleKind ONLY. Converting an existing
-      training/deload cycle to time_off therefore produces a cycle with durationDays === null, which
-      resolveNextUp silently skips (pushed onto skippedTimeOffCycleIds and stepped over). The user
-      gets a time-off chip in the strip that the Home card will never honour, with no way to give it
-      a duration short of deleting and recreating it.
-    artifacts:
-      - path: "apps/mobile/lib/db/programs/cycles.ts"
-        issue: "setCycleDuration (line 89) is orphaned — 0 UI call sites"
-      - path: "apps/mobile/app/(tabs)/programs.tsx"
-        issue: "handleSetCycleKind (line ~396) calls setCycleKind only; the editing form renders no duration field, unlike the creation form which does"
-      - path: "apps/mobile/lib/programs/next-up.ts"
-        issue: "resolveNextUp lines ~152-156 skip a time_off cycle whose durationDays is null — correct defensive handling, but it is now reachable from an ordinary UI action"
-    missing:
-      - "A 'Days off' field in the Edit Cycle form, wired to setCycleDuration"
-      - "Or: block the kind switch to time_off until a duration is supplied, reusing validateCycle"
-  - truth: "routine.status can advance from 'draft' to 'ready'"
-    status: failed
-    reason: >-
-      markRoutineReady is implemented and unit-tested but has no UI call site. createRoutine and
-      duplicateRoutine both hardcode status 'draft'. Nothing in the shipped app can produce a
-      'ready' routine, so library.tsx's partitionRoutines 'ready' bucket and its "Ready" subtitle
-      word are unreachable, and every program the user ever sees reads "Draft" forever. Not a
-      numbered PROG requirement, but D-15 defines status as the "finished authoring" fact and the
-      UI-SPEC Correction Note mandates rendering it, so the shipped app displays a state the user
-      cannot change. Already recorded as WINDOWS #89.
-    artifacts:
-      - path: "apps/mobile/lib/db/programs/lifecycle.ts"
-        issue: "markRoutineReady (line ~110) is orphaned — 0 UI call sites"
-      - path: "apps/mobile/app/programs/library.tsx"
-        issue: "partitionRoutines' `ready` branch (line 64) and formatLibraryRowSubtitle's Title-Case status are dead paths in practice"
-    missing:
-      - "A 'Mark Ready' action in RoutineActionSheet wired to markRoutineReady, OR"
-      - "An explicit decision that status advances implicitly (e.g. on first activation), OR"
-      - "Removal of the status word from the library row if the draft/ready distinction is not going to be user-facing"
-deferred: []
-human_verification:
-  - test: "Open the Programs tab on a real iOS or Android build; add three exercises to a day and drag the middle one to the top using the grip."
-    expected: "The row follows the finger, drops into position, and the new order survives a screen re-entry. An interrupted drag springs back with nothing persisted."
-    why_human: "Native gesture behaviour (react-native-gesture-handler + reanimated) cannot be exercised here — no Xcode, no Android SDK on this machine (WINDOWS, ROADMAP Phase 999.1). Only computeDropTarget/neighboursForIndex arithmetic and the handle's rendered shape are unit-tested."
-  - test: "In a browser, swipe/drag between day pages in the DayDeck and drag-reorder an exercise with the pointer-based DragHandle.web.tsx."
-    expected: "Paging works without a visible tab bar; the pointer drag reorders and persists."
-    why_human: "Browser/E2E-browser testing is forbidden by .claude/CLAUDE.md unless the user explicitly asks. `expo export --platform web` succeeds (re-run and confirmed), which proves the bundle builds, not that the interaction works."
-  - test: "Restart the PowerSync Service against ops/powersync/sync-rules.yaml, then create a routine_cycle and a routine_exercise_cycle_target on device A and confirm both arrive on device B."
-    expected: "Both rows stream down; deleting a cycle on A removes the override on B and it does not resurrect."
-    why_human: "The Service was never restarted against the updated rules during this phase (WINDOWS #60, #67). Pull-side delivery of routine_cycle and routine_exercise_cycle_target is asserted structurally only. Push-side and tombstone behaviour ARE observed (api e2e, 207/207 green, plus this verifier's own cascade probe)."
-  - test: "Two devices, both offline, each activate a different program; reconnect both."
-    expected: "Exactly one active program after both pushes land."
-    why_human: "WINDOWS #59 — no second device or runtime available. The single-device overwrite case is covered by e2e; the genuine race is unrun."
-  - test: "Visual review of the cycle strip's three chip tones, the '· this cycle' override marker and the Reset to base action at default and maximum OS font scale."
-    expected: "Deload reads dashed, time off recedes at 0.6 opacity with a muted underline when selected, and the rep-range stepper pair wraps rather than shrinking below 48x48."
-    why_human: "Visual/typographic behaviour at accessibility font scales is not observable from unit tests."
+re_verification:
+  previous_status: gaps_found
+  previous_score: 3/4 roadmap success criteria verified (9/11 requirements met, 2 partially met)
+  gaps_closed:
+    - "PROG-07 — routine_day.archived_at added to Postgres+SQLite schemas; duplicateDay, archiveDay, restoreDay and loadArchivedDays all have real, non-test call sites in apps/mobile/app/(tabs)/programs.tsx (Duplicate/Archive/Restore Day controls, an Archived days restore section); the day-lifecycle round trip is proven by an executed, registered Playwright spec (program-day-lifecycle.spec.ts) against a real @powersync/web database, not merely unit-tested."
+    - "PROG-06 — the durationless-time-off trap is closed. setCycleDuration was replaced by a single validated updateCycle (commit 4f491a1) that writes name/kind/duration together, so 'Make Time off' can no longer produce a null-duration cycle. The Edit Cycle form's 'Days off' field is wired to it and both the positive (kind+duration written together) and negative (missing duration blocks the save, writes nothing) paths are proven by an executed browser spec."
+    - "routine.status can now reach 'ready' — markRoutineReady has a real call site: a 'Mark Ready' action in the library's routine action sheet (library.tsx), hidden once already-ready or archived, independent of isActive per D-31. Closes WINDOWS #89 (now marked fixed)."
+    - "PROG-09's plural wording ('upcoming workouts') is corrected to 'the next workout' in REQUIREMENTS.md's own checklist text, with a new '## Amendments' section naming D-32 as authority and explicitly recording that the prior justification's citation of D-27 (a placement decision) was authority drift. No code change was needed or made."
+  gaps_remaining: []
+  regressions: []
 ---
 
-# Phase 4: Program Builder — Verification Report
+# Phase 4: Program Builder — Verification Report (Re-verification)
 
 **Phase Goal:** The user can author the program they actually train, with the targets the progression engine will later read.
-**Verified:** 2026-08-22T14:00:18Z against commit `e0718ed`
-**Status:** gaps_found
-**Re-verification:** No — initial verification.
+**Verified:** 2026-08-28T20:05:00Z against commit `f3253f9` (tip of the gap-closure sequence, plans 04-12 through 04-17)
+**Status:** passed
+**Re-verification:** Yes — after gap closure (plans 04-12 through 04-17)
 
 ---
 
-## Method and Environment Note
+## Summary of This Re-Verification
 
-**Phase mode is `mvp` in ROADMAP.md, but the Phase 4 goal is not a User Story.** `gsd-tools query
-user-story.validate` returns `valid: false` on it (missing all three of the `As a` / `I want to` /
-`so that` slots). MVP-mode verification produces a User Flow Coverage table keyed on the story's
-`so that` clause; with no story there is no clause to key on. This report therefore uses **standard
-goal-backward verification** against the four ROADMAP Success Criteria and the eleven PROG
-requirements. Either set `mode: mvp` aside for this phase or run `/gsd mvp-phase 4` to give it a
-real User Story — as it stands the roadmap declares a verification mode the phase cannot support.
+All three gaps from the initial verification (`04-VERIFICATION.md`, 2026-08-22) are genuinely closed
+at the code level, not just claimed in the closure plans' SUMMARYs. This report re-derived every
+claim independently — greps were run fresh against the current worktree, not trusted from prose —
+and additionally re-ran every suite the prior report ran, plus the durability e2e lane the prior
+report could not run for this feature set.
 
 **What was actually executed for this report** (not read, executed):
 
 | Check | Command | Result |
 |---|---|---|
-| Mobile unit suite | `pnpm jest` in `apps/mobile` | 43 suites / 793 tests passed |
-| api-contracts suite | `pnpm test` in `packages/api-contracts` | 4 suites / 92 tests passed |
-| API e2e against live Postgres | `pnpm test:e2e` in `apps/api` | 19 suites / 207 tests passed (74s) |
-| Typecheck + lint | `npx turbo run typecheck lint` | 7/7 tasks successful |
-| Web bundle | `npx expo export --platform web` | Exported; `/(tabs)/programs`, `/programs/library`, `/programs/new` all present in the route manifest |
-| **Cascade probe (verifier-authored)** | temporary e2e spec, day DELETE with an override present | **PASSED** — see Probe Execution below; temp file removed, tree clean |
+| Typecheck + lint | `npx turbo run typecheck lint` | 11/11 tasks successful |
+| Mobile unit suite | `pnpm jest` in `apps/mobile` | 91 suites / 1671 tests passed |
+| API e2e against live Postgres | `pnpm test:e2e` in `apps/api` | 22 suites / 266 tests passed |
+| Durability e2e (real `@powersync/web`, real Chromium) | `pnpm --filter mobile test:e2e:durability` | 48/48 passed, including the 3 new `program-day-lifecycle.spec.ts` cases (#17–19) |
+| Working tree | `git status --porcelain` | Clean except pre-existing untracked `.claude/worktrees/` and `.claude/commands/gsd-start.md` — no stray probe files |
 
-**Not executed, deliberately:** no native build (no Xcode/Android SDK), no browser driving
-(forbidden by `.claude/CLAUDE.md` absent an explicit request). Every UI surface in this phase is
-therefore verified by unit tests + typecheck + a successful web export only. That is a real
-limitation of the evidence, not a formality — see Human Verification.
+No suite disagreed with the SUMMARYs' claimed counts.
 
 ---
 
@@ -129,12 +53,12 @@ limitation of the evidence, not a formality — see Human Verification.
 
 | # | Success Criterion | Status | Evidence |
 |---|---|---|---|
-| 1 | User can build a program from scratch with named days, ordered exercises, and per-exercise set/rep-range/RIR/rest targets | ✓ VERIFIED | Complete reachable path: `programs/new.tsx` "Start Blank" → `createRoutine` → router pushes `/(tabs)/programs?routineId=…`; "Add Day" + name field → `addDay`; "Add Exercises" → `ExercisePickerModal` → `addExercisesToDay`; grip drag **and** an expanded-row "Move up"/"Move down" pair → `handleReorderExercise` → `moveExercise`; five steppers on `ExerciseSlotRow` → `setExerciseTargets`. Every write lands in local SQLite via `getPowerSync()`. |
-| 2 | User can organize the program into cycles with per-cycle targets, place a deload at the start or end of a cycle, and schedule time off | ⚠️ PARTIALLY MET | Cycles, per-cycle overrides, and deload placement are fully wired. **Time off is authorable only at creation** — converting an existing cycle to `time_off` via the Edit Cycle form yields `durationDays = null`, which `resolveNextUp` silently skips, and `setCycleDuration` has no UI call site. See gap 2. |
-| 3 | User can activate, freeze, duplicate, archive, and restore programs, and see the active program's upcoming workouts with its targets | ✓ VERIFIED | `library.tsx` → `RoutineActionSheet` wires Activate/Duplicate/Rename/Archive/Restore to `activateRoutine` / `duplicateRoutine` / `renameRoutine` / `archiveRoutine` / `restoreRoutine`, with `ArchiveDialog` confirmation on the two destructive-ish paths. Freeze is the "Update Program" `Switch` on the active-program screen → `setProgressionFrozen`. Home renders `NextUpCard` from `loadNextUp` (real queries) → `resolveNextUp`. Note this criterion says *programs* — the "individual workouts" wording lives only in PROG-07, which is where it fails. |
-| 4 | Editing a program never changes what any already-logged workout shows | ✓ VERIFIED | Snapshot-on-use is implemented (`log-set.ts` `resolvePrescriptionForCycle` + `addSessionExercise` copying five columns onto `session_exercise`) and **behaviourally proven twice**: 7 unit regressions in `log-set.test.ts` ("PROG-11 — editing a program never changes a logged session") and 6 e2e regressions against live Postgres in `program-sync.e2e-spec.ts` (base rewrite, override edit, override delete, day delete, routine archive). Both suites green in this run. |
+| 1 | User can build a program from scratch with named days, ordered exercises, and per-exercise set/rep-range/RIR/rest targets | ✓ VERIFIED | Unchanged from initial verification — not touched by gap closure, no regression found (91/91 mobile suites still green). |
+| 2 | User can organize the program into cycles with per-cycle targets, place a deload at the start or end of a cycle, and schedule time off | ✓ VERIFIED (gap closed) | `updateCycle` (`apps/mobile/lib/db/programs/cycles.ts:90`) is the Edit Cycle form's single write, validated by the same `validateCycle` the creation form uses — a time-off conversion with no duration is rejected before any write happens (`error 'duration-required'` → `"Time off needs a length in days."`). The "Days off" field renders in both the create form (`programs.tsx:809`) and the edit form (`programs.tsx:857`). `program-day-lifecycle.spec.ts`'s two cycle-conversion cases (positive: `kind='time_off'`+`duration_days=7` written together; negative: blank duration blocks the save and writes nothing) both executed and passed against a real database. |
+| 3 | User can activate, freeze, duplicate, archive, and restore programs, and see the active program's upcoming workouts with its targets | ✓ VERIFIED (gap closed) | Program-level lifecycle unchanged (still verified). Day-level: `duplicateDay`/`archiveDay`/`restoreDay`/`loadArchivedDays` all confirmed with real, non-test call sites in `apps/mobile/app/(tabs)/programs.tsx` (grep re-run fresh, all four resolve there). `routine_day.archived_at` exists on both Postgres (`apps/api/src/db/schema/program.ts:23`) and SQLite (`apps/mobile/lib/db/schema.ts:83`) and flows through the sync apply path. `loadProgramTree` filters archived days at the SQL level (`isNull(routineDay.archivedAt)`, `load-program.ts:85`), inherited by the builder, `loadNextUp`, and `duplicateRoutine`. PROG-09's wording now reads "the next workout" (amended, matching what actually shipped — see below), removing the authority-drift finding from the initial report. All of this is proven end to end, not just unit-tested: `program-day-lifecycle.spec.ts` drives Duplicate/Archive/Restore through the real day page against a real `@powersync/web` database and passed (3/3 new cases, 48/48 full lane). |
+| 4 | Editing a program never changes what any already-logged workout shows | ✓ VERIFIED (no regression) | Still proven twice (unit + live-Postgres e2e), and gap closure added a third, targeted layer: `log-set.test.ts` gained four PROG-11 cases specifically covering the new archive/restore surface — the five snapshot columns and `workout_session.routine_day_id` stay untouched when the day they were logged against is archived, restored, or round-tripped, and `routine_exercise`/`routine_exercise_cycle_target` children are not cascaded away by an archive (only a hard delete cascades). Day archiving therefore does not regress D-01's guarantee. |
 
-**Score: 3/4 success criteria verified, 1 partially met.**
+**Score: 4/4 success criteria verified.**
 
 ---
 
@@ -142,200 +66,144 @@ limitation of the evidence, not a formality — see Human Verification.
 
 | Req | Description | Status | Evidence |
 |---|---|---|---|
-| PROG-01 | Build a program from scratch with named training days | ✓ MET | `new.tsx` → `createRoutine`; `programs.tsx` "Add Day" → `addDay` (name required, trimmed at the write boundary); rename via tap-on-day-name → `renameDay` |
-| PROG-02 | Add, remove, reorder exercises within a training day | ✓ MET | `addExercisesToDay` (multi-select picker), `removeExercise`, and two reorder affordances (`DragHandle` gesture + Move up/down) both funnelling to the single `moveExercise` write path |
-| PROG-03 | Per-exercise targets: sets, rep range, RIR target, rest duration | ✓ MET | `ExerciseSlotRow` renders exactly five steppers (sets, repMin, repMax, RIR 0–6 single, rest 15s step); `stepRepMin`/`stepRepMax` make min>max unreachable (R5); `setExerciseTargets` persists |
-| PROG-04 | Organize a program into cycles, each with its own targets | ✓ MET | `routine_cycle` table + `CycleStrip` + `routine_exercise_cycle_target` sparse overrides. Selecting a chip re-resolves every slot through `resolveTarget`; editing while a cycle is selected routes to `setCycleTarget` with an `overrideDelta`, never to the base row |
-| PROG-05 | Place a deload at the start or end of a cycle | ✓ MET | `kind: 'deload'` at creation, plus "Earlier"/"Later" in the Edit Cycle form → `moveCycle` → shared `computeReorder`. Position is `order_index`, per D-12 |
-| PROG-06 | Schedule planned time off within a program | ⚠️ PARTIAL | Creation path complete and validated. Conversion path produces an inert null-duration cycle; `setCycleDuration` orphaned. See gap 2 |
-| PROG-07 | Duplicate, archive, and restore programs **and individual workouts** | ⚠️ PARTIAL | Program half complete. Individual-workout half absent: `duplicateDay` orphaned, no `routine_day.archived_at` at all. See gap 1. **REQUIREMENTS.md marks this Complete — incorrect** |
-| PROG-08 | Set which program is active | ✓ MET | `activateRoutine` writes `user_preference.active_routine_id` (D-14 single-column pointer, so two-actives is structurally unrepresentable). Reached from the library action sheet; hidden on the already-active and archived rows |
-| PROG-09 | View the active program's upcoming workouts with target muscles and per-cycle rep/RIR targets | ✓ MET AS NARROWED | Home `NextUpCard`: day name + cycle name heading, read-only muscle chips from a real `exercise_muscle_mapping` ⋈ `muscle_group` read, one line per exercise `"{name}: {sets} × {min}–{max} reps @ {rir} RIR"` with `—` for nulls. Narrowed from plural to one card — see the judgment below |
-| PROG-10 | Freeze a program so progression stops modifying it | ✓ MET | `routine.progression_frozen` boolean, orthogonal to status and to the active pointer; "Update Program" switch on the active-program screen only; e2e proves a PATCH naming only `progression_frozen` leaves status/archived_at/name untouched |
-| PROG-11 | Edit a program without corrupting any workout already logged against it | ✓ MET | See SC4 |
+| PROG-01 | Build a program from scratch with named training days | ✓ MET | Unchanged. |
+| PROG-02 | Add, remove, reorder exercises within a training day | ✓ MET | Unchanged. |
+| PROG-03 | Per-exercise targets: sets, rep range, RIR target, rest duration | ✓ MET | Unchanged. |
+| PROG-04 | Organize a program into cycles, each with its own targets | ✓ MET | Unchanged. |
+| PROG-05 | Place a deload at the start or end of a cycle | ✓ MET | Unchanged. |
+| PROG-06 | Schedule planned time off within a program | ✓ MET (gap closed) | `updateCycle` makes a durationless `time_off` cycle unrepresentable from either the create or edit door; both branches proven by an executed browser spec. REQUIREMENTS.md's PROG-06 Traceability row was independently re-decided by 04-17 from this executed evidence rather than carried forward from the original diff. |
+| PROG-07 | Duplicate, archive, and restore programs **and individual workouts** | ✓ MET (gap closed) | Program half unchanged. Day half: `routine_day.archived_at` schema + sync path (04-12), Duplicate/Archive/Restore Day controls plus an "Archived days" restore section (04-13), Mark Ready and archived-day rotation/history-safety regressions (04-14), and executed browser proof of the full round trip (04-16). All four previously-orphaned functions (`duplicateDay`, `archiveDay`, `restoreDay`, `loadArchivedDays`) now have real call sites, confirmed by fresh grep against the current worktree. |
+| PROG-08 | Set which program is active | ✓ MET | Unchanged. |
+| PROG-09 | View the active program's **next workout** with target muscles and per-cycle rep/RIR targets | ✓ MET (amended) | REQUIREMENTS.md's own checklist text now reads "the next workout" (was "upcoming workouts"), with a new `## Amendments` section (2026-08-28) naming D-32 as authority and explicitly recording that the prior justification's citation of D-27 was a misread of a placement decision as a scope cap. No code changed — the single `NextUpCard` was already the correct implementation; only the requirement's own wording and its cited authority were wrong. This closes the initial report's "authority drift" finding. |
+| PROG-10 | Freeze a program so progression stops modifying it | ✓ MET | Unchanged. |
+| PROG-11 | Edit a program without corrupting any workout already logged against it | ✓ MET | Unchanged, and now additionally covered for the new archive-a-day path (see SC4 above). |
 
-No orphaned requirements: all eleven PROG ids are claimed across the eleven plans' `requirements:` frontmatter.
-
----
-
-## PROG-09 Narrowing — Explicit Judgment (asked for directly)
-
-**The narrowing is acceptable in substance, but its stated authority does not support it, and I would not let it stand as written.**
-
-The UI-SPEC's Home card section says the single-card scope is justified because "D-27's own decision
-text ('the next workout and its resolved targets') narrows this to one card." Read D-27 in
-`04-CONTEXT.md`: it is a **placement** decision — *"Upcoming workouts appear on the Home tab, not the
-Programs tab."* Its body sentence "Home leads with 'next up' — the next workout and its resolved
-targets" is describing what Home *leads with*, not capping what Home may contain. Using a placement
-decision as the authority for a scope reduction is authority drift, and it is the kind of drift that
-becomes invisible once REQUIREMENTS.md says "Complete".
-
-Why I still call it MET rather than FAILED:
-
-1. The load-bearing user need behind PROG-09 — "what am I training next, and what are the numbers" —
-   is fully served, including the per-cycle resolution the requirement names explicitly.
-2. The full upcoming sequence *is* visible to the user, on the Programs tab: the day deck shows every
-   day with its resolved targets for the selected cycle. What is missing is a Home-side
-   schedule-order list, not the information itself.
-3. `resolveNextUp` already computes cycle position and rotation, so extending to N cards later is
-   additive, not a rework.
-
-**Recommended action:** amend PROG-09's wording in REQUIREMENTS.md to say "the next workout" rather
-than "upcoming workouts", and record the amendment. Do not leave a plural requirement marked Complete
-against a singular implementation on the strength of a misquoted decision.
+No orphaned requirements. REQUIREMENTS.md's Traceability table lines 218–223 read `Complete` for all six PROG-06 through PROG-11 rows, and — unlike the state the initial report found — every one of those marks now traces to a named, executed artifact in a SUMMARY rather than to an implemented-but-unreachable function.
 
 ---
 
-## Binding-Contract Conformance
+## Gap-by-Gap Closure Detail
 
-### The five-column target tuple (D-25 as amended by the user)
+### Gap 1 — PROG-07 "individual workouts" (was: failed/partial)
 
-Verified consistent at **five** everywhere. `grep -rn "rir_min|rirMin|rir_max|rirMax"` across
-`apps`, `packages`, `ops`, `docs` returns **zero hits**.
-
-| Location | Columns / fields | Status |
+| Claim | Verification performed | Result |
 |---|---|---|
-| `apps/api/src/db/schema/program.ts` — `routineExercise` | targetSets, targetRepMin, targetRepMax, targetRir, targetRestSeconds | ✓ 5 |
-| `apps/api/src/db/schema/program.ts` — `routineExerciseCycleTarget` | same 5 | ✓ 5 |
-| `apps/api/src/db/schema/session.ts` — `sessionExercise` | same 5 | ✓ 5 |
-| `apps/mobile/lib/db/schema.ts` — routineExercise / routineExerciseCycleTarget / sessionExercise | same 5 | ✓ 5 |
-| `packages/api-contracts/src/program.ts` — `ResolvedTarget`, `EMPTY_TARGET`, `resolveTarget`, `isEmptyOverride` | same 5, resolved in five explicit lines (no loop) | ✓ 5 |
-| Sync apply path — `sync.service.ts` validators + `program-sync.e2e-spec.ts` | rejects `target_rep_min: 'eight'`, accepts five-null writes | ✓ 5 |
-| `apps/mobile/app/(tabs)/programs.tsx` `TARGET_FIELDS` | same 5 | ✓ 5 |
-| `apps/mobile/components/ExerciseSlotRow.tsx` | 5 steppers; RIR single, bounded 0–6 | ✓ 5 |
-| `apps/mobile/app/(tabs)/index.tsx` Home card | same 5 via `resolveTarget` | ✓ 5 |
-| `apps/mobile/lib/export/build-export-document.ts` | `target_rir_min`/`target_rir_max` collapsed to `target_rir` | ✓ 5 |
-| `apps/api/src/seed/generate-corpus.ts` | same 5 | ✓ 5 |
+| `duplicateDay` has a non-test call site | `grep -rn "duplicateDay" apps/mobile/app apps/mobile/components --include="*.tsx" --include="*.ts" \| grep -v __tests__` | `programs.tsx:422` — `duplicateDay({ routineDayId: dayId, name: duplicateDayName(name) }, database)` |
+| `archiveDay`/`restoreDay`/`loadArchivedDays` have non-test call sites | same grep pattern, each name | All three resolve to `programs.tsx` (lines 36–42, 341, 442, 445) |
+| `routine_day.archived_at` exists on both schemas | direct file read | Postgres: `program.ts:23`. SQLite: `schema.ts:83`. |
+| Sync stream is deliberately unfiltered (D-33) | direct read of `ops/powersync/sync-rules.yaml` | Header comment lines 23–29 records the D-29/D-33 deviation verbatim; the `routine_day` SELECT (line 41) carries no `archived_at` predicate, matching the `routine` query's own precedent |
+| `loadProgramTree` filters archived days at the SQL level | direct read of `load-program.ts` | Line 85: `.where(and(eq(routineDay.routineId, routineId), isNull(routineDay.archivedAt)))` |
+| The round trip actually works, not just compiles | executed `pnpm --filter mobile test:e2e:durability` | `program-day-lifecycle.spec.ts` cases #17 passed — duplicate/archive/restore driven through the real day page against a real database |
 
-`grep -rl 'export function resolveTarget' packages apps | wc -l` → **1**
-(`packages/api-contracts/src/program.ts`). Its five consumers — the builder, the Home card, the
-session snapshot in `log-set.ts`, `cycles.ts`, and the contract's own tests — all import it; there is
-no second implementation of `override ?? base`.
+**Verdict: genuinely closed.** This is not a re-statement of the SUMMARY's claims — every call site and every schema field was located independently by this verifier, and the closing evidence (the Playwright spec) was executed by this verifier, not read.
 
-### UI-SPEC conformance
+### Gap 2 — PROG-06 time-off conversion (was: failed/partial)
 
-| Contract item | Status | Note |
+The prior report's evidence keyed on `setCycleDuration`, which no longer exists — it was subsumed by a
+single `updateCycle` in commit `4f491a1`, predating this gap-closure batch but never behaviourally
+proven until now.
+
+| Claim | Verification performed | Result |
 |---|---|---|
-| Cycle strip: three chip tones, kind and selection orthogonal | ✓ | `CYCLE_TONES` map: dashed border for deload, `moon-outline` + 0.6 opacity + muted-underline selection for time_off |
-| Cycle strip absent (not empty) at zero cycles | ✓ | Plus an "Add Cycle" link so the strip is reachable from nothing |
-| Inline "Edit Cycle" text button, visible only while a cycle is selected (2026-08-21 amendment) | ✓ | `CycleStrip.tsx` line ~124 |
-| Exercise slot row: five fields, `—` for null, "No targets set." when all null | ✓ | |
-| `· this cycle` override marker + "Reset to base" (2026-08-21 amendment) | ✓ | `CYCLE_OVERRIDE_MARKER`; reset → `clearCycleTarget` |
-| Drag handle: two platform files, identical appearance, `accessibilityLabel="Reorder {name}"`, visible only at ≥2 exercises | ✓ | `canReorder` computed once by the day page and passed down |
-| Picker: selections persist across search/filter changes | ✓ | `catalogRows={catalog?.rows ?? []}` — the **full** catalog is passed to `orderedSelection`, not the filtered set. This is the exact thing that is easiest to get wrong here, and it is right |
-| Home card: no "Start Workout" action this phase | ✓ | |
-| Home card: deleted-logged-day falls back silently to first day of current cycle | ✓ | `lastLoggedDayIndex` returns null → `dayIndex = 0` (WINDOWS #80 records the UI-SPEC overriding 04-10-PLAN here) |
-| Library: two sections, Active badge, `•••` action trigger, archived receded | ✓ | |
-| **"Delete Draft" action** | ✗ NOT SHIPPED | Known and recorded (WINDOWS #87): the server's `HARD_DELETE_FORBIDDEN` rejects every routine DELETE unconditionally, so the client would emit an op that resurrects the row. Needs a server-side carve-out first. Not counted as a new gap |
+| The edit path cannot produce a null-duration `time_off` cycle | direct read of `cycles.ts:90-102` | `updateCycle` calls `validateCycle` before writing name/kind/duration in one `update` — the code comment at lines 81-89 explicitly documents this as the fix for the exact trap the initial report found |
+| The Edit Cycle form actually renders a duration field | `grep -n "Days off" programs.tsx` | Line 857, inside the edit form (line 809 is the create form's copy) |
+| The positive and negative paths both work end to end | executed `pnpm --filter mobile test:e2e:durability` | `program-day-lifecycle.spec.ts` cases #18/#19 passed — converting Week 1 to time off with `7` days writes `kind='time_off'`+`duration_days=7` together; leaving it blank keeps the form open with `"Time off needs a length in days."` and writes nothing |
+
+**Verdict: genuinely closed.**
+
+### Gap 3 — `routine.status` cannot reach 'ready' (was: failed)
+
+| Claim | Verification performed | Result |
+|---|---|---|
+| `markRoutineReady` has a non-test call site | `grep -rn "markRoutineReady" apps/mobile/app apps/mobile/components \| grep -v __tests__` | `library.tsx:259` — `markRoutineReady(row.id)` inside the `MARK_READY` action-sheet case |
+| The action is reachable but correctly hidden once irrelevant | direct read of `library.tsx:164` | `if (!archived && row.status !== 'ready') actions.push({ key: MARK_READY, label: 'Mark Ready' })` — independent of `isActive`, matching D-31 |
+| `markRoutineReady` actually writes `status` | direct read of `lifecycle.ts:139-141` | `db.update(routine).set({ status: READY_STATUS }).where(eq(routine.id, routineId))` |
+| WINDOWS #89 reflects the fix | direct read of `WINDOWS.md` line 103 | `status: fixed`, `resolved_at: 2026-08-28T15:30:59.775Z` |
+
+**Verdict: genuinely closed.**
+
+### PROG-09 authority-drift finding
+
+| Claim | Verification performed | Result |
+|---|---|---|
+| REQUIREMENTS.md's own checklist text is corrected | direct read | Line 47: `PROG-09: User can view the active program's next workout with target muscles and per-cycle rep/RIR targets` |
+| The amendment names the correct authority | direct read of the new `## Amendments` section | Row dated 2026-08-28, names D-32, and states explicitly that the prior justification's D-27 citation was a placement decision, not a scope cap |
+| No code was silently changed to match a re-scoped requirement | `git log` / `git diff --quiet -- apps packages ops` (per 04-17's own verify clause, re-checked) | 04-17's diff touches only `.planning/REQUIREMENTS.md`, `04-UI-SPEC.md`, and `docs/program-vocabularies.md` — no `apps/`/`packages/`/`ops/` file in that commit |
+
+**Verdict: genuinely closed** — this was a documentation-authority finding, not a code gap, and the documentation now matches both the code and its own citation trail.
 
 ---
 
-## Local-First and Sync
+## Regression Check
 
-| Property | Status | Evidence |
-|---|---|---|
-| Writes succeed offline | ✓ VERIFIED (structurally) | Every one of the eight write modules under `apps/mobile/lib/db/programs/` resolves `getPowerSync()` and writes local SQLite. `grep` for `fetch(` / `axios` / `http` across the programs lib returns **zero** — there is no network on the authoring write path. Reconciliation is PowerSync's queue, established in Phase 2 |
-| Gap-based `order_index`; one drag rewrites one row | ✓ VERIFIED (behaviourally) | `ORDER_INDEX_GAP = 1024`; `computeReorder` writes a single midpoint when a slot exists, and renumbers only rows whose index actually changed when the gap is exhausted. `programs.test.ts` asserts exactly one update in the normal case and exactly two (x and c, not all four) in the renumber case |
-| Overrides resolve per-field, `override ?? base`, null = inherit | ✓ VERIFIED | One `resolveTarget`; `program.test.ts` asserts `{targetSets: null}` inherits the base rather than clearing it; `isEmptyOverride` treats `0` as a value |
-| Sparse overrides — an all-null override row is deleted, not stored | ✓ VERIFIED | `isEmptyOverride` gate in `cycles.ts`; unique `(routine_exercise_id, cycle_id)` constraint makes the override singular |
-| Deleted overrides do not resurrect — all three cascade paths | ✓ VERIFIED | See Probe Execution |
-| Pull-side delivery of the two new tables | ? UNVERIFIABLE HERE | PowerSync Service never restarted against the updated `sync-rules.yaml` (WINDOWS #60, #67). The queries are structurally identical to the already-verified `routine_day` query. **Unverifiable, not broken** |
-| Two-device offline activation race | ? UNVERIFIABLE HERE | WINDOWS #59. Single-device overwrite is e2e-covered |
-
-### Cascade tombstones — all three paths
-
-| Path | Implementation | Test |
-|---|---|---|
-| `routine_cycle` DELETE → override tombstones | `sync.service.ts` ~1336 | ✓ e2e: "deleting the cycle applies, cascades away the override rows, and writes one sync_tombstone row per cascaded override" |
-| `routine_exercise` DELETE → override tombstones | `sync.service.ts` ~1330 | ✓ e2e: "deleting the exercise applies, cascades away its override rows…" |
-| `routine_day` → exercise → override (transitive, three-level) | `sync.service.ts` 1308–1325 | **No shipped test.** The existing day-delete e2e seeds no override, so it asserts 2 tombstones, never 3. Verifier ran a probe — see below |
+- **Full mobile unit suite:** 91 suites / 1671 tests, all green — no suite that passed before gap closure now fails, and 04-14's new archived-day cases in `next-up.test.ts`/`log-set.test.ts` pass alongside the untouched originals.
+- **Full API e2e suite:** 22 suites / 266 tests, all green against live Postgres — up from 19/207 in the initial report because 04-12 added new archive/restore/tombstone/invalid-field cases to `program-sync.e2e-spec.ts`; nothing regressed.
+- **Durability e2e lane:** 48/48, up from 45 pre-existing (per 04-15's own count) plus the 3 new `program-day-lifecycle.spec.ts` cases — the whole lane, not just the new file, was re-run and stayed green.
+- **Typecheck + lint:** 11/11 tasks successful, unchanged.
+- **The initial report's recommendation to land the transitive three-level cascade probe as a permanent test** was independently followed through: `program-sync.e2e-spec.ts` now contains `'deleting the day cascades two levels — the exercise AND its override are both gone and both tombstoned, three tombstones in all'` (line 1491), asserting `tombstoneCount(...) === 3` — this was not requested by name in this re-verification's scope but is confirmed present and passing, closing a documented risk from the initial report as a bonus.
+- **No new debt markers.** `grep -nE "TODO|FIXME|XXX|TBD|HACK|PLACEHOLDER|not yet implemented|coming soon"` across every file the six gap-closure plans touched: zero hits.
+- **`moveDay`** remains orphaned (unchanged from the initial report) — still not required by any Success Criterion or PROG requirement, still correctly "noted, not gapped."
 
 ---
 
-## Probe Execution
+## Known Limitations Carried Forward (unaffected by this gap-closure batch)
 
-| Probe | Command | Result | Status |
-|---|---|---|---|
-| Transitive day → exercise → override cascade tombstone | Verifier-authored temporary spec `apps/api/test/zz-verifier-probe.e2e-spec.ts`, run via `npx jest --config ./test/jest-e2e.json --runInBand -t "VERIFIER PROBE"` against live Postgres | `✓ deleting the day tombstones the cascaded exercise AND its cascaded override (269 ms)` — asserted `routineExerciseCycleTargetRow(cetId)` undefined and `tombstoneCount([dayId, routineExerciseId, cetId]) === 3` | **PASS** |
+These were true before gap closure, remain true today, and are not part of what this re-verification was asked to close:
 
-The probe file was deleted immediately after the run; `git status --porcelain` is clean apart from the
-pre-existing untracked `.claude/worktrees/`. No source was modified.
-
-**Recommendation:** land that probe as a permanent test in `program-sync.e2e-spec.ts`. The three-level
-cascade is the single most fragile piece of the override model and it currently ships untested — it
-worked when I ran it, but nothing in CI will notice if it stops.
+- **Two-device offline activation race (WINDOWS #59)** — no second device/runtime available on this machine.
+- **PowerSync Service pull-side delivery of `routine_cycle`/`routine_exercise_cycle_target` (WINDOWS #60, #67)** — the Service was not restarted against updated sync rules in this session; push-side and structural pull-query correctness are proven, the live pull round trip is not.
+- **"Delete Draft" not shipped (WINDOWS #87)** — blocked on a server-side `HARD_DELETE_FORBIDDEN` carve-out, out of this phase's scope.
+- **`duplicateRoutine` nulls `supersetGroupId`/`progressionSchemeId`/`notes` (WINDOWS #88)** — harmless today (all three are always null pre-Phase-7), flagged for whichever phase first makes one writable.
+- **No native (iOS/Android) observation anywhere in this phase or its gap closure** — no Xcode, no Android SDK on this machine. Every UI surface, including the new day-lifecycle controls, is verified by unit tests + typecheck + an executed browser suite only. Correctly filed as WINDOWS #150/#151 and deferred to ROADMAP Phase 999.1.
 
 ---
 
-## Anti-Patterns Found
+## Human Verification Required
 
-`grep -nE "TODO|FIXME|XXX|TBD|HACK|PLACEHOLDER|not yet implemented|coming soon"` across all 79 files
-in the phase diff: **zero real hits** (one false positive on a base64 integrity hash in
-`pnpm-lock.yaml`). No debt markers, no stub returns, no console-log-only implementations.
+Per this repository's established convention (native → ROADMAP Phase 999.1, subjective/live-browser-judgment web items → ROADMAP Phase 999.2), the following are deferred rather than left as blockers. All are unchanged in substance from the initial verification; none are new, and none are gaps this re-verification was asked to close.
 
-The problems in this phase are not code smells — they are **orphaned functions**. Full inventory of
-implemented, tested, exported program functions with zero UI call sites:
+- test: "Open the Programs tab on a real iOS or Android build; add three exercises to a day and drag the middle one to the top using the grip; separately, exercise the new Duplicate/Archive/Restore Day controls and the Mark Ready action."
+  expected: "The row follows the finger, drops into position, and the new order survives a screen re-entry. The four day-page header controls (Rename/Duplicate/Archive/Remove) render and work identically to their browser-proven behavior. Mark Ready flips a draft program's library subtitle to 'Ready'."
+  why_human: "Native gesture behaviour (react-native-gesture-handler + reanimated) and native rendering of the new controls cannot be exercised here — no Xcode, no Android SDK on this machine (WINDOWS #150/#151, ROADMAP Phase 999.1). Deferred to ROADMAP Phase 999.1."
 
-| Function | File | Consequence |
-|---|---|---|
-| `duplicateDay` | `lib/db/programs/duplicate-routine.ts` | PROG-07's "individual workouts" duplicate half is unreachable — **gap 1** |
-| `markRoutineReady` | `lib/db/programs/lifecycle.ts` | `status` can never leave `'draft'` — **gap 3** (WINDOWS #89) |
-| `setCycleDuration` | `lib/db/programs/cycles.ts` | A converted time-off cycle can never be given a duration — **gap 2** |
-| `moveDay` | `lib/db/programs/days.ts` | Days cannot be reordered from the UI. Day order drives the next-up rotation, so a program's rotation order is fixed at day-creation order forever. Not required by any SC or PROG, so **noted, not gapped** |
+- test: "In a browser, swipe/drag between day pages in the DayDeck while a duplicated/archived day sits in the deck."
+  expected: "Paging works without a visible tab bar across the new archived-days-filtered day count; the drag handle continues to reorder correctly with an odd number of live days after an archive."
+  why_human: "Not directly exercised by `program-day-lifecycle.spec.ts` (which proves duplicate/archive/restore and cycle conversion, not DayDeck paging). Corroborating evidence exists: `DragHandle.web.tsx`'s pointer-capture contract is proven end to end by `reorder-exercises.spec.ts` (a sibling screen using the same shared component), which materially reduces but does not eliminate this as a live human check. Browser/E2E testing is explicitly authorized in this repository (`.claude/CLAUDE.md`), but a live paging-feel check under real touch/pointer interaction sits better as a Phase 999.2 review than an automated assertion. Deferred to ROADMAP Phase 999.2."
 
----
+- test: "Restart the PowerSync Service against `ops/powersync/sync-rules.yaml`, then create a `routine_cycle`, a `routine_exercise_cycle_target`, and an archived `routine_day` on device A and confirm all three arrive correctly on device B (including the archived day, per D-33's deliberate unfiltered stream)."
+  expected: "All three rows stream down; the archived day arrives on device B with `archived_at` intact rather than being silently dropped; deleting a cycle on A removes the override on B and it does not resurrect."
+  why_human: "The Service was never restarted against the updated rules during this phase (WINDOWS #60, #67). Push-side and tombstone behaviour ARE observed (api e2e, 266/266 green). Deferred to ROADMAP Phase 999.1."
 
-## Known Limitations Carried Forward (recorded, not rediscovered)
+- test: "Two devices, both offline, each activate a different program; reconnect both."
+  expected: "Exactly one active program after both pushes land."
+  why_human: "WINDOWS #59 — no second device or runtime available. Deferred to ROADMAP Phase 999.1."
 
-- No native observation anywhere in this phase (no Xcode, no Android SDK); browser/E2E-browser
-  testing forbidden absent an explicit request. UI verified by unit tests + typecheck + web export.
-- PowerSync Service never restarted against the updated sync rules — pull-side delivery asserted
-  structurally (WINDOWS #60, #67).
-- "Delete Draft" absent because the server's `HARD_DELETE_FORBIDDEN` rejects all routine DELETEs
-  (WINDOWS #87).
-- `duplicateRoutine` nulls `supersetGroupId` / `progressionSchemeId` / `notes` (WINDOWS #88).
-
-One process observation worth a line, since "lint clean" appears in the phase claims: both
-`api:lint` and `mobile:lint` are defined as `tsc --noEmit`, i.e. **there is no ESLint pass anywhere in
-the pipeline** — "typecheck and lint clean" means the type checker ran twice. Out of scope for
-Phase 4, but it should not be read as style/quality enforcement.
+- test: "Visual review of the cycle strip's three chip tones, the day page's new Duplicate/Archive/Restore controls and the Archived days section, and the Edit Cycle form's new Days off field, at default and maximum OS font scale."
+  expected: "The header row wraps rather than shrinks (R4, per 04-13's SUMMARY); archived rows recede at 0.6 opacity with a 48x48 Restore control readable at max font scale; the Days off field does not overflow the Edit Cycle form."
+  why_human: "Visual/typographic behaviour at accessibility font scales is not observable from unit or e2e tests. Deferred to ROADMAP Phase 999.2."
 
 ---
 
 ## Gaps Summary
 
-The phase's schema work, sync work, contract work and history-safety work are genuinely strong. The
-five-column tuple is consistent across eleven surfaces with zero drift; `resolveTarget` is a single
-implementation with five real consumers; the override table is sparse, dual-parent-validated and
-uniquely constrained; PROG-11 is proven twice over, once in unit tests and once against live
-Postgres; and the three cascade tombstone paths are all implemented and — after this verifier's own
-probe — all now behaviourally proven.
+There are no remaining gaps. The three failed/partial truths from the initial verification —
+PROG-07's day-level archive/restore/duplicate, PROG-06's time-off conversion trap, and
+`routine.status`'s dead-end at `'draft'` — are all closed with real, non-test call sites this
+verifier located independently, and the two most behaviourally sensitive claims (the day-lifecycle
+round trip and the cycle-conversion validation) are proven by an executed Playwright spec against a
+real `@powersync/web` database rather than resting on unit tests alone. The PROG-09 authority-drift
+finding is closed as a documentation correction, with no code change required or made. Regression
+checking found no new failures anywhere in the phase's four suites, no new debt markers, and one
+bonus closure (the transitive cascade tombstone test) beyond what this re-verification was scoped to
+check.
 
-What is missing is not depth, it is **reach**. Three capabilities were built as library functions and
-never given a way in:
-
-1. **PROG-07's "individual workouts" half never shipped.** `duplicateDay` is complete, correct and
-   tested — and unreachable. Archive/restore of an individual workout does not exist even as a data
-   model. The plan flagged this as an *unresolved* assumption (A-PROG-07) and it was never resolved;
-   REQUIREMENTS.md nonetheless marks PROG-07 Complete. That mark is wrong today.
-2. **PROG-06's edit path is broken in a way the creation path is not.** The Edit Cycle form lets a
-   user turn any cycle into time off but gives it no duration, and `resolveNextUp` will then step
-   straight over it. `setCycleDuration` exists to fix exactly this and is never called.
-3. **`status` is a one-way door into `'draft'`.** Every program the user will ever see reads "Draft".
-
-None of these break anything already built, and none require rework — each is a control wired to an
-existing, tested function (plus one genuine product decision on what "archive an individual workout"
-should mean). But three requirement-bearing capabilities that cannot be reached from the app is not
-a phase whose goal is achieved, and the deeper pattern is worth naming: **this phase's plans verified
-functions, and the requirements ledger was updated from those functions rather than from the
-screens.** The remedy is not more tests — it is a reachability pass before a requirement is marked
-Complete.
-
-**Overall verdict: the phase goal is substantially but not fully achieved. Do not mark PROG-06 or
-PROG-07 Complete, and close the three gaps above before Phase 5 builds session logging on top of
-this program model.**
+**Overall verdict: the phase goal is fully achieved. All four ROADMAP success criteria and all
+eleven PROG requirements are met with evidence, not merely claimed. The remaining open items are
+native-platform and cross-device observations this machine cannot produce, correctly filed as
+WINDOWS entries and deferred to ROADMAP Phase 999.1/999.2 per this repository's established
+convention — they do not block Phase 5.**
 
 ---
 
-_Verified: 2026-08-22T14:00:18Z_
+_Verified: 2026-08-28T20:05:00Z_
 _Verifier: Claude (gsd-verifier)_
