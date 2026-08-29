@@ -50,6 +50,7 @@ export default defineConfig({
         'records.spec.ts',
         'weekly-progress.spec.ts',
         'history-trend.spec.ts',
+        'muscle-map.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },

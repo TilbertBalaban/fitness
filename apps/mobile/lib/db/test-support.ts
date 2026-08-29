@@ -22,6 +22,7 @@ import { createRoutine } from './programs/create-routine';
 import { addCycle } from './programs/cycles';
 import { addDay, addExercisesToDay } from './programs/days';
 import {
+  analyticsWatermark,
   bodyMetric,
   drizzleSchema,
   equipmentProfile,
@@ -29,6 +30,7 @@ import {
   exerciseMuscleMapping,
   loggedSet,
   muscleGroup,
+  muscleVolumeRollup,
   personalRecord,
   progressPhoto,
   routine,
@@ -1489,5 +1491,195 @@ export async function seedTrendHistory(db: TestWriteDb, input: SeedTrendHistoryI
         notes: null,
       });
     }
+  }
+}
+
+export interface SeedMuscleMapSet {
+  weightKg: string | null;
+  reps: number;
+  setType: SetType;
+  completed: boolean;
+}
+
+export interface SeedMuscleMapMapping {
+  muscleGroupId: string;
+  weightFactor: number;
+}
+
+export interface SeedMuscleMapExercise {
+  exerciseId: string;
+  mappings: SeedMuscleMapMapping[];
+  sets: SeedMuscleMapSet[];
+}
+
+export interface SeedMuscleMapSession {
+  localDate: string;
+  // Stamps workout_session.user_id when true — this is the D-01 overlay predicate's own signal.
+  // Left null when false, matching every other seeder in this file's null-by-default convention.
+  syncedToServer: boolean;
+  exercises: SeedMuscleMapExercise[];
+}
+
+export interface SeedMuscleMapRollupRow {
+  muscleGroupId: string;
+  localDate: string;
+  weightedVolumeKg: number;
+  weightedSets: number;
+  setCount: number;
+}
+
+export interface SeedMuscleMapWatermark {
+  computedThroughDate: string;
+}
+
+export interface SeedMuscleMapHistoryInput {
+  userId: string;
+  sessions: SeedMuscleMapSession[];
+  // The client never writes either of these two tables in production (10-01, D-09) — present here
+  // only to stand in for what a live PowerSync pull would already have delivered by the time the
+  // screen reads it, which is the only way to prove the rollup-plus-overlay path in a browser
+  // without a live sync service.
+  rollup?: SeedMuscleMapRollupRow[];
+  watermark?: SeedMuscleMapWatermark;
+}
+
+// A dedicated mapping writer, not a reuse of ensureMuscleMappings above: that helper hardcodes
+// weightFactor at '1.000' for every row, and D-04's weighted-secondary-mapping claim cannot be
+// exercised without a real fractional factor. role is always 'primary' here because neither
+// loadLocalMuscleVolumeCells nor loadMuscleDrilldown filter or branch on role at all (D-04 counts
+// secondary muscles at their own mapping weight, never at a role-based discount) — this seeder's
+// weightFactor input is what carries the fractional-contribution case, not the role column.
+async function ensureMuscleMapMappings(db: TestWriteDb, exercises: SeedMuscleMapExercise[]): Promise<void> {
+  const existing = new Set(
+    (
+      await db
+        .select({
+          exerciseId: exerciseMuscleMapping.exerciseId,
+          muscleGroupId: exerciseMuscleMapping.muscleGroupId,
+          role: exerciseMuscleMapping.role,
+        })
+        .from(exerciseMuscleMapping)
+    ).map((row) => `${row.exerciseId}|${row.muscleGroupId}|${row.role}`),
+  );
+
+  for (const trained of exercises) {
+    for (const mapping of trained.mappings) {
+      const key = `${trained.exerciseId}|${mapping.muscleGroupId}|primary`;
+      if (existing.has(key)) continue;
+      existing.add(key);
+      await db.insert(exerciseMuscleMapping).values({
+        id: generateClientId(),
+        exerciseId: trained.exerciseId,
+        muscleGroupId: mapping.muscleGroupId,
+        role: 'primary',
+        weightFactor: mapping.weightFactor.toFixed(3),
+      });
+    }
+  }
+}
+
+// The durability seeder behind 10-07's evidence: completed sessions (each independently markable
+// as already-synced-to-server or still local-only via syncedToServer), real fractional weight
+// factors (D-04), and optional pre-synced muscle_volume_rollup/analytics_watermark rows standing
+// in for what a live PowerSync pull would have delivered (10-01, D-09 — the client never writes
+// either table itself). Same direct-minimal-write style as seedTrainedWeek: three tables per
+// session, no startSession/logSet round trip, because the muscle map reads finished history only.
+export async function seedMuscleMapHistory(db: TestWriteDb, input: SeedMuscleMapHistoryInput): Promise<void> {
+  const allExercises = input.sessions.flatMap((session) => session.exercises);
+
+  await ensureMuscleGroups(
+    db,
+    allExercises.flatMap((trained) => trained.mappings.map((mapping) => mapping.muscleGroupId)),
+  );
+  await ensureMuscleMapMappings(db, allExercises);
+
+  for (const seededSession of input.sessions) {
+    const sessionId = generateClientId();
+    const startedAt = `${seededSession.localDate}T09:00:00.000Z`;
+
+    await db.insert(workoutSession).values({
+      id: sessionId,
+      // workout_session.user_id is stamped server-side on push only (see loadLiveSession's own
+      // comment) — a real userId here is what a lifter's already-synced session looks like, and
+      // null is what a still-local one looks like, matching this file's other seeders' convention.
+      userId: seededSession.syncedToServer ? input.userId : null,
+      routineDayId: null,
+      equipmentProfileId: null,
+      startedAt,
+      endedAt: startedAt,
+      status: 'completed',
+      deviceId: null,
+      timezone: 'UTC',
+      localDate: seededSession.localDate,
+      notes: null,
+      name: null,
+      pausedAt: null,
+      accumulatedPausedSeconds: 0,
+      restTargetAt: null,
+      serverSeq: seededSession.syncedToServer ? 1 : null,
+    });
+
+    for (const [exerciseIndex, trained] of seededSession.exercises.entries()) {
+      const sessionExerciseId = generateClientId();
+
+      await db.insert(sessionExercise).values({
+        id: sessionExerciseId,
+        sessionId,
+        exerciseId: trained.exerciseId,
+        orderIndex: exerciseIndex,
+        supersetGroupId: null,
+        routineExerciseId: null,
+        targetSets: null,
+        targetRepMin: null,
+        targetRepMax: null,
+        targetRir: null,
+        targetRestSeconds: null,
+        notes: null,
+        removedAt: null,
+      });
+
+      for (const [setIndex, seededSet] of trained.sets.entries()) {
+        await db.insert(loggedSet).values({
+          id: generateClientId(),
+          sessionExerciseId,
+          setIndex: setIndex + 1,
+          setType: seededSet.setType,
+          weightKg: seededSet.weightKg,
+          reps: seededSet.reps,
+          rir: null,
+          side: null,
+          completed: seededSet.completed,
+          parentSetId: null,
+          restTakenSeconds: null,
+          loggedAt: startedAt,
+          notes: null,
+        });
+      }
+    }
+  }
+
+  // Written directly rather than through any client mutation path — production code never writes
+  // either table (10-01); this stands in for what a live PowerSync pull would already have
+  // delivered by the time the screen reads it.
+  for (const row of input.rollup ?? []) {
+    await db.insert(muscleVolumeRollup).values({
+      id: generateClientId(),
+      userId: input.userId,
+      muscleGroupId: row.muscleGroupId,
+      localDate: row.localDate,
+      weightedVolumeKg: row.weightedVolumeKg.toFixed(3),
+      weightedSets: row.weightedSets.toFixed(3),
+      setCount: row.setCount,
+      serverSeq: 1,
+    });
+  }
+
+  if (input.watermark) {
+    await db.insert(analyticsWatermark).values({
+      id: generateClientId(),
+      userId: input.userId,
+      computedThroughDate: input.watermark.computedThroughDate,
+      serverSeq: 1,
+    });
   }
 }

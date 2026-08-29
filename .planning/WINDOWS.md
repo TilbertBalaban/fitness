@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 129
+open_count: 134
 waived_count: 4
 fixed_count: 28
-total_count: 161
-last_updated: 2026-08-29T15:39:49.312Z
+total_count: 166
+last_updated: 2026-08-29T17:11:40.245Z
 ---
 
 # Broken Windows Ledger
@@ -176,6 +176,11 @@ last_updated: 2026-08-29T15:39:49.312Z
 | 162 | 09 | deviation | apps/mobile/components/WeeklyProgressCard.tsx |  | Progress tracks originally carried accessibilityValue, which react-native-web 0.21 no longer maps, so each track rendered role=progressbar with an aria-label but no aria-valuemin/max/now — silent to a screen reader on web while the prop-level unit test stayed green. Fixed to the aria-* spelling (accepted by React Native since 0.71) so one set of props serves both targets. Caught only because 09-04's spec was executed rather than authored. | fixed |  | 2026-08-29T11:39:29.402Z | 2026-08-29T11:39:41.680Z |
 | 163 | 10 | deviation | apps/api/src/db/schema/records.ts |  | personal_record.logged_set_id has no onDelete cascade/set-null; deleting a logged_set or workout_session that a server-reconciled PR row references now hard-fails with an FK violation (10-02 populates this column with real data for the first time). Needs a schema decision (cascade vs set-null) in a follow-up plan; 10-02's own e2e fixtures route around it with countsTowardRecords-excluded set types rather than touching the forbidden schema file. | open |  | 2026-08-29T15:39:49.312Z |  |
 | 164 | 10 | deviation | apps/mobile/lib/db/muscle-volume-query.ts |  | Known residual (planner-flagged): an offline EDIT of an already-synced session dated on or before the analytics_watermark shows its pre-edit contribution until the edit reaches the server — neither the strict-greater-than date clause nor the null-owner clause overlays it. Self-corrects on next sync; never fabricates a number. Follow-up if it ever matters: derive the overlay set from PowerSync's pending crud queue instead of a date comparison. | open |  | 2026-08-29T15:29:04.201Z |  |
+| 165 | 10 | unrun-verify | apps/mobile/components/MuscleHeatmap.tsx |  | Muscle Map native (iOS/Android) rendering unobservable on this machine (no Xcode, no Android SDK) — both react-native-svg figures, the window switch and the drill-down sheet are proven on web only via the executed Playwright durability spec. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-29T17:08:21.035Z |  |
+| 166 | 10 | unrun-verify | apps/mobile/components/MuscleHeatmap.tsx |  | Subjective visual review of the intensity scale and the untrained-versus-lowest-real-intensity distinction at maximum OS font scale — the categorical hue split (R22/D-10) is grep-enforced and unit-asserted, but whether it is legible, including for a colourblind reader, is human judgment. Deferred to ROADMAP Phase 999.2. | open |  | 2026-08-29T17:08:31.218Z |  |
+| 167 | 10 | unrun-verify | apps/mobile/app/muscle-map.tsx |  | Subjective visual review of the Training Volume disambiguation caption and the stale-rollup caption at maximum OS font scale — wrap-and-grow is grep-enforced, but whether the two captions read as informational rather than alarming is human judgment (R25). Deferred to ROADMAP Phase 999.2. | open |  | 2026-08-29T17:08:37.783Z |  |
+| 168 | 10 | deviation | apps/mobile/e2e/muscle-map.spec.ts |  | 10-07's executed browser evidence confirms the D-01 overlay's post-watermark clause and the null-owner backfill clause both render correctly end to end against a real @powersync/web database (muscle-map.spec.ts's overlay case: rollup + post-watermark session + pre-watermark null-owner session sum correctly, disclosed by count). It does not re-exercise the already-synced-session-edit residual recorded at WINDOWS #164 (a different case: an EDIT of a session whose user_id was already set before the edit) — that residual remains open and unchanged by this plan. | open |  | 2026-08-29T17:09:08.671Z |  |
+| 169 | 10 | unrun-verify | apps/api |  | 10-07's phase-level verification names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite could not be run in this worktree: drizzle-kit push fails with 'Either connection url or host, database are required for PostgreSQL database connection' because apps/api/.env is permission-restricted from this sandbox and carries no DATABASE_URL (same class of block as WINDOWS #47/#48). Confidence it is unaffected rests on file-scope reasoning (10-07 touches apps/mobile and .planning only, zero apps/api files across all three commits), not a fresh green run. | open |  | 2026-08-29T17:11:40.245Z |  |
 
 ````json
 [
@@ -2109,6 +2114,66 @@ last_updated: 2026-08-29T15:39:49.312Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-29T15:29:04.201Z",
+    "resolved_at": null
+  },
+  {
+    "id": 165,
+    "kind": "unrun-verify",
+    "phase": "10",
+    "file": "apps/mobile/components/MuscleHeatmap.tsx",
+    "line": null,
+    "description": "Muscle Map native (iOS/Android) rendering unobservable on this machine (no Xcode, no Android SDK) — both react-native-svg figures, the window switch and the drill-down sheet are proven on web only via the executed Playwright durability spec. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T17:08:21.035Z",
+    "resolved_at": null
+  },
+  {
+    "id": 166,
+    "kind": "unrun-verify",
+    "phase": "10",
+    "file": "apps/mobile/components/MuscleHeatmap.tsx",
+    "line": null,
+    "description": "Subjective visual review of the intensity scale and the untrained-versus-lowest-real-intensity distinction at maximum OS font scale — the categorical hue split (R22/D-10) is grep-enforced and unit-asserted, but whether it is legible, including for a colourblind reader, is human judgment. Deferred to ROADMAP Phase 999.2.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T17:08:31.218Z",
+    "resolved_at": null
+  },
+  {
+    "id": 167,
+    "kind": "unrun-verify",
+    "phase": "10",
+    "file": "apps/mobile/app/muscle-map.tsx",
+    "line": null,
+    "description": "Subjective visual review of the Training Volume disambiguation caption and the stale-rollup caption at maximum OS font scale — wrap-and-grow is grep-enforced, but whether the two captions read as informational rather than alarming is human judgment (R25). Deferred to ROADMAP Phase 999.2.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T17:08:37.783Z",
+    "resolved_at": null
+  },
+  {
+    "id": 168,
+    "kind": "deviation",
+    "phase": "10",
+    "file": "apps/mobile/e2e/muscle-map.spec.ts",
+    "line": null,
+    "description": "10-07's executed browser evidence confirms the D-01 overlay's post-watermark clause and the null-owner backfill clause both render correctly end to end against a real @powersync/web database (muscle-map.spec.ts's overlay case: rollup + post-watermark session + pre-watermark null-owner session sum correctly, disclosed by count). It does not re-exercise the already-synced-session-edit residual recorded at WINDOWS #164 (a different case: an EDIT of a session whose user_id was already set before the edit) — that residual remains open and unchanged by this plan.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T17:09:08.671Z",
+    "resolved_at": null
+  },
+  {
+    "id": 169,
+    "kind": "unrun-verify",
+    "phase": "10",
+    "file": "apps/api",
+    "line": null,
+    "description": "10-07's phase-level verification names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite could not be run in this worktree: drizzle-kit push fails with 'Either connection url or host, database are required for PostgreSQL database connection' because apps/api/.env is permission-restricted from this sandbox and carries no DATABASE_URL (same class of block as WINDOWS #47/#48). Confidence it is unaffected rests on file-scope reasoning (10-07 touches apps/mobile and .planning only, zero apps/api files across all three commits), not a fresh green run.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T17:11:40.245Z",
     "resolved_at": null
   }
 ]
