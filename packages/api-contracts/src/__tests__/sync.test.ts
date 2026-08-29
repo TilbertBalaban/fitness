@@ -18,10 +18,11 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('contains exactly workout_session, session_exercise, logged_set, personal_record, equipment_profile, exercise, user_exercise_preference, routine, routine_day, routine_exercise, user_preference, routine_cycle and routine_exercise_cycle_target in PUSH_APPLIED_TABLES', () => {
+  it('contains exactly workout_session, session_exercise, logged_set, personal_record, equipment_profile, exercise, user_exercise_preference, excluded_exercise, routine, routine_day, routine_exercise, user_preference, routine_cycle and routine_exercise_cycle_target in PUSH_APPLIED_TABLES', () => {
     expect([...PUSH_APPLIED_TABLES].sort()).toEqual(
       [
         'equipment_profile',
+        'excluded_exercise',
         'exercise',
         'logged_set',
         'personal_record',
