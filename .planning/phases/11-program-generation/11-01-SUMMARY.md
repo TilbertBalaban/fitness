@@ -222,6 +222,10 @@ None - no external service configuration required.
 - Exclusions are wired as an empty array with a comment naming 11-03 as the plan that supplies real ids — the candidate-pool exclusion filter itself is already implemented and tested.
 - No blockers. `apps/api`'s own test suite (e2e, requires a live Postgres) was not run in this worktree — out of scope for this plan's `<verification>` block, which names only `program-generator`/`plate-math`/`mobile` test runs and `pnpm -w typecheck` (which does exercise `apps/api`'s type surface, including its now-present `@fitness/program-generator` devDependency).
 
+## Self-Check: PASSED
+
+All key created files verified present on disk; all 5 commit hashes (9b7b1a1, 9021b04, 55e9a49, f3a5788, 54e6adc) verified present in git log.
+
 ---
 *Phase: 11-program-generation*
 *Completed: 2026-08-29*
