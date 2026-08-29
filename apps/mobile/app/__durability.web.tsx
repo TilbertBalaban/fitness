@@ -11,6 +11,7 @@ import ProgramsScreen from './(tabs)/programs';
 import ExercisePerformanceScreen from './exercise-performance';
 import RecordsScreen from './records';
 import HomeScreen from './(tabs)/index';
+import MuscleMapScreen from './muscle-map';
 import { SyncConnector } from '../lib/db/connector';
 import { loadEquipmentProfile, setActiveEquipmentProfile, type CreateEquipmentProfileInput } from '../lib/db/equipment-profiles';
 import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib/db/log-set';
@@ -82,6 +83,8 @@ import {
   type SeedTrainedWeekInput,
   seedTrendHistory,
   type SeedTrendHistoryInput,
+  seedMuscleMapHistory,
+  type SeedMuscleMapHistoryInput,
 } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
 import { SessionModeProvider } from '../lib/session/session-mode';
@@ -156,6 +159,10 @@ export default function DurabilityHarnessScreen() {
   // 09-05's History-tab mount — mutually exclusive with the others, same single-active-mount
   // convention.
   const [historyTrendHarness, setHistoryTrendHarness] = useState<{ db: TestWriteDb } | null>(null);
+  // 10-07's ANLY-04/ANLY-05 durability-evidence mount — mutually exclusive with the others, same
+  // single-active-mount convention. Carries only the db and a userId, matching the /muscle-map
+  // route's own {userId, db} override shape.
+  const [muscleMapHarness, setMuscleMapHarness] = useState<{ db: TestWriteDb; userId: string } | null>(null);
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -627,6 +634,25 @@ export default function DurabilityHarnessScreen() {
         await new Promise((resolve) => setTimeout(resolve, HARNESS_NAVIGATION_SETTLE_MS));
         router.back();
       },
+      // 10-07's ANLY-04/ANLY-05 e2e proof: seeds real muscle-map history (weighted mappings,
+      // synced and unsynced sessions, optional pre-synced rollup/watermark rows) through the
+      // shipped test-support helper, then mounts the real /muscle-map route against the same
+      // open() database via its own {userId, db} override — matching seedTrainedWeekAndOpenHome's
+      // seed-then-mount convention above.
+      async seedMuscleMapAndOpenMuscleMap(input: SeedMuscleMapHistoryInput) {
+        const db = requireOpenDb();
+        await seedMuscleMapHistory(db, { ...input, userId: WORKOUT_HARNESS_USER_ID });
+        setMuscleMapHarness({ db, userId: WORKOUT_HARNESS_USER_ID });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setProgramsHarness(null);
+        setPerformanceHarness(null);
+        setRecordsHarness(null);
+        setHomeHarness(null);
+        setHistoryTrendHarness(null);
+      },
     };
 
     setReady(true);
@@ -664,6 +690,7 @@ export default function DurabilityHarnessScreen() {
       {recordsHarness ? <RecordsScreen db={recordsHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
       {homeHarness ? <HomeScreen db={homeHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
       {historyTrendHarness ? <HistoryScreen db={historyTrendHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
+      {muscleMapHarness ? <MuscleMapScreen db={muscleMapHarness.db} userId={muscleMapHarness.userId} /> : null}
       <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>
   );
