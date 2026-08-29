@@ -6,3 +6,4 @@ export * from './chart-geometry';
 export * from './exercise-series';
 export * from './e1rm-display';
 export * from './bucketing';
+export * from './trend-series';
