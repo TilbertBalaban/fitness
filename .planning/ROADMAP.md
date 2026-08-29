@@ -488,7 +488,7 @@ Plans:
   4. User sees this week's progress against targets for muscles trained, sets, and exercises — available immediately after logging, before any sync
   5. Estimated 1RM figures are only shown where the underlying formula is actually valid for the rep range
 
-**Plans**: 1/6 plans executed
+**Plans**: 2/6 plans executed
 
 Plans:
 
@@ -498,7 +498,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 09-02-PLAN.md — Pure aggregation: rolling-window and trailing-bucket boundaries, the history trend series and its delta, and weekly achieved-versus-target
+- [x] 09-02-PLAN.md — Pure aggregation: rolling-window and trailing-bucket boundaries, the history trend series and its delta, and weekly achieved-versus-target
 - [ ] 09-03-PLAN.md — Records screen, record row, the History tab's Records link, and the two shipped Phase 5 corrections (per-metric PR badges, the e1RM display union)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -631,7 +631,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Gym Profiles & Plate Math | 8/8 | Complete    | 2026-08-28 |
 | 7. Advanced Set Types | 9/9 | Complete    | 2026-08-28 |
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
-| 9. Records & Client Analytics | 1/6 | In Progress|  |
+| 9. Records & Client Analytics | 2/6 | In Progress|  |
 | 10. Server Analytics & Reconciliation | 0/TBD | Not started | - |
 | 11. Program Generation | 0/TBD | Not started | - |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |

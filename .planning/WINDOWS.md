@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 123
+open_count: 124
 waived_count: 4
 fixed_count: 26
-total_count: 153
-last_updated: 2026-08-29T08:33:05.293Z
+total_count: 154
+last_updated: 2026-08-29T08:48:50.588Z
 ---
 
 # Broken Windows Ledger
@@ -168,6 +168,7 @@ last_updated: 2026-08-29T08:33:05.293Z
 | 154 | 08 | unrun-verify | packages/progression-engine/src/index.ts |  | Both parity runners (package + api-side spec.ts + mobile-side test.ts) execute under Node/V8, never on-device Hermes, so a Hermes-specific arithmetic divergence would not be caught by any of the three (08-RESEARCH.md Assumption A4); this machine has no Xcode or Android SDK to run a real RN Hermes build (standing project limitation). | open |  | 2026-08-28T22:48:47.103Z |  |
 | 155 | 09 | unrun-verify | apps/mobile/components/TrendChart.tsx |  | TrendChart renders on iOS/Android is unverified: this machine has neither Xcode nor the Android SDK, so react-native-svg's native build was never exercised. Web rendering is proven by e2e/exercise-performance.spec.ts. Verify at ROADMAP Phase 999.1. | open |  | 2026-08-29T08:33:00.632Z |  |
 | 156 | 09 | unrun-verify | apps/mobile/app/exercise-performance.tsx |  | Subjective visual review of the chart, its two-label axis row and the ANLY-10 caption at the maximum OS font scale is unobservable in automation. R16 (no text inside the SVG) is enforced by a grep gate and the axis row wraps, but legibility itself needs a human. Verify at ROADMAP Phase 999.2. | open |  | 2026-08-29T08:33:05.293Z |  |
+| 157 | 09 | deviation | packages/analytics-engine/src/trend-series.ts |  | trend-series: a bodyweight-only week qualifies with volume 0 rather than being omitted — the plan asserted a qualifying bucket is never zero on any metric; zero external load is a measured total, and omitting the bucket would erase a week the lifter really trained. The delta guards the zero denominator with not-comparable. | open |  | 2026-08-29T08:48:50.588Z |  |
 
 ````json
 [
@@ -2005,6 +2006,18 @@ last_updated: 2026-08-29T08:33:05.293Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-29T08:33:05.293Z",
+    "resolved_at": null
+  },
+  {
+    "id": 157,
+    "kind": "deviation",
+    "phase": "09",
+    "file": "packages/analytics-engine/src/trend-series.ts",
+    "line": null,
+    "description": "trend-series: a bodyweight-only week qualifies with volume 0 rather than being omitted — the plan asserted a qualifying bucket is never zero on any metric; zero external load is a measured total, and omitting the bucket would erase a week the lifter really trained. The delta guards the zero denominator with not-comparable.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T08:48:50.588Z",
     "resolved_at": null
   }
 ]
