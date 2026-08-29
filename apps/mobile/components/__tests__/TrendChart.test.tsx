@@ -1,6 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Text } from 'react-native';
-import { Circle, Path } from 'react-native-svg';
 import {
   MAX_POINT_MARKERS,
   MIN_CHART_WIDTH,
@@ -27,6 +26,28 @@ function findByType(node: ReactNode, type: unknown, found: AnyElement[] = []): A
   if (children !== undefined) findByType(children, type, found);
   return found;
 }
+
+// Shapes are matched by their SVG geometry props rather than by importing react-native-svg here:
+// TrendChart.tsx must remain the app's ONLY importer of that library, and a test import would
+// defeat the gate that proves it.
+function findAll(node: ReactNode, matches: (element: AnyElement) => boolean, found: AnyElement[] = []): AnyElement[] {
+  if (node === null || node === undefined || typeof node === 'boolean' || typeof node === 'string' || typeof node === 'number') {
+    return found;
+  }
+  if (Array.isArray(node)) {
+    for (const child of node) findAll(child, matches, found);
+    return found;
+  }
+  const element = node as AnyElement;
+  if (matches(element)) found.push(element);
+  const children = element.props?.children as ReactNode;
+  if (children !== undefined) findAll(children, matches, found);
+  return found;
+}
+
+const isCircle = (element: AnyElement) => element.props?.cx !== undefined;
+const isShape = (element: AnyElement) =>
+  element.props?.cx !== undefined || element.props?.d !== undefined || element.props?.x1 !== undefined;
 
 const COLORS = { accent: 'rgb(37, 99, 235)', foregroundMuted: 'rgb(113, 113, 122)', surface: 'rgb(244, 244, 245)' };
 
@@ -78,11 +99,10 @@ describe('TrendChart', () => {
 
   it('announces itself once as a sentence and hides every shape from assistive technology', () => {
     const result = TrendChart(baseProps());
-    const paths = findByType(result, Path);
-    const circles = findByType(result, Circle);
+    const shapes = findAll(result, isShape);
 
-    expect(paths.length).toBeGreaterThan(0);
-    for (const shape of [...paths, ...circles]) {
+    expect(shapes.length).toBeGreaterThan(0);
+    for (const shape of shapes) {
       expect(shape.props.importantForAccessibility).toBe('no-hide-descendants');
       expect(shape.props.accessibilityElementsHidden).toBe(true);
     }
@@ -99,7 +119,7 @@ describe('TrendChart', () => {
 
   it('renders one circle and one fact line for a single point, with no value-range caption', () => {
     const result = TrendChart(baseProps({ points: [point(0, 100)] }));
-    const circles = findByType(result, Circle);
+    const circles = findAll(result, isCircle);
     const texts = findByType(result, Text).map((element) => element.props.children);
 
     expect(circles).toHaveLength(1);
@@ -110,13 +130,13 @@ describe('TrendChart', () => {
     const many = Array.from({ length: MAX_POINT_MARKERS + 5 }, (_, index) => point(index, 100 + index));
     const result = TrendChart(baseProps({ points: many }));
 
-    expect(findByType(result, Circle)).toHaveLength(1);
+    expect(findAll(result, isCircle)).toHaveLength(1);
   });
 
   it('renders one marker per point at or below MAX_POINT_MARKERS', () => {
     const some = Array.from({ length: MAX_POINT_MARKERS }, (_, index) => point(index, 100 + index));
     const result = TrendChart(baseProps({ points: some }));
 
-    expect(findByType(result, Circle)).toHaveLength(MAX_POINT_MARKERS);
+    expect(findAll(result, isCircle)).toHaveLength(MAX_POINT_MARKERS);
   });
 });

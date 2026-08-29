@@ -1,3 +1,9 @@
+// The shipped exercise-detail-screen.test.ts convention: both module chains reach ESM dists Jest
+// cannot parse (@powersync/shared-internals, better-auth/react), so both are mocked before the
+// screen module is imported. WINDOWS #22/#33.
+jest.mock('../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
+jest.mock('../../lib/auth-client', () => ({ authClient: { useSession: jest.fn(() => ({ data: null })) } }));
+
 import { deriveExercisePerformanceState } from '../exercise-performance';
 
 describe('deriveExercisePerformanceState', () => {
