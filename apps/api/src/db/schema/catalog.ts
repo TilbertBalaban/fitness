@@ -116,6 +116,32 @@ export const userExercisePreference = pgTable(
   ],
 );
 
+// Per-user fact that this exercise will never be trained (GEN-03/D-10) — deliberately a strict
+// subset of userExercisePreference's shape: no archivedAt and no neverSuggest, because
+// un-excluding is a hard delete rather than a restore, and there is no archived-but-excluded state.
+export const excludedExercise = pgTable(
+  'excluded_exercise',
+  {
+    // Single TEXT PRIMARY KEY, not a composite key on (user_id, exercise_id) — same sync-path
+    // constraint as userExercisePreference above.
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    exerciseId: text('exercise_id')
+      .notNull()
+      .references(() => exercise.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    serverSeq: bigint('server_seq', { mode: 'number' })
+      .notNull()
+      .default(sql`nextval('sync_seq')`),
+  },
+  (table) => [
+    unique('excluded_exercise_user_exercise_unique').on(table.userId, table.exerciseId),
+    index('excluded_exercise_userId_idx').on(table.userId),
+  ],
+);
+
 export const muscleGroupRelations = relations(muscleGroup, ({ many }) => ({
   exerciseMappings: many(exerciseMuscleMapping),
 }));
@@ -125,6 +151,7 @@ export const exerciseRelations = relations(exercise, ({ one, many }) => ({
   variationOf: one(exercise, { fields: [exercise.variationOfId], references: [exercise.id] }),
   muscleMappings: many(exerciseMuscleMapping),
   userPreferences: many(userExercisePreference),
+  excludedByUsers: many(excludedExercise),
 }));
 
 export const exerciseMuscleMappingRelations = relations(exerciseMuscleMapping, ({ one }) => ({
@@ -138,4 +165,9 @@ export const exerciseMuscleMappingRelations = relations(exerciseMuscleMapping, (
 export const userExercisePreferenceRelations = relations(userExercisePreference, ({ one }) => ({
   user: one(user, { fields: [userExercisePreference.userId], references: [user.id] }),
   exercise: one(exercise, { fields: [userExercisePreference.exerciseId], references: [exercise.id] }),
+}));
+
+export const excludedExerciseRelations = relations(excludedExercise, ({ one }) => ({
+  user: one(user, { fields: [excludedExercise.userId], references: [user.id] }),
+  exercise: one(exercise, { fields: [excludedExercise.exerciseId], references: [exercise.id] }),
 }));

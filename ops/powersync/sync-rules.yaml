@@ -14,6 +14,9 @@
 # user_exercise_preference is per-user state ABOUT any exercise (seeded or custom), not the
 # seeded taxonomy itself, so it belongs in this stream like every other per-user table.
 #
+# excluded_exercise (11-02, GEN-03) is likewise per-user state about any exercise, seeded or
+# custom — the same reasoning as user_exercise_preference above, so it belongs in this stream too.
+#
 # routine_exercise_cycle_target (04-07) hangs off TWO parents (routine_exercise and routine_cycle)
 # that must independently resolve to the same routine before a push applies it — this pull query
 # walks only the exercise chain (both chains reach the same routine for a valid row), because the
@@ -55,3 +58,4 @@ streams:
       # progress_photo established that a pull-side registration can stand alone.
       - SELECT * FROM muscle_volume_rollup WHERE user_id = auth.user_id()
       - SELECT * FROM analytics_watermark WHERE user_id = auth.user_id()
+      - SELECT * FROM excluded_exercise WHERE user_id = auth.user_id()

@@ -23,6 +23,7 @@ export const SYNCED_TABLES = [
   'user_exercise_preference',
   'routine_cycle',
   'routine_exercise_cycle_target',
+  'excluded_exercise',
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -49,7 +50,10 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // path into Phase 5 so a PR logged on the gym floor survives to Postgres the same session it is
 // achieved; Phase 9 keeps browsing, retrospective reconciliation and cross-device authority.
 // 'equipment_profile' (06-01) is a sixth singleton root — a gym profile owns no synced children and
-// is never a sync parent, the same shape personal_record carries.
+// is never a sync parent, the same shape personal_record carries. 'excluded_exercise' (11-02) is a
+// seventh singleton root, alongside exercise/user_exercise_preference/user_preference/
+// personal_record/equipment_profile — a user's exclusion of an exercise owns no synced children and
+// is never referenced as a parent by another table's op.
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -64,6 +68,7 @@ export const PUSH_APPLIED_TABLES = [
   'routine_exercise_cycle_target',
   'personal_record',
   'equipment_profile',
+  'excluded_exercise',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 

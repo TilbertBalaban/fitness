@@ -29,6 +29,7 @@ import {
   loggedSet,
   exercise,
   userExercisePreference,
+  excludedExercise,
   routine,
   routineDay,
   routineExercise,
@@ -50,6 +51,7 @@ import {
 } from './conflict-log';
 import {
   EQUIPMENT_PROFILE_PATCH_FIELDS,
+  EXCLUDED_EXERCISE_PATCH_FIELDS,
   EXERCISE_PATCH_FIELDS,
   LOGGED_SET_PATCH_FIELDS,
   patchAwareSet,
@@ -64,6 +66,7 @@ import {
   USER_PREFERENCE_PATCH_FIELDS,
   WORKOUT_SESSION_PATCH_FIELDS,
   type EquipmentProfileValues,
+  type ExcludedExerciseValues,
   type ExerciseValues,
   type LoggedSetValues,
   type PersonalRecordValues,
@@ -92,6 +95,7 @@ const TABLE_MAP = {
   routine_exercise_cycle_target: routineExerciseCycleTarget,
   personal_record: personalRecord,
   equipment_profile: equipmentProfile,
+  excluded_exercise: excludedExercise,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -104,7 +108,9 @@ function isMappedTable(type: string): type is MappedTable {
 // past logged sets intact and correctly attributed. Checked ahead of isMappedTable so this fires
 // even for tables SYNCED_TABLES recognizes but TABLE_MAP does not (T-02-05). Deliberately does
 // NOT include user_exercise_preference — clearing a preference by deleting its row is legitimate,
-// unlike exercise/routine which carry logged history other tables reference by id.
+// unlike exercise/routine which carry logged history other tables reference by id. Deliberately
+// does NOT include excluded_exercise either, for the same reason: un-excluding an exercise by
+// deleting its row is the legitimate un-exclude action, not a loss of history.
 const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 
 // exercise, user_exercise_preference and user_preference are singleton aggregate roots: each is
@@ -117,12 +123,15 @@ const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 // equipment_profile (06-01) is a sixth: a gym profile owns no synced children and is never a sync
 // parent, the same shape as personal_record — unlike exercise its userId column is NOT NULL, so it
 // follows personal_record's ownership branch, never exercise's nullable-owner special case.
+// excluded_exercise (11-02) is a seventh: a user's exclusion of an exercise owns no synced children
+// and is never referenced as a parent, the same shape as user_exercise_preference.
 const SINGLETON_ROOT_TYPES = new Set<string>([
   'exercise',
   'user_exercise_preference',
   'user_preference',
   'personal_record',
   'equipment_profile',
+  'excluded_exercise',
 ]);
 
 // An aggregate root owns synced children and is looked up in its own table; a singleton root
@@ -144,6 +153,7 @@ const ROOT_TABLE_BY_TYPE = {
   user_preference: userPreference,
   personal_record: personalRecord,
   equipment_profile: equipmentProfile,
+  excluded_exercise: excludedExercise,
 } as const;
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
@@ -204,6 +214,7 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   routine_exercise_cycle_target: 3,
   personal_record: 0,
   equipment_profile: 0,
+  excluded_exercise: 0,
 };
 
 const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -291,6 +302,11 @@ interface UserExercisePreferenceOpData {
   archived_at?: string | null;
   never_suggest?: boolean;
   updated_at?: string;
+}
+
+interface ExcludedExerciseOpData {
+  exercise_id?: string;
+  created_at?: string;
 }
 
 interface RoutineOpData {
@@ -521,6 +537,25 @@ function toUserExercisePreferenceValues(
     archivedAt: d.archived_at ? new Date(d.archived_at) : null,
     neverSuggest: d.never_suggest ?? false,
     updatedAt: d.updated_at ? new Date(d.updated_at) : new Date(),
+  };
+}
+
+// userId always comes from the authenticated session argument, never from data — the same
+// ownership rule toUserExercisePreferenceValues enforces. storedExerciseId wins over whatever the
+// op claims for the same identity reason: an exclusion's target exercise is identity, so an op
+// naming a different exercise_id is trying to re-target an existing row rather than edit it.
+function toExcludedExerciseValues(
+  id: string,
+  userId: string,
+  data: Record<string, unknown> | null | undefined,
+  storedExerciseId?: string,
+): ExcludedExerciseValues {
+  const d = (data ?? {}) as ExcludedExerciseOpData;
+  return {
+    id,
+    userId,
+    exerciseId: storedExerciseId ?? d.exercise_id ?? '',
+    createdAt: d.created_at ? new Date(d.created_at) : new Date(),
   };
 }
 
@@ -921,6 +956,12 @@ export function hasInvalidField(op: SyncCrudOp): boolean {
     const d = data as UserExercisePreferenceOpData;
     if (typeof d.exercise_id !== 'string' || d.exercise_id.length === 0) return true;
     if (d.never_suggest !== undefined && typeof d.never_suggest !== 'boolean') return true;
+    return false;
+  }
+
+  if (op.type === 'excluded_exercise') {
+    const d = data as ExcludedExerciseOpData;
+    if (typeof d.exercise_id !== 'string' || d.exercise_id.length === 0) return true;
     return false;
   }
 
@@ -1515,6 +1556,7 @@ export class SyncService {
     const userExercisePreferenceRootIds = rootIdsByRootType.get('user_exercise_preference') ?? [];
     const personalRecordRootIds = rootIdsByRootType.get('personal_record') ?? [];
     const equipmentProfileRootIds = rootIdsByRootType.get('equipment_profile') ?? [];
+    const excludedExerciseRootIds = rootIdsByRootType.get('excluded_exercise') ?? [];
 
     const existingRoots = workoutSessionRootIds.length
       ? await this.db
@@ -1558,6 +1600,25 @@ export class SyncService {
     const dbExerciseIdByUserExercisePreferenceId = new Map(
       existingUserExercisePreferenceRoots.map((row) => [row.id, row.exerciseId]),
     );
+    // exerciseId is read alongside userId for the same reason as user_exercise_preference above:
+    // an exclusion's target exercise is identity, so re-pointing it at a different exercise is a
+    // different row, not an edit.
+    const existingExcludedExerciseRoots = excludedExerciseRootIds.length
+      ? await this.db
+          .select({
+            id: excludedExercise.id,
+            userId: excludedExercise.userId,
+            exerciseId: excludedExercise.exerciseId,
+          })
+          .from(excludedExercise)
+          .where(inArray(excludedExercise.id, excludedExerciseRootIds))
+      : [];
+    // Database-wins-over-client-claimed, the same precedence as user_exercise_preference —
+    // EXCLUDED_EXERCISE_PATCH_FIELDS maps exerciseId to null, which means "written
+    // unconditionally", so without this a PATCH could move an exclusion onto another exercise.
+    const dbExerciseIdByExcludedExerciseId = new Map(
+      existingExcludedExerciseRoots.map((row) => [row.id, row.exerciseId]),
+    );
     // personal_record.userId is NOT NULL (unlike exercise.userId), so this table follows the
     // workout_session/routine ownership shape, not exercise's nullable-owner special case — a
     // personal_record row is either owned by someone or does not exist yet, never owned by no one.
@@ -1593,6 +1654,10 @@ export class SyncService {
       ]),
       ...existingEquipmentProfileRoots.map((row): [string, string | null] => [
         aggregateKey('equipment_profile', row.id),
+        row.userId,
+      ]),
+      ...existingExcludedExerciseRoots.map((row): [string, string | null] => [
+        aggregateKey('excluded_exercise', row.id),
         row.userId,
       ]),
     ]);
@@ -1862,9 +1927,11 @@ export class SyncService {
                           op.data,
                           dbExerciseIdByUserExercisePreferenceId.get(op.id),
                         )
-                      : op.type === 'routine'
-                        ? toRoutineValues(op.id, userId, op.data)
-                        : op.type === 'routine_day'
+                      : op.type === 'excluded_exercise'
+                        ? toExcludedExerciseValues(op.id, userId, op.data, dbExerciseIdByExcludedExerciseId.get(op.id))
+                        : op.type === 'routine'
+                          ? toRoutineValues(op.id, userId, op.data)
+                          : op.type === 'routine_day'
                           ? toRoutineDayValues(op.id, resolveRoutineIdForRoutineDay(op.id) ?? root, op.data)
                           : op.type === 'routine_exercise'
                             ? toRoutineExerciseValues(op.id, resolveRoutineDayIdForRoutineExercise(op.id) ?? '', op.data)
@@ -1944,6 +2011,22 @@ export class SyncService {
                 },
               })
               .returning({ serverSeq: userExercisePreference.serverSeq });
+            const seqValue = BigInt(serverSeq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else if (op.type === 'excluded_exercise') {
+            const nextSeq = sql`nextval('sync_seq')`;
+            const excludedExerciseValues = values as ExcludedExerciseValues;
+            const [{ serverSeq }] = await tx
+              .insert(excludedExercise)
+              .values({ ...excludedExerciseValues, serverSeq: nextSeq })
+              .onConflictDoUpdate({
+                target: excludedExercise.id,
+                set: {
+                  ...patchAwareSet(op, excludedExerciseValues, EXCLUDED_EXERCISE_PATCH_FIELDS),
+                  serverSeq: nextSeq,
+                },
+              })
+              .returning({ serverSeq: excludedExercise.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           } else if (op.type === 'routine_day') {

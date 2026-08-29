@@ -7,6 +7,8 @@ import {
   exerciseMuscleMapping,
   userExercisePreference,
   userExercisePreferenceRelations,
+  excludedExercise,
+  excludedExerciseRelations,
 } from './schema/catalog';
 import { equipmentProfile } from './schema/equipment';
 import { routine, routineCycle, routineDay, routineExercise, routineExerciseCycleTarget } from './schema/program';
@@ -26,6 +28,8 @@ export {
   exerciseMuscleMapping,
   userExercisePreference,
   userExercisePreferenceRelations,
+  excludedExercise,
+  excludedExerciseRelations,
   equipmentProfile,
   routine,
   routineDay,
@@ -122,6 +126,7 @@ export const userRelations = relations(user, ({ many, one }) => ({
   equipmentProfiles: many(equipmentProfile),
   exercises: many(exercise),
   exercisePreferences: many(userExercisePreference),
+  excludedExercises: many(excludedExercise),
   personalRecords: many(personalRecord),
   bodyMetrics: many(bodyMetric),
   progressPhotos: many(progressPhoto),
@@ -150,6 +155,7 @@ export const schema = {
   exercise,
   exerciseMuscleMapping,
   userExercisePreference,
+  excludedExercise,
   equipmentProfile,
   routine,
   routineDay,
