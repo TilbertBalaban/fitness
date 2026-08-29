@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 11
 current_phase_name: Program Generation
 status: planning
-stopped_at: Completed 09-06-PLAN.md
-last_updated: "2026-08-29T18:03:24.221Z"
+stopped_at: Phase 11 context gathered
+last_updated: "2026-08-29T19:00:00.000Z"
 last_activity: 2026-08-29
-last_activity_desc: Phase 09 all six plans complete and merged; 78/78 durability green
+last_activity_desc: Phase 11 CONTEXT.md written (22 decisions, autonomous discuss)
 progress:
   total_phases: 10
   completed_phases: 10
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-10)
 
 **Core value:** You can walk into a gym with no signal, log every set without friction, and be told what to lift next time.
-**Current focus:** Phase 10 — server-analytics-reconciliation
+**Current focus:** Phase 11 — program-generation
 
 ## Current Position
 
 Phase: 11 — Program Generation
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-29 — Phase 10 complete, transitioned to Phase 11
+Status: Context gathered, ready to plan
+Last activity: 2026-08-29 — Phase 11 CONTEXT.md written
 
 Progress: [██████████] 96%
 
@@ -114,7 +114,7 @@ None yet.
 
 - Phase 2 research flag: PowerSync self-hosting requires its own MongoDB instance for internal state — spike whether that ops burden is acceptable solo, or price PowerSync Cloud. Fallback is WatermelonDB (needs a New-Architecture compatibility spike of its own).
 - Phase 8 research flag: MacroFactor's below-target thresholds and deload trigger are not publicly documented — our own design decision, informed by RP volume landmarks and SBS autoregulation.
-- Phase 11 research flag: Smart Generation's volume-landmark math is not publicly documented.
+- Phase 11 research flag: Smart Generation's volume-landmark math is not publicly documented — CLOSED by 11-CONTEXT D-15 (project authors its own documented landmark table).
 - Phase 5 research flag: `expo-notifications` background delivery reliability needs real-device verification, not doc reading.
 - Better Auth's Expo client plugin package name should be re-verified against current docs before first install.
 - 01-06: three <human-check> blocks and three long-text backstops unrun — no simulator/device, no Playwright browsers, Mailpit port 1025 unreachable. Filed in .planning/WINDOWS.md as unrun-verify.
@@ -138,5 +138,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-08-29T09:06:48.982Z
-Stopped at: Completed 09-06-PLAN.md
+Stopped at: Phase 11 context gathered
 Resume file: None
