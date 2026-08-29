@@ -146,6 +146,7 @@ export interface HistoryScreenViewProps {
   onEndReached: () => void;
   onAddPastWorkout: () => void;
   onRecords: () => void;
+  onMuscleMap: () => void;
   onPendingDateChange: (date: Date, timezone: string) => void;
   onConfirmAddPastDate: () => void;
   onCancelAddPast: () => void;
@@ -223,6 +224,7 @@ export function HistoryScreenView({
   onEndReached,
   onAddPastWorkout,
   onRecords,
+  onMuscleMap,
   onPendingDateChange,
   onConfirmAddPastDate,
   onCancelAddPast,
@@ -266,6 +268,14 @@ export function HistoryScreenView({
         >
           <Text className="text-body font-normal text-accent">Records</Text>
         </Pressable>
+        <Pressable
+          onPress={onMuscleMap}
+          accessibilityRole="button"
+          accessibilityLabel="Muscle Map"
+          style={{ minHeight: 48, justifyContent: 'center' }}
+        >
+          <Text className="text-body font-normal text-accent">Muscle Map</Text>
+        </Pressable>
 
         {renderAddPastWorkoutModals({ addPastStep, addPastLocalDate, onPendingDateChange, onConfirmAddPastDate, onCancelAddPast, onConfirmAddPastExercises })}
       </View>
@@ -276,15 +286,25 @@ export function HistoryScreenView({
 
   return (
     <View className="flex-1 bg-background">
-      <View className="flex-row justify-between px-lg pt-md">
-        <Pressable
-          onPress={onRecords}
-          accessibilityRole="button"
-          accessibilityLabel="Records"
-          style={{ minHeight: 48, justifyContent: 'center' }}
-        >
-          <Text className="text-body font-normal text-accent">Records</Text>
-        </Pressable>
+      <View className="flex-row flex-wrap items-center justify-between gap-sm px-lg pt-md">
+        <View className="flex-row flex-wrap items-center gap-md">
+          <Pressable
+            onPress={onRecords}
+            accessibilityRole="button"
+            accessibilityLabel="Records"
+            style={{ minHeight: 48, justifyContent: 'center' }}
+          >
+            <Text className="text-body font-normal text-accent">Records</Text>
+          </Pressable>
+          <Pressable
+            onPress={onMuscleMap}
+            accessibilityRole="button"
+            accessibilityLabel="Muscle Map"
+            style={{ minHeight: 48, justifyContent: 'center' }}
+          >
+            <Text className="text-body font-normal text-accent">Muscle Map</Text>
+          </Pressable>
+        </View>
         <Pressable
           onPress={onAddPastWorkout}
           accessibilityRole="button"
@@ -566,6 +586,7 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
     onEndReached: handleEndReached,
     onAddPastWorkout: handleAddPastWorkout,
     onRecords: () => router.push('/records'),
+    onMuscleMap: () => router.push('/muscle-map'),
     onPendingDateChange: handlePendingDateChange,
     onConfirmAddPastDate: handleConfirmAddPastDate,
     onCancelAddPast: handleCancelAddPast,
