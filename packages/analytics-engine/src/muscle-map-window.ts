@@ -98,7 +98,7 @@ export function topTrainedPoint(points: MuscleMapPoint[], side: MuscleFigureSide
   for (const point of points) {
     if (point.side !== side) continue;
     if (point.relativeIntensity === null) continue;
-    if (best === null || point.relativeIntensity > (best.relativeIntensity ?? -Infinity)) best = point;
+    if (best === null || point.relativeIntensity > best.relativeIntensity!) best = point;
   }
   return best;
 }
