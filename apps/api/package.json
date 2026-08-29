@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@better-auth/expo": "1.6.26",
+    "@fitness/analytics-engine": "workspace:*",
     "@fitness/api-contracts": "workspace:*",
+    "@fitness/pr-rules": "workspace:*",
     "@nestjs/common": "11.1.29",
     "@nestjs/core": "11.1.29",
     "@nestjs/platform-express": "11.1.29",

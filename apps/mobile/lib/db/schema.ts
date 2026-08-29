@@ -277,6 +277,28 @@ export const userPreference = sqliteTable('user_preference', {
   serverSeq: integer('server_seq'),
 });
 
+// Both tables are server-written only (10-01, D-09) — the client never inserts or updates either
+// one, it only mirrors what the user_data sync stream delivers. weighted_volume_kg and
+// weighted_sets are text for the same reason every other numeric mirror in this file is: Drizzle
+// surfaces Postgres numeric as a string, and this column never becomes a binary float here either.
+export const muscleVolumeRollup = sqliteTable('muscle_volume_rollup', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  muscleGroupId: text('muscle_group_id').notNull(),
+  localDate: text('local_date').notNull(),
+  weightedVolumeKg: text('weighted_volume_kg').notNull(),
+  weightedSets: text('weighted_sets').notNull(),
+  setCount: integer('set_count').notNull(),
+  serverSeq: integer('server_seq'),
+});
+
+export const analyticsWatermark = sqliteTable('analytics_watermark', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  computedThroughDate: text('computed_through_date').notNull(),
+  serverSeq: integer('server_seq'),
+});
+
 export const drizzleSchema = {
   workoutSession,
   sessionExercise,
@@ -297,4 +319,6 @@ export const drizzleSchema = {
   seededExercise,
   exerciseMuscleMapping,
   catalogMeta,
+  muscleVolumeRollup,
+  analyticsWatermark,
 };

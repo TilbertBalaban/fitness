@@ -13,6 +13,7 @@ import { routine, routineCycle, routineDay, routineExercise, routineExerciseCycl
 import { personalRecord, bodyMetric, progressPhoto } from './schema/records';
 import { userPreference } from './schema/preference';
 import { syncConflictLog, syncTombstone } from './schema/sync';
+import { muscleVolumeRollup, analyticsWatermark } from './schema/analytics';
 
 export {
   workoutSession,
@@ -37,6 +38,8 @@ export {
   userPreference,
   syncConflictLog,
   syncTombstone,
+  muscleVolumeRollup,
+  analyticsWatermark,
 };
 
 export const user = pgTable('user', {
@@ -157,4 +160,6 @@ export const schema = {
   userPreference,
   syncConflictLog,
   syncTombstone,
+  muscleVolumeRollup,
+  analyticsWatermark,
 };

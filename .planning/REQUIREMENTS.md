@@ -114,12 +114,12 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [x] **ANLY-01**: User's PRs are detected automatically across heaviest weight, best estimated 1RM, most reps at a weight, and best set volume
 - [x] **ANLY-02**: User sees PRs achieved highlighted in the workout summary
 - [x] **ANLY-03**: User can browse a recent-records list and switch between PR metrics
-- [ ] **ANLY-04**: User can see set volume per muscle group on a front/back body-map heatmap over a selectable window (1 week / 1 month / 3 months)
+- [x] **ANLY-04**: User can see set volume per muscle group on a front/back body-map heatmap over a selectable window (1 week / 1 month / 3 months)
 - [ ] **ANLY-05**: User can drill into a muscle group to see which exercises contributed its sets
 - [x] **ANLY-06**: User can view a single exercise's performance over time across selectable metrics and time ranges
 - [x] **ANLY-07**: User can browse their full workout history with trends
 - [x] **ANLY-08**: User can see this week's progress against targets for muscles trained, sets, and exercises
-- [ ] **ANLY-09**: User's PRs and volume figures are recomputed correctly when they edit a past workout
+- [x] **ANLY-09**: User's PRs and volume figures are recomputed correctly when they edit a past workout
 - [x] **ANLY-10**: User's estimated 1RM figures are only presented where the underlying formula is valid for the rep range
 
 ### Program Generation
@@ -276,9 +276,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ANLY-07 | Phase 9 — Records & Client Analytics | Complete |
 | ANLY-08 | Phase 9 — Records & Client Analytics | Complete |
 | ANLY-10 | Phase 9 — Records & Client Analytics | Complete |
-| ANLY-04 | Phase 10 — Server Analytics & Reconciliation | Pending |
+| ANLY-04 | Phase 10 — Server Analytics & Reconciliation | Complete |
 | ANLY-05 | Phase 10 — Server Analytics & Reconciliation | Pending |
-| ANLY-09 | Phase 10 — Server Analytics & Reconciliation | Pending |
+| ANLY-09 | Phase 10 — Server Analytics & Reconciliation | Complete |
 | GEN-01 | Phase 11 — Program Generation | Pending |
 | GEN-02 | Phase 11 — Program Generation | Pending |
 | GEN-03 | Phase 11 — Program Generation | Pending |
