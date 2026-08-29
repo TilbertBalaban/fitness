@@ -560,13 +560,13 @@ Plans:
   4. Generated programs arrive pre-periodized with per-cycle set, rep, and RIR targets
   5. A generated program is editable exactly like a hand-built one and progresses through the same engine
 
-**Plans**: 6 plans
+**Plans**: 2/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 11-01-PLAN.md — Tracer: answers become a generated tree and real program rows, plus the periodization dials and the landmark provenance doc (wave 1)
-- [ ] 11-02-PLAN.md — The `excluded_exercise` synced table, its seven sync touchpoints, the schema push, and the live ownership/validation proof (wave 1)
+- [x] 11-01-PLAN.md — Tracer: answers become a generated tree and real program rows, plus the periodization dials and the landmark provenance doc (wave 1)
+- [x] 11-02-PLAN.md — The `excluded_exercise` synced table, its seven sync touchpoints, the schema push, and the live ownership/validation proof (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -676,5 +676,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
-| 11. Program Generation | 0/TBD | Not started | - |
+| 11. Program Generation | 2/6 | In Progress|  |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |
