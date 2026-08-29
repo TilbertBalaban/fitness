@@ -32,6 +32,8 @@ const REQUIRED_TABLES = [
   'user_preference',
   'sync_conflict_log',
   'sync_tombstone',
+  'muscle_volume_rollup',
+  'analytics_watermark',
 ] as const;
 
 // Snake-case, as emitted into schema.ts — the Drizzle property names are camelCase but the DB
@@ -112,6 +114,17 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
     'target_rir',
     'target_rest_seconds',
   ],
+  'muscle_volume_rollup': [
+    'id',
+    'user_id',
+    'muscle_group_id',
+    'local_date',
+    'weighted_volume_kg',
+    'weighted_sets',
+    'set_count',
+    'server_seq',
+  ],
+  'analytics_watermark': ['id', 'user_id', 'computed_through_date', 'server_seq'],
 };
 
 // The mirror of REQUIRED_COLUMNS, for columns a schema change REMOVED. This project applies schema
