@@ -210,3 +210,129 @@ describe('MuscleMapScreenView — ready state', () => {
     expect(text).toContain('Includes 2 sessions not yet reflected on the server.');
   });
 });
+
+// 10-06: the drill-down seam. These tests target resolveMuscleDrilldownSheetProps and
+// exercisePerformanceHref — the pure decision logic 10-06 extracted from the hooked screen
+// component — rather than the hooked MuscleMapScreen default export itself, matching this
+// codebase's own convention (deriveRecordsScreenState/RecordsScreenView, deriveMuscleMapScreenState/
+// MuscleMapScreenView above): a hook-using screen component is never invoked directly in a test with
+// no renderer, only its extracted pure decisions are.
+import { exercisePerformanceHref, resolveMuscleDrilldownSheetProps } from '../muscle-map';
+import type { MuscleContribution } from '@fitness/analytics-engine';
+
+function drilldownContribution(overrides: Partial<MuscleContribution> = {}): MuscleContribution {
+  return {
+    exerciseId: 'ex-bench',
+    exerciseName: 'Barbell Bench Press',
+    setCount: 8,
+    weightedVolumeKg: 640,
+    ...overrides,
+  };
+}
+
+describe('resolveMuscleDrilldownSheetProps', () => {
+  it('returns null when no muscle row has been tapped', () => {
+    expect(
+      resolveMuscleDrilldownSheetProps({
+        selectedMuscleGroupId: null,
+        selectedWindowId: null,
+        drilldownData: null,
+        drilldownFailed: false,
+        frontRows: [row()],
+        backRows: [],
+        weightUnit: 'kg',
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null while the read has not settled, so the sheet is never presented mid-load (R6)', () => {
+    expect(
+      resolveMuscleDrilldownSheetProps({
+        selectedMuscleGroupId: 'chest',
+        selectedWindowId: '1w',
+        drilldownData: null,
+        drilldownFailed: false,
+        frontRows: [row()],
+        backRows: [],
+        weightUnit: 'kg',
+      }),
+    ).toBeNull();
+  });
+
+  it('resolves the sheet props from the tapped muscle’s own row viewmodel once the read lands', () => {
+    const resolved = resolveMuscleDrilldownSheetProps({
+      selectedMuscleGroupId: 'chest',
+      selectedWindowId: '1w',
+      drilldownData: { contributions: [drilldownContribution()] },
+      drilldownFailed: false,
+      frontRows: [row()],
+      backRows: [],
+      weightUnit: 'kg',
+    });
+
+    expect(resolved).not.toBeNull();
+    expect(resolved?.muscleName).toBe('Chest');
+    expect(resolved?.windowLabel).toBe('the last 7 days');
+    expect(resolved?.volumeLabel).toBe('100.00 kg');
+    expect(resolved?.contributions).toEqual([drilldownContribution()]);
+    expect(resolved?.failed).toBe(false);
+  });
+
+  it('opens on the same path for an untrained muscle, with a null volume label rather than a fabricated zero', () => {
+    const untrainedRow = row({
+      muscleGroupId: 'calves',
+      muscleName: 'Calves',
+      valueLabel: null,
+      point: { trainingVolumeKg: null, setCount: 0, relativeIntensity: null },
+    });
+    const resolved = resolveMuscleDrilldownSheetProps({
+      selectedMuscleGroupId: 'calves',
+      selectedWindowId: '1w',
+      drilldownData: { contributions: [] },
+      drilldownFailed: false,
+      frontRows: [],
+      backRows: [untrainedRow],
+      weightUnit: 'kg',
+    });
+
+    expect(resolved).not.toBeNull();
+    expect(resolved?.muscleName).toBe('Calves');
+    expect(resolved?.volumeLabel).toBeNull();
+  });
+
+  it('still resolves once a failed read has settled — an explicit tap always gets a response', () => {
+    const resolved = resolveMuscleDrilldownSheetProps({
+      selectedMuscleGroupId: 'chest',
+      selectedWindowId: '1w',
+      drilldownData: null,
+      drilldownFailed: true,
+      frontRows: [row()],
+      backRows: [],
+      weightUnit: 'kg',
+    });
+
+    expect(resolved).not.toBeNull();
+    expect(resolved?.failed).toBe(true);
+    expect(resolved?.contributions).toEqual([]);
+  });
+
+  it('derives windowLabel from the window selected at press time, never a live window value', () => {
+    const resolved = resolveMuscleDrilldownSheetProps({
+      selectedMuscleGroupId: 'chest',
+      selectedWindowId: '3m',
+      drilldownData: { contributions: [] },
+      drilldownFailed: false,
+      frontRows: [row()],
+      backRows: [],
+      weightUnit: 'kg',
+    });
+
+    expect(resolved?.windowLabel).toBe('the last 90 days');
+  });
+});
+
+describe('exercisePerformanceHref', () => {
+  it('carries only the exercise id, never a metric parameter', () => {
+    expect(exercisePerformanceHref('ex-1')).toBe('/exercise-performance?exerciseId=ex-1');
+  });
+});
