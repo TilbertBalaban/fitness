@@ -1,4 +1,4 @@
-import { loadExerciseHistory } from '../exercise-history-query';
+import { exerciseHistoryFilters, loadExerciseHistory } from '../exercise-history-query';
 import { getPowerSync } from '../powersync';
 
 jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
@@ -112,5 +112,27 @@ describe('loadExerciseHistory', () => {
 
     expect(sessions).toHaveLength(1);
     expect(sessions[0].sets.map((set) => set.id)).toEqual(['ls-a', 'ls-b']);
+  });
+
+  it('still reads in two queries when the range is unbounded', async () => {
+    const { db, getSelectCount } = fakeDb([SESSION_ROWS, SET_ROWS]);
+
+    const sessions = await loadExerciseHistory({ exerciseId: 'ex-1', userId: 'user-1', sinceLocalDate: null }, db);
+
+    expect(sessions).toHaveLength(2);
+    expect(getSelectCount()).toBe(2);
+  });
+});
+
+describe('exerciseHistoryFilters', () => {
+  it('emits no date predicate at all for the unbounded all-time range', () => {
+    // Two predicates, not three: the all-time case must not fall back to a very large sentinel
+    // date, which would be a silently wrong answer on an account older than the sentinel (T-9-31).
+    expect(exerciseHistoryFilters('ex-1', null)).toHaveLength(2);
+    expect(exerciseHistoryFilters('ex-1', undefined)).toHaveLength(2);
+  });
+
+  it('adds exactly one date predicate for a bounded range', () => {
+    expect(exerciseHistoryFilters('ex-1', '2026-06-01')).toHaveLength(3);
   });
 });
