@@ -521,7 +521,7 @@ Plans:
   4. A PR set on one device is authoritative across all of them after sync
   5. History endpoints hold their query count as data grows, enforced by assertions against a realistically-sized dataset
 
-**Plans**: 6/7 plans executed
+**Plans**: 7/7 plans executed
 
 Plans:
 **Wave 1**
@@ -544,7 +544,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 10-07-PLAN.md — Playwright durability evidence and the deferred-verification ledger
+- [x] 10-07-PLAN.md — Playwright durability evidence and the deferred-verification ledger
 
 ### Phase 11: Program Generation
 
@@ -613,6 +613,7 @@ Plans:
 - [ ] Phase 09 test 1 (WINDOWS #155): TrendChart on a real iOS/Android build — react-native-svg 15.15.4's NATIVE build has never been compiled or rendered on this machine (no Xcode, no Android SDK). The whole phase's chart approach is proven on web only; this is the single largest native unknown in Phase 9
 - [ ] Phase 09 test 2 (WINDOWS #158): Records screen on a real device — RecordRow, the four-metric chip switch, and the "{reps} reps @ {weight}" row built from the third batched logged_set read
 - [ ] Phase 09 test 3 (WINDOWS #160): Last 7 Days card and History trend card on a real device, including the TrendChart inside the trend card and the progressbar tracks' native accessibility values (the web path needed aria-* rather than accessibilityValue — confirm the native path announces correctly too)
+- [ ] Phase 10 test 1 (WINDOWS #165): the Muscle Map on a real iOS and Android build — both `react-native-svg` figures, the window switch and the drill-down sheet. The native build of this library has never been compiled or rendered on this machine (no Xcode, no Android SDK), so the whole body-map approach is proven on web only, exactly as Phase 9's own chart item records
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
 ### Phase 999.2: Human verification sweep — web target (BACKLOG)
@@ -639,6 +640,8 @@ Plans:
 - [ ] Phase 09 test 4 (WINDOWS #156): visual review of the exercise-performance chart, its two-label axis row and the ANLY-10 "not plotted" caption at maximum OS font scale — R16 (no text inside the SVG) is grep-enforced, but legibility of the 120px canvas beside grown text is human judgment
 - [ ] Phase 09 test 5 (WINDOWS #159): visual review of the Records screen at maximum font scale — both row lines are unclamped by design, so confirm they wrap rather than collide
 - [ ] Phase 09 test 6 (WINDOWS #161): visual review of the Last 7 Days tracks, the History trend card's headline and delta chip, and the range switch at maximum font scale
+- [ ] Phase 10 test 2 (WINDOWS #166): subjective visual review of the intensity scale and of the untrained-versus-lowest-real-intensity distinction at maximum OS font scale. The categorical hue split is grep-enforced and unit-asserted; whether it is legible, including for a colourblind reader, is human judgment
+- [ ] Phase 10 test 3 (WINDOWS #167): subjective visual review of the Training Volume disambiguation caption and the stale-rollup caption at maximum OS font scale — wrap-and-grow is grep-enforced, but whether the two captions read as informational rather than alarming is human judgment (R25)
 - [ ] (append human-judgment web items from phases 01-12 as each phase defers them)
 
 ## Progress
