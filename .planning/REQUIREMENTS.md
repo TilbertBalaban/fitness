@@ -111,9 +111,9 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 ### Analytics & Records
 
-- [ ] **ANLY-01**: User's PRs are detected automatically across heaviest weight, best estimated 1RM, most reps at a weight, and best set volume
-- [ ] **ANLY-02**: User sees PRs achieved highlighted in the workout summary
-- [ ] **ANLY-03**: User can browse a recent-records list and switch between PR metrics
+- [x] **ANLY-01**: User's PRs are detected automatically across heaviest weight, best estimated 1RM, most reps at a weight, and best set volume
+- [x] **ANLY-02**: User sees PRs achieved highlighted in the workout summary
+- [x] **ANLY-03**: User can browse a recent-records list and switch between PR metrics
 - [ ] **ANLY-04**: User can see set volume per muscle group on a front/back body-map heatmap over a selectable window (1 week / 1 month / 3 months)
 - [ ] **ANLY-05**: User can drill into a muscle group to see which exercises contributed its sets
 - [ ] **ANLY-06**: User can view a single exercise's performance over time across selectable metrics and time ranges
@@ -269,9 +269,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PRGR-09 | Phase 8 — Progression Engine | Pending |
 | PRGR-10 | Phase 8 — Progression Engine | Pending |
 | PRGR-11 | Phase 8 — Progression Engine | Pending |
-| ANLY-01 | Phase 9 — Records & Client Analytics | Pending |
-| ANLY-02 | Phase 9 — Records & Client Analytics | Pending |
-| ANLY-03 | Phase 9 — Records & Client Analytics | Pending |
+| ANLY-01 | Phase 9 — Records & Client Analytics | Complete |
+| ANLY-02 | Phase 9 — Records & Client Analytics | Complete |
+| ANLY-03 | Phase 9 — Records & Client Analytics | Complete |
 | ANLY-06 | Phase 9 — Records & Client Analytics | Pending |
 | ANLY-07 | Phase 9 — Records & Client Analytics | Pending |
 | ANLY-08 | Phase 9 — Records & Client Analytics | Pending |

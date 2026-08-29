@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 123
+open_count: 124
 waived_count: 4
-fixed_count: 26
-total_count: 153
-last_updated: 2026-08-29T08:33:05.293Z
+fixed_count: 27
+total_count: 155
+last_updated: 2026-08-29T09:04:21.227Z
 ---
 
 # Broken Windows Ledger
@@ -138,7 +138,7 @@ last_updated: 2026-08-29T08:33:05.293Z
 | 124 | 05 | unrun-verify | apps/mobile/e2e/history.spec.ts |  | View/rename/duplicate/delete a past workout, plus discarded-session-hidden, written against the real @powersync/web engine but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- history.spec.ts. | open |  | 2026-08-24T16:26:58.531Z |  |
 | 125 | 999.1 | unrun-verify | apps/mobile/components/SessionHistoryRow.tsx |  | Native FlashList recycling behaviour on the new SessionHistoryRow (the same failure class the ExerciseImageTile WINDOWS entry recorded in Phase 3) cannot be observed on this machine (no Xcode, no Android SDK). Deferred to the Phase 999.1 native/cross-device UAT sweep. | open |  | 2026-08-24T16:27:06.639Z |  |
 | 126 | 05 | deviation | apps/mobile/e2e/history.spec.ts |  | 05-09-PLAN.md Task 3's e2e prose says duplicating a row makes 'a fourth row appear' in History, but duplicateSession funnels through startSession (D-33), which always creates the copy in_progress — and Task 1's own shown/hidden rule excludes in-progress sessions from History. The copy therefore does NOT appear as a fourth History row; it surfaces on the Workout tab instead. history.spec.ts asserts the correct (in-progress, absent from loadHistoryPage) behavior rather than the plan's literal prose, which contradicts must_haves established earlier in the same plan. | open |  | 2026-08-24T16:27:14.738Z |  |
-| 127 | 05 | unrun-verify | apps/mobile/e2e/workout-summary.spec.ts |  | Workout-summary e2e (finish a session, assert trained muscles, PR rows and per-exercise e1RM breakdown, then correct a number before dismissing) written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- workout-summary.spec.ts. | open |  | 2026-08-24T18:47:51.143Z |  |
+| 127 | 05 | unrun-verify | apps/mobile/e2e/workout-summary.spec.ts |  | Workout-summary e2e (finish a session, assert trained muscles, PR rows and per-exercise e1RM breakdown, then correct a number before dismissing) written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- workout-summary.spec.ts. | fixed |  | 2026-08-24T18:47:51.143Z | 2026-08-29T09:04:21.227Z |
 | 128 | 05 | unrun-verify | apps/mobile/e2e/session-edit.spec.ts |  | session-edit.spec.ts (05-10) written and typechecked but not executed — browser-testing-only-on-request. Needs pnpm --filter mobile test:e2e:durability -- session-edit.spec.ts. | open |  | 2026-08-25T06:52:48.979Z |  |
 | 129 | 05 | unrun-verify | apps/mobile/components/SessionDateField.tsx |  | Native date-picker presentation (the calendar grid's on-device rendering) and native OS font-scale wrapping on the editing header (formatEditingHeader) are unverifiable on this machine — no Xcode/Android SDK/simulator available. Deferred to ROADMAP Phase 999.1's native/cross-device sweep. | open |  | 2026-08-25T06:52:59.973Z |  |
 | 130 | 05 | unmet-truth | apps/mobile/lib/db/test-support.ts | 187 | D-33's single-funnel claim ('exactly one insert(workoutSession) in apps/mobile/') holds for production code (log-set.ts's startSession is the only real creation path) but a pre-existing test-only seeding helper, seedPriorHeaviestSet (predates 05-10, used by workout-summary.spec.ts's real-PR fixture), performs a second, direct insert(workoutSession) to seed a days-old prior session outside any funnel. Out of scope for 05-10 (not caused by this plan's changes); left as-is per the scope-boundary rule. | open |  | 2026-08-25T06:53:04.949Z |  |
@@ -168,6 +168,8 @@ last_updated: 2026-08-29T08:33:05.293Z
 | 154 | 08 | unrun-verify | packages/progression-engine/src/index.ts |  | Both parity runners (package + api-side spec.ts + mobile-side test.ts) execute under Node/V8, never on-device Hermes, so a Hermes-specific arithmetic divergence would not be caught by any of the three (08-RESEARCH.md Assumption A4); this machine has no Xcode or Android SDK to run a real RN Hermes build (standing project limitation). | open |  | 2026-08-28T22:48:47.103Z |  |
 | 155 | 09 | unrun-verify | apps/mobile/components/TrendChart.tsx |  | TrendChart renders on iOS/Android is unverified: this machine has neither Xcode nor the Android SDK, so react-native-svg's native build was never exercised. Web rendering is proven by e2e/exercise-performance.spec.ts. Verify at ROADMAP Phase 999.1. | open |  | 2026-08-29T08:33:00.632Z |  |
 | 156 | 09 | unrun-verify | apps/mobile/app/exercise-performance.tsx |  | Subjective visual review of the chart, its two-label axis row and the ANLY-10 caption at the maximum OS font scale is unobservable in automation. R16 (no text inside the SVG) is enforced by a grep gate and the axis row wraps, but legibility itself needs a human. Verify at ROADMAP Phase 999.2. | open |  | 2026-08-29T08:33:05.293Z |  |
+| 157 | 09 | unrun-verify | apps/mobile/app/records.tsx |  | Records screen rendering on iOS/Android: this machine has neither Xcode nor the Android SDK, so RecordRow and the metric switch were never exercised natively. Web rendering is proven green. ROADMAP Phase 999.1. | open |  | 2026-08-29T09:03:53.664Z |  |
+| 158 | 09 | unrun-verify | apps/mobile/components/RecordRow.tsx |  | Subjective visual review of the Records screen at maximum OS font scale: the absence of a line clamp on both row lines and the chip growth rule are grep-enforced and unit-asserted, but legibility itself needs a human. ROADMAP Phase 999.2. | open |  | 2026-08-29T09:03:57.654Z |  |
 
 ````json
 [
@@ -1654,10 +1656,10 @@ last_updated: 2026-08-29T08:33:05.293Z
     "file": "apps/mobile/e2e/workout-summary.spec.ts",
     "line": null,
     "description": "Workout-summary e2e (finish a session, assert trained muscles, PR rows and per-exercise e1RM breakdown, then correct a number before dismissing) written but not executed — CLAUDE.md forbids launching a browser unless explicitly requested. Needs a human or CI run of pnpm --filter mobile test:e2e:durability -- workout-summary.spec.ts.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-24T18:47:51.143Z",
-    "resolved_at": null
+    "resolved_at": "2026-08-29T09:04:21.227Z"
   },
   {
     "id": 128,
@@ -2005,6 +2007,30 @@ last_updated: 2026-08-29T08:33:05.293Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-29T08:33:05.293Z",
+    "resolved_at": null
+  },
+  {
+    "id": 157,
+    "kind": "unrun-verify",
+    "phase": "09",
+    "file": "apps/mobile/app/records.tsx",
+    "line": null,
+    "description": "Records screen rendering on iOS/Android: this machine has neither Xcode nor the Android SDK, so RecordRow and the metric switch were never exercised natively. Web rendering is proven green. ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T09:03:53.664Z",
+    "resolved_at": null
+  },
+  {
+    "id": 158,
+    "kind": "unrun-verify",
+    "phase": "09",
+    "file": "apps/mobile/components/RecordRow.tsx",
+    "line": null,
+    "description": "Subjective visual review of the Records screen at maximum OS font scale: the absence of a line clamp on both row lines and the chip growth rule are grep-enforced and unit-asserted, but legibility itself needs a human. ROADMAP Phase 999.2.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T09:03:57.654Z",
     "resolved_at": null
   }
 ]
