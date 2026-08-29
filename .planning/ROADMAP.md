@@ -488,13 +488,13 @@ Plans:
   4. User sees this week's progress against targets for muscles trained, sets, and exercises — available immediately after logging, before any sync
   5. Estimated 1RM figures are only shown where the underlying formula is actually valid for the rep range
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 09-01-PLAN.md — Tracer: `@fitness/analytics-engine`, `react-native-svg@15.15.4`, `TrendChart`, `SegmentedChipRow`, and the exercise performance screen end-to-end over the last 3 months
+- [x] 09-01-PLAN.md — Tracer: `@fitness/analytics-engine`, `react-native-svg@15.15.4`, `TrendChart`, `SegmentedChipRow`, and the exercise performance screen end-to-end over the last 3 months
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -631,7 +631,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Gym Profiles & Plate Math | 8/8 | Complete    | 2026-08-28 |
 | 7. Advanced Set Types | 9/9 | Complete    | 2026-08-28 |
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
-| 9. Records & Client Analytics | 0/TBD | Not started | - |
+| 9. Records & Client Analytics | 1/6 | In Progress|  |
 | 10. Server Analytics & Reconciliation | 0/TBD | Not started | - |
 | 11. Program Generation | 0/TBD | Not started | - |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |

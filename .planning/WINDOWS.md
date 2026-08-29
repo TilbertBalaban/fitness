@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 121
+open_count: 123
 waived_count: 4
 fixed_count: 26
-total_count: 151
-last_updated: 2026-08-28T22:48:47.103Z
+total_count: 153
+last_updated: 2026-08-29T08:33:05.293Z
 ---
 
 # Broken Windows Ledger
@@ -166,6 +166,8 @@ last_updated: 2026-08-28T22:48:47.103Z
 | 152 | 07 | deviation | apps/mobile/components/ExercisePage.tsx |  | setTypeError set on a rejected formSuperset/detachSuperset write is not yet visibly rendered by SessionActionSheet (no errorMessage prop; SessionActionSheet.tsx was out of 07-07's file scope) | open |  | 2026-08-28T17:09:09.731Z |  |
 | 153 | 07 | deviation | apps/mobile/e2e/reorder-exercises.spec.ts |  | CORRECTED 2026-08-28: this was NOT a pre-existing order-dependent flake and it did NOT pass in isolation — it reproduced at roughly one run in three with the spec run alone. Root cause: openReorderSheet waited only for the sheet heading to be visible, but the sheet measures its first row in onLayout and stores that height in state, so it renders once at the SLOT_ROW_HEIGHT fallback and again at the measured height, shifting every row between them. A boundingBox() taken across that shift named coordinates the drag handle had already left, mouse.down() landed on nothing, and no pointerdown ever reached DragHandle.web.tsx — so no drop was committed and the assertion failed against an unchanged order rather than a wrong one. Instrumentation confirmed commitDrop computed toIndex 0 correctly on every run where the pointer actually went down. Phase 7's heavier ExercisePage widened the settle window that had previously hidden it. Fixed by hovering each handle before measuring, which waits for actionability (element still across two consecutive animation frames). 15/15 repeat runs green, full durability suite 51/51. | fixed |  | 2026-08-28T18:00:51.116Z | 2026-08-28T21:00:00.000Z |
 | 154 | 08 | unrun-verify | packages/progression-engine/src/index.ts |  | Both parity runners (package + api-side spec.ts + mobile-side test.ts) execute under Node/V8, never on-device Hermes, so a Hermes-specific arithmetic divergence would not be caught by any of the three (08-RESEARCH.md Assumption A4); this machine has no Xcode or Android SDK to run a real RN Hermes build (standing project limitation). | open |  | 2026-08-28T22:48:47.103Z |  |
+| 155 | 09 | unrun-verify | apps/mobile/components/TrendChart.tsx |  | TrendChart renders on iOS/Android is unverified: this machine has neither Xcode nor the Android SDK, so react-native-svg's native build was never exercised. Web rendering is proven by e2e/exercise-performance.spec.ts. Verify at ROADMAP Phase 999.1. | open |  | 2026-08-29T08:33:00.632Z |  |
+| 156 | 09 | unrun-verify | apps/mobile/app/exercise-performance.tsx |  | Subjective visual review of the chart, its two-label axis row and the ANLY-10 caption at the maximum OS font scale is unobservable in automation. R16 (no text inside the SVG) is enforced by a grep gate and the axis row wraps, but legibility itself needs a human. Verify at ROADMAP Phase 999.2. | open |  | 2026-08-29T08:33:05.293Z |  |
 
 ````json
 [
@@ -1979,6 +1981,30 @@ last_updated: 2026-08-28T22:48:47.103Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-28T22:48:47.103Z",
+    "resolved_at": null
+  },
+  {
+    "id": 155,
+    "kind": "unrun-verify",
+    "phase": "09",
+    "file": "apps/mobile/components/TrendChart.tsx",
+    "line": null,
+    "description": "TrendChart renders on iOS/Android is unverified: this machine has neither Xcode nor the Android SDK, so react-native-svg's native build was never exercised. Web rendering is proven by e2e/exercise-performance.spec.ts. Verify at ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T08:33:00.632Z",
+    "resolved_at": null
+  },
+  {
+    "id": 156,
+    "kind": "unrun-verify",
+    "phase": "09",
+    "file": "apps/mobile/app/exercise-performance.tsx",
+    "line": null,
+    "description": "Subjective visual review of the chart, its two-label axis row and the ANLY-10 caption at the maximum OS font scale is unobservable in automation. R16 (no text inside the SVG) is enforced by a grep gate and the axis row wraps, but legibility itself needs a human. Verify at ROADMAP Phase 999.2.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T08:33:05.293Z",
     "resolved_at": null
   }
 ]

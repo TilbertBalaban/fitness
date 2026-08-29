@@ -120,7 +120,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [ ] **ANLY-07**: User can browse their full workout history with trends
 - [ ] **ANLY-08**: User can see this week's progress against targets for muscles trained, sets, and exercises
 - [ ] **ANLY-09**: User's PRs and volume figures are recomputed correctly when they edit a past workout
-- [ ] **ANLY-10**: User's estimated 1RM figures are only presented where the underlying formula is valid for the rep range
+- [x] **ANLY-10**: User's estimated 1RM figures are only presented where the underlying formula is valid for the rep range
 
 ### Program Generation
 
@@ -275,7 +275,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ANLY-06 | Phase 9 — Records & Client Analytics | Pending |
 | ANLY-07 | Phase 9 — Records & Client Analytics | Pending |
 | ANLY-08 | Phase 9 — Records & Client Analytics | Pending |
-| ANLY-10 | Phase 9 — Records & Client Analytics | Pending |
+| ANLY-10 | Phase 9 — Records & Client Analytics | Complete |
 | ANLY-04 | Phase 10 — Server Analytics & Reconciliation | Pending |
 | ANLY-05 | Phase 10 — Server Analytics & Reconciliation | Pending |
 | ANLY-09 | Phase 10 — Server Analytics & Reconciliation | Pending |
