@@ -9,3 +9,4 @@ export * from './bucketing';
 export * from './trend-series';
 export * from './weekly-progress';
 export * from './muscle-volume';
+export * from './muscle-map';
