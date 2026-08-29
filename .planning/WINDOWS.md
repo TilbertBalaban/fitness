@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 136
+open_count: 134
 waived_count: 4
-fixed_count: 28
+fixed_count: 30
 total_count: 168
-last_updated: 2026-08-29T17:41:17.594Z
+last_updated: 2026-08-29T17:59:13.997Z
 ---
 
 # Broken Windows Ledger
@@ -180,8 +180,8 @@ last_updated: 2026-08-29T17:41:17.594Z
 | 166 | 10 | unrun-verify | apps/mobile/components/MuscleHeatmap.tsx |  | Subjective visual review of the intensity scale and the untrained-versus-lowest-real-intensity distinction at maximum OS font scale — the categorical hue split (R22/D-10) is grep-enforced and unit-asserted, but whether it is legible, including for a colourblind reader, is human judgment. Deferred to ROADMAP Phase 999.2. | open |  | 2026-08-29T17:08:31.218Z |  |
 | 167 | 10 | unrun-verify | apps/mobile/app/muscle-map.tsx |  | Subjective visual review of the Training Volume disambiguation caption and the stale-rollup caption at maximum OS font scale — wrap-and-grow is grep-enforced, but whether the two captions read as informational rather than alarming is human judgment (R25). Deferred to ROADMAP Phase 999.2. | open |  | 2026-08-29T17:08:37.783Z |  |
 | 168 | 10 | deviation | apps/mobile/e2e/muscle-map.spec.ts |  | 10-07's executed browser evidence confirms the D-01 overlay's post-watermark clause and the null-owner backfill clause both render correctly end to end against a real @powersync/web database (muscle-map.spec.ts's overlay case: rollup + post-watermark session + pre-watermark null-owner session sum correctly, disclosed by count). It does not re-exercise the already-synced-session-edit residual recorded at WINDOWS #164 (a different case: an EDIT of a session whose user_id was already set before the edit) — that residual remains open and unchanged by this plan. | open |  | 2026-08-29T17:09:08.671Z |  |
-| 169 | 10 | unrun-verify | apps/api |  | 10-07's phase-level verification names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite could not be run in this worktree: drizzle-kit push fails with 'Either connection url or host, database are required for PostgreSQL database connection' because apps/api/.env is permission-restricted from this sandbox and carries no DATABASE_URL (same class of block as WINDOWS #47/#48). Confidence it is unaffected rests on file-scope reasoning (10-07 touches apps/mobile and .planning only, zero apps/api files across all three commits), not a fresh green run. | open |  | 2026-08-29T17:11:40.245Z |  |
-| 170 | 10 | unrun-verify | apps/api/test/analytics-rollup.e2e-spec.ts |  | The CR-01 regression test added in commit 83ddc37 -- a workout_session PATCH carrying neither local_date nor started_at (completeSession's real payload shape) against a session stored at local_date 2026-01-10, asserting the watermark does not advance to today -- was written and hand-reviewed but never executed. Docker/colima is unavailable on this machine (colima status: 'error retrieving current runtime: empty value'), so the whole apps/api e2e suite could not run. This is the proof for a BLOCKER-severity fix to the analytics watermark, so it carries more weight than the general suite gap at WINDOWS #169: run 'pnpm --filter api test:e2e' once Postgres is reachable and confirm this case is green before trusting the watermark on any non-today session. | open |  | 2026-08-29T17:31:52.108Z |  |
+| 169 | 10 | unrun-verify | apps/api |  | 10-07's phase-level verification names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite could not be run in this worktree: drizzle-kit push fails with 'Either connection url or host, database are required for PostgreSQL database connection' because apps/api/.env is permission-restricted from this sandbox and carries no DATABASE_URL (same class of block as WINDOWS #47/#48). Confidence it is unaffected rests on file-scope reasoning (10-07 touches apps/mobile and .planning only, zero apps/api files across all three commits), not a fresh green run. | fixed |  | 2026-08-29T17:11:40.245Z | 2026-08-29T17:59:05.816Z |
+| 170 | 10 | unrun-verify | apps/api/test/analytics-rollup.e2e-spec.ts |  | The CR-01 regression test added in commit 83ddc37 -- a workout_session PATCH carrying neither local_date nor started_at (completeSession's real payload shape) against a session stored at local_date 2026-01-10, asserting the watermark does not advance to today -- was written and hand-reviewed but never executed. Docker/colima is unavailable on this machine (colima status: 'error retrieving current runtime: empty value'), so the whole apps/api e2e suite could not run. This is the proof for a BLOCKER-severity fix to the analytics watermark, so it carries more weight than the general suite gap at WINDOWS #169: run 'pnpm --filter api test:e2e' once Postgres is reachable and confirm this case is green before trusting the watermark on any non-today session. | fixed |  | 2026-08-29T17:31:52.108Z | 2026-08-29T17:59:13.997Z |
 | 171 | 10 | deviation | apps/mobile/app/muscle-map.tsx |  | Code review WR-01 ('loadHasAnyHistory accepts userId but never filters on it') is a FALSE POSITIVE and its fix was applied then reverted (bcde0c0 -> c219dfa). Adding eq(workoutSession.userId, userId) broke 5 of 6 muscle-map durability specs. Reason: workout_session.user_id is assigned SERVER-side, so a locally-logged, not-yet-synced session legitimately carries user_id NULL -- seedMuscleMapHistory reproduces exactly this (userId: seededSession.syncedToServer ? input.userId : null). Filtering the local read by userId therefore tells a lifter whose only history is unsynced that they have no history at all, collapsing the screen to its no-history empty state. In this local-first architecture the on-device DB holds only the signed-in user's rows by PowerSync sync-rule construction, so a userId filter on a LOCAL workoutSession read is redundant AND wrong. Do not re-apply. Rollup/watermark reads in muscle-volume-query.ts do scope by userId -- that is a different table and not a precedent for this one. | open |  | 2026-08-29T17:41:17.594Z |  |
 
 ````json
@@ -2173,10 +2173,10 @@ last_updated: 2026-08-29T17:41:17.594Z
     "file": "apps/api",
     "line": null,
     "description": "10-07's phase-level verification names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite could not be run in this worktree: drizzle-kit push fails with 'Either connection url or host, database are required for PostgreSQL database connection' because apps/api/.env is permission-restricted from this sandbox and carries no DATABASE_URL (same class of block as WINDOWS #47/#48). Confidence it is unaffected rests on file-scope reasoning (10-07 touches apps/mobile and .planning only, zero apps/api files across all three commits), not a fresh green run.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-29T17:11:40.245Z",
-    "resolved_at": null
+    "resolved_at": "2026-08-29T17:59:05.816Z"
   },
   {
     "id": 170,
@@ -2185,10 +2185,10 @@ last_updated: 2026-08-29T17:41:17.594Z
     "file": "apps/api/test/analytics-rollup.e2e-spec.ts",
     "line": null,
     "description": "The CR-01 regression test added in commit 83ddc37 -- a workout_session PATCH carrying neither local_date nor started_at (completeSession's real payload shape) against a session stored at local_date 2026-01-10, asserting the watermark does not advance to today -- was written and hand-reviewed but never executed. Docker/colima is unavailable on this machine (colima status: 'error retrieving current runtime: empty value'), so the whole apps/api e2e suite could not run. This is the proof for a BLOCKER-severity fix to the analytics watermark, so it carries more weight than the general suite gap at WINDOWS #169: run 'pnpm --filter api test:e2e' once Postgres is reachable and confirm this case is green before trusting the watermark on any non-today session.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-29T17:31:52.108Z",
-    "resolved_at": null
+    "resolved_at": "2026-08-29T17:59:13.997Z"
   },
   {
     "id": 171,
