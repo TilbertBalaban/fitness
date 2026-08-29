@@ -560,11 +560,16 @@ Plans:
   4. Generated programs arrive pre-periodized with per-cycle set, rep, and RIR targets
   5. A generated program is editable exactly like a hand-built one and progresses through the same engine
 
-**Plans**: TBD
+**Plans**: 6 plans
 
 Plans:
 
-- [ ] 11-01: TBD during `/gsd-plan-phase 11`
+- [ ] 11-01-PLAN.md — Tracer: answers become a generated tree and real program rows, plus the periodization dials and the landmark provenance doc (wave 1)
+- [ ] 11-02-PLAN.md — The `excluded_exercise` synced table, its seven sync touchpoints, the schema push, and the live ownership/validation proof (wave 1)
+- [ ] 11-03-PLAN.md — Exclusions on the device: SQLite mirror, read/write module, exclude control and exclusions screen, wired into generation (wave 2)
+- [ ] 11-04-PLAN.md — The complete split table for full body, upper/lower and push/pull/legs across 2-6 days, plus the completeness invariant (wave 2)
+- [ ] 11-05-PLAN.md — The generation wizard, the preview with its degradation report, reproducible Regenerate, and Save as the only write (wave 3)
+- [ ] 11-06-PLAN.md — GEN-07 parity: one fixture table through the real progression engine in three processes, plus a real-browser durability run (wave 4)
 
 ### Phase 12: Body Metrics & Dashboard
 
