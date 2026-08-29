@@ -2,6 +2,8 @@ import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
+import type { WeightUnit } from '@fitness/api-contracts';
+import { HistoryTrendCard } from '@/components/HistoryTrendCard';
 import {
   DeleteWorkoutDialog,
   HistoryActionSheet,
@@ -18,11 +20,14 @@ import { addSessionExercise, setSessionDate, startSession } from '@/lib/db/log-s
 import { completeSession } from '@/lib/db/session-lifecycle';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { historyRowLabel, loadHistoryPage, type HistoryPage, type HistorySessionRow } from '@/lib/db/history-query';
+import { loadHistoryTrend, type HistoryTrendData } from '@/lib/db/history-trend-query';
 import { deleteSession, duplicateSession, renameSession } from '@/lib/db/history-mutations';
+import { loadWeightUnit } from '@/lib/db/preferences';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 const PAGE_SIZE = 25;
 const WORKOUT_TAB_ROUTE = '/(tabs)/workout';
+const DEFAULT_WEIGHT_UNIT: WeightUnit = 'kg';
 
 export interface StartBackfilledSessionInput {
   date: Date;
@@ -54,6 +59,50 @@ export async function startBackfilledSession(
   }
 
   return sessionId;
+}
+
+export interface HistoryTrendReadData {
+  sessions: HistoryTrendData;
+  weightUnit: WeightUnit;
+}
+
+export interface ReadHistoryTrendInput {
+  userId: string | null;
+  todayLocalDate: string;
+  db?: WriteDb;
+}
+
+export type HistoryTrendRead = { data: HistoryTrendReadData } | { failed: true };
+
+// Everything the card needs, plus the day the window was measured against — captured once at read
+// time so the render and the read can never disagree about which day "today" was (D-10).
+export interface HistoryTrendViewData extends HistoryTrendReadData {
+  todayLocalDate: string;
+}
+
+async function loadHistoryTrendData({ userId, todayLocalDate, db }: ReadHistoryTrendInput): Promise<HistoryTrendReadData> {
+  const database = db ?? getPowerSync();
+  const [sessions, weightUnit] = await Promise.all([
+    loadHistoryTrend({ userId, todayLocalDate }, database),
+    userId ? loadWeightUnit(userId, database) : Promise.resolve(DEFAULT_WEIGHT_UNIT),
+  ]);
+  return { sessions, weightUnit };
+}
+
+// The whole body of the trend read, extracted so the read/failure sequence is exercised without a
+// renderer — the exact shape readNextUp/readInProgressSession already carry on the Home tab. This
+// read is INDEPENDENT of the page read in both directions: a rejection here resolves to `failed`
+// and takes the card off the screen, and never blanks the session list the tab exists for.
+export async function readHistoryTrend(
+  input: ReadHistoryTrendInput,
+  load: (i: ReadHistoryTrendInput) => Promise<HistoryTrendReadData> = loadHistoryTrendData,
+): Promise<HistoryTrendRead> {
+  try {
+    return { data: await load(input) };
+  } catch (error) {
+    console.error('history trend load failed', error);
+    return { failed: true };
+  }
 }
 
 export type HistoryScreenState = 'error' | 'loading' | 'empty' | 'ready';
@@ -91,6 +140,7 @@ export interface HistoryScreenViewProps {
   overlay: HistoryOverlay;
   addPastStep: AddPastWorkoutStep;
   addPastLocalDate: string;
+  trend: HistoryTrendViewData | null;
   onRowPress: (sessionId: string) => void;
   onOverflowPress: (sessionId: string) => void;
   onEndReached: () => void;
@@ -167,6 +217,7 @@ export function HistoryScreenView({
   overlay,
   addPastStep,
   addPastLocalDate,
+  trend,
   onRowPress,
   onOverflowPress,
   onEndReached,
@@ -249,6 +300,15 @@ export function HistoryScreenView({
         keyExtractor={(row) => row.id}
         contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 32 }}
         onEndReached={onEndReached}
+        ListHeaderComponent={
+          trend ? (
+            <HistoryTrendCard
+              sessions={trend.sessions}
+              todayLocalDate={trend.todayLocalDate}
+              weightUnit={trend.weightUnit}
+            />
+          ) : null
+        }
         renderItem={({ item }) => (
           <View className="mb-sm">
             <SessionHistoryRow
@@ -307,6 +367,7 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
   const [overlay, setOverlay] = useState<HistoryOverlay>(null);
   const [addPastStep, setAddPastStep] = useState<AddPastWorkoutStep>(null);
   const [pendingBackfill, setPendingBackfill] = useState(todayPendingBackfill);
+  const [trend, setTrend] = useState<HistoryTrendViewData | null>(null);
 
   // On focus, not on mount — matches Home's own readNextUp effect (index.tsx): a session finished
   // on another tab (Workout) must not leave History showing a stale page until the app restarts.
@@ -325,6 +386,26 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
           if (!active) return;
           setFailed(true);
         }
+      })();
+
+      return () => {
+        active = false;
+      };
+    }, [userId, db]),
+  );
+
+  // A second, independent effect with its own cancellation flag — deliberately not folded into the
+  // page read above. Neither may gate the other: a failed trend read must not blank the session
+  // list, and a failed page read must not be masked by a card that happened to load.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      void (async () => {
+        const { localDate: todayLocalDate } = captureCalendarDay(new Date());
+        const result = await readHistoryTrend({ userId, todayLocalDate, db });
+        if (!active) return;
+        setTrend('failed' in result ? null : { ...result.data, todayLocalDate });
       })();
 
       return () => {
@@ -479,6 +560,7 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
     overlay,
     addPastStep,
     addPastLocalDate: captureCalendarDay(pendingBackfill.date, pendingBackfill.timezone).localDate,
+    trend,
     onRowPress: (sessionId) => router.push(`/workout-summary?sessionId=${sessionId}`),
     onOverflowPress: (sessionId) => setOverlay({ kind: 'sheet', sessionId }),
     onEndReached: handleEndReached,
@@ -495,11 +577,19 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
   };
 }
 
-export default function HistoryScreen() {
+export interface HistoryScreenProps {
+  // The durability harness's seam, matching the shipped gym-profiles and programs routes: mounts
+  // this exact tab against a caller-chosen db/userId instead of the production singleton. Both are
+  // undefined for every real navigation, so production behaviour is unchanged.
+  userId?: string;
+  db?: WriteDb;
+}
+
+export default function HistoryScreen({ userId: userIdOverride, db }: HistoryScreenProps = {}) {
   const colors = useThemeColors();
   const session = authClient.useSession();
-  const userId = session.data?.user?.id ?? null;
-  const vm = useHistoryScreen({ userId });
+  const userId = userIdOverride ?? session.data?.user?.id ?? null;
+  const vm = useHistoryScreen({ userId, db });
 
   return <HistoryScreenView {...vm} colors={colors} />;
 }

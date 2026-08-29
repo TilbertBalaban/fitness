@@ -1,4 +1,10 @@
-import { deriveHistoryScreenState, HistoryScreenView, type HistoryScreenViewProps } from '../history';
+import {
+  deriveHistoryScreenState,
+  HistoryScreenView,
+  readHistoryTrend,
+  type HistoryScreenViewProps,
+} from '../history';
+import { HistoryTrendCard } from '@/components/HistoryTrendCard';
 import type { HistoryPage } from '@/lib/db/history-query';
 
 jest.mock('@/lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
@@ -31,6 +37,7 @@ function baseProps(overrides: Partial<HistoryScreenViewProps> = {}): HistoryScre
     onCancelOverlay: jest.fn(),
     onConfirmRename: jest.fn(),
     onConfirmDelete: jest.fn(),
+    trend: null,
     ...overrides,
   };
 }
@@ -186,5 +193,66 @@ describe('HistoryScreenView — ready state', () => {
     const [, exercisesModal] = addPastModals.props.children;
 
     expect(exercisesModal).not.toBeNull();
+  });
+});
+
+describe('readHistoryTrend', () => {
+  const INPUT = { userId: 'user-1', todayLocalDate: '2026-08-29' };
+
+  it('returns the sessions and the weight unit on a successful read', async () => {
+    const data = { sessions: [{ sessionId: 's1', localDate: '2026-08-29', sets: [] }], weightUnit: 'lb' as const };
+
+    await expect(readHistoryTrend(INPUT, async () => data)).resolves.toEqual({ data });
+  });
+
+  // The trend is a SECONDARY read: a rejection must resolve to a distinct failed branch rather
+  // than propagate, because the session list the tab exists for has to keep rendering.
+  it('reports a rejection as a failed read instead of throwing', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      readHistoryTrend(INPUT, async () => {
+        throw new Error('boom');
+      }),
+    ).resolves.toEqual({ failed: true });
+    expect(consoleError).toHaveBeenCalled();
+
+    consoleError.mockRestore();
+  });
+});
+
+const TREND_VIEW_DATA = {
+  sessions: [{ sessionId: 's1', localDate: '2026-08-29', sets: [] }],
+  weightUnit: 'kg' as const,
+  todayLocalDate: '2026-08-29',
+};
+
+describe('HistoryScreenView — the trend card at the head of the list', () => {
+  it('hangs the trend card above the first session row in the ready branch', () => {
+    const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW], trend: TREND_VIEW_DATA }));
+    const [, flashList] = element.props.children;
+    const header = flashList.props.ListHeaderComponent;
+
+    expect(header.type).toBe(HistoryTrendCard);
+    expect(header.props.sessions).toBe(TREND_VIEW_DATA.sessions);
+    expect(header.props.todayLocalDate).toBe('2026-08-29');
+    expect(header.props.weightUnit).toBe('kg');
+  });
+
+  it('renders no list header at all when the trend read has not landed or failed', () => {
+    const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW], trend: null }));
+    const [, flashList] = element.props.children;
+
+    expect(flashList.props.ListHeaderComponent).toBeNull();
+  });
+
+  // The tab's own shipped empty and error states own the screen alone — a card stacked on top of
+  // "No workouts yet" would be a second, contradictory answer to the same question.
+  it('leaves the empty and error branches untouched even with trend data in hand', () => {
+    const empty = HistoryScreenView(baseProps({ state: 'empty', trend: TREND_VIEW_DATA }));
+    const error = HistoryScreenView(baseProps({ state: 'error', trend: TREND_VIEW_DATA }));
+
+    expect(empty.props.children[0].props.children).toBe('No workouts yet');
+    expect(error.props.children[0].props.children).toBe("History couldn't load");
   });
 });
