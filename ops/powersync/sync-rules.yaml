@@ -49,3 +49,9 @@ streams:
       - SELECT * FROM body_metric WHERE user_id = auth.user_id()
       - SELECT * FROM progress_photo WHERE user_id = auth.user_id()
       - SELECT * FROM user_preference WHERE user_id = auth.user_id()
+      # muscle_volume_rollup and analytics_watermark (10-01) are server-written only, so unlike
+      # every other table in this stream they appear in no push path — they are deliberately
+      # absent from SYNCED_TABLES and from SyncService.TABLE_MAP, exactly as body_metric and
+      # progress_photo established that a pull-side registration can stand alone.
+      - SELECT * FROM muscle_volume_rollup WHERE user_id = auth.user_id()
+      - SELECT * FROM analytics_watermark WHERE user_id = auth.user_id()
