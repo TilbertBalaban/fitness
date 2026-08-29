@@ -20,3 +20,6 @@ apps/mobile/playwright-report/
 .gsd/
 .planning/.worktree-manifests/
 .planning/research/.cache/
+
+# GSD parallel-execution worktrees — transient, never committed
+.claude/worktrees/
