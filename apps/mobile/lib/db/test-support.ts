@@ -28,6 +28,7 @@ import {
   exercise,
   exerciseMuscleMapping,
   loggedSet,
+  muscleGroup,
   personalRecord,
   progressPhoto,
   routine,
@@ -1169,5 +1170,324 @@ export async function seedPersonalRecords(db: TestWriteDb, input: SeedPersonalRe
       },
       db,
     );
+  }
+}
+
+export interface SeedTrainedSet {
+  // Deliberately part of the input surface rather than fixed to 'normal': the Last 7 Days card's
+  // Sets figure must equal the exercise strip's, and a spec can only prove that from the DOM if it
+  // can seed a warm-up alongside a working set.
+  setType: SetType;
+  completed: boolean;
+  // Names the PARENT by its index within this exercise's own set list — a drop-set child cannot
+  // name a row id that is generated in here and never handed back. A child is not a set on the
+  // strip and must not be one on the card either.
+  parentSetIndex?: number;
+  weightKg: string | null;
+  reps: number;
+}
+
+export interface SeedTrainedExercise {
+  exerciseId: string;
+  primaryMuscleGroupIds: string[];
+  // Seeded as real mapping rows with role 'secondary'. The card counts primary muscle groups, so
+  // anything named here is something a correct read must NOT count.
+  secondaryMuscleGroupIds?: string[];
+  sets: SeedTrainedSet[];
+}
+
+export interface SeedTrainedSession {
+  localDate: string;
+  exercises: SeedTrainedExercise[];
+}
+
+export interface SeedTrainedWeekProgramSlot {
+  exerciseId: string;
+  targetSets: number | null;
+}
+
+export interface SeedTrainedWeekProgramDay {
+  slots: SeedTrainedWeekProgramSlot[];
+}
+
+export interface SeedTrainedWeekInput {
+  userId: string;
+  sessions: SeedTrainedSession[];
+  // Absent means no active program at all, which is the card's no-denominator branch (D-08).
+  program?: { days: SeedTrainedWeekProgramDay[] };
+}
+
+// muscle_group rows are inserted once per id across every call, so seeding a second time into the
+// same open() database (the causal case drives exactly that) cannot collide on the primary key.
+async function ensureMuscleGroups(db: TestWriteDb, ids: string[]): Promise<void> {
+  const existing = new Set((await db.select({ id: muscleGroup.id }).from(muscleGroup)).map((row) => row.id));
+  for (const id of ids) {
+    if (existing.has(id)) continue;
+    existing.add(id);
+    await db.insert(muscleGroup).values({ id, name: id, bodyRegion: 'upper' });
+  }
+}
+
+async function ensureMuscleMappings(db: TestWriteDb, exercises: SeedTrainedExercise[]): Promise<void> {
+  const existing = new Set(
+    (
+      await db
+        .select({
+          exerciseId: exerciseMuscleMapping.exerciseId,
+          muscleGroupId: exerciseMuscleMapping.muscleGroupId,
+          role: exerciseMuscleMapping.role,
+        })
+        .from(exerciseMuscleMapping)
+    ).map((row) => `${row.exerciseId}|${row.muscleGroupId}|${row.role}`),
+  );
+
+  for (const trained of exercises) {
+    const byRole: [string, string[]][] = [
+      ['primary', trained.primaryMuscleGroupIds],
+      ['secondary', trained.secondaryMuscleGroupIds ?? []],
+    ];
+    for (const [role, muscleGroupIds] of byRole) {
+      for (const muscleGroupId of muscleGroupIds) {
+        const key = `${trained.exerciseId}|${muscleGroupId}|${role}`;
+        if (existing.has(key)) continue;
+        existing.add(key);
+        await db.insert(exerciseMuscleMapping).values({
+          id: generateClientId(),
+          exerciseId: trained.exerciseId,
+          muscleGroupId,
+          role,
+          weightFactor: '1.000',
+        });
+      }
+    }
+  }
+}
+
+async function seedActiveProgram(db: TestWriteDb, userId: string, days: SeedTrainedWeekProgramDay[]): Promise<void> {
+  const routineId = generateClientId();
+
+  await db.insert(routine).values({
+    id: routineId,
+    userId: null,
+    name: 'Harness Weekly Program',
+    goal: null,
+    status: 'ready',
+    progressionFrozen: false,
+    source: 'user',
+    createdFromTemplateId: null,
+    archivedAt: null,
+  });
+
+  for (const [dayIndex, day] of days.entries()) {
+    const routineDayId = generateClientId();
+    await db.insert(routineDay).values({
+      id: routineDayId,
+      routineId,
+      orderIndex: (dayIndex + 1) * 1024,
+      name: `Day ${dayIndex + 1}`,
+      isRestDay: day.slots.length === 0,
+    });
+
+    for (const [slotIndex, slot] of day.slots.entries()) {
+      await db.insert(routineExercise).values({
+        id: generateClientId(),
+        routineDayId,
+        exerciseId: slot.exerciseId,
+        orderIndex: (slotIndex + 1) * 1024,
+        supersetGroupId: null,
+        progressionSchemeId: null,
+        notes: null,
+        targetSets: slot.targetSets,
+        targetRepMin: null,
+        targetRepMax: null,
+        targetRir: null,
+        targetRestSeconds: null,
+      });
+    }
+  }
+
+  await db.insert(routineCycle).values({
+    id: generateClientId(),
+    routineId,
+    name: 'Week 1',
+    kind: 'training',
+    orderIndex: 1024,
+    durationDays: null,
+  });
+
+  await activateRoutine({ userId, routineId }, db);
+}
+
+// Completed sessions on caller-supplied local dates, each with caller-supplied exercises and sets,
+// PLUS the muscle_group rows and primary/secondary mappings those exercises need, so the card's
+// third track has something real to count and something real to ignore. Optionally an active
+// program too, since the card's denominators come from one and there is no second place to author
+// them (D-08).
+//
+// routine_day_id stays null on every seeded session on purpose: these sessions are the window's
+// work, not the program's rotation, and letting them count toward it would move which cycle
+// resolveNextUp calls current and quietly change the target under the spec's feet.
+//
+// Same direct-minimal-write style as seedExerciseHistory — no startSession/logSet round trip —
+// because the card reads finished history, never a session still being built.
+export async function seedTrainedWeek(db: TestWriteDb, input: SeedTrainedWeekInput): Promise<void> {
+  const allExercises = input.sessions.flatMap((session) => session.exercises);
+
+  await ensureMuscleGroups(
+    db,
+    allExercises.flatMap((trained) => [...trained.primaryMuscleGroupIds, ...(trained.secondaryMuscleGroupIds ?? [])]),
+  );
+  await ensureMuscleMappings(db, allExercises);
+
+  for (const [sessionIndex, seededSession] of input.sessions.entries()) {
+    const sessionId = generateClientId();
+    const startedAt = `${seededSession.localDate}T09:00:00.000Z`;
+
+    await db.insert(workoutSession).values({
+      id: sessionId,
+      userId: null,
+      routineDayId: null,
+      equipmentProfileId: null,
+      startedAt,
+      endedAt: startedAt,
+      status: 'completed',
+      deviceId: null,
+      timezone: 'UTC',
+      localDate: seededSession.localDate,
+      notes: null,
+      name: null,
+      pausedAt: null,
+      accumulatedPausedSeconds: 0,
+      restTargetAt: null,
+      serverSeq: null,
+    });
+
+    for (const [exerciseIndex, trained] of seededSession.exercises.entries()) {
+      const sessionExerciseId = generateClientId();
+
+      await db.insert(sessionExercise).values({
+        id: sessionExerciseId,
+        sessionId,
+        exerciseId: trained.exerciseId,
+        orderIndex: (sessionIndex + 1) * 100 + exerciseIndex,
+        supersetGroupId: null,
+        routineExerciseId: null,
+        targetSets: null,
+        targetRepMin: null,
+        targetRepMax: null,
+        targetRir: null,
+        targetRestSeconds: null,
+        notes: null,
+        removedAt: null,
+      });
+
+      const setIds = trained.sets.map(() => generateClientId());
+      for (const [setIndex, seededSet] of trained.sets.entries()) {
+        await db.insert(loggedSet).values({
+          id: setIds[setIndex],
+          sessionExerciseId,
+          setIndex: setIndex + 1,
+          setType: seededSet.setType,
+          weightKg: seededSet.weightKg,
+          reps: seededSet.reps,
+          rir: null,
+          side: null,
+          completed: seededSet.completed,
+          parentSetId: seededSet.parentSetIndex === undefined ? null : setIds[seededSet.parentSetIndex],
+          restTakenSeconds: null,
+          loggedAt: startedAt,
+          notes: null,
+        });
+      }
+    }
+  }
+
+  if (input.program) await seedActiveProgram(db, input.userId, input.program.days);
+}
+
+export interface SeedTrendHistorySet {
+  weightKg: string | null;
+  reps: number;
+  // In the input surface for the same reason SeedExerciseHistorySet's is: the trend's volume metric
+  // counts drop-set children while its set count does not, and a warm-up counts toward neither, so
+  // a spec can only prove the split from the DOM if it can seed a warm-up-only session.
+  setType: SetType;
+  completed: boolean;
+}
+
+export interface SeedTrendHistorySession {
+  localDate: string;
+  exerciseId: string;
+  sets: SeedTrendHistorySet[];
+}
+
+// A caller-supplied list of dates rather than a count and a stride: expressing a DELIBERATELY
+// SKIPPED bucket is the whole point — a week the caller simply omits must be absent from the line
+// rather than drawn at zero, and only the caller knows which week that is.
+export interface SeedTrendHistoryInput {
+  sessions: SeedTrendHistorySession[];
+}
+
+// Completed sessions across several weekly buckets, each on its own date and against its own
+// exercise. Same direct-minimal-write style as seedExerciseHistory — three tables per session, no
+// startSession/logSet round trip — because the trend card reads finished history only.
+export async function seedTrendHistory(db: TestWriteDb, input: SeedTrendHistoryInput): Promise<void> {
+  for (const [sessionIndex, seededSession] of input.sessions.entries()) {
+    const sessionId = generateClientId();
+    const sessionExerciseId = generateClientId();
+    const startedAt = `${seededSession.localDate}T09:00:00.000Z`;
+
+    await db.insert(workoutSession).values({
+      id: sessionId,
+      userId: null,
+      routineDayId: null,
+      equipmentProfileId: null,
+      startedAt,
+      endedAt: startedAt,
+      status: 'completed',
+      deviceId: null,
+      timezone: 'UTC',
+      localDate: seededSession.localDate,
+      notes: null,
+      name: null,
+      pausedAt: null,
+      accumulatedPausedSeconds: 0,
+      restTargetAt: null,
+      serverSeq: null,
+    });
+
+    await db.insert(sessionExercise).values({
+      id: sessionExerciseId,
+      sessionId,
+      exerciseId: seededSession.exerciseId,
+      orderIndex: sessionIndex,
+      supersetGroupId: null,
+      routineExerciseId: null,
+      targetSets: null,
+      targetRepMin: null,
+      targetRepMax: null,
+      targetRir: null,
+      targetRestSeconds: null,
+      notes: null,
+      removedAt: null,
+    });
+
+    for (const [setIndex, seededSet] of seededSession.sets.entries()) {
+      await db.insert(loggedSet).values({
+        id: generateClientId(),
+        sessionExerciseId,
+        setIndex: setIndex + 1,
+        setType: seededSet.setType,
+        weightKg: seededSet.weightKg,
+        reps: seededSet.reps,
+        rir: null,
+        side: null,
+        completed: seededSet.completed,
+        parentSetId: null,
+        restTakenSeconds: null,
+        loggedAt: startedAt,
+        notes: null,
+      });
+    }
   }
 }

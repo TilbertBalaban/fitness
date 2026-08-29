@@ -48,6 +48,8 @@ export default defineConfig({
         'progression-recommendation.spec.ts',
         'exercise-performance.spec.ts',
         'records.spec.ts',
+        'weekly-progress.spec.ts',
+        'history-trend.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },

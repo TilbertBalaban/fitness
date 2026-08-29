@@ -115,4 +115,18 @@ describe('exercise detail screen — structural invariants', () => {
   it('references the edit route path, proving the Edit control is present rather than merely un-gated', () => {
     expect(source).toContain('/exercises/edit/[id]');
   });
+
+  it('offers the performance chart entry point and pushes the performance route (09-06)', () => {
+    expect(source).toContain('View performance');
+    expect(source).toContain('/exercise-performance?exerciseId=');
+  });
+
+  it('renders the performance link unconditionally — never gated on the exercise having history', () => {
+    // A vanishing link is indistinguishable from a bug; the performance screen's own empty state is
+    // the truthful answer. This asserts the absence of the gate a later reader might "fix" in.
+    const linkIndex = source.indexOf('View performance');
+    const enclosingLine = source.slice(source.lastIndexOf('\n', linkIndex), source.indexOf('\n', linkIndex));
+    expect(enclosingLine).not.toMatch(/hasHistory|sessions|\?\s*\(/);
+    expect(source).not.toMatch(/\w+\s*(&&|\?)[^\n]*View performance/);
+  });
 });

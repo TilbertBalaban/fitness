@@ -62,7 +62,13 @@ function renderTrack(track: WeeklyTrack, colors: ThemeColors) {
       className="gap-xs"
       style={{ minHeight: TRACK_BLOCK_MIN_HEIGHT }}
       accessibilityRole="progressbar"
-      accessibilityValue={{ min: 0, max: track.target, now: track.achieved }}
+      // aria-* rather than accessibilityValue: react-native-web 0.21 dropped the legacy prop, so
+      // accessibilityValue renders role and label but no aria-valuemin/max/now at all, leaving the
+      // track a silent rectangle to a screen reader on web. React Native has accepted the aria-*
+      // spelling since 0.71, so one set of props is correct on both targets.
+      aria-valuemin={0}
+      aria-valuemax={track.target}
+      aria-valuenow={track.achieved}
       accessibilityLabel={`${label}: ${track.achieved} of ${track.target}`}
     >
       <View className="flex-row flex-wrap items-center justify-between">

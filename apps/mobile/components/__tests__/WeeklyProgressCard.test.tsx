@@ -95,7 +95,9 @@ describe('WeeklyProgressCardView', () => {
     const tracks = findAll(render(POPULATED), isProgressTrack);
 
     expect(tracks).toHaveLength(3);
-    expect(tracks[0].props.accessibilityValue).toEqual({ min: 0, max: 18, now: 14 });
+    expect(tracks[0].props['aria-valuemin']).toBe(0);
+    expect(tracks[0].props['aria-valuemax']).toBe(18);
+    expect(tracks[0].props['aria-valuenow']).toBe(14);
     expect(tracks[0].props.accessibilityLabel).toBe('Sets: 14 of 18');
     expect(tracks[2].props.accessibilityLabel).toBe('Muscles trained: 4 of 4');
   });

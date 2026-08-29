@@ -331,6 +331,20 @@ export default function ExerciseDetailScreen() {
         </View>
       ) : null}
 
+      {/* Deliberately NOT gated on this exercise having any logged history: the performance screen's
+          own "No history for this exercise" state is a truthful, useful answer, whereas a link that
+          vanishes for exactly the exercises a user has not trained yet is indistinguishable from a
+          bug. Do not add a condition here. */}
+      <Pressable
+        onPress={() => router.push(`/exercise-performance?exerciseId=${encodeURIComponent(detail.id)}`)}
+        accessibilityRole="button"
+        accessibilityLabel="View performance"
+        style={{ minHeight: 48 }}
+        className="mt-md justify-center"
+      >
+        <Text className="text-body font-normal text-accent">View performance</Text>
+      </Pressable>
+
       <DetailSection heading="Setup">{detail.instructionsText}</DetailSection>
 
       <DetailSection heading="Cues">{detail.cueText}</DetailSection>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import type { EquipmentType } from '@fitness/api-contracts';
 import { WorkoutScreenView, useWorkoutScreen } from './(tabs)/workout';
-import { startBackfilledSession } from './(tabs)/history';
+import HistoryScreen, { startBackfilledSession } from './(tabs)/history';
 import { EditingWorkoutRoute } from '../components/EditingWorkoutScreen';
 import GymProfilesScreen from './gym-profiles/index';
 import NewGymScreen from './gym-profiles/new';
@@ -10,6 +10,7 @@ import EditGymScreen from './gym-profiles/edit/[id]';
 import ProgramsScreen from './(tabs)/programs';
 import ExercisePerformanceScreen from './exercise-performance';
 import RecordsScreen from './records';
+import HomeScreen from './(tabs)/index';
 import { SyncConnector } from '../lib/db/connector';
 import { loadEquipmentProfile, setActiveEquipmentProfile, type CreateEquipmentProfileInput } from '../lib/db/equipment-profiles';
 import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib/db/log-set';
@@ -77,16 +78,27 @@ import {
   type SeedExerciseHistoryInput,
   seedPersonalRecords,
   type SeedPersonalRecordsInput,
+  seedTrainedWeek,
+  type SeedTrainedWeekInput,
+  seedTrendHistory,
+  type SeedTrendHistoryInput,
 } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
 import { SessionModeProvider } from '../lib/session/session-mode';
 import { useThemeColors } from '../lib/theme-colors';
+// The imperative router, not the hook: navigateAwayAndBack runs inside the harness's own effect
+// closure, outside any component render.
+import { router } from 'expo-router';
 
 // Any non-empty string works: workout_session.user_id is stamped server-side on sync push only
 // (see session-query.ts's loadLiveSession comment), so nothing this harness reads or writes ever
 // compares against this value — it exists purely to satisfy readWorkoutScreenData's signed-in
 // early-out.
 const WORKOUT_HARNESS_USER_ID = 'harness-user';
+
+// One frame is not enough for Expo Router's web history push to settle before the pop; a short
+// fixed wait is, and the spec polls for the result rather than depending on this number's exactness.
+const HARNESS_NAVIGATION_SETTLE_MS = 250;
 
 function WorkoutHarnessScreen({ db, userId }: { db: WriteDb; userId: string }) {
   const colors = useThemeColors();
@@ -138,6 +150,12 @@ export default function DurabilityHarnessScreen() {
   // 09-03's Records mount — mutually exclusive with the six above, same single-active-mount
   // convention.
   const [recordsHarness, setRecordsHarness] = useState<{ db: TestWriteDb } | null>(null);
+  // 09-04's Home-tab mount — mutually exclusive with the seven above, same single-active-mount
+  // convention. Carries only the db; the Home tab takes no other override.
+  const [homeHarness, setHomeHarness] = useState<{ db: TestWriteDb } | null>(null);
+  // 09-05's History-tab mount — mutually exclusive with the others, same single-active-mount
+  // convention.
+  const [historyTrendHarness, setHistoryTrendHarness] = useState<{ db: TestWriteDb } | null>(null);
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -184,6 +202,8 @@ export default function DurabilityHarnessScreen() {
         setProgramsHarness(null);
         setPerformanceHarness(null);
         setRecordsHarness(null);
+        setHomeHarness(null);
+        setHistoryTrendHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -558,6 +578,55 @@ export default function DurabilityHarnessScreen() {
         setProgramsHarness(null);
         setPerformanceHarness(null);
       },
+      // 09-04's ANLY-08 e2e proof: seeds a real trained window (and optionally a real active
+      // program) through the shipped test-support helper, then mounts the real Home tab against the
+      // same open() database via its own {userId, db} override — matching
+      // seedRecordsAndOpenRecords's seed-then-mount convention above.
+      async seedTrainedWeekAndOpenHome(input: SeedTrainedWeekInput) {
+        const db = requireOpenDb();
+        await seedTrainedWeek(db, { ...input, userId: WORKOUT_HARNESS_USER_ID });
+        setHomeHarness({ db });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setProgramsHarness(null);
+        setPerformanceHarness(null);
+        setRecordsHarness(null);
+        setHistoryTrendHarness(null);
+      },
+      // 09-05's ANLY-07 e2e proof: seeds real completed sessions across several weekly buckets
+      // through the shipped test-support helper, then mounts the real History tab against the same
+      // open() database via its own {userId, db} override.
+      async seedTrendAndOpenHistory(input: SeedTrendHistoryInput) {
+        const db = requireOpenDb();
+        await seedTrendHistory(db, input);
+        setHistoryTrendHarness({ db });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setProgramsHarness(null);
+        setPerformanceHarness(null);
+        setRecordsHarness(null);
+        setHomeHarness(null);
+      },
+      // Seeds without mounting, so a spec can add work to an ALREADY-mounted Home tab. This is the
+      // half of the causal case that proves the figure is derived again after logging rather than
+      // memoised on mount — seeding through the mounting method above would remount and prove
+      // nothing.
+      async seedTrainedWeek(input: SeedTrainedWeekInput) {
+        await seedTrainedWeek(requireOpenDb(), { ...input, userId: WORKOUT_HARNESS_USER_ID });
+      },
+      // A real Expo Router push and pop, not a remount: the mounted screen stays in the stack and
+      // merely loses and regains focus, which is the only way to exercise the focus effect's own
+      // re-read. /reset-password is the target because it reads no database and fires no network
+      // call on mount, so it cannot perturb what the spec is measuring.
+      async navigateAwayAndBack() {
+        router.push('/reset-password');
+        await new Promise((resolve) => setTimeout(resolve, HARNESS_NAVIGATION_SETTLE_MS));
+        router.back();
+      },
     };
 
     setReady(true);
@@ -593,6 +662,8 @@ export default function DurabilityHarnessScreen() {
         />
       ) : null}
       {recordsHarness ? <RecordsScreen db={recordsHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
+      {homeHarness ? <HomeScreen db={homeHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
+      {historyTrendHarness ? <HistoryScreen db={historyTrendHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
       <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>
   );

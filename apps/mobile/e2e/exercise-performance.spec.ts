@@ -26,8 +26,9 @@ interface ExercisePerformanceHarness {
 // page — it carries no outer closures, matching every other e2e spec in this directory.
 type HarnessWindow = Record<string, ExercisePerformanceHarness>;
 
-// The route bounds its read to PER_SESSION_RANGE_DAYS (90) before today, so every seeded date has
-// to be relative to the run's own clock — a hardcoded 2026 date would silently fall out of range.
+// The route bounds its read by the SELECTED range before today, so every seeded date has to be
+// relative to the run's own clock — a hardcoded 2026 date would silently fall out of every
+// bounded range and leave the specs below asserting an empty state by accident.
 function daysAgo(days: number): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - days);
@@ -167,5 +168,143 @@ test.describe('exercise performance — per-session chart (ANLY-06, ANLY-10)', (
     // there is nothing to switch between.
     await expect(page.getByRole('img')).toHaveCount(0);
     await expect(page.getByRole('radio')).toHaveCount(0);
+  });
+});
+
+// The range switch is driven entirely through the DOM here rather than through a harness
+// parameter: clicking the chip is what a lifter does, and it proves the re-read as well as the
+// redraw. It also keeps this spec off every shared harness file the rest of the wave is appending to.
+test.describe('exercise performance — range switch (ANLY-06)', () => {
+  test('the short range plots sessions and the all-time range redraws as weekly buckets', async ({ page }) => {
+    await bootHarness(page);
+
+    await page.evaluate(
+      ({ globalKey, sessions }) =>
+        (window as unknown as HarnessWindow)[globalKey].seedExerciseHistoryAndOpenPerformance({
+          exerciseId: 'ex-performance-range-1',
+          sessions,
+          metric: 'heaviest',
+        }),
+      {
+        globalKey: DURABILITY_HARNESS_GLOBAL,
+        sessions: [
+          // Two sessions older than a year — invisible at every bounded range, and the whole reason
+          // the all-time range exists.
+          { localDate: daysAgo(500), sets: [working('70.000', 5)] },
+          { localDate: daysAgo(400), sets: [working('80.000', 5)] },
+          { localDate: daysAgo(60), sets: [working('90.000', 5)] },
+          { localDate: daysAgo(30), sets: [working('95.000', 5)] },
+          { localDate: daysAgo(10), sets: [working('100.000', 5)] },
+        ],
+      },
+    );
+
+    await expect(page.getByRole('img', { name: /Heaviest weight over Last 3 months\. 3 points/ })).toBeVisible();
+
+    await page.getByRole('radio', { name: 'All time' }).click();
+
+    // Five weekly buckets, one per session — a range that silently failed to re-read would still
+    // announce three points here.
+    await expect(page.getByRole('img', { name: /Heaviest weight over All time\. 5 points/ })).toBeVisible();
+    await expect(page.getByText('70.00 kg – 100.00 kg', { exact: true })).toBeVisible();
+
+    // The metric switch survives the range change, and the range switch survives the metric change.
+    await page.getByRole('radio', { name: 'Total Volume' }).click();
+    await expect(page.getByRole('img', { name: /Total volume over All time\. 5 points/ })).toBeVisible();
+  });
+
+  test('a weekly bucket holding two sessions shows the higher value, never their average', async ({ page }) => {
+    await bootHarness(page);
+
+    await page.evaluate(
+      ({ globalKey, sessions }) =>
+        (window as unknown as HarnessWindow)[globalKey].seedExerciseHistoryAndOpenPerformance({
+          exerciseId: 'ex-performance-range-2',
+          sessions,
+          metric: 'heaviest',
+        }),
+      {
+        globalKey: DURABILITY_HARNESS_GLOBAL,
+        sessions: [
+          { localDate: daysAgo(200), sets: [working('80.000', 5)] },
+          // Same week. Their mean is 110kg — a weight this lifter never lifted.
+          { localDate: daysAgo(3), sets: [working('120.000', 5)] },
+          { localDate: daysAgo(1), sets: [working('100.000', 5)] },
+        ],
+      },
+    );
+
+    await page.getByRole('radio', { name: 'All time' }).click();
+
+    await expect(page.getByRole('img', { name: /Heaviest weight over All time\. 2 points/ })).toBeVisible();
+    await expect(page.getByRole('img', { name: /highest 120\.00 kg/ })).toBeVisible();
+    // The single most plausible wrong implementation of a bucketed range, caught by its own number.
+    await expect(page.getByText('110.00 kg', { exact: true })).toHaveCount(0);
+    // The headline is the latest bucket's best, not its last session.
+    await expect(page.getByText('120.00 kg', { exact: true })).toBeVisible();
+  });
+
+  test('history entirely outside the short range says so and keeps both switches reachable', async ({ page }) => {
+    await bootHarness(page);
+
+    await page.evaluate(
+      ({ globalKey, sessions }) =>
+        (window as unknown as HarnessWindow)[globalKey].seedExerciseHistoryAndOpenPerformance({
+          exerciseId: 'ex-performance-range-3',
+          sessions,
+          metric: 'heaviest',
+        }),
+      {
+        globalKey: DURABILITY_HARNESS_GLOBAL,
+        sessions: [
+          { localDate: daysAgo(200), sets: [working('80.000', 5)] },
+          { localDate: daysAgo(150), sets: [working('85.000', 5)] },
+        ],
+      },
+    );
+
+    await expect(page.getByText('Nothing logged in the last 3 months', { exact: true })).toBeVisible();
+    await expect(page.getByText('Try a longer range.', { exact: true })).toBeVisible();
+    // D-09: an empty range is not a flat line and not a zero point.
+    await expect(page.getByRole('img')).toHaveCount(0);
+    // Both switches stay on screen — three metrics and three ranges — because widening the range is
+    // the only way out of this state.
+    await expect(page.getByRole('radio')).toHaveCount(6);
+
+    await page.getByRole('radio', { name: '1 year' }).click();
+
+    await expect(page.getByRole('img', { name: /Heaviest weight over Last year\. 2 points/ })).toBeVisible();
+    await expect(page.getByText('Nothing logged in the last 3 months', { exact: true })).toHaveCount(0);
+  });
+
+  test('a long all-time series keeps its line and its final marker without a downsampler', async ({ page }) => {
+    await bootHarness(page);
+
+    await page.evaluate(
+      ({ globalKey }) =>
+        (window as unknown as HarnessWindow)[globalKey].seedExerciseHistoryAndOpenPerformance({
+          exerciseId: 'ex-performance-range-4',
+          // Fifteen distinct weeks — above TrendChart's MAX_POINT_MARKERS of 12, which is the case
+          // the UI-SPEC's bucket-count guard covers instead of adding a downsampler.
+          sessions: Array.from({ length: 15 }, (_, index) => {
+            const date = new Date();
+            date.setUTCDate(date.getUTCDate() - 7 * (index + 1));
+            return {
+              localDate: date.toISOString().slice(0, 10),
+              sets: [{ weightKg: `${60 + index}.000`, reps: 5, setType: 'normal', completed: true }],
+            };
+          }),
+        }),
+      { globalKey: DURABILITY_HARNESS_GLOBAL },
+    );
+
+    await page.getByRole('radio', { name: 'All time' }).click();
+
+    const chart = page.getByRole('img', { name: /Heaviest weight over All time\. 15 points/ });
+    await expect(chart).toBeVisible();
+    // Exactly one marker survives above the cap — the final point, where the lifter is now.
+    await expect(chart.locator('circle')).toHaveCount(1);
+    // The line and its area fill still carry the shape.
+    await expect(chart.locator('path')).toHaveCount(2);
   });
 });
