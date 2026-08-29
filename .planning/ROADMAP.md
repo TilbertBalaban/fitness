@@ -524,13 +524,26 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 10-01-PLAN.md — Tracer: rollup + watermark tables, the recompute hook inside applyBatch's transaction, the two pull queries and the client mirror
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 10-02-PLAN.md — ANLY-09 in full: scoped PR replay, vacated-cell invalidation, idempotence
 - [ ] 10-03-PLAN.md — Client read layer: muscle-map vocabulary, the D-01 rollup-plus-overlay merge, and the drill-down query
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 10-04-PLAN.md — Corpus muscle mappings and the executable reconcile query-count budget
 - [ ] 10-05-PLAN.md — ANLY-04 UI: MuscleHeatmap, MuscleVolumeRow, the /muscle-map route and the History entry point
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 10-06-PLAN.md — ANLY-05 UI: MuscleDrilldownSheet and its wiring into the screen
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 10-07-PLAN.md — Playwright durability evidence and the deferred-verification ledger
 
 ### Phase 11: Program Generation
