@@ -22,6 +22,7 @@ import {
   type SyncRejectionReason,
 } from '@fitness/api-contracts';
 import { DRIZZLE, type Database } from '../db/drizzle.module';
+import { AnalyticsReconciliationService } from '../analytics/reconciliation.service';
 import {
   workoutSession,
   sessionExercise,
@@ -1013,7 +1014,13 @@ interface Aggregate {
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
 
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    // Defaulted so the three existing `new SyncService(db)` call sites (generate-corpus.ts and
+    // two in seeded-corpus-perf.e2e-spec.ts) keep compiling and working unchanged — Nest injects
+    // the real instance through the module graph in every other context.
+    private readonly reconciliation: AnalyticsReconciliationService = new AnalyticsReconciliationService(),
+  ) {}
 
   // Resolves ownership through the owning chain to workout_session.user_id for every op in an
   // aggregate — a child is never trusted because its own id was accepted (T-02-01, T-02-03).
@@ -1660,6 +1667,14 @@ export class SyncService {
           .where(eq(rootTable.id, root));
         const capturedRootSeq = rootBefore?.serverSeq ?? 0;
 
+        // Gathered while the loop below already reads and writes rows, for the reconciliation
+        // call after it closes (aggregate.rootType === 'workout_session' only) — never a second
+        // pass over orderedOps and never a second select.
+        const touchedExerciseIds = new Set<string>();
+        let oldLocalDate: string | null = null;
+        let newLocalDate: string | null = null;
+        let rootDeleted = false;
+
         for (const op of orderedOps) {
           const table = TABLE_MAP[op.type as MappedTable];
 
@@ -1675,19 +1690,39 @@ export class SyncService {
 
           const existingRow = await tx.select().from(table).where(eq(table.id, op.id)).for('update');
 
+          // The OLD local_date, captured BEFORE this op is applied — never re-read after the
+          // update. root is this aggregate's only workout_session-typed op (rootFamilyOf), so this
+          // fires exactly once per aggregate.
+          if (op.type === 'workout_session') {
+            oldLocalDate = (existingRow[0] as { localDate: string } | undefined)?.localDate ?? null;
+          }
+          // An existing session_exercise row (PATCH or DELETE) already names its exercise before
+          // this op is applied — captured here so a session_exercise DELETE contributes to the set
+          // the same as a PUT/PATCH does below, without a second select.
+          if (op.type === 'session_exercise' && existingRow.length > 0) {
+            touchedExerciseIds.add((existingRow[0] as { exerciseId: string }).exerciseId);
+          }
+
           if (op.op === 'DELETE') {
             // Gathered before the delete: the FK cascade removes these rows at the database level
             // the moment the parent is deleted, so their ids must be read first or there is
             // nothing left to tombstone.
-            let childSessionExercises: { id: string }[] = [];
+            let childSessionExercises: { id: string; exerciseId: string }[] = [];
             let childLoggedSets: { id: string }[] = [];
             let childRoutineExercises: { id: string }[] = [];
             let childCycleTargets: { id: string }[] = [];
+            if (op.type === 'workout_session') {
+              rootDeleted = true;
+            }
             if (op.type === 'workout_session' && existingRow.length > 0) {
+              // Widened to { id, exerciseId }: after the FK cascade there is no other way to
+              // learn which exercises a deleted session touched, and a PR set on a deleted
+              // session must not survive it (10-02).
               childSessionExercises = await tx
-                .select({ id: sessionExercise.id })
+                .select({ id: sessionExercise.id, exerciseId: sessionExercise.exerciseId })
                 .from(sessionExercise)
                 .where(eq(sessionExercise.sessionId, op.id));
+              for (const child of childSessionExercises) touchedExerciseIds.add(child.exerciseId);
               const childSessionExerciseIds = childSessionExercises.map((row) => row.id);
               childLoggedSets = childSessionExerciseIds.length
                 ? await tx
@@ -1851,6 +1886,7 @@ export class SyncService {
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
             const workoutSessionValues = values as WorkoutSessionValues;
+            newLocalDate = workoutSessionValues.localDate;
             const [{ serverSeq }] = await tx
               .insert(workoutSession)
               .values({ ...workoutSessionValues, serverSeq: nextSeq })
@@ -1863,6 +1899,7 @@ export class SyncService {
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           } else if (op.type === 'session_exercise') {
             const sessionExerciseValues = values as SessionExerciseValues;
+            touchedExerciseIds.add(sessionExerciseValues.exerciseId);
             await tx
               .insert(sessionExercise)
               .values(sessionExerciseValues)
@@ -2038,6 +2075,19 @@ export class SyncService {
           }
 
           applied.push(op.op_id);
+        }
+
+        // Inside the same transaction as the push it derives from — a throw here rolls the whole
+        // push back through the existing catch below, which is deliberate and must not be wrapped
+        // in its own try/catch (ANLY-09, D-03).
+        if (aggregate.rootType === 'workout_session') {
+          await this.reconciliation.reconcileSession(tx, userId, {
+            sessionId: root,
+            touchedExerciseIds: [...touchedExerciseIds],
+            oldLocalDate,
+            newLocalDate: rootDeleted ? null : newLocalDate,
+            deleted: rootDeleted,
+          });
         }
         });
       } catch (error) {
