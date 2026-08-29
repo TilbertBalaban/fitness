@@ -1,13 +1,17 @@
 import { eq } from 'drizzle-orm';
 import {
-  EQUIPMENT_TYPES,
   isUnavailableEquipmentRefs,
   parseEquipmentJson,
   serializeEquipmentJson,
-  type EquipmentType,
   type UnavailableEquipmentRef,
 } from '@fitness/api-contracts';
-import { resolveInventory, type ResolvedInventory } from '@fitness/plate-math';
+import {
+  canEquip,
+  MODEL_EQUIPMENT_TYPES,
+  NON_MODEL_EQUIPMENT_TYPES,
+  resolveInventory,
+  type ResolvedInventory,
+} from '@fitness/plate-math';
 import type { SwapConstraints } from '../catalog/smart-swap';
 import { loadEquipmentProfile, updateEquipmentProfile } from './equipment-profiles';
 import { getPowerSync, type WriteDb } from './powersync';
@@ -133,24 +137,6 @@ export async function restampSessionGym(
   db: WriteDb = getPowerSync(),
 ): Promise<void> {
   await db.update(workoutSession).set({ equipmentProfileId: profileId }).where(eq(workoutSession.id, sessionId));
-}
-
-// D-22's own equipment types — the five this phase models an inventory for. The other seven
-// EQUIPMENT_TYPES members (kettlebell, bodyweight, band, medicine_ball, exercise_ball,
-// foam_roller, other) have no inventory model at all (D-14) and are never gated by this function.
-const MODEL_EQUIPMENT_TYPES: EquipmentType[] = ['barbell', 'ez_bar', 'dumbbell', 'machine', 'cable'];
-// Every EQUIPMENT_TYPES member this phase does NOT model an inventory for — derived, not
-// hand-copied, so appending a new EQUIPMENT_TYPES member can never silently drop it from an
-// allowEquipment list below and wrongly exclude every candidate requiring it.
-const NON_MODEL_EQUIPMENT_TYPES: EquipmentType[] = EQUIPMENT_TYPES.filter(
-  (type) => !MODEL_EQUIPMENT_TYPES.includes(type),
-);
-
-function canEquip(type: EquipmentType, inventory: ResolvedInventory): boolean {
-  if (inventory.unavailableEquipmentTypes.includes(type)) return false;
-  if (type === 'barbell' || type === 'ez_bar') return inventory.barbellWeightKg !== null;
-  if (type === 'dumbbell') return inventory.dumbbells.length > 0;
-  return inventory.machines.some((machine) => machine.equipmentType === type);
 }
 
 // D-22's small pure adapter: turns a resolved inventory into the constraint shape

@@ -20,6 +20,7 @@
     "@fitness/api-contracts": "workspace:*",
     "@fitness/plate-math": "workspace:*",
     "@fitness/pr-rules": "workspace:*",
+    "@fitness/program-generator": "workspace:*",
     "@fitness/progression-engine": "workspace:*",
     "@op-engineering/op-sqlite": "^18.0.0",
     "@powersync/common": "^2.1.0",

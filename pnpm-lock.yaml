@@ -68,6 +68,9 @@ importers:
         specifier: ^7.8.1
         version: 7.8.2
     devDependencies:
+      '@fitness/program-generator':
+        specifier: workspace:*
+        version: link:../../packages/program-generator
       '@fitness/progression-engine':
         specifier: workspace:*
         version: link:../../packages/progression-engine
@@ -137,6 +140,9 @@ importers:
       '@fitness/pr-rules':
         specifier: workspace:*
         version: link:../../packages/pr-rules
+      '@fitness/program-generator':
+        specifier: workspace:*
+        version: link:../../packages/program-generator
       '@fitness/progression-engine':
         specifier: workspace:*
         version: link:../../packages/progression-engine
@@ -338,6 +344,31 @@ importers:
       '@fitness/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
+    devDependencies:
+      '@types/jest':
+        specifier: ^30.0.0
+        version: 30.0.0
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      jest:
+        specifier: ^30.0.0
+        version: 30.4.2(@types/node@22.20.1)(ts-node@10.9.2(@types/node@22.20.1)(typescript@5.9.3))
+      ts-jest:
+        specifier: ^29.2.5
+        version: 29.4.12(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2(@types/node@22.20.1))(typescript@5.9.3)
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/program-generator:
+    dependencies:
+      '@fitness/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
+      '@fitness/plate-math':
+        specifier: workspace:*
+        version: link:../plate-math
     devDependencies:
       '@types/jest':
         specifier: ^30.0.0
