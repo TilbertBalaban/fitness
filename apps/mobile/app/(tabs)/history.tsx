@@ -95,6 +95,7 @@ export interface HistoryScreenViewProps {
   onOverflowPress: (sessionId: string) => void;
   onEndReached: () => void;
   onAddPastWorkout: () => void;
+  onRecords: () => void;
   onPendingDateChange: (date: Date, timezone: string) => void;
   onConfirmAddPastDate: () => void;
   onCancelAddPast: () => void;
@@ -170,6 +171,7 @@ export function HistoryScreenView({
   onOverflowPress,
   onEndReached,
   onAddPastWorkout,
+  onRecords,
   onPendingDateChange,
   onConfirmAddPastDate,
   onCancelAddPast,
@@ -205,6 +207,14 @@ export function HistoryScreenView({
         >
           <Text className="text-body font-normal text-accent">Add a Past Workout</Text>
         </Pressable>
+        <Pressable
+          onPress={onRecords}
+          accessibilityRole="button"
+          accessibilityLabel="Records"
+          style={{ minHeight: 48, justifyContent: 'center' }}
+        >
+          <Text className="text-body font-normal text-accent">Records</Text>
+        </Pressable>
 
         {renderAddPastWorkoutModals({ addPastStep, addPastLocalDate, onPendingDateChange, onConfirmAddPastDate, onCancelAddPast, onConfirmAddPastExercises })}
       </View>
@@ -215,7 +225,15 @@ export function HistoryScreenView({
 
   return (
     <View className="flex-1 bg-background">
-      <View className="flex-row justify-end px-lg pt-md">
+      <View className="flex-row justify-between px-lg pt-md">
+        <Pressable
+          onPress={onRecords}
+          accessibilityRole="button"
+          accessibilityLabel="Records"
+          style={{ minHeight: 48, justifyContent: 'center' }}
+        >
+          <Text className="text-body font-normal text-accent">Records</Text>
+        </Pressable>
         <Pressable
           onPress={onAddPastWorkout}
           accessibilityRole="button"
@@ -465,6 +483,7 @@ export function useHistoryScreen({ userId, db }: UseHistoryScreenOptions): Histo
     onOverflowPress: (sessionId) => setOverlay({ kind: 'sheet', sessionId }),
     onEndReached: handleEndReached,
     onAddPastWorkout: handleAddPastWorkout,
+    onRecords: () => router.push('/records'),
     onPendingDateChange: handlePendingDateChange,
     onConfirmAddPastDate: handleConfirmAddPastDate,
     onCancelAddPast: handleCancelAddPast,
