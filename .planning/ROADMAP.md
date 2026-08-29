@@ -521,7 +521,7 @@ Plans:
   4. A PR set on one device is authoritative across all of them after sync
   5. History endpoints hold their query count as data grows, enforced by assertions against a realistically-sized dataset
 
-**Plans**: 3/7 plans executed
+**Plans**: 5/7 plans executed
 
 Plans:
 **Wave 1**
@@ -535,8 +535,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 10-04-PLAN.md — Corpus muscle mappings and the executable reconcile query-count budget
-- [ ] 10-05-PLAN.md — ANLY-04 UI: MuscleHeatmap, MuscleVolumeRow, the /muscle-map route and the History entry point
+- [x] 10-04-PLAN.md — Corpus muscle mappings and the executable reconcile query-count budget
+- [x] 10-05-PLAN.md — ANLY-04 UI: MuscleHeatmap, MuscleVolumeRow, the /muscle-map route and the History entry point
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -657,6 +657,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Advanced Set Types | 9/9 | Complete    | 2026-08-28 |
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
-| 10. Server Analytics & Reconciliation | 3/7 | In Progress|  |
+| 10. Server Analytics & Reconciliation | 5/7 | In Progress|  |
 | 11. Program Generation | 0/TBD | Not started | - |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |
