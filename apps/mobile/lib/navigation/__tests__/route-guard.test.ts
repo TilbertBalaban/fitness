@@ -101,10 +101,10 @@ describe('programs route hoisting (T-04-52 regression)', () => {
       expect(programsChildren[0].type).toBe('layout');
     });
 
-    it('nests the library and new routes under the programs node', () => {
+    it('nests the library, new and generate routes under the programs node', () => {
       const programsNode = tree.children.find((child) => child.route === 'programs')!;
       const childRoutes = programsNode.children.map((child) => child.route).sort();
-      expect(childRoutes).toEqual(['library', 'new']);
+      expect(childRoutes).toEqual(['generate', 'library', 'new']);
     });
 
     it('has no root-level child whose route starts with programs/', () => {
@@ -117,12 +117,12 @@ describe('programs route hoisting (T-04-52 regression)', () => {
     const bypassKeys = realKeys.filter((key) => key !== './programs/_layout.tsx');
     const tree = buildRouteTree(bypassKeys);
 
-    it('hoists both programs routes to the root stack as programs/-prefixed siblings', () => {
+    it('hoists all three programs routes to the root stack as programs/-prefixed siblings', () => {
       const leakedRoutes = tree.children
         .filter((child) => child.route.startsWith('programs/'))
         .map((child) => child.route)
         .sort();
-      expect(leakedRoutes).toEqual(['programs/library', 'programs/new']);
+      expect(leakedRoutes).toEqual(['programs/generate', 'programs/library', 'programs/new']);
     });
 
     it('has no root-level child named exactly programs — the protected Stack.Screen matches nothing', () => {
