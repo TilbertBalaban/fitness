@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, gte, inArray, type SQL } from 'drizzle-orm';
 import type { SetType, WorkoutSessionStatus } from '@fitness/api-contracts';
 import { getPowerSync, type WriteDb } from './powersync';
 import { loggedSet, sessionExercise, workoutSession } from './schema';
@@ -23,7 +23,19 @@ export interface ExerciseHistorySession {
 export interface LoadExerciseHistoryInput {
   exerciseId: string;
   userId: string | null;
+  // The selected range's lower bound, already resolved to a stamped local date by the caller —
+  // this reader holds no clock, so a day count would have to become one here (D-10). `null` or
+  // absent is the genuinely unbounded all-time range.
   sinceLocalDate?: string | null;
+}
+
+// Exported so the all-time case is asserted directly: it emits no date predicate AT ALL rather
+// than a very distant sentinel date, which would be a silently wrong answer for an account older
+// than whatever sentinel was picked (T-9-31).
+export function exerciseHistoryFilters(exerciseId: string, sinceLocalDate: string | null | undefined): SQL[] {
+  const filters: SQL[] = [eq(sessionExercise.exerciseId, exerciseId), eq(workoutSession.status, COMPLETED_STATUS)];
+  if (sinceLocalDate) filters.push(gte(workoutSession.localDate, sinceLocalDate));
+  return filters;
 }
 
 // Two queries, never one per session: the joined session list, then ONE logged_set read over
@@ -43,8 +55,7 @@ export async function loadExerciseHistory(
 ): Promise<ExerciseHistorySession[]> {
   if (!userId) return [];
 
-  const filters = [eq(sessionExercise.exerciseId, exerciseId), eq(workoutSession.status, COMPLETED_STATUS)];
-  if (sinceLocalDate) filters.push(gte(workoutSession.localDate, sinceLocalDate));
+  const filters = exerciseHistoryFilters(exerciseId, sinceLocalDate);
 
   const sessionRows = await db
     .select({
