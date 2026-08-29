@@ -8,6 +8,7 @@ jest.mock('../../../lib/db/programs/next-up-query', () => ({ loadNextUp: jest.fn
 // powersync mock above.
 jest.mock('../../../lib/auth-client', () => ({ authClient: { useSession: () => ({ data: null }) } }));
 
+import type { WeeklyProgressData } from '../../../lib/db/weekly-progress-query';
 import {
   deriveHomeScreenState,
   dayTargetMuscles,
@@ -16,6 +17,7 @@ import {
   nextUpHeading,
   readInProgressSession,
   readNextUp,
+  readWeeklyProgress,
 } from '../index';
 
 const WORKOUT_NO_CYCLE = {
@@ -333,5 +335,107 @@ describe('readInProgressSession', () => {
     const load = jest.fn().mockRejectedValue(new Error('database locked'));
 
     await expect(readInProgressSession('u-1', load)).resolves.toEqual({ failed: true });
+  });
+});
+
+// ANLY-08's read-and-derive sequence, exercised without a renderer exactly as the two wrappers
+// above are. The arithmetic itself belongs to @fitness/analytics-engine and is asserted there; what
+// this block pins is that the screen hands it the right rows and the right day, and that a rejected
+// read is reported rather than thrown.
+describe('readWeeklyProgress', () => {
+  const TODAY = '2026-08-29';
+
+  const TRAINED: WeeklyProgressData = {
+    sessions: [
+      {
+        sessionId: 's-1',
+        localDate: '2026-08-27',
+        exercises: [
+          {
+            exerciseId: 'ex-1',
+            primaryMuscleGroupIds: ['mg-chest'],
+            sets: [
+              { id: 'ls-1', setType: 'normal', completed: true, parentSetId: null },
+              // Neither of these two is a set on the exercise strip, so neither may be one here.
+              { id: 'ls-2', setType: 'warmup', completed: true, parentSetId: null },
+              { id: 'ls-3', setType: 'normal', completed: true, parentSetId: 'ls-1' },
+            ],
+          },
+        ],
+      },
+    ],
+    programTarget: { days: [{ slots: [{ exerciseId: 'ex-1', targetSets: 4, primaryMuscleGroupIds: ['mg-chest'] }] }] },
+  };
+
+  it('derives the three tracks from the loaded rows, counting a drop set as one set', async () => {
+    const load = jest.fn().mockResolvedValue(TRAINED);
+
+    const result = await readWeeklyProgress('user-1', TODAY, load);
+
+    expect(result).toEqual({
+      data: {
+        hasActivity: true,
+        tracks: [
+          { id: 'sets', achieved: 1, target: 4 },
+          { id: 'exercises', achieved: 1, target: 1 },
+          { id: 'muscles', achieved: 1, target: 1 },
+        ],
+      },
+    });
+  });
+
+  it('passes the signed-in user and the captured calendar day into the read', async () => {
+    const load = jest.fn().mockResolvedValue(TRAINED);
+
+    await readWeeklyProgress('user-1', TODAY, load);
+
+    expect(load).toHaveBeenCalledWith({ userId: 'user-1', todayLocalDate: TODAY });
+  });
+
+  it('carries a null target through as a track with no denominator, never an invented one', async () => {
+    const load = jest.fn().mockResolvedValue({ ...TRAINED, programTarget: null });
+
+    const result = await readWeeklyProgress('user-1', TODAY, load);
+
+    expect(result).toEqual({
+      data: {
+        hasActivity: true,
+        tracks: [
+          { id: 'sets', achieved: 1, target: null },
+          { id: 'exercises', achieved: 1, target: null },
+          { id: 'muscles', achieved: 1, target: null },
+        ],
+      },
+    });
+  });
+
+  it('reports no activity rather than three zeroed tracks when nothing was logged', async () => {
+    const load = jest.fn().mockResolvedValue({ sessions: [], programTarget: TRAINED.programTarget });
+
+    expect(await readWeeklyProgress('user-1', TODAY, load)).toEqual({ data: { hasActivity: false, tracks: [] } });
+  });
+
+  it('measures a rolling window ending today — a session eight days back drops out', async () => {
+    const stale: WeeklyProgressData = {
+      ...TRAINED,
+      sessions: [{ ...TRAINED.sessions[0], localDate: '2026-08-21' }],
+    };
+    const load = jest.fn().mockResolvedValue(stale);
+
+    expect(await readWeeklyProgress('user-1', TODAY, load)).toEqual({ data: { hasActivity: false, tracks: [] } });
+  });
+
+  it('reports a failure instead of throwing, so a focus never crashes the tab', async () => {
+    const load = jest.fn().mockRejectedValue(new Error('database locked'));
+
+    expect(await readWeeklyProgress('user-1', TODAY, load)).toEqual({ failed: true });
+  });
+
+  it('still reads with a null user, so the signed-out empty state is derived not assumed', async () => {
+    const load = jest.fn().mockResolvedValue({ sessions: [], programTarget: null });
+
+    await readWeeklyProgress(null, TODAY, load);
+
+    expect(load).toHaveBeenCalledWith({ userId: null, todayLocalDate: TODAY });
   });
 });
