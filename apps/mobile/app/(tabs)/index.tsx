@@ -1,14 +1,18 @@
 import { resolveTarget, type ResolvedTarget } from '@fitness/api-contracts';
+import { weeklyProgress, type WeeklyProgressResult } from '@fitness/analytics-engine';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { WeeklyProgressCard } from '@/components/WeeklyProgressCard';
 import { WorkoutInProgressBanner } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
-import { getPowerSync } from '@/lib/db/powersync';
+import { captureCalendarDay } from '@/lib/calendar-day';
+import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
 import type { ProgramCycle, ProgramDay, ProgramSlot } from '@/lib/db/programs/load-program';
 import { discardSession, loadInProgressSessionSummary, type InProgressSessionSummary } from '@/lib/db/session-lifecycle';
+import { loadWeeklyProgress, type LoadWeeklyProgressInput, type WeeklyProgressData } from '@/lib/db/weekly-progress-query';
 import { resolveNextUp, type NextUp } from '@/lib/programs/next-up';
 
 const SKELETON_ROW_COUNT = 3;
@@ -207,13 +211,39 @@ export async function readInProgressSession(
   }
 }
 
-export default function HomeScreen() {
+export type WeeklyProgressRead = { data: WeeklyProgressResult } | { failed: true };
+
+// The third focus read's body, extracted for the same reason the two above it are: the read, the
+// derivation and the failure branch are exercised without a renderer. The screen supplies
+// todayLocalDate rather than letting the aggregation reach for a clock — the pure package holds
+// none, and captureCalendarDay is the one place in this codebase permitted to read the device zone.
+export async function readWeeklyProgress(
+  userId: string | null,
+  todayLocalDate: string,
+  load: (input: LoadWeeklyProgressInput) => Promise<WeeklyProgressData> = (input) => loadWeeklyProgress(input),
+): Promise<WeeklyProgressRead> {
+  try {
+    const { sessions, programTarget } = await load({ userId, todayLocalDate });
+    return { data: weeklyProgress({ todayLocalDate, sessions, programTarget }) };
+  } catch (error) {
+    console.error('weekly progress load failed', error);
+    return { failed: true };
+  }
+}
+
+export interface HomeScreenProps {
+  userId?: string;
+  db?: WriteDb;
+}
+
+export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenProps = {}) {
   const router = useRouter();
   const session = authClient.useSession();
-  const userId = session.data?.user?.id ?? null;
+  const userId = userIdOverride ?? session.data?.user?.id ?? null;
   const [data, setData] = useState<NextUpData | null>(null);
   const [failed, setFailed] = useState(false);
   const [inProgress, setInProgress] = useState<InProgressSessionSummary | null>(null);
+  const [weekly, setWeekly] = useState<WeeklyProgressResult | null>(null);
 
   // On focus, not on mount. Both tabs stay mounted in a tab navigator, so a mount-only read meant
   // activating a program on the Programs tab left Home reading "No active program" until the app
@@ -227,7 +257,7 @@ export default function HomeScreen() {
       let active = true;
 
       void (async () => {
-        const result = await readNextUp(userId);
+        const result = await readNextUp(userId, (id) => loadNextUp(id, db ?? getPowerSync()));
         if (!active) return;
         if ('failed' in result) {
           setFailed(true);
@@ -240,7 +270,7 @@ export default function HomeScreen() {
       return () => {
         active = false;
       };
-    }, [userId]),
+    }, [userId, db]),
   );
 
   // A second, independent focus read — the in-progress banner is not part of deriveHomeScreenState
@@ -251,7 +281,7 @@ export default function HomeScreen() {
       let active = true;
 
       void (async () => {
-        const result = await readInProgressSession(userId);
+        const result = await readInProgressSession(userId, (id) => loadInProgressSessionSummary(id, db ?? getPowerSync()));
         if (!active) return;
         // A query failure (the E8 backstop) is a deliberate, pinned choice to render identically to
         // "no in-progress session" — the banner's absence either way, never a second error surface
@@ -262,7 +292,31 @@ export default function HomeScreen() {
       return () => {
         active = false;
       };
-    }, [userId]),
+    }, [userId, db]),
+  );
+
+  // A third independent focus read (ANLY-08). It neither gates nor is gated by the two above: a
+  // failed next-up read must not hide this card, and a failed card read must not hide the Next Up
+  // card. The failure branch renders the card ABSENT and logs, which is the same pinned choice the
+  // in-progress read directly above makes — never a second error surface stacked above the Next Up
+  // card's own. Absent is also what an unlanded read renders, because R6 forbids a spinner for a
+  // local read and this screen already shows one skeleton on first paint.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      void (async () => {
+        const result = await readWeeklyProgress(userId, captureCalendarDay(new Date()).localDate, (input) =>
+          loadWeeklyProgress(input, db ?? getPowerSync()),
+        );
+        if (!active) return;
+        setWeekly('failed' in result ? null : result.data);
+      })();
+
+      return () => {
+        active = false;
+      };
+    }, [userId, db]),
   );
 
   const nextUp = useMemo(
@@ -349,6 +403,11 @@ export default function HomeScreen() {
             <Text className="text-body font-normal text-accent">Go to Programs</Text>
           </Pressable>
         ) : null}
+
+        {/* Below the Next Up card and after its own "Go to Programs" link rather than between the
+            two: that link belongs to the card above it, and splitting the pair to sit one row
+            higher would read as the link belonging to this card instead. */}
+        {weekly ? <WeeklyProgressCard progress={weekly} /> : null}
 
         <View className="items-center">
           <PrimaryButton label="Browse exercises" onPress={() => router.push('/exercises')} />
