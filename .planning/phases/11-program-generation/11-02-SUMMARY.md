@@ -165,6 +165,10 @@ None - no external service configuration required. The schema push targeted the 
 
 `excluded_exercise` is live, synced, and ownership-proven. 11-01's candidate-pool filter can now read real exclusion rows (once 11-03 builds the device-side mirror and read/write helper — explicitly out of scope for this plan). No blockers for downstream plans in this phase.
 
+## Self-Check: PASSED
+
+All created/modified files verified present on disk; commits `0b8c21c`, `ad79ec0`, and `e8adb11` verified present in git history.
+
 ---
 *Phase: 11-program-generation*
 *Completed: 2026-08-29*
