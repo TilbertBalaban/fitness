@@ -488,11 +488,24 @@ Plans:
   4. User sees this week's progress against targets for muscles trained, sets, and exercises — available immediately after logging, before any sync
   5. Estimated 1RM figures are only shown where the underlying formula is actually valid for the rep range
 
-**Plans**: TBD
+**Plans**: 6 plans
 
 Plans:
 
-- [ ] 09-01: TBD during `/gsd-plan-phase 9`
+**Wave 1**
+
+- [ ] 09-01-PLAN.md — Tracer: `@fitness/analytics-engine`, `react-native-svg@15.15.4`, `TrendChart`, `SegmentedChipRow`, and the exercise performance screen end-to-end over the last 3 months
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 09-02-PLAN.md — Pure aggregation: rolling-window and trailing-bucket boundaries, the history trend series and its delta, and weekly achieved-versus-target
+- [ ] 09-03-PLAN.md — Records screen, record row, the History tab's Records link, and the two shipped Phase 5 corrections (per-metric PR badges, the e1RM display union)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 09-04-PLAN.md — Last 7 Days card on the Home tab, with program-derived targets and an all-or-nothing empty state
+- [ ] 09-05-PLAN.md — History trend card as the session list's header, with the delta chip and untrained weeks omitted
+- [ ] 09-06-PLAN.md — Performance ranges (3 months, 1 year, all time) and the "View performance" entry link on the exercise detail screen
 
 ### Phase 10: Server Analytics & Reconciliation
 
