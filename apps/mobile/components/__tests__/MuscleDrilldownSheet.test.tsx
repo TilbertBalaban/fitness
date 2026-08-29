@@ -8,7 +8,6 @@ import {
   type MuscleDrilldownSheetViewProps,
 } from '../MuscleDrilldownSheet';
 
-const COLORS = { accent: 'rgb(37, 99, 235)', foregroundMuted: 'rgb(113, 113, 122)', surface: 'rgb(244, 244, 245)' };
 const KG: WeightUnit = 'kg';
 
 function findText(node: unknown, out: string[] = []): string[] {
@@ -59,7 +58,6 @@ function baseProps(overrides: Partial<MuscleDrilldownSheetViewProps> = {}): Musc
     volumeLabel: '182.50 kg',
     weightUnit: KG,
     contributions: [contribution()],
-    colors: COLORS,
     onSelectExercise: jest.fn(),
     onClose: jest.fn(),
     ...overrides,

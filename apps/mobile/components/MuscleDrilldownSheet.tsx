@@ -3,7 +3,6 @@ import type { WeightUnit } from '@fitness/api-contracts';
 import type { MuscleContribution } from '@fitness/analytics-engine';
 import { pluralizeCount } from '@/lib/analytics/chart-labels';
 import { formatMuscleVolumeLabel } from '@/lib/analytics/muscle-map-labels';
-import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 // The same separator RecordRow/MuscleVolumeRow already use for "join a few short facts on one
 // line" — one middle-dot vocabulary, not a second one invented here.
@@ -97,7 +96,6 @@ export interface MuscleDrilldownSheetViewProps {
   volumeLabel: string | null;
   weightUnit: WeightUnit;
   contributions: MuscleContribution[];
-  colors: ThemeColors;
   onSelectExercise: (exerciseId: string) => void;
   onClose: () => void;
 }
@@ -113,12 +111,9 @@ export function MuscleDrilldownSheetView({
   volumeLabel,
   weightUnit,
   contributions,
-  colors,
   onSelectExercise,
   onClose,
 }: MuscleDrilldownSheetViewProps) {
-  void colors;
-
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 items-center justify-center bg-background/80 px-lg">
@@ -193,7 +188,6 @@ export function MuscleDrilldownSheet({
   onSelectExercise,
   onClose,
 }: MuscleDrilldownSheetProps) {
-  const colors = useThemeColors();
   const state = deriveMuscleDrilldownState({ failed, contributions });
 
   return (
@@ -204,7 +198,6 @@ export function MuscleDrilldownSheet({
       volumeLabel={volumeLabel}
       weightUnit={weightUnit}
       contributions={contributions}
-      colors={colors}
       onSelectExercise={onSelectExercise}
       onClose={onClose}
     />
