@@ -442,4 +442,94 @@ describe('Seeded-corpus performance budget (e2e)', () => {
     // last date reconciled before this test runs — deterministic, not a range guess.
     expect(watermarkRows[0].computedThroughDate).toBe('2026-08-17');
   });
+
+  it('recomputes an edited past workout within the reconcile query ceiling', async () => {
+    const syncService = new SyncService(db);
+    const patchOp: SyncCrudOp = {
+      op_id: randomUUID(),
+      op: 'PATCH',
+      type: 'workout_session',
+      id: corpusSessionId,
+      data: { local_date: '2026-08-20' },
+    };
+
+    const { result, queryCount } = await countQueries(() => syncService.applyBatch(corpusUserId, [patchOp]));
+
+    expect(result.rejected).toEqual([]);
+    expect(queryCount).toBeLessThanOrEqual(PERF_BUDGET.maxQueriesPerReconcile);
+  });
+
+  it('issues the same reconcile query count editing a three-set session and a thirty-set session', async () => {
+    const syncService = new SyncService(db);
+    const smallSessionId = await pushSetsDirectly(corpusUserId, 3);
+    const bigSessionId = await pushSetsDirectly(corpusUserId, 30);
+
+    const three = await countQueries(() =>
+      syncService.applyBatch(corpusUserId, [
+        {
+          op_id: randomUUID(),
+          op: 'PATCH',
+          type: 'workout_session',
+          id: smallSessionId,
+          data: { local_date: '2026-08-21' },
+        },
+      ]),
+    );
+    const thirty = await countQueries(() =>
+      syncService.applyBatch(corpusUserId, [
+        {
+          op_id: randomUUID(),
+          op: 'PATCH',
+          type: 'workout_session',
+          id: bigSessionId,
+          data: { local_date: '2026-08-21' },
+        },
+      ]),
+    );
+
+    expect(three.result.rejected).toEqual([]);
+    expect(thirty.result.rejected).toEqual([]);
+    expect(thirty.queryCount).toBe(three.queryCount);
+    expect(three.queryCount).toBeLessThanOrEqual(PERF_BUDGET.maxQueriesPerReconcile);
+    expect(thirty.queryCount).toBeLessThanOrEqual(PERF_BUDGET.maxQueriesPerReconcile);
+  });
+
+  it('issues the same reconcile query count against a one-session user as against eighteen months of history', async () => {
+    const syncService = new SyncService(db);
+
+    const [smallUserSession] = await db
+      .select({ id: workoutSession.id })
+      .from(workoutSession)
+      .where(eq(workoutSession.userId, otherUserId))
+      .limit(1);
+    const corpusEditSessionId = await pushSetsDirectly(corpusUserId, 3);
+
+    const small = await countQueries(() =>
+      syncService.applyBatch(otherUserId, [
+        {
+          op_id: randomUUID(),
+          op: 'PATCH',
+          type: 'workout_session',
+          id: smallUserSession.id,
+          data: { local_date: '2026-08-22' },
+        },
+      ]),
+    );
+    const large = await countQueries(() =>
+      syncService.applyBatch(corpusUserId, [
+        {
+          op_id: randomUUID(),
+          op: 'PATCH',
+          type: 'workout_session',
+          id: corpusEditSessionId,
+          data: { local_date: '2026-08-22' },
+        },
+      ]),
+    );
+
+    expect(small.result.rejected).toEqual([]);
+    expect(large.result.rejected).toEqual([]);
+    expect(large.queryCount).toBe(small.queryCount);
+    expect(large.queryCount).toBeLessThanOrEqual(PERF_BUDGET.maxQueriesPerReconcile);
+  });
 });
