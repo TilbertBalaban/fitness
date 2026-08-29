@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 125
+open_count: 127
 waived_count: 4
-fixed_count: 27
-total_count: 156
-last_updated: 2026-08-29T09:04:21.227Z
+fixed_count: 28
+total_count: 159
+last_updated: 2026-08-29T11:39:41.680Z
 ---
 
 # Broken Windows Ledger
@@ -171,6 +171,9 @@ last_updated: 2026-08-29T09:04:21.227Z
 | 157 | 09 | deviation | packages/analytics-engine/src/trend-series.ts |  | trend-series: a bodyweight-only week qualifies with volume 0 rather than being omitted — the plan asserted a qualifying bucket is never zero on any metric; zero external load is a measured total, and omitting the bucket would erase a week the lifter really trained. The delta guards the zero denominator with not-comparable. | open |  | 2026-08-29T08:48:50.588Z |  |
 | 158 | 09 | unrun-verify | apps/mobile/app/records.tsx |  | Records screen rendering on iOS/Android: this machine has neither Xcode nor the Android SDK, so RecordRow and the metric switch were never exercised natively. Web rendering is proven green. ROADMAP Phase 999.1. | open |  | 2026-08-29T09:03:53.664Z |  |
 | 159 | 09 | unrun-verify | apps/mobile/components/RecordRow.tsx |  | Subjective visual review of the Records screen at maximum OS font scale: the absence of a line clamp on both row lines and the chip growth rule are grep-enforced and unit-asserted, but legibility itself needs a human. ROADMAP Phase 999.2. | open |  | 2026-08-29T09:03:57.654Z |  |
+| 160 | 09 | unrun-verify | apps/mobile/components/WeeklyProgressCard.tsx |  | Last 7 Days card and History trend card rendering on iOS/Android: this machine has neither Xcode nor the Android SDK, so neither card, nor the TrendChart inside the trend card, was ever exercised natively. Web rendering is proven green across 78 durability cases. ROADMAP Phase 999.1. | open |  | 2026-08-29T11:39:28.964Z |  |
+| 161 | 09 | unrun-verify | apps/mobile/components/HistoryTrendCard.tsx |  | Subjective visual review at maximum OS font scale of the Last 7 Days tracks, the History trend card's headline and delta chip, and the exercise-performance range switch. Wrap-and-grow is grep-enforced and unit-asserted; legibility itself needs a human. ROADMAP Phase 999.2. | open |  | 2026-08-29T11:39:29.198Z |  |
+| 162 | 09 | deviation | apps/mobile/components/WeeklyProgressCard.tsx |  | Progress tracks originally carried accessibilityValue, which react-native-web 0.21 no longer maps, so each track rendered role=progressbar with an aria-label but no aria-valuemin/max/now — silent to a screen reader on web while the prop-level unit test stayed green. Fixed to the aria-* spelling (accepted by React Native since 0.71) so one set of props serves both targets. Caught only because 09-04's spec was executed rather than authored. | fixed |  | 2026-08-29T11:39:29.402Z | 2026-08-29T11:39:41.680Z |
 
 ````json
 [
@@ -2045,6 +2048,42 @@ last_updated: 2026-08-29T09:04:21.227Z
     "reason": "",
     "recorded_at": "2026-08-29T09:03:57.654Z",
     "resolved_at": null
+  },
+  {
+    "id": 160,
+    "kind": "unrun-verify",
+    "phase": "09",
+    "file": "apps/mobile/components/WeeklyProgressCard.tsx",
+    "line": null,
+    "description": "Last 7 Days card and History trend card rendering on iOS/Android: this machine has neither Xcode nor the Android SDK, so neither card, nor the TrendChart inside the trend card, was ever exercised natively. Web rendering is proven green across 78 durability cases. ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T11:39:28.964Z",
+    "resolved_at": null
+  },
+  {
+    "id": 161,
+    "kind": "unrun-verify",
+    "phase": "09",
+    "file": "apps/mobile/components/HistoryTrendCard.tsx",
+    "line": null,
+    "description": "Subjective visual review at maximum OS font scale of the Last 7 Days tracks, the History trend card's headline and delta chip, and the exercise-performance range switch. Wrap-and-grow is grep-enforced and unit-asserted; legibility itself needs a human. ROADMAP Phase 999.2.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T11:39:29.198Z",
+    "resolved_at": null
+  },
+  {
+    "id": 162,
+    "kind": "deviation",
+    "phase": "09",
+    "file": "apps/mobile/components/WeeklyProgressCard.tsx",
+    "line": null,
+    "description": "Progress tracks originally carried accessibilityValue, which react-native-web 0.21 no longer maps, so each track rendered role=progressbar with an aria-label but no aria-valuemin/max/now — silent to a screen reader on web while the prop-level unit test stayed green. Fixed to the aria-* spelling (accepted by React Native since 0.71) so one set of props serves both targets. Caught only because 09-04's spec was executed rather than authored.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-08-29T11:39:29.402Z",
+    "resolved_at": "2026-08-29T11:39:41.680Z"
   }
 ]
 ````

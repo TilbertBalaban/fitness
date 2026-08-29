@@ -503,9 +503,9 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 09-04-PLAN.md — Last 7 Days card on the Home tab, with program-derived targets and an all-or-nothing empty state
-- [ ] 09-05-PLAN.md — History trend card as the session list's header, with the delta chip and untrained weeks omitted
-- [ ] 09-06-PLAN.md — Performance ranges (3 months, 1 year, all time) and the "View performance" entry link on the exercise detail screen
+- [x] 09-04-PLAN.md — Last 7 Days card on the Home tab, with program-derived targets and an all-or-nothing empty state
+- [x] 09-05-PLAN.md — History trend card as the session list's header, with the delta chip and untrained weeks omitted
+- [x] 09-06-PLAN.md — Performance ranges (3 months, 1 year, all time) and the "View performance" entry link on the exercise detail screen
 
 ### Phase 10: Server Analytics & Reconciliation
 
@@ -631,7 +631,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Gym Profiles & Plate Math | 8/8 | Complete    | 2026-08-28 |
 | 7. Advanced Set Types | 9/9 | Complete    | 2026-08-28 |
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
-| 9. Records & Client Analytics | 2/6 | In Progress|  |
+| 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 0/TBD | Not started | - |
 | 11. Program Generation | 0/TBD | Not started | - |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |
