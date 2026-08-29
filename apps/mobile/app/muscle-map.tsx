@@ -1,17 +1,19 @@
 import { eq } from 'drizzle-orm';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import {
   MUSCLE_MAP_ROW_ORDER,
   MUSCLE_MAP_WINDOW_CHIP_LABELS,
   MUSCLE_MAP_WINDOW_LABELS,
   MUSCLE_MAP_WINDOWS,
+  type MuscleContribution,
   type MuscleMapPoint,
   type MuscleMapWindowId,
 } from '@fitness/analytics-engine';
 import type { WeightUnit, WorkoutSessionStatus } from '@fitness/api-contracts';
 import { MUSCLE_FIGURE_HEIGHT, MuscleHeatmap, resolveMuscleMapFigureWidth, type MuscleHeatmapPoint } from '@/components/MuscleHeatmap';
+import { MuscleDrilldownSheet } from '@/components/MuscleDrilldownSheet';
 import { MuscleVolumeRow, type MuscleVolumeRowPoint } from '@/components/MuscleVolumeRow';
 import { NavBackButton } from '@/components/NavBackButton';
 import { SegmentedChipRow, type SegmentedChipOption } from '@/components/SegmentedChipRow';
@@ -21,7 +23,7 @@ import { captureCalendarDay } from '@/lib/calendar-day';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { loadWeightUnit } from '@/lib/db/preferences';
 import { workoutSession } from '@/lib/db/schema';
-import { loadMuscleMapWindow, type MuscleMapWindowData } from '@/lib/db/muscle-volume-query';
+import { loadMuscleDrilldown, loadMuscleMapWindow, type MuscleDrilldownData, type MuscleMapWindowData } from '@/lib/db/muscle-volume-query';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 const DEFAULT_WEIGHT_UNIT: WeightUnit = 'kg';
@@ -93,6 +95,63 @@ function toRowViewModel(point: MuscleMapPoint, muscleName: string, weightUnit: W
     point: { trainingVolumeKg: point.trainingVolumeKg, setCount: point.setCount, relativeIntensity: point.relativeIntensity },
     valueLabel: point.trainingVolumeKg === null ? null : formatMuscleVolumeLabel(point.trainingVolumeKg, weightUnit),
   };
+}
+
+export interface MuscleDrilldownSheetInput {
+  selectedMuscleGroupId: string | null;
+  selectedWindowId: MuscleMapWindowId | null;
+  drilldownData: { contributions: MuscleContribution[] } | null;
+  drilldownFailed: boolean;
+  frontRows: MuscleMapRowViewModel[];
+  backRows: MuscleMapRowViewModel[];
+  weightUnit: WeightUnit;
+}
+
+export interface MuscleDrilldownSheetResolvedProps {
+  muscleName: string;
+  windowLabel: string;
+  volumeLabel: string | null;
+  weightUnit: WeightUnit;
+  contributions: MuscleContribution[];
+  failed: boolean;
+}
+
+// The pure decision behind 10-06's seam, exported so every behaviour it drives is testable without
+// a renderer or a hook host: null while no row is selected, still null while the read has not
+// settled (never mid-load — R6), and otherwise the exact props the sheet renders with, sourced from
+// the tapped muscle's own already-computed row viewmodel so the sheet's header can never disagree
+// with the row the lifter just pressed (D-06). An untrained muscle resolves identically to a
+// trained one — its row viewmodel's valueLabel is simply null — so there is no second code path
+// here for the untrained case (D-10). windowLabel is always derived from selectedWindowId (the
+// window captured at press time), never from the screen's live, possibly-since-changed window.
+export function resolveMuscleDrilldownSheetProps({
+  selectedMuscleGroupId,
+  selectedWindowId,
+  drilldownData,
+  drilldownFailed,
+  frontRows,
+  backRows,
+  weightUnit,
+}: MuscleDrilldownSheetInput): MuscleDrilldownSheetResolvedProps | null {
+  if (selectedMuscleGroupId === null || selectedWindowId === null) return null;
+  if (drilldownData === null && !drilldownFailed) return null;
+
+  const selectedRow = [...frontRows, ...backRows].find((row) => row.muscleGroupId === selectedMuscleGroupId) ?? null;
+
+  return {
+    muscleName: selectedRow?.muscleName ?? '',
+    windowLabel: MUSCLE_MAP_WINDOW_LABELS[selectedWindowId],
+    volumeLabel: selectedRow?.valueLabel ?? null,
+    weightUnit,
+    contributions: drilldownData?.contributions ?? [],
+    failed: drilldownFailed,
+  };
+}
+
+// The shipped route carries only the exercise id (no metric param): that screen already has its
+// own default, and naming one here would be a second answer to a question Phase 9 already settled.
+export function exercisePerformanceHref(exerciseId: string): string {
+  return `/exercise-performance?exerciseId=${exerciseId}`;
 }
 
 export interface MuscleMapScreenViewProps {
@@ -226,14 +285,21 @@ export default function MuscleMapScreen({ userId: userIdOverride, db }: MuscleMa
   const userId = userIdOverride ?? session.data?.user?.id ?? null;
   const colors = useThemeColors();
   const { width } = useWindowDimensions();
+  const router = useRouter();
 
   const [windowId, setWindowId] = useState<MuscleMapWindowId>(DEFAULT_WINDOW);
   const [data, setData] = useState<MuscleMapWindowData | null>(null);
   const [hasHistory, setHasHistory] = useState<boolean | null>(null);
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
   const [failed, setFailed] = useState(false);
-  // 10-06's seam: this plan renders nothing for a non-null value and never routes anywhere from it.
+  // 10-06's seam: a non-null selectedMuscleGroupId mounts the drill-down sheet. selectedWindowId is
+  // captured alongside it at press time (not read live from `windowId`) so a window change never
+  // retargets an already-open drill-down's read to a different window than the one that was
+  // selected when the row was tapped.
   const [selectedMuscleGroupId, setSelectedMuscleGroupId] = useState<string | null>(null);
+  const [selectedWindowId, setSelectedWindowId] = useState<MuscleMapWindowId | null>(null);
+  const [drilldownData, setDrilldownData] = useState<MuscleDrilldownData | null>(null);
+  const [drilldownFailed, setDrilldownFailed] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -268,6 +334,65 @@ export default function MuscleMapScreen({ userId: userIdOverride, db }: MuscleMa
     }, [userId, windowId, db]),
   );
 
+  // 10-06's seam: reads the muscle group the lifter tapped, for the window that was selected at tap
+  // time. Bounded to one muscle group and one window (D-06), always local, never the rollup. The
+  // sheet is rendered only once this settles (resolved or failed) — never mid-load (R6).
+  useEffect(() => {
+    if (selectedMuscleGroupId === null || selectedWindowId === null) {
+      setDrilldownData(null);
+      setDrilldownFailed(false);
+      return;
+    }
+
+    let active = true;
+    setDrilldownData(null);
+    setDrilldownFailed(false);
+
+    void (async () => {
+      try {
+        const database = db ?? getPowerSync();
+        const todayLocalDate = captureCalendarDay(new Date()).localDate;
+        const loaded = await loadMuscleDrilldown(
+          { userId, todayLocalDate, windowId: selectedWindowId, muscleGroupId: selectedMuscleGroupId },
+          database,
+        );
+        if (!active) return;
+        setDrilldownData(loaded);
+      } catch (error) {
+        console.error('muscle drilldown load failed', error);
+        if (!active) return;
+        setDrilldownFailed(true);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [userId, selectedMuscleGroupId, selectedWindowId, db]);
+
+  const handleMusclePress = useCallback(
+    (muscleGroupId: string) => {
+      setSelectedMuscleGroupId(muscleGroupId);
+      setSelectedWindowId(windowId);
+    },
+    [windowId],
+  );
+
+  const dismissDrilldown = useCallback(() => {
+    setSelectedMuscleGroupId(null);
+    setSelectedWindowId(null);
+    setDrilldownData(null);
+    setDrilldownFailed(false);
+  }, []);
+
+  const handleSelectContributingExercise = useCallback(
+    (exerciseId: string) => {
+      dismissDrilldown();
+      router.push(exercisePerformanceHref(exerciseId));
+    },
+    [dismissDrilldown, router],
+  );
+
   const points = data?.points ?? [];
   const muscleNames = data?.muscleNames ?? new Map<string, string>();
   const heatmapPoints = points.map((point) => toHeatmapPoint(point, muscleNames.get(point.muscleGroupId) ?? '', weightUnit));
@@ -279,6 +404,16 @@ export default function MuscleMapScreen({ userId: userIdOverride, db }: MuscleMa
     const point = points.find((candidate) => candidate.muscleGroupId === muscleGroupId);
     return point ? toRowViewModel(point, muscleNames.get(muscleGroupId) ?? '', weightUnit) : null;
   }).filter((row): row is MuscleMapRowViewModel => row !== null);
+
+  const drilldownSheetProps = resolveMuscleDrilldownSheetProps({
+    selectedMuscleGroupId,
+    selectedWindowId,
+    drilldownData,
+    drilldownFailed,
+    frontRows,
+    backRows,
+    weightUnit,
+  });
 
   return (
     <View className="flex-1 bg-background">
@@ -296,10 +431,20 @@ export default function MuscleMapScreen({ userId: userIdOverride, db }: MuscleMa
         colors={colors}
         frontWidth={resolveMuscleMapFigureWidth(width)}
         backWidth={resolveMuscleMapFigureWidth(width)}
-        onMusclePress={setSelectedMuscleGroupId}
+        onMusclePress={handleMusclePress}
       />
-      {/* 10-06's seam: a non-null selectedMuscleGroupId mounts the drill-down sheet here in a later
-          wave. This plan renders nothing for it and routes nowhere from it. */}
+      {drilldownSheetProps ? (
+        <MuscleDrilldownSheet
+          muscleName={drilldownSheetProps.muscleName}
+          windowLabel={drilldownSheetProps.windowLabel}
+          volumeLabel={drilldownSheetProps.volumeLabel}
+          weightUnit={drilldownSheetProps.weightUnit}
+          contributions={drilldownSheetProps.contributions}
+          failed={drilldownSheetProps.failed}
+          onSelectExercise={handleSelectContributingExercise}
+          onClose={dismissDrilldown}
+        />
+      ) : null}
     </View>
   );
 }
