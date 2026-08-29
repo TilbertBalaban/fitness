@@ -12,7 +12,6 @@ import { PERFORMANCE_METRIC_FOR_PR_TYPE, PR_TYPE_CHIP_LABELS } from '@/lib/analy
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { loadWeightUnit } from '@/lib/db/preferences';
 import { formatRecordValue, loadRecordsPage, type RecordListRow, type RecordsPage } from '@/lib/db/records-query';
-import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 const PAGE_SIZE = 25;
 const SKELETON_ROW_COUNT = 3;
@@ -49,7 +48,6 @@ export interface RecordsScreenViewProps {
   rows: RecordListRow[];
   prType: PrType;
   weightUnit: WeightUnit;
-  colors: ThemeColors;
   onSelectMetric: (id: string) => void;
   onRowPress: (row: RecordListRow) => void;
   onEndReached: () => void;
@@ -85,7 +83,6 @@ export function RecordsScreenView({
   rows,
   prType,
   weightUnit,
-  colors,
   onSelectMetric,
   onRowPress,
   onEndReached,
@@ -150,7 +147,6 @@ export interface RecordsScreenProps {
 
 export default function RecordsScreen({ userId: userIdOverride, db }: RecordsScreenProps = {}) {
   const router = useRouter();
-  const colors = useThemeColors();
   const session = authClient.useSession();
   const userId = userIdOverride ?? session.data?.user?.id ?? null;
 
@@ -218,7 +214,6 @@ export default function RecordsScreen({ userId: userIdOverride, db }: RecordsScr
         rows={page?.rows ?? []}
         prType={prType}
         weightUnit={weightUnit}
-        colors={colors}
         onSelectMetric={(id) => setPrType(PR_TYPES.includes(id as PrType) ? (id as PrType) : DEFAULT_PR_TYPE)}
         onRowPress={(row) =>
           router.push(`/exercise-performance?exerciseId=${row.exerciseId}&metric=${PERFORMANCE_METRIC_FOR_PR_TYPE[row.prType]}`)

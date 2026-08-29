@@ -591,6 +591,9 @@ Plans:
 - [ ] Phase 04 test 3 (WINDOWS #59): two devices both offline each activate a different program, then reconnect — exactly one active program after both pushes land
 - [ ] Phase 08 test 1: on a real iOS/Android build, use the Profile progression-preference picker (widen rep range vs match previous weight), then open an exercise with logged history and read the RecommendationBanner — the dial changes what is recommended and the banner renders correctly natively
 - [ ] Phase 08 test 2 (WINDOWS #154): run the client/server parity fixture, or an equivalent probe, on a real on-device Hermes build — the parity runners currently exercise only Node and V8, so success criterion 6 is unproven on the JS engine the shipped native app actually uses
+- [ ] Phase 09 test 1 (WINDOWS #155): TrendChart on a real iOS/Android build — react-native-svg 15.15.4's NATIVE build has never been compiled or rendered on this machine (no Xcode, no Android SDK). The whole phase's chart approach is proven on web only; this is the single largest native unknown in Phase 9
+- [ ] Phase 09 test 2 (WINDOWS #158): Records screen on a real device — RecordRow, the four-metric chip switch, and the "{reps} reps @ {weight}" row built from the third batched logged_set read
+- [ ] Phase 09 test 3 (WINDOWS #160): Last 7 Days card and History trend card on a real device, including the TrendChart inside the trend card and the progressbar tracks' native accessibility values (the web path needed aria-* rather than accessibilityValue — confirm the native path announces correctly too)
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
 ### Phase 999.2: Human verification sweep — web target (BACKLOG)
@@ -614,6 +617,9 @@ Plans:
 - [ ] Phase 07 test 3 (SETS-04): tap a completed set's number, pick Failure — the row keeps its weight/reps, shows an F badge, and reads 0 RIR with no further input
 - [ ] Phase 07 test 4 (SETS-07/08): open an exercise's overflow sheet, tap Superset — both chips show the link glyph and the page header shows the partner pill with correct light/dark colours
 - [ ] Phase 08 test 3: visually review the Profile "Workout settings" progression-preference chip picker (label, spacing, selected-state styling) and the RecommendationBanner's light/dark theming and copy legibility at default and maximum OS font scale
+- [ ] Phase 09 test 4 (WINDOWS #156): visual review of the exercise-performance chart, its two-label axis row and the ANLY-10 "not plotted" caption at maximum OS font scale — R16 (no text inside the SVG) is grep-enforced, but legibility of the 120px canvas beside grown text is human judgment
+- [ ] Phase 09 test 5 (WINDOWS #159): visual review of the Records screen at maximum font scale — both row lines are unclamped by design, so confirm they wrap rather than collide
+- [ ] Phase 09 test 6 (WINDOWS #161): visual review of the Last 7 Days tracks, the History trend card's headline and delta chip, and the range switch at maximum font scale
 - [ ] (append human-judgment web items from phases 01-12 as each phase defers them)
 
 ## Progress

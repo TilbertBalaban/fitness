@@ -12,7 +12,6 @@ import { RecordRow } from '@/components/RecordRow';
 import { SegmentedChipRow } from '@/components/SegmentedChipRow';
 import type { RecordListRow } from '@/lib/db/records-query';
 
-const COLORS = { accent: 'rgb(37, 99, 235)', foregroundMuted: 'rgb(113, 113, 122)', surface: 'rgb(244, 244, 245)' };
 
 function findText(node: unknown, out: string[] = []): string[] {
   if (node === null || node === undefined || typeof node === 'boolean') return out;
@@ -65,7 +64,6 @@ function renderView(overrides: Partial<RecordsScreenViewProps> = {}) {
     rows: [recordRow()],
     prType: 'heaviest_weight',
     weightUnit: 'kg',
-    colors: COLORS,
     onSelectMetric: jest.fn(),
     onRowPress: jest.fn(),
     onEndReached: jest.fn(),
