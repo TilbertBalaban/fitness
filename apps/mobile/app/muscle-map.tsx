@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
@@ -47,7 +47,7 @@ async function loadHasAnyHistory(userId: string | null, db: WriteDb): Promise<bo
   const rows = await db
     .select({ id: workoutSession.id })
     .from(workoutSession)
-    .where(and(eq(workoutSession.userId, userId), eq(workoutSession.status, COMPLETED_STATUS)))
+    .where(eq(workoutSession.status, COMPLETED_STATUS))
     .limit(1);
   return rows.length > 0;
 }
