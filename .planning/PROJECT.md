@@ -128,12 +128,18 @@ This document evolves at phase transitions and milestone boundaries.
 
 ## Current State
 
-**Phase 02 (Data Model & Sync Engine) complete** — 13 plans, all 5 roadmap success criteria verified
-against a real browser, a live self-hosted PowerSync Service and real Postgres. PLAT-02, PLAT-03,
-PLAT-04, PLAT-07, PLAT-08, PLAT-10 and LOG-22 are satisfied. The local-first foundation the rest of
-the app sits on is in place and proven, not assumed.
+**Phase 10 (Server Analytics & Reconciliation) complete** — 7 plans, all 5 roadmap success criteria
+verified by execution against real Postgres and a real browser: API e2e 23 suites / 283 tests,
+Playwright durability 84/84, monorepo unit suites green. ANLY-04, ANLY-05 and ANLY-09 are satisfied.
+Per-muscle volume is materialized server-side and synced down, editing the past recomputes what
+derived from it, and the reconcile path's statement count is pinned by an executed budget assertion
+against an 18-month corpus rather than asserted in prose.
 
-Next: Phase 03 — Exercise Catalog.
+Three manual checks (native iOS/Android rendering, and two max-font-scale legibility judgements) are
+relocated to ROADMAP Phase 999.1/999.2 with WINDOWS entries — this machine has no Xcode or Android
+SDK, so they are deferred rather than skipped.
+
+Next: Phase 11 — Program Generation.
 
 ---
-*Last updated: 2026-08-28 after Phase 06 completion*
+*Last updated: 2026-08-29 after Phase 10 completion*
