@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 133
+open_count: 134
 waived_count: 4
 fixed_count: 28
-total_count: 165
-last_updated: 2026-08-29T17:09:08.671Z
+total_count: 166
+last_updated: 2026-08-29T17:11:40.245Z
 ---
 
 # Broken Windows Ledger
@@ -180,6 +180,7 @@ last_updated: 2026-08-29T17:09:08.671Z
 | 166 | 10 | unrun-verify | apps/mobile/components/MuscleHeatmap.tsx |  | Subjective visual review of the intensity scale and the untrained-versus-lowest-real-intensity distinction at maximum OS font scale — the categorical hue split (R22/D-10) is grep-enforced and unit-asserted, but whether it is legible, including for a colourblind reader, is human judgment. Deferred to ROADMAP Phase 999.2. | open |  | 2026-08-29T17:08:31.218Z |  |
 | 167 | 10 | unrun-verify | apps/mobile/app/muscle-map.tsx |  | Subjective visual review of the Training Volume disambiguation caption and the stale-rollup caption at maximum OS font scale — wrap-and-grow is grep-enforced, but whether the two captions read as informational rather than alarming is human judgment (R25). Deferred to ROADMAP Phase 999.2. | open |  | 2026-08-29T17:08:37.783Z |  |
 | 168 | 10 | deviation | apps/mobile/e2e/muscle-map.spec.ts |  | 10-07's executed browser evidence confirms the D-01 overlay's post-watermark clause and the null-owner backfill clause both render correctly end to end against a real @powersync/web database (muscle-map.spec.ts's overlay case: rollup + post-watermark session + pre-watermark null-owner session sum correctly, disclosed by count). It does not re-exercise the already-synced-session-edit residual recorded at WINDOWS #164 (a different case: an EDIT of a session whose user_id was already set before the edit) — that residual remains open and unchanged by this plan. | open |  | 2026-08-29T17:09:08.671Z |  |
+| 169 | 10 | unrun-verify | apps/api |  | 10-07's phase-level verification names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite could not be run in this worktree: drizzle-kit push fails with 'Either connection url or host, database are required for PostgreSQL database connection' because apps/api/.env is permission-restricted from this sandbox and carries no DATABASE_URL (same class of block as WINDOWS #47/#48). Confidence it is unaffected rests on file-scope reasoning (10-07 touches apps/mobile and .planning only, zero apps/api files across all three commits), not a fresh green run. | open |  | 2026-08-29T17:11:40.245Z |  |
 
 ````json
 [
@@ -2161,6 +2162,18 @@ last_updated: 2026-08-29T17:09:08.671Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-29T17:09:08.671Z",
+    "resolved_at": null
+  },
+  {
+    "id": 169,
+    "kind": "unrun-verify",
+    "phase": "10",
+    "file": "apps/api",
+    "line": null,
+    "description": "10-07's phase-level verification names 'pnpm --filter api test:e2e exits 0 -- nothing in this plan touches the server' as a check, but the suite could not be run in this worktree: drizzle-kit push fails with 'Either connection url or host, database are required for PostgreSQL database connection' because apps/api/.env is permission-restricted from this sandbox and carries no DATABASE_URL (same class of block as WINDOWS #47/#48). Confidence it is unaffected rests on file-scope reasoning (10-07 touches apps/mobile and .planning only, zero apps/api files across all three commits), not a fresh green run.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T17:11:40.245Z",
     "resolved_at": null
   }
 ]
