@@ -330,7 +330,7 @@ describe('Analytics rollup reconciliation (e2e)', () => {
     expect(today).not.toBe(trueLocalDate);
 
     const createBatch: SyncCrudOp[] = [
-      workoutSessionOp(sessionId, { local_date: trueLocalDate, status: 'in_progress' }),
+      workoutSessionOp(sessionId, { local_date: trueLocalDate, status: 'completed' }),
       sessionExerciseOp(sessionExerciseId, sessionId),
       loggedSetOp(setId, sessionExerciseId, 1),
     ];
