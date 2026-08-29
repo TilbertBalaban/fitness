@@ -79,7 +79,7 @@ async function push(cookie: string, batch: SyncCrudOp[]): Promise<request.Respon
   return request(baseUrl).post(SYNC_PUSH_PATH).send(body).set('Cookie', cookie);
 }
 
-function workoutSessionOp(id: string): SyncCrudOp {
+function workoutSessionOp(id: string, overrides: Record<string, unknown> = {}): SyncCrudOp {
   return {
     op_id: randomUUID(),
     op: 'PUT',
@@ -90,8 +90,17 @@ function workoutSessionOp(id: string): SyncCrudOp {
       status: 'completed',
       timezone: 'America/New_York',
       local_date: LOCAL_DATE,
+      ...overrides,
     },
   };
+}
+
+function workoutSessionPatchOp(id: string, data: Record<string, unknown>): SyncCrudOp {
+  return { op_id: randomUUID(), op: 'PATCH', type: 'workout_session', id, data };
+}
+
+function deleteOp(type: string, id: string): SyncCrudOp {
+  return { op_id: randomUUID(), op: 'DELETE', type, id, data: null };
 }
 
 function sessionExerciseOp(id: string, sessionId: string): SyncCrudOp {
@@ -150,6 +159,15 @@ async function watermarkRow(userId: string): Promise<{ computed_through_date: st
     [userId],
   );
   return rows[0];
+}
+
+async function rollupRowsForDate(userId: string, localDate: string): Promise<RollupRow[]> {
+  const { rows } = await pg.query<RollupRow>(
+    `SELECT muscle_group_id, local_date::text AS local_date, weighted_volume_kg, weighted_sets, set_count
+     FROM muscle_volume_rollup WHERE user_id = $1 AND local_date = $2 ORDER BY muscle_group_id`,
+    [userId, localDate],
+  );
+  return rows;
 }
 
 beforeAll(async () => {
@@ -263,5 +281,120 @@ describe('Analytics rollup reconciliation (e2e)', () => {
     const rowsAfterReplay = await rollupRows(userId);
     expect(rowsAfterReplay).toHaveLength(2);
     expect(rowsAfterReplay).toEqual(rows);
+  });
+
+  it("moving a session to a different local_date vacates the old date's rollup cells entirely, and the watermark never moves backwards", async () => {
+    const { cookie, userId } = await signUp('date-move');
+    const sessionId = randomUUID();
+    const sessionExerciseId = randomUUID();
+    const setId = randomUUID();
+    const oldDate = '2026-06-10';
+    const newDate = '2026-06-20';
+
+    const createBatch: SyncCrudOp[] = [
+      workoutSessionOp(sessionId, { local_date: oldDate }),
+      sessionExerciseOp(sessionExerciseId, sessionId),
+      loggedSetOp(setId, sessionExerciseId, 1),
+    ];
+    const createRes = await push(cookie, createBatch);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const oldRowsBefore = await rollupRowsForDate(userId, oldDate);
+    expect(oldRowsBefore.length).toBeGreaterThan(0);
+
+    const watermarkBefore = await watermarkRow(userId);
+    expect(watermarkBefore?.computed_through_date).toBe(oldDate);
+
+    const patchRes = await push(cookie, [workoutSessionPatchOp(sessionId, { local_date: newDate })]);
+    expect((patchRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    // Not zero-value rows — no rows at all for the vacated date.
+    const oldRowsAfter = await rollupRowsForDate(userId, oldDate);
+    expect(oldRowsAfter).toEqual([]);
+
+    const newRowsAfter = await rollupRowsForDate(userId, newDate);
+    expect(newRowsAfter.length).toBe(oldRowsBefore.length);
+
+    const watermarkAfter = await watermarkRow(userId);
+    expect(watermarkAfter?.computed_through_date).toBe(newDate);
+    expect(watermarkAfter!.computed_through_date >= watermarkBefore!.computed_through_date).toBe(true);
+  });
+
+  it("deleting a session's last logged_set removes that date's rollup cells, and deleting the whole session does too", async () => {
+    const { cookie, userId } = await signUp('set-deleted');
+    const sessionId = randomUUID();
+    const sessionExerciseId = randomUUID();
+    const setId = randomUUID();
+    const date = '2026-06-11';
+
+    // set_type 'partial' deliberately: it still counts toward working volume (only 'warmup' is
+    // excluded there — countsTowardWorkingVolume), so it still produces real rollup cells, but it
+    // never counts toward records (countsTowardRecords also excludes 'partial'), so reconciliation
+    // never creates a personal_record row referencing this logged_set_id. personal_record.logged_
+    // set_id carries no onDelete cascade/set-null (apps/api/src/db/schema/records.ts, out of this
+    // plan's file scope to change) — deleting a logged_set that a PR row still references is a
+    // real, separate defect this plan's own work exposed, documented in this plan's SUMMARY rather
+    // than fixed here. Using 'partial' proves this test's own claim (rollup cell invalidation)
+    // without depending on that unrelated, out-of-scope gap.
+    const createBatch: SyncCrudOp[] = [
+      workoutSessionOp(sessionId, { local_date: date }),
+      sessionExerciseOp(sessionExerciseId, sessionId),
+      loggedSetOp(setId, sessionExerciseId, 1, { set_type: 'partial' }),
+    ];
+    await push(cookie, createBatch);
+
+    const rowsBefore = await rollupRowsForDate(userId, date);
+    expect(rowsBefore.length).toBeGreaterThan(0);
+
+    const deleteSetRes = await push(cookie, [deleteOp('logged_set', setId)]);
+    expect((deleteSetRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const rowsAfterSetDelete = await rollupRowsForDate(userId, date);
+    expect(rowsAfterSetDelete).toEqual([]);
+
+    // A second session on the same date, so the whole-session delete below has something real to
+    // vacate rather than re-proving the already-empty state above.
+    const sessionId2 = randomUUID();
+    const sessionExerciseId2 = randomUUID();
+    const setId2 = randomUUID();
+    await push(cookie, [
+      workoutSessionOp(sessionId2, { local_date: date }),
+      sessionExerciseOp(sessionExerciseId2, sessionId2),
+      loggedSetOp(setId2, sessionExerciseId2, 1, { set_type: 'partial' }),
+    ]);
+    const rowsBeforeSessionDelete = await rollupRowsForDate(userId, date);
+    expect(rowsBeforeSessionDelete.length).toBeGreaterThan(0);
+
+    const deleteSessionRes = await push(cookie, [deleteOp('workout_session', sessionId2)]);
+    expect((deleteSessionRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const rowsAfterSessionDelete = await rollupRowsForDate(userId, date);
+    expect(rowsAfterSessionDelete).toEqual([]);
+  });
+
+  it('re-pushing an unchanged batch twice more is a no-op — same rows, same totals, nothing duplicated', async () => {
+    const { cookie, userId } = await signUp('idempotent-again');
+    const sessionId = randomUUID();
+    const sessionExerciseId = randomUUID();
+    const setId = randomUUID();
+    const date = '2026-06-12';
+
+    const batch: SyncCrudOp[] = [
+      workoutSessionOp(sessionId, { local_date: date }),
+      sessionExerciseOp(sessionExerciseId, sessionId),
+      loggedSetOp(setId, sessionExerciseId, 1),
+    ];
+
+    await push(cookie, batch);
+    const firstRows = await rollupRowsForDate(userId, date);
+    expect(firstRows.length).toBeGreaterThan(0);
+
+    await push(cookie, batch);
+    const secondRows = await rollupRowsForDate(userId, date);
+    expect(secondRows).toEqual(firstRows);
+
+    await push(cookie, batch);
+    const thirdRows = await rollupRowsForDate(userId, date);
+    expect(thirdRows).toEqual(firstRows);
   });
 });
