@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 7: Advanced Set Types** - Supersets, drop sets, myoreps, partials, warm-ups, per-side logging
 - [ ] **Phase 8: Progression Engine** - Rule-based "what to lift next", offline, increment-aware
 - [ ] **Phase 9: Records & Client Analytics** - PR detection and on-device volume, trends, and per-exercise history
-- [ ] **Phase 10: Server Analytics & Reconciliation** - Authoritative PRs, long-horizon rollups, recompute-on-edit
+- [x] **Phase 10: Server Analytics & Reconciliation** - Authoritative PRs, long-horizon rollups, recompute-on-edit (completed 2026-08-29)
 - [ ] **Phase 11: Program Generation** - Generate a pre-periodized program from goal, equipment, and schedule
 - [ ] **Phase 12: Body Metrics & Dashboard** - Measurements, progress photos, body-map heatmap, customizable dashboard
 
@@ -660,6 +660,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Advanced Set Types | 9/9 | Complete    | 2026-08-28 |
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
-| 10. Server Analytics & Reconciliation | 7/7 | In Progress|  |
+| 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
 | 11. Program Generation | 0/TBD | Not started | - |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |
