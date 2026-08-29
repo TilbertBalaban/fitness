@@ -109,4 +109,62 @@ describe('generateProgram', () => {
       }
     }
   });
+
+  it('never allocates an emphasized muscle group more weekly sets than its EXPERIENCE_VOLUME_BAND mav', () => {
+    // chest is 'large' for intermediate: mev 10, mav 18. Emphasize would raise the raw multiplier
+    // past 18 (weeklySetTarget's own last-cycle value is already 18, times 1.3 = 23.4) — the clamp
+    // inside applyEmphasis must hold it at 18.
+    const tree = generateProgram(tracerInput({ emphasis: { chest: 'emphasize' } }));
+
+    const chestSlots = tree.days.flatMap((day) => day.slots.filter((slot) => slot.exerciseId === 'ex-chest'));
+    expect(chestSlots.length).toBeGreaterThan(0);
+
+    // Reconstruct the last training cycle's per-session total across every day chest appears in.
+    const lastCycleKey = tree.cycles[tree.cycles.length - 1]!.key;
+    const weeklyTotal = chestSlots.reduce((sum, slot) => {
+      const override = slot.overridesByCycleKey[lastCycleKey];
+      const sets = override?.targetSets ?? slot.base.targetSets ?? 0;
+      return sum + sets;
+    }, 0);
+
+    expect(weeklyTotal).toBeLessThanOrEqual(18);
+  });
+
+  it('produces a day_trimmed degradation entry naming the day when the session budget is too small', () => {
+    const tree = generateProgram(tracerInput({ sessionLengthMinutes: 20 }));
+
+    const trimmed = tree.degradations.find((entry) => entry.kind === 'day_trimmed');
+    expect(trimmed).toBeDefined();
+    expect(trimmed!.dayKey).not.toBeNull();
+  });
+
+  it('produces a slot_unfillable degradation entry naming the muscle group when a slot cannot be filled', () => {
+    const catalogMissingChest: GenerationCatalog = {
+      exercises: fullCatalog().exercises.filter((exercise) => exercise.id !== 'ex-chest'),
+      mappings: fullCatalog().mappings.filter((mapping) => mapping.exerciseId !== 'ex-chest'),
+    };
+
+    const tree = generateProgram(tracerInput({ catalog: catalogMissingChest }));
+
+    const unfillable = tree.degradations.find((entry) => entry.kind === 'slot_unfillable');
+    expect(unfillable).toBeDefined();
+    expect(unfillable!.muscleGroupId).toBe('chest');
+  });
+
+  it('expresses a deload cycle only as overrides on the same days and slots, never a structural change', () => {
+    const tree = generateProgram(tracerInput({ deloadPlacement: 'final_cycle_only' }));
+
+    const deloadCycle = tree.cycles.find((cycle) => cycle.kind === 'deload');
+    expect(deloadCycle).toBeDefined();
+
+    for (const day of tree.days) {
+      for (const slot of day.slots) {
+        const override = slot.overridesByCycleKey[deloadCycle!.key];
+        expect(override).toBeDefined();
+        expect(override!.targetRepMin).toBeUndefined();
+        expect(override!.targetRepMax).toBeUndefined();
+        expect(override!.targetRestSeconds).toBeUndefined();
+      }
+    }
+  });
 });
