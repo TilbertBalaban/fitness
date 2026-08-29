@@ -25,6 +25,7 @@ export default function ProgramsLayout() {
     >
       <Stack.Screen name="library" options={{ title: 'Program Library' }} />
       <Stack.Screen name="new" options={{ title: 'New Program' }} />
+      <Stack.Screen name="generate" options={{ title: 'Generate Program' }} />
     </Stack>
   );
 }
