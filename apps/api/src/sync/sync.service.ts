@@ -1886,15 +1886,19 @@ export class SyncService {
           if (op.type === 'workout_session') {
             const nextSeq = sql`nextval('sync_seq')`;
             const workoutSessionValues = values as WorkoutSessionValues;
-            newLocalDate = workoutSessionValues.localDate;
-            const [{ serverSeq }] = await tx
+            const [{ serverSeq, localDate: persistedLocalDate }] = await tx
               .insert(workoutSession)
               .values({ ...workoutSessionValues, serverSeq: nextSeq })
               .onConflictDoUpdate({
                 target: workoutSession.id,
                 set: { ...patchAwareSet(op, workoutSessionValues, WORKOUT_SESSION_PATCH_FIELDS), serverSeq: nextSeq },
               })
-              .returning({ serverSeq: workoutSession.serverSeq });
+              .returning({ serverSeq: workoutSession.serverSeq, localDate: workoutSession.localDate });
+            // workoutSessionValues.localDate is toWorkoutSessionValues's insert-shaped fallback and is
+            // wrong for a PATCH that omits local_date (patchAwareSet then drops it from the SQL SET
+            // clause) — the persisted row, not the builder value, is the only source that reflects
+            // what patchAwareSet actually wrote.
+            newLocalDate = persistedLocalDate;
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           } else if (op.type === 'session_exercise') {

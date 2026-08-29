@@ -320,6 +320,46 @@ describe('Analytics rollup reconciliation (e2e)', () => {
     expect(watermarkAfter!.computed_through_date >= watermarkBefore!.computed_through_date).toBe(true);
   });
 
+  it('finishing a session with a PATCH that names neither local_date nor started_at (session-lifecycle.ts\'s real payload shape) reconciles against the session\'s true stored local_date, not the server\'s current UTC date', async () => {
+    const { cookie, userId } = await signUp('finish-no-local-date');
+    const sessionId = randomUUID();
+    const sessionExerciseId = randomUUID();
+    const setId = randomUUID();
+    const trueLocalDate = '2026-01-10';
+    const today = new Date().toISOString().slice(0, 10);
+    expect(today).not.toBe(trueLocalDate);
+
+    const createBatch: SyncCrudOp[] = [
+      workoutSessionOp(sessionId, { local_date: trueLocalDate, status: 'in_progress' }),
+      sessionExerciseOp(sessionExerciseId, sessionId),
+      loggedSetOp(setId, sessionExerciseId, 1),
+    ];
+    const createRes = await push(cookie, createBatch);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const rowsBefore = await rollupRowsForDate(userId, trueLocalDate);
+    expect(rowsBefore.length).toBeGreaterThan(0);
+
+    const watermarkBefore = await watermarkRow(userId);
+    expect(watermarkBefore?.computed_through_date).toBe(trueLocalDate);
+
+    // Mirrors session-lifecycle.ts's completeSession exactly: only ended_at and status, never
+    // local_date or started_at.
+    const finishRes = await push(cookie, [
+      workoutSessionPatchOp(sessionId, { ended_at: new Date('2026-01-10T21:00:00Z').toISOString(), status: 'completed' }),
+    ]);
+    expect((finishRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const watermarkAfter = await watermarkRow(userId);
+    expect(watermarkAfter?.computed_through_date).toBe(trueLocalDate);
+
+    const rowsAfter = await rollupRowsForDate(userId, trueLocalDate);
+    expect(rowsAfter).toEqual(rowsBefore);
+
+    const rowsForToday = await rollupRowsForDate(userId, today);
+    expect(rowsForToday).toEqual([]);
+  });
+
   it("deleting a session's last logged_set removes that date's rollup cells, and deleting the whole session does too", async () => {
     const { cookie, userId } = await signUp('set-deleted');
     const sessionId = randomUUID();
