@@ -47,6 +47,7 @@ export default defineConfig({
         'advanced-sets.spec.ts',
         'progression-recommendation.spec.ts',
         'exercise-performance.spec.ts',
+        'records.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },
