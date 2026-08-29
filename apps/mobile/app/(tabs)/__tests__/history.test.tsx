@@ -29,6 +29,7 @@ function baseProps(overrides: Partial<HistoryScreenViewProps> = {}): HistoryScre
     onEndReached: jest.fn(),
     onAddPastWorkout: jest.fn(),
     onRecords: jest.fn(),
+    onMuscleMap: jest.fn(),
     onPendingDateChange: jest.fn(),
     onConfirmAddPastDate: jest.fn(),
     onCancelAddPast: jest.fn(),
@@ -125,15 +126,28 @@ describe('HistoryScreenView — ready state', () => {
     expect(onAddPastWorkout).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the Records link in the header’s leading slot, wired to onRecords', () => {
+  it('renders the Records link in the header’s leading group, wired to onRecords', () => {
     const onRecords = jest.fn();
     const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW], onRecords }));
     const [header] = element.props.children;
-    const [recordsLink] = header.props.children;
+    const [leadingGroup] = header.props.children;
+    const [recordsLink] = leadingGroup.props.children;
 
     expect(recordsLink.props.accessibilityLabel).toBe('Records');
     recordsLink.props.onPress();
     expect(onRecords).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the Muscle Map link in the header’s leading group, alongside Records, wired to onMuscleMap', () => {
+    const onMuscleMap = jest.fn();
+    const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW], onMuscleMap }));
+    const [header] = element.props.children;
+    const [leadingGroup] = header.props.children;
+    const [, muscleMapLink] = leadingGroup.props.children;
+
+    expect(muscleMapLink.props.accessibilityLabel).toBe('Muscle Map');
+    muscleMapLink.props.onPress();
+    expect(onMuscleMap).toHaveBeenCalledTimes(1);
   });
 
   it('renders a FlashList with the page rows and no overlay by default', () => {
