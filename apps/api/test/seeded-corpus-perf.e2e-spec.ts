@@ -8,6 +8,7 @@ import request from 'supertest';
 import { SYNC_PUSH_PATH, type SyncCrudOp } from '@fitness/api-contracts';
 import { db, pool } from '../src/db/drizzle.module';
 import { user, userPreference, workoutSession, sessionExercise, loggedSet } from '../src/db/schema';
+import { muscleVolumeRollup, analyticsWatermark } from '../src/db/schema';
 import { SyncService } from '../src/sync/sync.service';
 import { ensureUserPreference, generateCorpus } from '../src/seed/generate-corpus';
 import { CORPUS_SHAPE, PERF_BUDGET } from '../src/seed/corpus-shape';
@@ -401,5 +402,134 @@ describe('Seeded-corpus performance budget (e2e)', () => {
     const { sessions } = await readAllSessionsForUser(corpusUserId);
     expect(sessions.every((s) => s.userId === corpusUserId)).toBe(true);
     expect(sessions.some((s) => s.userId === otherUserId)).toBe(false);
+  });
+
+  // A query-count assertion over a corpus that produces no rollup rows is a green test asserting
+  // nothing, and the suite-integrity reporter cannot catch it because the suite is not empty —
+  // only its subject is. This proves the seeded corpus's rollup is genuinely, non-trivially
+  // populated (real dates, real muscle groups, real weighted volume, including a cell reachable
+  // only through a secondary mapping's fractional weight factor) before any budget below is
+  // asserted against it.
+  it('produces a non-vacuously populated muscle_volume_rollup and a real analytics_watermark for the corpus user', async () => {
+    const rollupRows = await db
+      .select()
+      .from(muscleVolumeRollup)
+      .where(eq(muscleVolumeRollup.userId, corpusUserId));
+
+    const distinctMuscleGroups = new Set(rollupRows.map((r) => r.muscleGroupId));
+    const distinctDates = new Set(rollupRows.map((r) => r.localDate));
+    const totalWeightedVolume = rollupRows.reduce((sum, r) => sum + Number(r.weightedVolumeKg), 0);
+
+    expect(distinctMuscleGroups.size).toBeGreaterThanOrEqual(3);
+    expect(distinctDates.size).toBeGreaterThanOrEqual(50);
+    expect(totalWeightedVolume).toBeGreaterThan(0);
+
+    // 'lower_back' is mapped only as a secondary role (only the deadlift carries it, at a
+    // fractional 0.30 weight factor, per CORPUS_MUSCLE_MAPPINGS in corpus-shape.ts) — it is never
+    // a primary mapping for any seeded exercise. If secondary mappings were silently dropped from
+    // the rollup, this muscle group would have zero rows while every other assertion above stayed
+    // green.
+    const secondaryOnlyRows = rollupRows.filter((r) => r.muscleGroupId === 'lower_back');
+    expect(secondaryOnlyRows.length).toBeGreaterThan(0);
+
+    const watermarkRows = await db
+      .select()
+      .from(analyticsWatermark)
+      .where(eq(analyticsWatermark.userId, corpusUserId));
+    expect(watermarkRows).toHaveLength(1);
+    // The two fixture pushes made in beforeAll (threeSetSessionId/thirtySetSessionId) both use the
+    // fixed local_date '2026-08-17', which lands after the corpus's own ~18-month span and is the
+    // last date reconciled before this test runs — deterministic, not a range guess.
+    expect(watermarkRows[0].computedThroughDate).toBe('2026-08-17');
+  });
+
+  it('recomputes an edited past workout within the reconcile query ceiling', async () => {
+    const syncService = new SyncService(db);
+    const patchOp: SyncCrudOp = {
+      op_id: randomUUID(),
+      op: 'PATCH',
+      type: 'workout_session',
+      id: corpusSessionId,
+      data: { local_date: '2026-08-20' },
+    };
+
+    const { result, queryCount } = await countQueries(() => syncService.applyBatch(corpusUserId, [patchOp]));
+
+    expect(result.rejected).toEqual([]);
+    expect(queryCount).toBeLessThanOrEqual(PERF_BUDGET.maxQueriesPerReconcile);
+  });
+
+  it('issues the same reconcile query count editing a three-set session and a thirty-set session', async () => {
+    const syncService = new SyncService(db);
+    const smallSessionId = await pushSetsDirectly(corpusUserId, 3);
+    const bigSessionId = await pushSetsDirectly(corpusUserId, 30);
+
+    const three = await countQueries(() =>
+      syncService.applyBatch(corpusUserId, [
+        {
+          op_id: randomUUID(),
+          op: 'PATCH',
+          type: 'workout_session',
+          id: smallSessionId,
+          data: { local_date: '2026-08-21' },
+        },
+      ]),
+    );
+    const thirty = await countQueries(() =>
+      syncService.applyBatch(corpusUserId, [
+        {
+          op_id: randomUUID(),
+          op: 'PATCH',
+          type: 'workout_session',
+          id: bigSessionId,
+          data: { local_date: '2026-08-21' },
+        },
+      ]),
+    );
+
+    expect(three.result.rejected).toEqual([]);
+    expect(thirty.result.rejected).toEqual([]);
+    expect(thirty.queryCount).toBe(three.queryCount);
+    expect(three.queryCount).toBeLessThanOrEqual(PERF_BUDGET.maxQueriesPerReconcile);
+    expect(thirty.queryCount).toBeLessThanOrEqual(PERF_BUDGET.maxQueriesPerReconcile);
+  });
+
+  it('issues the same reconcile query count against a one-session user as against eighteen months of history', async () => {
+    const syncService = new SyncService(db);
+
+    const [smallUserSession] = await db
+      .select({ id: workoutSession.id })
+      .from(workoutSession)
+      .where(eq(workoutSession.userId, otherUserId))
+      .limit(1);
+    const corpusEditSessionId = await pushSetsDirectly(corpusUserId, 3);
+
+    const small = await countQueries(() =>
+      syncService.applyBatch(otherUserId, [
+        {
+          op_id: randomUUID(),
+          op: 'PATCH',
+          type: 'workout_session',
+          id: smallUserSession.id,
+          data: { local_date: '2026-08-22' },
+        },
+      ]),
+    );
+    const large = await countQueries(() =>
+      syncService.applyBatch(corpusUserId, [
+        {
+          op_id: randomUUID(),
+          op: 'PATCH',
+          type: 'workout_session',
+          id: corpusEditSessionId,
+          data: { local_date: '2026-08-22' },
+        },
+      ]),
+    );
+
+    expect(small.result.rejected).toEqual([]);
+    expect(large.result.rejected).toEqual([]);
+    expect(large.queryCount).toBe(small.queryCount);
+    expect(large.queryCount).toBeLessThanOrEqual(PERF_BUDGET.maxQueriesPerReconcile);
   });
 });

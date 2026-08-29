@@ -8,11 +8,11 @@ import { config } from 'dotenv';
 config({ path: [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../../.env')] });
 
 import { eq, sql } from 'drizzle-orm';
-import { toCanonicalKg, type SyncCrudOp } from '@fitness/api-contracts';
+import { MUSCLE_GROUPS, MUSCLE_GROUP_BODY_REGION, toCanonicalKg, type SyncCrudOp } from '@fitness/api-contracts';
 import { db, pool } from '../db/drizzle.module';
-import { user, workoutSession } from '../db/schema';
+import { analyticsWatermark, muscleVolumeRollup, user, workoutSession } from '../db/schema';
 import { SyncService } from '../sync/sync.service';
-import { CORPUS_SHAPE } from './corpus-shape';
+import { CORPUS_MUSCLE_MAPPINGS, CORPUS_SHAPE } from './corpus-shape';
 
 // ---------------------------------------------------------------------------------------------
 // Deterministic PRNG (mulberry32) — the platform's built-in unseeded random source must never
@@ -252,6 +252,31 @@ async function ensureExerciseCatalog(): Promise<void> {
       VALUES (${ex.id}, NULL, ${ex.name}, ${ex.movementPattern}, ${ex.equipmentRequired}, ${ex.loadType}, ${ex.unilateral}, false, 'seed')
       ON CONFLICT (id) DO NOTHING
     `);
+  }
+}
+
+// Must run BEFORE ensureExerciseMuscleMappings: exercise_muscle_mapping.muscle_group_id carries a
+// foreign key to muscle_group, and the corpus database is not guaranteed to have had the real
+// catalog seeded (unlike exercise, which this generator inserts itself just above).
+async function ensureMuscleGroups(): Promise<void> {
+  for (const id of MUSCLE_GROUPS) {
+    await db.execute(sql`
+      INSERT INTO muscle_group (id, name, body_region)
+      VALUES (${id}, ${id}, ${MUSCLE_GROUP_BODY_REGION[id]})
+      ON CONFLICT (id) DO NOTHING
+    `);
+  }
+}
+
+async function ensureExerciseMuscleMappings(): Promise<void> {
+  for (const [exerciseId, mappings] of Object.entries(CORPUS_MUSCLE_MAPPINGS)) {
+    for (const mapping of mappings) {
+      await db.execute(sql`
+        INSERT INTO exercise_muscle_mapping (exercise_id, muscle_group_id, role, weight_factor)
+        VALUES (${exerciseId}, ${mapping.muscleGroupId}, ${mapping.role}, ${mapping.weightFactor.toFixed(2)})
+        ON CONFLICT (exercise_id, muscle_group_id) DO NOTHING
+      `);
+    }
   }
 }
 
@@ -522,6 +547,8 @@ export async function generateCorpus(options: GenerateCorpusOptions): Promise<Ge
   assertDevelopmentDatabase(databaseUrl);
 
   await ensureExerciseCatalog();
+  await ensureMuscleGroups();
+  await ensureExerciseMuscleMappings();
   const userId = await ensureUser(options.email);
 
   const existingCount = await db
@@ -535,6 +562,13 @@ export async function generateCorpus(options: GenerateCorpusOptions): Promise<Ge
     );
   }
   if (hasExisting) {
+    // muscle_volume_rollup and analytics_watermark are derived tables keyed to the user, not to
+    // workout_session — they cascade on user (see their schema's onDelete: 'cascade' on user_id),
+    // not on the session delete below, so a reset would otherwise leave the previous run's derived
+    // rows behind and every subsequent assertion would measure a mixture of two corpora. A stale
+    // derived row is indistinguishable from a real one, so it must be cleared explicitly here.
+    await db.delete(muscleVolumeRollup).where(eq(muscleVolumeRollup.userId, userId));
+    await db.delete(analyticsWatermark).where(eq(analyticsWatermark.userId, userId));
     await db.delete(workoutSession).where(eq(workoutSession.userId, userId));
   }
 
