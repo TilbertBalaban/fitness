@@ -84,6 +84,13 @@ export interface UserExercisePreferenceValues {
   updatedAt: Date;
 }
 
+export interface ExcludedExerciseValues {
+  id: string;
+  userId: string;
+  exerciseId: string;
+  createdAt: Date;
+}
+
 export interface RoutineValues {
   id: string;
   userId: string;
@@ -286,6 +293,17 @@ export const USER_EXERCISE_PREFERENCE_PATCH_FIELDS: PatchFieldMap<UserExercisePr
   archivedAt: 'archived_at',
   neverSuggest: 'never_suggest',
   updatedAt: 'updated_at',
+};
+
+// id/userId are server-derived, written unconditionally. exerciseId maps to null too, but for a
+// different reason than above: exclusion has no patchable fields at all, so exerciseId is identity
+// here, not merely ownership — an op naming a different exercise is a different row, not an edit,
+// and the database value must win.
+export const EXCLUDED_EXERCISE_PATCH_FIELDS: PatchFieldMap<ExcludedExerciseValues> = {
+  id: null,
+  userId: null,
+  exerciseId: null,
+  createdAt: 'created_at',
 };
 
 // id/userId are fixed at insert — a routine's identity and ownership never move once created.
