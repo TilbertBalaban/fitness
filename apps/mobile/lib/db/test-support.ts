@@ -11,7 +11,7 @@ import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-d
 // import chain fails there (its dist re-exports omit file extensions, invalid under strict Node
 // ESM). powersync.web.ts's AppSchema is the exact object getPowerSync() uses on web — importing
 // it explicitly is correct for this durability harness regardless of platform resolution.
-import type { EquipmentType } from '@fitness/api-contracts';
+import type { EquipmentType, SetType } from '@fitness/api-contracts';
 import { AppSchema } from './powersync.web';
 import { createEquipmentProfile, ensureDefaultEquipmentProfile, type CreateEquipmentProfileInput } from './equipment-profiles';
 import { generateClientId } from './id';
@@ -988,4 +988,91 @@ export async function seedSupersetPair(db: TestWriteDb, userId?: string): Promis
     throw new Error(`seedSupersetPair: expected two session_exercise rows, got ${ordered.length}`);
   }
   return { sessionId, sessionExerciseIds: [first.id as string, second.id as string] };
+}
+
+export interface SeedExerciseHistorySet {
+  weightKg: string | null;
+  reps: number;
+  // Deliberately part of the input surface rather than fixed to 'normal': the performance chart's
+  // whole correctness claim is that `heaviest`/`e1rm` use countsTowardRecords while `volume` uses
+  // countsTowardWorkingVolume, and a spec can only prove that split from the DOM if it can seed a
+  // warm-up or a partial alongside a working set.
+  setType: SetType;
+  completed: boolean;
+}
+
+export interface SeedExerciseHistorySession {
+  localDate: string;
+  sets: SeedExerciseHistorySet[];
+}
+
+export interface SeedExerciseHistoryInput {
+  exerciseId: string;
+  sessions: SeedExerciseHistorySession[];
+}
+
+// N completed sessions for ONE exercise on caller-supplied local dates, each with caller-supplied
+// sets. Same direct-minimal-write style as seedPriorHeaviestSet/seedProgressionHistory — three
+// tables per session, no startSession/logSet round trip — because the performance chart reads
+// finished history, never a session still being built.
+export async function seedExerciseHistory(db: TestWriteDb, input: SeedExerciseHistoryInput): Promise<void> {
+  for (const [sessionIndex, seededSession] of input.sessions.entries()) {
+    const sessionId = generateClientId();
+    const sessionExerciseId = generateClientId();
+    // started_at only has to order the sessions consistently; local_date is what the chart reads.
+    const startedAt = `${seededSession.localDate}T09:00:00.000Z`;
+
+    await db.insert(workoutSession).values({
+      id: sessionId,
+      userId: null,
+      routineDayId: null,
+      equipmentProfileId: null,
+      startedAt,
+      endedAt: startedAt,
+      status: 'completed',
+      deviceId: null,
+      timezone: 'UTC',
+      localDate: seededSession.localDate,
+      notes: null,
+      name: null,
+      pausedAt: null,
+      accumulatedPausedSeconds: 0,
+      restTargetAt: null,
+      serverSeq: null,
+    });
+
+    await db.insert(sessionExercise).values({
+      id: sessionExerciseId,
+      sessionId,
+      exerciseId: input.exerciseId,
+      orderIndex: sessionIndex,
+      supersetGroupId: null,
+      routineExerciseId: null,
+      targetSets: null,
+      targetRepMin: null,
+      targetRepMax: null,
+      targetRir: null,
+      targetRestSeconds: null,
+      notes: null,
+      removedAt: null,
+    });
+
+    for (const [setIndex, seededSet] of seededSession.sets.entries()) {
+      await db.insert(loggedSet).values({
+        id: generateClientId(),
+        sessionExerciseId,
+        setIndex: setIndex + 1,
+        setType: seededSet.setType,
+        weightKg: seededSet.weightKg,
+        reps: seededSet.reps,
+        rir: null,
+        side: null,
+        completed: seededSet.completed,
+        parentSetId: null,
+        restTakenSeconds: null,
+        loggedAt: startedAt,
+        notes: null,
+      });
+    }
+  }
 }

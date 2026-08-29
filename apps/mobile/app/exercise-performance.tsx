@@ -228,7 +228,9 @@ export default function ExercisePerformanceScreen({
           ]);
           if (!active) return;
           setSessions(loaded);
-          setExerciseName(names.get(exerciseId) ?? '');
+          // The same fallback session-query.ts and summary-query.ts already use, so an id absent
+          // from the catalog renders one recognisable label app-wide rather than a blank heading.
+          setExerciseName(names.get(exerciseId) ?? 'Unknown exercise');
           setWeightUnit(unit);
           setFailed(false);
         } catch (error) {

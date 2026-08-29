@@ -8,6 +8,7 @@ import GymProfilesScreen from './gym-profiles/index';
 import NewGymScreen from './gym-profiles/new';
 import EditGymScreen from './gym-profiles/edit/[id]';
 import ProgramsScreen from './(tabs)/programs';
+import ExercisePerformanceScreen from './exercise-performance';
 import { SyncConnector } from '../lib/db/connector';
 import { loadEquipmentProfile, setActiveEquipmentProfile, type CreateEquipmentProfileInput } from '../lib/db/equipment-profiles';
 import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib/db/log-set';
@@ -71,6 +72,8 @@ import {
   readLoggedSetsWithGrouping,
   seedSupersetPair,
   type SeededSupersetPair,
+  seedExerciseHistory,
+  type SeedExerciseHistoryInput,
 } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
 import { SessionModeProvider } from '../lib/session/session-mode';
@@ -123,6 +126,12 @@ export default function DurabilityHarnessScreen() {
   // DOM value, not a third harness method, so Task 3's "exactly two new methods" holds; a spec
   // polls it with expect.poll the same way every other harness case polls a raw DB read.
   const [lastSavedGymId, setLastSavedGymId] = useState<string | null>(null);
+  // 09-01's chart mount — mutually exclusive with the five above, same single-active-mount
+  // convention. Carries the metric so a spec can land directly on the estimate branch as well as
+  // reach it by tapping a chip.
+  const [performanceHarness, setPerformanceHarness] = useState<{ db: TestWriteDb; exerciseId: string; metric: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -167,6 +176,7 @@ export default function DurabilityHarnessScreen() {
         setGymEditorHarness(null);
         setLastSavedGymId(null);
         setProgramsHarness(null);
+        setPerformanceHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -512,6 +522,20 @@ export default function DurabilityHarnessScreen() {
       async seedProgressionHistory(input: SeedProgressionHistoryInput) {
         await seedProgressionHistory(requireOpenDb(), input);
       },
+      // 09-01's ANLY-06/ANLY-10 e2e proof: seeds real completed history through the shipped
+      // test-support helper, then mounts the real /exercise-performance route against the same
+      // open() database via its own {exerciseId, metric, userId, db} override — matching
+      // seedSupersetPair's seed-then-mount convention above. No wiring is duplicated here.
+      async seedExerciseHistoryAndOpenPerformance(input: SeedExerciseHistoryInput & { metric?: string }) {
+        const db = requireOpenDb();
+        await seedExerciseHistory(db, input);
+        setPerformanceHarness({ db, exerciseId: input.exerciseId, metric: input.metric ?? 'heaviest' });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setProgramsHarness(null);
+      },
     };
 
     setReady(true);
@@ -538,6 +562,14 @@ export default function DurabilityHarnessScreen() {
         )
       ) : null}
       {programsHarness ? <ProgramsScreen db={programsHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
+      {performanceHarness ? (
+        <ExercisePerformanceScreen
+          db={performanceHarness.db}
+          userId={WORKOUT_HARNESS_USER_ID}
+          exerciseId={performanceHarness.exerciseId}
+          metric={performanceHarness.metric}
+        />
+      ) : null}
       <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>
   );

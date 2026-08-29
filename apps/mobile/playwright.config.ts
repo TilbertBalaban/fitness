@@ -46,6 +46,7 @@ export default defineConfig({
         'program-day-lifecycle.spec.ts',
         'advanced-sets.spec.ts',
         'progression-recommendation.spec.ts',
+        'exercise-performance.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },
