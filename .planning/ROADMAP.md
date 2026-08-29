@@ -499,7 +499,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 09-02-PLAN.md — Pure aggregation: rolling-window and trailing-bucket boundaries, the history trend series and its delta, and weekly achieved-versus-target
-- [ ] 09-03-PLAN.md — Records screen, record row, the History tab's Records link, and the two shipped Phase 5 corrections (per-metric PR badges, the e1RM display union)
+- [x] 09-03-PLAN.md — Records screen, record row, the History tab's Records link, and the two shipped Phase 5 corrections (per-metric PR badges, the e1RM display union)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

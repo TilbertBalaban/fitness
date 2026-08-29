@@ -6,7 +6,10 @@
 jest.mock('../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
 
 import type { ReactElement, ReactNode } from 'react';
+import { E1RM_ABOVE_CAP_COPY } from '@fitness/analytics-engine';
+import { E1RM_MAX_VALID_REPS } from '@fitness/pr-rules';
 import { deriveRowDisplay, formatBreakdownLine, formatE1rm, WorkoutSummaryView, type WorkoutSummaryViewProps } from '../WorkoutSummary';
+import { PR_TYPE_BADGE_LABELS } from '@/lib/analytics/pr-vocabulary';
 import { SetRowView } from '../SetRow';
 import type { ExerciseBreakdown, SessionSummary } from '@/lib/db/summary-query';
 import type { LoggedSetRow } from '@/lib/db/session-query';
@@ -146,11 +149,11 @@ describe('deriveRowDisplay — isolation (UI-SPEC E9 error backstop)', () => {
     const row = breakdownRow({ completedSets: [loggedSetRow({ weightKg: '100.000', reps: 5 })], prTypes: ['heaviest_weight'] });
     const display = deriveRowDisplay(row, 'kg');
 
-    expect(display.e1rmDisplay).not.toBe('—');
+    expect(display.e1rm).toEqual({ kind: 'value', display: expect.any(String) });
     expect(display.prTypes).toEqual(['heaviest_weight']);
   });
 
-  it('degrades to the em dash and drops badges when the injected estimator throws', () => {
+  it('degrades to the unavailable branch and drops badges when the injected estimator throws', () => {
     const row = breakdownRow({ completedSets: [loggedSetRow({ weightKg: '100.000', reps: 5 })], prTypes: ['heaviest_weight'] });
     const throwingEstimator = () => {
       throw new Error('boom');
@@ -158,8 +161,41 @@ describe('deriveRowDisplay — isolation (UI-SPEC E9 error backstop)', () => {
 
     const display = deriveRowDisplay(row, 'kg', throwingEstimator);
 
-    expect(display.e1rmDisplay).toBe('—');
+    expect(display.e1rm).toEqual({ kind: 'unavailable' });
     expect(display.prTypes).toEqual([]);
+  });
+});
+
+// ANLY-10 / D-02: the correction's whole point is that these two causes are structurally
+// distinguishable. Claiming the rep cap when the real reason is that nothing was logged would be a
+// wrong explanation, which is worse than none.
+describe('deriveRowDisplay — the three-branch estimate (ANLY-10, D-02)', () => {
+  it('returns above-cap when weighted sets exist and every one is above the rep cap', () => {
+    const row = breakdownRow({
+      completedSets: [
+        loggedSetRow({ id: 'ls-1', weightKg: '100.000', reps: E1RM_MAX_VALID_REPS + 1 }),
+        loggedSetRow({ id: 'ls-2', weightKg: '90.000', reps: E1RM_MAX_VALID_REPS + 5 }),
+      ],
+    });
+
+    expect(deriveRowDisplay(row, 'kg').e1rm).toEqual({ kind: 'above-cap' });
+  });
+
+  it('returns unavailable when there were no weighted completed sets at all', () => {
+    const row = breakdownRow({ completedSets: [loggedSetRow({ weightKg: null, reps: 12 })] });
+
+    expect(deriveRowDisplay(row, 'kg').e1rm).toEqual({ kind: 'unavailable' });
+  });
+
+  it('returns a value whenever one set is at or under the cap, even alongside sets above it', () => {
+    const row = breakdownRow({
+      completedSets: [
+        loggedSetRow({ id: 'ls-1', weightKg: '100.000', reps: E1RM_MAX_VALID_REPS + 4 }),
+        loggedSetRow({ id: 'ls-2', weightKg: '100.000', reps: 5 }),
+      ],
+    });
+
+    expect(deriveRowDisplay(row, 'kg').e1rm.kind).toBe('value');
   });
 });
 
@@ -180,18 +216,41 @@ describe('WorkoutSummaryView — populated summary (UI-SPEC E9 populated)', () =
     expect(text).toContain('e1RM: —');
   });
 
-  it('renders exactly one "New PR" badge for one detected type', () => {
+  it('renders exactly one badge, naming its own metric, for one detected type', () => {
     const result = renderView({ summary: summaryFixture({ breakdown: [breakdownRow({ prTypes: ['heaviest_weight'] })] }) });
 
-    const badgeCount = findText(result).filter((entry) => entry === 'New PR').length;
-    expect(badgeCount).toBe(1);
+    const badges = findText(result).filter((entry) => entry === PR_TYPE_BADGE_LABELS.heaviest_weight);
+    expect(badges).toHaveLength(1);
   });
 
-  it('renders two "New PR" badges for two detected types on one exercise', () => {
+  // The defect ANLY-02's correction fixes: three identical pills read as a rendering bug and tell
+  // the lifter nothing about WHICH records were set.
+  it('renders two distinctly-labelled badges for two detected types on one exercise', () => {
     const result = renderView({ summary: summaryFixture({ breakdown: [breakdownRow({ prTypes: ['heaviest_weight', 'best_e1rm'] })] }) });
 
-    const badgeCount = findText(result).filter((entry) => entry === 'New PR').length;
-    expect(badgeCount).toBe(2);
+    const text = findText(result);
+    expect(text.filter((entry) => entry === PR_TYPE_BADGE_LABELS.heaviest_weight)).toHaveLength(1);
+    expect(text.filter((entry) => entry === PR_TYPE_BADGE_LABELS.best_e1rm)).toHaveLength(1);
+    expect(PR_TYPE_BADGE_LABELS.heaviest_weight).not.toBe(PR_TYPE_BADGE_LABELS.best_e1rm);
+  });
+
+  it('renders no badge at all for an exercise that set no record', () => {
+    const result = renderView({ summary: summaryFixture({ breakdown: [breakdownRow({ prTypes: [] })] }) });
+
+    const text = findText(result);
+    for (const label of Object.values(PR_TYPE_BADGE_LABELS)) expect(text).not.toContain(label);
+  });
+
+  it('renders the rep-cap explanation instead of a bare dash when every weighted set is above the cap', () => {
+    const result = renderView({
+      summary: summaryFixture({
+        breakdown: [breakdownRow({ completedSets: [loggedSetRow({ weightKg: '100.000', reps: E1RM_MAX_VALID_REPS + 2 })] })],
+      }),
+    });
+
+    const text = findText(result).join(' ').replace(/\s+/g, ' ');
+    expect(text).toContain(`e1RM: ${E1RM_ABOVE_CAP_COPY}`);
+    expect(text).not.toContain('e1RM: —');
   });
 
   it('calls onDone when the Done button is pressed', () => {

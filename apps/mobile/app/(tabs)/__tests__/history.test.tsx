@@ -22,6 +22,7 @@ function baseProps(overrides: Partial<HistoryScreenViewProps> = {}): HistoryScre
     onOverflowPress: jest.fn(),
     onEndReached: jest.fn(),
     onAddPastWorkout: jest.fn(),
+    onRecords: jest.fn(),
     onPendingDateChange: jest.fn(),
     onConfirmAddPastDate: jest.fn(),
     onCancelAddPast: jest.fn(),
@@ -69,6 +70,18 @@ describe('HistoryScreenView — empty state', () => {
     addAffordance.props.onPress();
     expect(onAddPastWorkout).toHaveBeenCalledTimes(1);
   });
+
+  // A lifter with no sessions holds no records either, but the empty Records screen is the honest
+  // answer and hiding the path is what would make the feature undiscoverable (09-UI-SPEC S3).
+  it('also offers the Records link, wired to onRecords', () => {
+    const onRecords = jest.fn();
+    const element = HistoryScreenView(baseProps({ state: 'empty', onRecords }));
+    const recordsLink = element.props.children[3];
+
+    expect(recordsLink.props.accessibilityLabel).toBe('Records');
+    recordsLink.props.onPress();
+    expect(onRecords).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('HistoryScreenView — error state', () => {
@@ -97,11 +110,23 @@ describe('HistoryScreenView — ready state', () => {
     const onAddPastWorkout = jest.fn();
     const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW], onAddPastWorkout }));
     const [header] = element.props.children;
-    const addAffordance = header.props.children;
+    // The header row is space-between: Records leads, Add a Past Workout stays in the trailing slot.
+    const [, addAffordance] = header.props.children;
 
     expect(addAffordance.props.accessibilityLabel).toBe('Add a Past Workout');
     addAffordance.props.onPress();
     expect(onAddPastWorkout).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the Records link in the header’s leading slot, wired to onRecords', () => {
+    const onRecords = jest.fn();
+    const element = HistoryScreenView(baseProps({ state: 'ready', rows: [SAMPLE_ROW], onRecords }));
+    const [header] = element.props.children;
+    const [recordsLink] = header.props.children;
+
+    expect(recordsLink.props.accessibilityLabel).toBe('Records');
+    recordsLink.props.onPress();
+    expect(onRecords).toHaveBeenCalledTimes(1);
   });
 
   it('renders a FlashList with the page rows and no overlay by default', () => {

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { CANONICAL_KG_SCALE, formatWeight, fromCanonicalKg, type PrType, type WeightUnit } from '@fitness/api-contracts';
+import { E1RM_ABOVE_CAP_COPY, resolveE1rmDisplay, type E1rmDisplay } from '@fitness/analytics-engine';
+import { formatWeight, fromCanonicalKg, type PrType, type WeightUnit } from '@fitness/api-contracts';
 import { estimated1RM } from '@fitness/pr-rules';
+import { PR_TYPE_BADGE_LABELS } from '@/lib/analytics/pr-vocabulary';
 import { updateLoggedSet } from '@/lib/db/log-set';
 import { detectPrsForSession } from '@/lib/db/personal-record';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
@@ -38,19 +40,19 @@ export function formatE1rm(bestE1rmKg: string | null, unit: WeightUnit): string 
   return formatWeight(bestE1rmKg, unit);
 }
 
-const PR_BADGE_LABEL = 'New PR';
-
 // A plain function, called (never rendered as a JSX tag) so its returned View/Text tree is
 // inlined directly into WorkoutSummaryView's own — SetRow.tsx's renderSetField established this
 // fix for the exact same trap: a `<PrBadges />` element stays an opaque, unexpanded node to a test
 // that walks the tree by direct invocation with no renderer.
+// ANLY-02: each pill carries its OWN metric's label — one shared label repeated per detected type
+// showed three identical pills for three records, silent about WHICH. Everything else is unchanged.
 function renderPrBadges(prTypes: PrType[]) {
   if (prTypes.length === 0) return null;
   return (
     <View className="flex-row flex-wrap gap-xs">
       {prTypes.map((prType) => (
         <View key={prType} className="rounded-full bg-accent/10 px-xs py-xs">
-          <Text className="text-label font-semibold text-accent">{PR_BADGE_LABEL}</Text>
+          <Text className="text-label font-semibold text-accent">{PR_TYPE_BADGE_LABELS[prType]}</Text>
         </View>
       ))}
     </View>
@@ -58,7 +60,7 @@ function renderPrBadges(prTypes: PrType[]) {
 }
 
 export interface RowDisplay {
-  e1rmDisplay: string;
+  e1rm: E1rmDisplay;
   prTypes: PrType[];
 }
 
@@ -68,23 +70,28 @@ export interface RowDisplay {
 // estimated1RM but is swappable so a held-out test can inject a throwing stub; prTypes is bundled
 // into the same try so a thrown estimator degrades the badges alongside the e1RM cell, never a
 // half-trusted mix of the two.
+// ANLY-10/D-02: the three-branch union replaces a bare string, so a rep-cap suppression and an
+// absence of data stop being the same em dash. The POPULATION is unchanged (R15).
 export function deriveRowDisplay(
   row: Pick<ExerciseBreakdown, 'completedSets' | 'prTypes'>,
   weightUnit: WeightUnit,
   estimateFn: (weightKg: number, reps: number) => number | null = estimated1RM,
 ): RowDisplay {
-  try {
-    let bestE1rm: number | null = null;
-    for (const set of row.completedSets) {
-      if (set.weightKg === null) continue;
-      const e1rm = estimateFn(Number(set.weightKg), set.reps);
-      if (e1rm !== null && (bestE1rm === null || e1rm > bestE1rm)) bestE1rm = e1rm;
-    }
-    const bestE1rmKg = bestE1rm === null ? null : bestE1rm.toFixed(CANONICAL_KG_SCALE);
-    return { e1rmDisplay: formatE1rm(bestE1rmKg, weightUnit), prTypes: row.prTypes };
-  } catch {
-    return { e1rmDisplay: formatE1rm(null, weightUnit), prTypes: [] };
-  }
+  // The wrapper is what keeps a throw observable: resolveE1rmDisplay catches internally, and
+  // `unavailable` alone would leave a full set of badges standing beside a degraded cell.
+  let estimatorFailed = false;
+  const estimate = (weightKg: number, reps: number) => {
+    try { return estimateFn(weightKg, reps); } catch { estimatorFailed = true; return null; }
+  };
+  const e1rm = resolveE1rmDisplay({ sets: row.completedSets, unit: weightUnit, estimate });
+  return estimatorFailed ? { e1rm: { kind: 'unavailable' }, prTypes: [] } : { e1rm, prTypes: row.prTypes };
+}
+
+// `unavailable` keeps the shipped em dash verbatim — that case genuinely is "no data". Only
+// `above-cap` gains copy, and it never claims the rep cap for a row that simply logged nothing.
+export function e1rmCellText(display: E1rmDisplay, weightUnit: WeightUnit): string {
+  if (display.kind === 'value') return display.display;
+  return display.kind === 'above-cap' ? E1RM_ABOVE_CAP_COPY : formatE1rm(null, weightUnit);
 }
 
 export interface EditingFieldState {
@@ -234,7 +241,7 @@ export function WorkoutSummaryView({
                     ) : null}
                   </View>
                   <Text className="text-body font-normal text-foreground-muted">{formatBreakdownLine(row, weightUnit)}</Text>
-                  <Text className="text-body font-normal text-foreground-muted">e1RM: {display.e1rmDisplay}</Text>
+                  <Text className="text-body font-normal text-foreground-muted">e1RM: {e1rmCellText(display.e1rm, weightUnit)}</Text>
                   {mode === 'summary-correction' && isExpanded
                     ? renderExpandedRow(row, weightUnit, colors, editingField, onFieldPress, onCheckmarkPress, onKeypadPress, onKeypadSubmit)
                     : null}

@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 09
 current_phase_name: records-client-analytics
 status: executing
-stopped_at: Completed 09-02-PLAN.md
-last_updated: "2026-08-29T08:52:06.865Z"
+stopped_at: Completed 09-03-PLAN.md
+last_updated: "2026-08-29T09:06:56.952Z"
 last_activity: 2026-08-29
-last_activity_desc: Phase 09 waves 1-2 executing; 09-01 and 09-02 merged
+last_activity_desc: Phase 09 wave 2 merged; 09-01, 09-02 and 09-03 complete
 progress:
-  total_phases: 9
+  total_phases: 12
   completed_phases: 8
   total_plans: 103
-  completed_plans: 99
+  completed_plans: 100
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 09 (records-client-analytics) — EXECUTING
-Plan: 3 of 6
-Status: Ready to execute
-Last activity: 2026-08-29 — 09-01 and 09-02 merged; 09-03 in flight
+Plan: 3 of 6 complete
+Status: Wave 2 merged; wave 3 next
+Last activity: 2026-08-29 — 09-01, 09-02 and 09-03 merged
 
-Progress: [██████████] 95%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -69,6 +69,7 @@ Progress: [██████████] 95%
 | Phase 05 P16 | 3h | 3 tasks | 12 files |
 | Phase 09 P01 | 55m | 3 tasks | 27 files |
 | Phase 09 P02 | 35 min | 3 tasks | 7 files |
+| Phase 09 P03 | ~50 min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Full durability Playwright project (33 cases) executed for the first time and reached two consecutive clean 33/33 runs — closes SC4 and both behavior_unverified truths in 05-VERIFICATION.md
 - [Phase ?]: 09-01: react-native-web maps react-native-svg's accessibilityRole=image + accessibilityLabel onto a Playwright-queryable role=img with an accessible name — verified in a real browser, so every chart spec this phase asserts by role and name
 - [Phase ?]: 09-01: the records and working-volume set predicates are kept apart in exercise-series.ts and asserted from one shared fixture — heaviest/e1rm use countsTowardRecords, volume uses countsTowardWorkingVolume
+- [Phase ?]: 09-03: personal_record.value stores a rep count for most_reps_at_weight and no weight at all — the achieving weight is resolved through a third batched logged_set read, never a per-row lookup
+- [Phase ?]: 09-03: RowDisplay.e1rm is now the three-branch E1rmDisplay union — the workout summary distinguishes a rep-cap suppression from an absence of data instead of blanking both
 
 ### Pending Todos
 
@@ -133,6 +136,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-29T08:50:47.732Z
-Stopped at: Completed 09-02-PLAN.md
+Last session: 2026-08-29T09:06:48.982Z
+Stopped at: Completed 09-03-PLAN.md
 Resume file: None

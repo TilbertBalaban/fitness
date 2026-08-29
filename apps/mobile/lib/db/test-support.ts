@@ -11,8 +11,9 @@ import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-d
 // import chain fails there (its dist re-exports omit file extensions, invalid under strict Node
 // ESM). powersync.web.ts's AppSchema is the exact object getPowerSync() uses on web — importing
 // it explicitly is correct for this durability harness regardless of platform resolution.
-import type { EquipmentType, SetType } from '@fitness/api-contracts';
+import type { EquipmentType, PrType, SetType } from '@fitness/api-contracts';
 import { AppSchema } from './powersync.web';
+import { logPersonalRecord } from './personal-record';
 import { createEquipmentProfile, ensureDefaultEquipmentProfile, type CreateEquipmentProfileInput } from './equipment-profiles';
 import { generateClientId } from './id';
 import { startWorkoutFromProgram, type StartWorkoutFromProgramSlot } from './log-set';
@@ -1074,5 +1075,99 @@ export async function seedExerciseHistory(db: TestWriteDb, input: SeedExerciseHi
         notes: null,
       });
     }
+  }
+}
+
+export interface SeedPersonalRecordInput {
+  prType: PrType;
+  // The stored value in that metric's OWN units — a weight for heaviest/e1rm/set-volume, a REP
+  // COUNT for most-reps. Passed as a number and written through the real logPersonalRecord, so the
+  // three-decimal string convention is applied by the shipped helper rather than re-implemented.
+  value: number;
+  achievedAt: string;
+  // The originating set, seeded as a real logged_set row so a most-reps record has an actual weight
+  // to resolve — personal_record carries no weight column of its own.
+  set: { weightKg: string | null; reps: number };
+}
+
+export interface SeedPersonalRecordsInput {
+  exerciseId: string;
+  records: SeedPersonalRecordInput[];
+}
+
+// N personal_record rows for ONE exercise, each with its own originating completed set. Same
+// direct-minimal-write style as seedExerciseHistory for the session/exercise/set rows, but the
+// record itself goes through the real logPersonalRecord — the harness re-implements no insert and
+// neither does this, so the three-decimal value convention cannot drift between seed and app.
+export async function seedPersonalRecords(db: TestWriteDb, input: SeedPersonalRecordsInput): Promise<void> {
+  const sessionId = generateClientId();
+  const sessionExerciseId = generateClientId();
+  const localDate = input.records[0]?.achievedAt.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+  const startedAt = `${localDate}T09:00:00.000Z`;
+
+  await db.insert(workoutSession).values({
+    id: sessionId,
+    userId: null,
+    routineDayId: null,
+    equipmentProfileId: null,
+    startedAt,
+    endedAt: startedAt,
+    status: 'completed',
+    deviceId: null,
+    timezone: 'UTC',
+    localDate,
+    notes: null,
+    name: null,
+    pausedAt: null,
+    accumulatedPausedSeconds: 0,
+    restTargetAt: null,
+    serverSeq: null,
+  });
+
+  await db.insert(sessionExercise).values({
+    id: sessionExerciseId,
+    sessionId,
+    exerciseId: input.exerciseId,
+    orderIndex: 0,
+    supersetGroupId: null,
+    routineExerciseId: null,
+    targetSets: null,
+    targetRepMin: null,
+    targetRepMax: null,
+    targetRir: null,
+    targetRestSeconds: null,
+    notes: null,
+    removedAt: null,
+  });
+
+  for (const [index, record] of input.records.entries()) {
+    const loggedSetId = generateClientId();
+    await db.insert(loggedSet).values({
+      id: loggedSetId,
+      sessionExerciseId,
+      setIndex: index + 1,
+      setType: 'normal',
+      weightKg: record.set.weightKg,
+      reps: record.set.reps,
+      rir: null,
+      side: null,
+      completed: true,
+      parentSetId: null,
+      restTakenSeconds: null,
+      loggedAt: record.achievedAt,
+      notes: null,
+    });
+
+    await logPersonalRecord(
+      {
+        userId: null,
+        exerciseId: input.exerciseId,
+        prType: record.prType,
+        value: record.value,
+        loggedSetId,
+        achievedAt: new Date(record.achievedAt),
+      },
+      db,
+    );
   }
 }

@@ -9,6 +9,7 @@ import NewGymScreen from './gym-profiles/new';
 import EditGymScreen from './gym-profiles/edit/[id]';
 import ProgramsScreen from './(tabs)/programs';
 import ExercisePerformanceScreen from './exercise-performance';
+import RecordsScreen from './records';
 import { SyncConnector } from '../lib/db/connector';
 import { loadEquipmentProfile, setActiveEquipmentProfile, type CreateEquipmentProfileInput } from '../lib/db/equipment-profiles';
 import { addSessionExercise, logSet, setSessionDate, startSession } from '../lib/db/log-set';
@@ -74,6 +75,8 @@ import {
   type SeededSupersetPair,
   seedExerciseHistory,
   type SeedExerciseHistoryInput,
+  seedPersonalRecords,
+  type SeedPersonalRecordsInput,
 } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
 import { SessionModeProvider } from '../lib/session/session-mode';
@@ -132,6 +135,9 @@ export default function DurabilityHarnessScreen() {
   const [performanceHarness, setPerformanceHarness] = useState<{ db: TestWriteDb; exerciseId: string; metric: string } | null>(
     null,
   );
+  // 09-03's Records mount — mutually exclusive with the six above, same single-active-mount
+  // convention.
+  const [recordsHarness, setRecordsHarness] = useState<{ db: TestWriteDb } | null>(null);
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -177,6 +183,7 @@ export default function DurabilityHarnessScreen() {
         setLastSavedGymId(null);
         setProgramsHarness(null);
         setPerformanceHarness(null);
+        setRecordsHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -536,6 +543,21 @@ export default function DurabilityHarnessScreen() {
         setGymEditorHarness(null);
         setProgramsHarness(null);
       },
+      // 09-03's ANLY-03 e2e proof: seeds real personal_record rows through the shipped test-support
+      // helper (which itself writes through logPersonalRecord), then mounts the real /records route
+      // against the same open() database via its own {userId, db} override — matching
+      // seedExerciseHistoryAndOpenPerformance's seed-then-mount convention above.
+      async seedRecordsAndOpenRecords(input: SeedPersonalRecordsInput) {
+        const db = requireOpenDb();
+        await seedPersonalRecords(db, input);
+        setRecordsHarness({ db });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setProgramsHarness(null);
+        setPerformanceHarness(null);
+      },
     };
 
     setReady(true);
@@ -570,6 +592,7 @@ export default function DurabilityHarnessScreen() {
           metric={performanceHarness.metric}
         />
       ) : null}
+      {recordsHarness ? <RecordsScreen db={recordsHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
       <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>
   );

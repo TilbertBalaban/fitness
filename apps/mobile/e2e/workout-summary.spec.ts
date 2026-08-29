@@ -42,8 +42,8 @@ type HarnessWindow = Record<string, WorkoutSummaryHarness>;
 // only routing every harness write AND the real route's own reads onto the SAME production
 // singleton makes the summary see what this test seeded and logged.
 //
-// WRITTEN BUT NOT EXECUTED per this project's browser-testing-only-on-request rule (CLAUDE.md) —
-// recorded in .planning/WINDOWS.md as an unrun-verify ledger entry.
+// Executed: browser and E2E execution is standing-authorized for this repository (.claude/CLAUDE.md),
+// and 09-03 ran this file green as part of `pnpm --filter mobile test:e2e:durability`.
 test('finishing a workout with a new PR shows the badge, and correcting the set below the prior best removes it', async ({ page }) => {
   await page.goto('/__durability');
   await page.waitForSelector('[data-testid="durability-harness-ready"]');
@@ -92,15 +92,17 @@ test('finishing a workout with a new PR shows the badge, and correcting the set 
   // harness shortcut mounts this screen; WorkoutSummaryScreen's own useEffect runs
   // detectPrsForSession then loadSessionSummary against the SAME production database.
   await expect(page.getByText('Workout Complete', { exact: true })).toBeVisible();
-  // WorkoutSummary.tsx renders one "New PR" badge PER detected PR type (renderPrBadges,
-  // WorkoutSummary.test.tsx's own "renders two New PR badges for two detected types" case) — a
-  // 100kg x 12 set beating a 90kg x 5 prior best genuinely trips two of the four PR_TYPES at once:
+  // WorkoutSummary.tsx renders one badge PER detected PR type, each carrying its OWN metric's
+  // label since 09-03's ANLY-02 correction (renderPrBadges, PR_TYPE_BADGE_LABELS) — a 100kg x 12
+  // set beating a 90kg x 5 prior best genuinely trips two of the four PR_TYPES at once:
   // heaviest_weight (100 > 90) and best_set_volume (1200 > 450). best_e1rm is null for both sets
   // (reps=12 exceeds E1RM_MAX_VALID_REPS=10) and most_reps_at_weight never fires for an untested
-  // weight bucket (detectPrs only counts an exact-weight rebeat) — but two real badges is still
-  // more than one, so more than one match here is real, expected UI, not a duplicate render.
-  // .first() still proves a PR badge appears.
-  await expect(page.getByText('New PR', { exact: true }).first()).toBeVisible();
+  // weight bucket (detectPrs only counts an exact-weight rebeat). Both expected badges are named
+  // exactly, rather than matched by a substring: that the two pills read DIFFERENTLY is the whole
+  // point of the correction, and a weaker assertion could not tell them apart.
+  await expect(page.getByText('Heaviest PR', { exact: true })).toBeVisible();
+  await expect(page.getByText('Volume PR', { exact: true })).toBeVisible();
+  await expect(page.getByText('Est. 1RM PR', { exact: true })).toHaveCount(0);
 
   // Proves the DURABLE ledger (personal-record.ts's own written rows) actually gained a row — not
   // just that the summary's pure recompute says so (LOG-19's own display/ledger split).
@@ -140,7 +142,8 @@ test('finishing a workout with a new PR shows the badge, and correcting the set 
   // unique where getByRole('button', { name: 'Done' }) is not.
   await page.locator('button[aria-label="Done"]').click();
 
-  await expect(page.getByText('New PR', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Heaviest PR', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Volume PR', { exact: true })).toHaveCount(0);
 
   // The original write from before the correction is still there, untouched — this phase never
   // deletes or supersedes a row a prior detection already wrote (Phase 10's own territory).
