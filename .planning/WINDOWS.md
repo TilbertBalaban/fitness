@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 127
+open_count: 128
 waived_count: 4
 fixed_count: 28
-total_count: 159
-last_updated: 2026-08-29T11:39:41.680Z
+total_count: 160
+last_updated: 2026-08-29T15:39:49.312Z
 ---
 
 # Broken Windows Ledger
@@ -174,6 +174,7 @@ last_updated: 2026-08-29T11:39:41.680Z
 | 160 | 09 | unrun-verify | apps/mobile/components/WeeklyProgressCard.tsx |  | Last 7 Days card and History trend card rendering on iOS/Android: this machine has neither Xcode nor the Android SDK, so neither card, nor the TrendChart inside the trend card, was ever exercised natively. Web rendering is proven green across 78 durability cases. ROADMAP Phase 999.1. | open |  | 2026-08-29T11:39:28.964Z |  |
 | 161 | 09 | unrun-verify | apps/mobile/components/HistoryTrendCard.tsx |  | Subjective visual review at maximum OS font scale of the Last 7 Days tracks, the History trend card's headline and delta chip, and the exercise-performance range switch. Wrap-and-grow is grep-enforced and unit-asserted; legibility itself needs a human. ROADMAP Phase 999.2. | open |  | 2026-08-29T11:39:29.198Z |  |
 | 162 | 09 | deviation | apps/mobile/components/WeeklyProgressCard.tsx |  | Progress tracks originally carried accessibilityValue, which react-native-web 0.21 no longer maps, so each track rendered role=progressbar with an aria-label but no aria-valuemin/max/now — silent to a screen reader on web while the prop-level unit test stayed green. Fixed to the aria-* spelling (accepted by React Native since 0.71) so one set of props serves both targets. Caught only because 09-04's spec was executed rather than authored. | fixed |  | 2026-08-29T11:39:29.402Z | 2026-08-29T11:39:41.680Z |
+| 163 | 10 | deviation | apps/api/src/db/schema/records.ts |  | personal_record.logged_set_id has no onDelete cascade/set-null; deleting a logged_set or workout_session that a server-reconciled PR row references now hard-fails with an FK violation (10-02 populates this column with real data for the first time). Needs a schema decision (cascade vs set-null) in a follow-up plan; 10-02's own e2e fixtures route around it with countsTowardRecords-excluded set types rather than touching the forbidden schema file. | open |  | 2026-08-29T15:39:49.312Z |  |
 
 ````json
 [
@@ -2084,6 +2085,18 @@ last_updated: 2026-08-29T11:39:41.680Z
     "reason": "",
     "recorded_at": "2026-08-29T11:39:29.402Z",
     "resolved_at": "2026-08-29T11:39:41.680Z"
+  },
+  {
+    "id": 163,
+    "kind": "deviation",
+    "phase": "10",
+    "file": "apps/api/src/db/schema/records.ts",
+    "line": null,
+    "description": "personal_record.logged_set_id has no onDelete cascade/set-null; deleting a logged_set or workout_session that a server-reconciled PR row references now hard-fails with an FK violation (10-02 populates this column with real data for the first time). Needs a schema decision (cascade vs set-null) in a follow-up plan; 10-02's own e2e fixtures route around it with countsTowardRecords-excluded set types rather than touching the forbidden schema file.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-29T15:39:49.312Z",
+    "resolved_at": null
   }
 ]
 ````
