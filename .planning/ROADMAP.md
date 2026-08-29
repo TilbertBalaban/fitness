@@ -521,7 +521,7 @@ Plans:
   4. A PR set on one device is authoritative across all of them after sync
   5. History endpoints hold their query count as data grows, enforced by assertions against a realistically-sized dataset
 
-**Plans**: 5/7 plans executed
+**Plans**: 6/7 plans executed
 
 Plans:
 **Wave 1**
@@ -540,7 +540,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 10-06-PLAN.md — ANLY-05 UI: MuscleDrilldownSheet and its wiring into the screen
+- [x] 10-06-PLAN.md — ANLY-05 UI: MuscleDrilldownSheet and its wiring into the screen
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -657,6 +657,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Advanced Set Types | 9/9 | Complete    | 2026-08-28 |
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
-| 10. Server Analytics & Reconciliation | 5/7 | In Progress|  |
+| 10. Server Analytics & Reconciliation | 6/7 | In Progress|  |
 | 11. Program Generation | 0/TBD | Not started | - |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |
