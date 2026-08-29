@@ -113,6 +113,78 @@ async function personalRecordRow(id: string): Promise<PersonalRecordRow | undefi
   return rows[0];
 }
 
+// The four helpers below drive a real workout_session push (rather than a direct personal_record
+// op) so applyBatch's own reconcileSession call site fires — the only way to exercise the
+// server-authoritative replay this suite's new cases prove, as opposed to the direct-write cases
+// above.
+function workoutSessionOp(id: string, localDate: string): SyncCrudOp {
+  return {
+    op_id: randomUUID(),
+    op: 'PUT',
+    type: 'workout_session',
+    id,
+    data: {
+      started_at: new Date(`${localDate}T20:00:00.000Z`).toISOString(),
+      status: 'completed',
+      timezone: 'America/New_York',
+      local_date: localDate,
+    },
+  };
+}
+
+function sessionExerciseOp(id: string, sessionId: string, exerciseId: string): SyncCrudOp {
+  return {
+    op_id: randomUUID(),
+    op: 'PUT',
+    type: 'session_exercise',
+    id,
+    data: { session_id: sessionId, exercise_id: exerciseId, order_index: 0 },
+  };
+}
+
+function loggedSetOp(id: string, sessionExerciseId: string, setIndex: number, overrides: Record<string, unknown> = {}): SyncCrudOp {
+  return {
+    op_id: randomUUID(),
+    op: 'PUT',
+    type: 'logged_set',
+    id,
+    data: {
+      session_exercise_id: sessionExerciseId,
+      set_index: setIndex,
+      set_type: 'normal',
+      weight_kg: '100.000',
+      reps: 5,
+      completed: true,
+      logged_at: new Date('2026-06-18T20:15:00.000Z').toISOString(),
+      ...overrides,
+    },
+  };
+}
+
+function loggedSetPatchOp(id: string, data: Record<string, unknown>): SyncCrudOp {
+  return { op_id: randomUUID(), op: 'PATCH', type: 'logged_set', id, data };
+}
+
+interface ReconciledPrRow {
+  id: string;
+  exercise_id: string;
+  pr_type: string;
+  value: string;
+  logged_set_id: string | null;
+  reconciled_at: string | null;
+  server_seq: string;
+}
+
+async function personalRecordRowsForExercise(exerciseId: string): Promise<ReconciledPrRow[]> {
+  const { rows } = await pg.query<ReconciledPrRow>(
+    `SELECT id, exercise_id, pr_type, value, logged_set_id,
+            reconciled_at::text AS reconciled_at, server_seq::text AS server_seq
+     FROM personal_record WHERE exercise_id = $1 ORDER BY pr_type, logged_set_id`,
+    [exerciseId],
+  );
+  return rows;
+}
+
 beforeAll(async () => {
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
@@ -281,5 +353,121 @@ describe('personal_record sync (e2e)', () => {
     expect(after?.value).toBe(before?.value);
     expect(after?.pr_type).toBe(before?.pr_type);
     expect(after?.exercise_id).toBe(before?.exercise_id);
+  });
+
+  it('a correction that lowers a set below the prior best deletes the superseded record rather than merely joining it with a second row', async () => {
+    const { cookie } = await signUp('pr-correction');
+    const exerciseId = await seedExercise('PR Correction Bench Press');
+    const sessionId = randomUUID();
+    const sessionExerciseId = randomUUID();
+    const baselineSetId = randomUUID();
+    const toppingSetId = randomUUID();
+    const localDate = '2026-06-18';
+
+    const createBatch: SyncCrudOp[] = [
+      workoutSessionOp(sessionId, localDate),
+      sessionExerciseOp(sessionExerciseId, sessionId, exerciseId),
+      loggedSetOp(baselineSetId, sessionExerciseId, 1, { weight_kg: '80.000', logged_at: `${localDate}T20:10:00.000Z` }),
+      loggedSetOp(toppingSetId, sessionExerciseId, 2, { weight_kg: '100.000', logged_at: `${localDate}T20:15:00.000Z` }),
+    ];
+    const createRes = await push(cookie, createBatch);
+    expect((createRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const beforeCorrection = await personalRecordRowsForExercise(exerciseId);
+    const toppingHeaviestBefore = beforeCorrection.find(
+      (row) => row.logged_set_id === toppingSetId && row.pr_type === 'heaviest_weight',
+    );
+    expect(toppingHeaviestBefore).toBeDefined();
+    expect(Number(toppingHeaviestBefore?.value)).toBeCloseTo(100, 3);
+
+    const correctionRes = await push(cookie, [loggedSetPatchOp(toppingSetId, { weight_kg: '70.000' })]);
+    expect((correctionRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const afterCorrection = await personalRecordRowsForExercise(exerciseId);
+    // The case Phase 5's own detectPrsForSession comment explicitly deferred to this phase: the
+    // superseded row is GONE, not shadowed by a second, still-present row at the lower value.
+    expect(
+      afterCorrection.find((row) => row.logged_set_id === toppingSetId && row.pr_type === 'heaviest_weight'),
+    ).toBeUndefined();
+    const baselineHeaviestAfter = afterCorrection.find(
+      (row) => row.logged_set_id === baselineSetId && row.pr_type === 'heaviest_weight',
+    );
+    expect(baselineHeaviestAfter).toBeDefined();
+    expect(Number(baselineHeaviestAfter?.value)).toBeCloseTo(80, 3);
+
+    await pg.query('DELETE FROM personal_record WHERE exercise_id = $1', [exerciseId]);
+    await pg.query('DELETE FROM workout_session WHERE id = $1', [sessionId]);
+  });
+
+  it('every personal_record row for the touched exercise carries a non-null reconciled_at and a strictly increasing server_seq across edits', async () => {
+    const { cookie } = await signUp('pr-stamped');
+    const exerciseId = await seedExercise('Stamped Overhead Press');
+    const sessionId = randomUUID();
+    const sessionExerciseId = randomUUID();
+    const setId = randomUUID();
+    const localDate = '2026-06-19';
+
+    await push(cookie, [
+      workoutSessionOp(sessionId, localDate),
+      sessionExerciseOp(sessionExerciseId, sessionId, exerciseId),
+      loggedSetOp(setId, sessionExerciseId, 1, { weight_kg: '60.000', logged_at: `${localDate}T20:10:00.000Z` }),
+    ]);
+
+    const beforeRows = await personalRecordRowsForExercise(exerciseId);
+    expect(beforeRows.length).toBeGreaterThan(0);
+    for (const row of beforeRows) expect(row.reconciled_at).not.toBeNull();
+    const seqBefore = new Map(beforeRows.map((row) => [`${row.logged_set_id}:${row.pr_type}`, BigInt(row.server_seq)]));
+
+    await push(cookie, [loggedSetPatchOp(setId, { weight_kg: '65.000' })]);
+
+    const afterRows = await personalRecordRowsForExercise(exerciseId);
+    expect(afterRows.length).toBeGreaterThan(0);
+    for (const row of afterRows) {
+      expect(row.reconciled_at).not.toBeNull();
+      const key = `${row.logged_set_id}:${row.pr_type}`;
+      const before = seqBefore.get(key);
+      expect(before).toBeDefined();
+      expect(BigInt(row.server_seq) > (before as bigint)).toBe(true);
+    }
+
+    await pg.query('DELETE FROM personal_record WHERE exercise_id = $1', [exerciseId]);
+    await pg.query('DELETE FROM workout_session WHERE id = $1', [sessionId]);
+  });
+
+  it("editing one exercise's session leaves a second exercise's personal_record rows byte-identical, including a still-null reconciled_at the server has never touched", async () => {
+    const { cookie } = await signUp('pr-scope');
+    const touchedExerciseId = await seedExercise('Scope Touched Squat');
+    const untouchedExerciseId = await seedExercise('Scope Untouched Deadlift');
+
+    const untouchedPrId = randomUUID();
+    seededPersonalRecordIds.push(untouchedPrId);
+    const untouchedOp = personalRecordOp(untouchedPrId, {
+      exercise_id: untouchedExerciseId,
+      pr_type: 'heaviest_weight',
+      value: '200.000',
+      achieved_at: new Date('2026-06-01T00:00:00Z').toISOString(),
+    });
+    const untouchedRes = await push(cookie, [untouchedOp]);
+    expect((untouchedRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const beforeUntouched = await personalRecordRow(untouchedPrId);
+    expect(beforeUntouched?.reconciled_at).toBeNull();
+
+    const sessionId = randomUUID();
+    const sessionExerciseId = randomUUID();
+    const setId = randomUUID();
+    const localDate = '2026-06-20';
+    await push(cookie, [
+      workoutSessionOp(sessionId, localDate),
+      sessionExerciseOp(sessionExerciseId, sessionId, touchedExerciseId),
+      loggedSetOp(setId, sessionExerciseId, 1, { weight_kg: '110.000', logged_at: `${localDate}T20:10:00.000Z` }),
+    ]);
+    await push(cookie, [loggedSetPatchOp(setId, { weight_kg: '120.000' })]);
+
+    const afterUntouched = await personalRecordRow(untouchedPrId);
+    expect(afterUntouched).toEqual(beforeUntouched);
+
+    await pg.query('DELETE FROM personal_record WHERE exercise_id = $1', [touchedExerciseId]);
+    await pg.query('DELETE FROM workout_session WHERE id = $1', [sessionId]);
   });
 });
