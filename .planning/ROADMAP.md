@@ -521,11 +521,17 @@ Plans:
   4. A PR set on one device is authoritative across all of them after sync
   5. History endpoints hold their query count as data grows, enforced by assertions against a realistically-sized dataset
 
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
 
-- [ ] 10-01: TBD during `/gsd-plan-phase 10`
+- [ ] 10-01-PLAN.md — Tracer: rollup + watermark tables, the recompute hook inside applyBatch's transaction, the two pull queries and the client mirror
+- [ ] 10-02-PLAN.md — ANLY-09 in full: scoped PR replay, vacated-cell invalidation, idempotence
+- [ ] 10-03-PLAN.md — Client read layer: muscle-map vocabulary, the D-01 rollup-plus-overlay merge, and the drill-down query
+- [ ] 10-04-PLAN.md — Corpus muscle mappings and the executable reconcile query-count budget
+- [ ] 10-05-PLAN.md — ANLY-04 UI: MuscleHeatmap, MuscleVolumeRow, the /muscle-map route and the History entry point
+- [ ] 10-06-PLAN.md — ANLY-05 UI: MuscleDrilldownSheet and its wiring into the screen
+- [ ] 10-07-PLAN.md — Playwright durability evidence and the deferred-verification ledger
 
 ### Phase 11: Program Generation
 
@@ -638,6 +644,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Advanced Set Types | 9/9 | Complete    | 2026-08-28 |
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
-| 10. Server Analytics & Reconciliation | 0/TBD | Not started | - |
+| 10. Server Analytics & Reconciliation | 0/7 | Not started | - |
 | 11. Program Generation | 0/TBD | Not started | - |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |
