@@ -8,6 +8,13 @@ import {
   formatWeight,
   toCanonicalKg,
   type WeightUnit,
+  CM_PER_IN,
+  LENGTH_DISPLAY_SCALE,
+  LENGTH_UNITS,
+  fromCanonicalCm,
+  formatLength,
+  toCanonicalCm,
+  type LengthUnit,
 } from '../units';
 
 // Whole/half/quarter kg plate combos — a kg-native entry never has more than 2 decimal digits,
@@ -198,5 +205,97 @@ describe('single-declaration gate (T-02-19)', () => {
     const mobileLibFiles = collectTsFiles(path.join(REPO_ROOT, 'apps', 'mobile', 'lib'));
     const offenders = mobileLibFiles.filter((file) => naivePattern.test(fs.readFileSync(file, 'utf8')));
     expect(offenders).toEqual([]);
+  });
+});
+
+// D-08's length half — one inch is exactly 2.54 cm, so the round trip below is exact, not merely
+// close, unlike the pound's repeating-decimal relationship to the kilogram.
+const IN_FIXTURES = ['10', '30', '32', '34', '36', '38', '40', '2.5', '0.5', '15.75', '100'];
+const CM_FIXTURES = ['10', '76.2', '81.28', '96.52', '20', '0.5', '250'];
+
+describe('toCanonicalCm', () => {
+  it('converts an inch-entered value to the exact centimetre equivalent — one inch is exactly 2.54 cm', () => {
+    expect(toCanonicalCm('10', 'in')).toBe('25.4');
+  });
+
+  it('normalizes a cm-entered value to the canonical scale, performing no conversion', () => {
+    expect(toCanonicalCm('76.2', 'cm')).toBe('76.2');
+  });
+
+  it('returns null for a null input', () => {
+    expect(toCanonicalCm(null, 'cm')).toBeNull();
+    expect(toCanonicalCm(null, 'in')).toBeNull();
+  });
+
+  it('returns null for an empty string', () => {
+    expect(toCanonicalCm('', 'cm')).toBeNull();
+    expect(toCanonicalCm('   ', 'in')).toBeNull();
+  });
+});
+
+describe('fromCanonicalCm', () => {
+  it('returns null for a null input', () => {
+    expect(fromCanonicalCm(null, 'cm')).toBeNull();
+    expect(fromCanonicalCm(null, 'in')).toBeNull();
+  });
+
+  it('renders stored centimetres as the inch equivalent', () => {
+    expect(fromCanonicalCm('25.4', 'in')).toBe('10');
+  });
+});
+
+describe('cm/in round trip stability', () => {
+  it.each(IN_FIXTURES.map((entered) => ({ unit: 'in' as LengthUnit, entered })))(
+    'entering $entered $unit survives a canonical -> display -> canonical round trip',
+    ({ unit, entered }) => {
+      const canonical = toCanonicalCm(entered, unit);
+      expect(canonical).not.toBeNull();
+      const display = fromCanonicalCm(canonical, unit);
+      expect(toCanonicalCm(display, unit)).toBe(canonical);
+    },
+  );
+
+  it.each(CM_FIXTURES.map((entered) => ({ unit: 'cm' as LengthUnit, entered })))(
+    'entering $entered $unit survives a canonical -> display -> canonical round trip',
+    ({ unit, entered }) => {
+      const canonical = toCanonicalCm(entered, unit);
+      expect(canonical).not.toBeNull();
+      const display = fromCanonicalCm(canonical, unit);
+      expect(toCanonicalCm(display, unit)).toBe(canonical);
+    },
+  );
+
+  it('a value entered in inches round-trips back to the identical inch reading', () => {
+    const canonical = toCanonicalCm('10', 'in');
+    expect(fromCanonicalCm(canonical, 'in')).toBe('10');
+  });
+});
+
+describe('formatLength', () => {
+  it('appends the unit suffix', () => {
+    expect(formatLength('25.4', 'in')).toBe('10 in');
+    expect(formatLength('76.2', 'cm')).toBe('76.2 cm');
+  });
+
+  it('renders a null length as an em dash rather than zero', () => {
+    expect(formatLength(null, 'cm')).toBe('—');
+  });
+});
+
+describe('the length module never surfaces a length as a JavaScript number', () => {
+  it('returns strings or null from every conversion function', () => {
+    expect(typeof toCanonicalCm('10', 'cm')).toBe('string');
+    expect(typeof fromCanonicalCm('10', 'cm')).toBe('string');
+    expect(typeof formatLength('10', 'cm')).toBe('string');
+    expect(toCanonicalCm(null, 'cm')).toBeNull();
+    expect(fromCanonicalCm(null, 'cm')).toBeNull();
+  });
+
+  it('never assigns a number type to the length scale constants that would leak into a value', () => {
+    expect(LENGTH_UNITS).toEqual(['cm', 'in']);
+    expect(typeof LENGTH_DISPLAY_SCALE.cm).toBe('number');
+    expect(typeof LENGTH_DISPLAY_SCALE.in).toBe('number');
+    expect(typeof CM_PER_IN.numerator).toBe('bigint');
+    expect(typeof CM_PER_IN.denominator).toBe('bigint');
   });
 });

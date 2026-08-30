@@ -1,9 +1,11 @@
+import { WEIGHT_UNITS } from '../units';
 import {
   BODY_METRIC_CANONICAL_UNIT,
   BODY_METRIC_KIND_LABELS,
   BODY_METRIC_KIND_ORDER,
   BODY_METRIC_KIND_SET,
   BODY_METRIC_KINDS,
+  resolveDisplayUnit,
 } from '../body-metrics';
 
 describe('BODY_METRIC_KINDS', () => {
@@ -81,5 +83,35 @@ describe('BODY_METRIC_CANONICAL_UNIT', () => {
       if (kind === 'bodyweight' || kind === 'body_fat_percent') continue;
       expect(BODY_METRIC_CANONICAL_UNIT[kind]).toBe('cm');
     }
+  });
+});
+
+describe('resolveDisplayUnit (D-08 — one preference, not two)', () => {
+  it('resolves bodyweight to the weight preference itself', () => {
+    expect(resolveDisplayUnit('bodyweight', 'lb')).toBe('lb');
+    expect(resolveDisplayUnit('bodyweight', 'kg')).toBe('kg');
+  });
+
+  it('resolves a circumference kind to inches under lb and centimetres under kg', () => {
+    expect(resolveDisplayUnit('waist', 'lb')).toBe('in');
+    expect(resolveDisplayUnit('waist', 'kg')).toBe('cm');
+  });
+
+  it('resolves body_fat_percent to percent regardless of the weight preference', () => {
+    expect(resolveDisplayUnit('body_fat_percent', 'kg')).toBe('percent');
+    expect(resolveDisplayUnit('body_fat_percent', 'lb')).toBe('percent');
+  });
+
+  it('resolves every member of BODY_METRIC_KINDS under both preferences — no kind falls through', () => {
+    const seen = new Set<string>();
+    for (const kind of BODY_METRIC_KINDS) {
+      for (const weightUnit of WEIGHT_UNITS) {
+        const resolved = resolveDisplayUnit(kind, weightUnit);
+        expect(['kg', 'lb', 'cm', 'in', 'percent']).toContain(resolved);
+        seen.add(resolved);
+      }
+    }
+    // Every branch of the mapping is actually exercised by the real vocabulary, not merely typed.
+    expect(seen).toEqual(new Set(['kg', 'lb', 'cm', 'in', 'percent']));
   });
 });
