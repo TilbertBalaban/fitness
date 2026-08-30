@@ -594,13 +594,13 @@ Plans:
   3. User sees a dashboard with weekly progress, recent records, and insight tiles, and can add, remove, and reorder those widgets
   4. User can reach quick weigh-in, measurement, progress photo, history, new program, and one-off workout from a single quick-action menu
 
-**Plans**: 8 plans
+**Plans**: 1/8 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 12-01-PLAN.md — Tracer: the body-metric write path end-to-end, the closed 15-kind vocabulary and its reference doc, and `body_metric`'s push apply path (wave 1)
+- [x] 12-01-PLAN.md — Tracer: the body-metric write path end-to-end, the closed 15-kind vocabulary and its reference doc, and `body_metric`'s push apply path (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -701,4 +701,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
 | 11. Program Generation | 6/6 | Complete    | 2026-08-30 |
-| 12. Body Metrics & Dashboard | 0/TBD | Not started | - |
+| 12. Body Metrics & Dashboard | 1/8 | In Progress|  |

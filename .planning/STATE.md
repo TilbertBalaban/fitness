@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Body Metrics & Dashboard
 status: executing
-stopped_at: Phase 12 UI-SPEC approved
-last_updated: "2026-08-30T19:05:27.876Z"
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-08-30T19:19:48.246Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 124
-  completed_plans: 116
+  completed_plans: 117
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-10)
 
 **Core value:** You can walk into a gym with no signal, log every set without friction, and be told what to lift next time.
-**Current focus:** Phase 11 — Program Generation
+**Current focus:** Phase 12 — Body Metrics & Dashboard
 
 ## Current Position
 
-Phase: 12 — Body Metrics & Dashboard
-Plan: Not started
+Phase: 12 (Body Metrics & Dashboard) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-08-30 — Phase 11 complete, transitioned to Phase 12
+Last activity: 2026-08-30 — Phase 12 execution started
 
-Progress: [██████████] 96%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [██████████] 96%
 | Phase 09 P01 | 55m | 3 tasks | 27 files |
 | Phase 09 P02 | 35 min | 3 tasks | 7 files |
 | Phase 09 P03 | ~50 min | 3 tasks | 17 files |
+| Phase 12 P01 | 45min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 09-01: the records and working-volume set predicates are kept apart in exercise-series.ts and asserted from one shared fixture — heaviest/e1rm use countsTowardRecords, volume uses countsTowardWorkingVolume
 - [Phase ?]: 09-03: personal_record.value stores a rep count for most_reps_at_weight and no weight at all — the achieving weight is resolved through a third batched logged_set read, never a per-row lookup
 - [Phase ?]: 09-03: RowDisplay.e1rm is now the three-branch E1rmDisplay union — the workout summary distinguishes a rep-cap suppression from an absence of data instead of blanking both
+- [Phase ?]: 12-01: BODY_METRIC_KIND_SET imported directly from @fitness/api-contracts into sync.service.ts rather than rebuilt locally from a tuple — single source of truth on both sides of the vocabulary check
+- [Phase ?]: 12-01: body_metric's root-existence lookup reads only (id, userId), following personal_record/equipment_profile's shape, not excluded_exercise's extra identity-column read — kind is genuinely client-patchable (D-10), not identity
 
 ### Pending Todos
 
@@ -138,6 +141,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-30T18:25:33.810Z
-Stopped at: Phase 12 UI-SPEC approved
-Resume file: .planning/phases/12-body-metrics-dashboard/12-UI-SPEC.md
+Last session: 2026-08-30T19:19:48.220Z
+Stopped at: Completed 12-01-PLAN.md
+Resume file: None
