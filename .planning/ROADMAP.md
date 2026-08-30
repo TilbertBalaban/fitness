@@ -560,7 +560,7 @@ Plans:
   4. Generated programs arrive pre-periodized with per-cycle set, rep, and RIR targets
   5. A generated program is editable exactly like a hand-built one and progresses through the same engine
 
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans executed
 
 Plans:
 **Wave 1**
@@ -579,7 +579,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 11-06-PLAN.md — GEN-07 parity: one fixture table through the real progression engine in three processes, plus a real-browser durability run (wave 4)
+- [x] 11-06-PLAN.md — GEN-07 parity: one fixture table through the real progression engine in three processes, plus a real-browser durability run (wave 4)
 
 ### Phase 12: Body Metrics & Dashboard
 
@@ -676,5 +676,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
-| 11. Program Generation | 5/6 | In Progress|  |
+| 11. Program Generation | 6/6 | In Progress|  |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |
