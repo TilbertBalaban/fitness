@@ -594,11 +594,35 @@ Plans:
   3. User sees a dashboard with weekly progress, recent records, and insight tiles, and can add, remove, and reorder those widgets
   4. User can reach quick weigh-in, measurement, progress photo, history, new program, and one-off workout from a single quick-action menu
 
-**Plans**: TBD
+**Plans**: 8 plans
 
 Plans:
 
-- [ ] 12-01: TBD during `/gsd-plan-phase 12`
+**Wave 1**
+
+- [ ] 12-01-PLAN.md — Tracer: the body-metric write path end-to-end, the closed 15-kind vocabulary and its reference doc, and `body_metric`'s push apply path (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 12-02-PLAN.md — Body Metrics overview, the metric entry sheet and its keypad, the track-a-kind picker, and the cm/in half of the unit boundary (wave 2)
+- [ ] 12-03-PLAN.md — Progress photos: platform-split capture/downscale/store, `progress_photo`'s push apply path, the gallery, the device-absent placeholder, and photo actions (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 12-04-PLAN.md — Body metric trends: the on-device latest-per-day series, the trend detail screen reusing `TrendChart`, and entry edit/delete (wave 3)
+- [ ] 12-05-PLAN.md — The `dashboard_widget` table end-to-end, the forward-compatible widget host and six-widget catalog, and the restructured Home dashboard (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 12-06-PLAN.md — Before & after composite: the platform-split render/share module, the three-step picker, and the device-resident-only selection rule (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 12-07-PLAN.md — The dashboard widget picker: add, remove and drag-reorder on the shipped order-index arithmetic (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 12-08-PLAN.md — The quick-action sheet reaching all six destinations, the inline quick weigh-in, the two Profile entry points, and the `PUSH_DEFERRED_TABLES`-empty assertion (wave 6)
 
 ## Backlog
 
