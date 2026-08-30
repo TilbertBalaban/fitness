@@ -5,8 +5,8 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Body Metrics & Dashboard
 status: planning
-stopped_at: Phase 12 context gathered
-last_updated: "2026-08-30T18:02:59.659Z"
+stopped_at: Phase 12 UI-SPEC approved
+last_updated: "2026-08-30T18:25:33.854Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
 progress:
@@ -138,6 +138,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-30T18:02:59.643Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-body-metrics-dashboard/12-CONTEXT.md
+Last session: 2026-08-30T18:25:33.810Z
+Stopped at: Phase 12 UI-SPEC approved
+Resume file: .planning/phases/12-body-metrics-dashboard/12-UI-SPEC.md
