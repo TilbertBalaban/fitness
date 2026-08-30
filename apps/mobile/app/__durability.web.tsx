@@ -85,8 +85,18 @@ import {
   type SeedTrendHistoryInput,
   seedMuscleMapHistory,
   type SeedMuscleMapHistoryInput,
+  seedGenerationCatalog,
+  readCycleTargetCountForRoutine,
+  readRoutineRaw,
 } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
+import { generateProgram } from '@fitness/program-generator';
+import { loadProgramTree } from '../lib/db/programs/load-program';
+import { renameDay } from '../lib/db/programs/days';
+import { setExerciseTargets } from '../lib/db/programs/targets';
+import { materializeGeneratedProgram } from '../lib/db/programs/materialize-generated-program';
+import { loadActiveInventory, loadGenerationCatalog } from './programs/generate';
+import { buildGenerationInput, WIZARD_DEFAULTS, type WizardAnswers } from '../lib/programs/generation-wizard';
 import { SessionModeProvider } from '../lib/session/session-mode';
 import { useThemeColors } from '../lib/theme-colors';
 // The imperative router, not the hook: navigateAwayAndBack runs inside the harness's own effect
@@ -652,6 +662,67 @@ export default function DurabilityHarnessScreen() {
         setRecordsHarness(null);
         setHomeHarness(null);
         setHistoryTrendHarness(null);
+      },
+      // GEN-07's e2e proof. Seeds a catalog wide enough to fill a full-body week, then drives the
+      // REAL wizard assembly, the REAL generator and the REAL writer against the open() database —
+      // the same three calls app/programs/generate.tsx makes. Mounts nothing: what this proves is
+      // about the rows, not the screen.
+      async seedAndGenerateProgram(answers: Partial<WizardAnswers> = {}) {
+        const db = requireOpenDb();
+        await seedGenerationCatalog(db, WORKOUT_HARNESS_USER_ID);
+
+        const resolvedAnswers: WizardAnswers = {
+          ...WIZARD_DEFAULTS,
+          trainingGoal: 'hypertrophy',
+          experienceLevel: 'intermediate',
+          ...answers,
+        };
+
+        const [catalog, inventory] = await Promise.all([
+          loadGenerationCatalog(db),
+          loadActiveInventory(WORKOUT_HARNESS_USER_ID, db),
+        ]);
+
+        const tree = generateProgram(
+          buildGenerationInput(resolvedAnswers, { catalog, inventory, excludedExerciseIds: [] }),
+        );
+        const { id: routineId } = await materializeGeneratedProgram({ tree, name: 'Generated Harness Program' }, db);
+
+        return {
+          routineId,
+          degradationCount: tree.degradations.length,
+          degradationKinds: tree.degradations.map((entry) => entry.kind),
+          cycleCount: tree.cycles.length,
+          slotCount: tree.days.reduce((total, day) => total + day.slots.length, 0),
+        };
+      },
+      // Reads back through the SHIPPED builder loader, never a bespoke query — a generated program
+      // that needed its own read path would not be an ordinary program (D-05).
+      async readGeneratedProgramTree(routineId: string) {
+        return loadProgramTree(routineId, requireOpenDb());
+      },
+      async readCycleTargetCount(routineId: string) {
+        return readCycleTargetCountForRoutine(routineId);
+      },
+      async readGeneratedRoutineRaw(routineId: string) {
+        return readRoutineRaw(routineId);
+      },
+      // The ordinary builder mutations, unchanged and un-branched — a generated program is edited
+      // by exactly the calls a hand-built one is (D-05, GEN-07).
+      async renameProgramDay(dayId: string, name: string) {
+        await renameDay(dayId, name, requireOpenDb());
+      },
+      async setProgramExerciseTargets(
+        routineExerciseId: string,
+        draft: {
+          targetSets: number | null;
+          targetRepMin: number | null;
+          targetRepMax: number | null;
+          targetRir: number | null;
+          targetRestSeconds: number | null;
+        },
+      ) {
+        await setExerciseTargets(routineExerciseId, draft, requireOpenDb());
       },
     };
 

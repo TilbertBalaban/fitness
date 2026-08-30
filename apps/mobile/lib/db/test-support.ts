@@ -14,7 +14,12 @@ import { DrizzleAppSchema, wrapPowerSyncWithDrizzle } from '@powersync/drizzle-d
 import type { EquipmentType, PrType, SetType } from '@fitness/api-contracts';
 import { AppSchema } from './powersync.web';
 import { logPersonalRecord } from './personal-record';
-import { createEquipmentProfile, ensureDefaultEquipmentProfile, type CreateEquipmentProfileInput } from './equipment-profiles';
+import {
+  createEquipmentProfile,
+  ensureDefaultEquipmentProfile,
+  setActiveEquipmentProfile,
+  type CreateEquipmentProfileInput,
+} from './equipment-profiles';
 import { generateClientId } from './id';
 import { startWorkoutFromProgram, type StartWorkoutFromProgramSlot } from './log-set';
 import { activateRoutine } from './programs/lifecycle';
@@ -1682,4 +1687,118 @@ export async function seedMuscleMapHistory(db: TestWriteDb, input: SeedMuscleMap
       serverSeq: 1,
     });
   }
+}
+
+export interface SeededGenerationCatalog {
+  exerciseIds: string[];
+  profileId: string;
+  muscleGroupIds: string[];
+}
+
+// One barbell exercise per muscle group the full-body three-day template names, so every slot in a
+// generated week fills and the durability spec measures a complete program rather than a degraded
+// one. Deliberately distinct exercise-id prefix from every other seed helper here, so a future
+// spec seeding two of them cannot confuse their fixtures.
+const SEEDED_GENERATION_MUSCLE_GROUPS = [
+  'chest',
+  'lats',
+  'upper_back_traps',
+  'front_delts',
+  'side_delts',
+  'rear_delts',
+  'biceps',
+  'triceps',
+  'quads',
+  'hamstrings',
+  'glutes',
+  'calves',
+  'abs',
+] as const;
+
+// Idempotent: a spec that generates twice in one page seeds twice, and a second insert of the same
+// primary key is a UNIQUE constraint failure, not a no-op.
+export async function seedGenerationCatalog(db: TestWriteDb, userId: string): Promise<SeededGenerationCatalog> {
+  const exerciseIds: string[] = [];
+
+  for (const muscleGroupId of SEEDED_GENERATION_MUSCLE_GROUPS) {
+    const exerciseId = `ex-generation-${muscleGroupId}`;
+    exerciseIds.push(exerciseId);
+
+    const existing = await db.select({ id: seededExercise.id }).from(seededExercise).where(eq(seededExercise.id, exerciseId));
+    if (existing.length > 0) continue;
+
+    await db.insert(seededExercise).values({
+      id: exerciseId,
+      name: `Generation ${muscleGroupId}`,
+      aliases: null,
+      movementPattern: null,
+      equipmentRequired: 'barbell',
+      loadType: 'external_weight',
+      unilateral: false,
+      instructionsText: null,
+      cueText: null,
+      imageUrls: null,
+      bodyweightContributionPct: null,
+      variationOfId: null,
+      source: 'harness',
+      archivedAt: null,
+    });
+
+    await db.insert(exerciseMuscleMapping).values({
+      id: generateClientId(),
+      exerciseId,
+      muscleGroupId,
+      role: 'primary',
+      weightFactor: '1.000',
+    });
+  }
+
+  const existingProfiles = await db
+    .select({ id: equipmentProfile.id })
+    .from(equipmentProfile)
+    .where(eq(equipmentProfile.name, 'Generation Harness Gym'));
+  if (existingProfiles.length > 0) {
+    return { exerciseIds, profileId: existingProfiles[0].id, muscleGroupIds: [...SEEDED_GENERATION_MUSCLE_GROUPS] };
+  }
+
+  const { profileId } = await seedGymProfile(db, {
+    userId,
+    name: 'Generation Harness Gym',
+    nativeUnit: 'kg',
+    barbellWeightKg: '20.000',
+    plates: [{ weightKg: '20.000', pairCount: 4 }],
+    dumbbells: [],
+    machines: [],
+  });
+
+  await setActiveEquipmentProfile(userId, profileId, db);
+
+  return { exerciseIds, profileId, muscleGroupIds: [...SEEDED_GENERATION_MUSCLE_GROUPS] };
+}
+
+// The raw routine_exercise_cycle_target row count for a whole routine — the sparse-override proof
+// needs the total across every slot, which readRoutineExerciseCycleTargetsRaw's per-slot read
+// cannot give without the spec first enumerating slots.
+export async function readCycleTargetCountForRoutine(routineId: string): Promise<number> {
+  if (!rawDb) {
+    throw new Error('readCycleTargetCountForRoutine() called before openTestPowerSync()');
+  }
+  const rows = await rawDb.getAll<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM routine_exercise_cycle_target
+     WHERE routine_exercise_id IN (
+       SELECT re.id FROM routine_exercise re
+       JOIN routine_day rd ON rd.id = re.routine_day_id
+       WHERE rd.routine_id = ?
+     )`,
+    [routineId],
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function readRoutineRaw(routineId: string): Promise<Record<string, unknown> | null> {
+  if (!rawDb) {
+    throw new Error('readRoutineRaw() called before openTestPowerSync()');
+  }
+  const rows = await rawDb.getAll<Record<string, unknown>>('SELECT * FROM routine WHERE id = ?', [routineId]);
+  return rows[0] ?? null;
 }
