@@ -17,6 +17,7 @@
     "@fitness/plate-math": "workspace:*"
   },
   "devDependencies": {
+    "@fitness/progression-engine": "workspace:*",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.0",
     "jest": "^30.0.0",

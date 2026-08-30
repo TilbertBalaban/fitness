@@ -370,6 +370,9 @@ importers:
         specifier: workspace:*
         version: link:../plate-math
     devDependencies:
+      '@fitness/progression-engine':
+        specifier: workspace:*
+        version: link:../progression-engine
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
