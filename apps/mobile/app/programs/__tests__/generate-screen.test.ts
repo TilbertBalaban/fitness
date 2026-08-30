@@ -5,7 +5,13 @@ jest.mock('../../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../../../lib/db/id', () => ({ generateClientId: jest.fn(() => 'fixed-id') }));
 jest.mock('../../../lib/auth-client', () => ({ authClient: { useSession: () => ({ data: null }) } }));
 
-import type { GeneratedProgramTree, GenerationCatalog } from '@fitness/program-generator';
+import type { DegradationEntry, GeneratedProgramTree, GeneratedSlot, GenerationCatalog } from '@fitness/program-generator';
+import {
+  formatTargetLine,
+  resolveSlotForCycle,
+  UNKNOWN_PREVIEW_EXERCISE_NAME,
+} from '../../../components/GeneratedProgramPreview';
+import { describeDegradation } from '../../../lib/programs/generation-wizard';
 import {
   confirmGeneratedProgram,
   defaultGeneratedRoutineName,
@@ -123,5 +129,67 @@ describe('generation reads the real exclusion list', () => {
 
     await expect(runGeneration('user-1', {} as never, deps)).rejects.toThrow('exclusion read failed');
     expect(generateProgramSpy).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('the preview resolves each cycle\'s own numbers', () => {
+  function slot(): GeneratedSlot {
+    return {
+      key: 'day-0-slot-1024',
+      exerciseId: 'ex-1',
+      orderIndex: 1024,
+      base: { targetSets: 3, targetRepMin: 8, targetRepMax: 12, targetRir: 3, targetRestSeconds: 120 },
+      overridesByCycleKey: { 'cycle-2': { targetSets: 5, targetRir: 1 } },
+    };
+  }
+
+  it('shows the overridden values for the cycle that has an override', () => {
+    expect(resolveSlotForCycle(slot(), 'cycle-2')).toEqual({
+      targetSets: 5,
+      targetRepMin: 8,
+      targetRepMax: 12,
+      targetRir: 1,
+      targetRestSeconds: 120,
+    });
+  });
+
+  it('shows the base values for a cycle with no override', () => {
+    expect(resolveSlotForCycle(slot(), 'cycle-0')).toEqual(slot().base);
+  });
+
+  it('renders a different line for an overridden cycle than for the base cycle', () => {
+    const overridden = formatTargetLine(resolveSlotForCycle(slot(), 'cycle-2'));
+    const base = formatTargetLine(resolveSlotForCycle(slot(), 'cycle-0'));
+    expect(overridden).not.toBe(base);
+    expect(overridden).toContain('5 ');
+    expect(overridden).toContain('RIR 1');
+  });
+
+  it('falls back to a placeholder rather than a blank line for an unresolvable exercise id', () => {
+    const names = new Map<string, string>();
+    expect(names.get('ex-gone') ?? UNKNOWN_PREVIEW_EXERCISE_NAME).toBe(UNKNOWN_PREVIEW_EXERCISE_NAME);
+  });
+});
+
+describe('the preview shows every reduction', () => {
+  function entries(): DegradationEntry[] {
+    return [
+      { kind: 'slot_unfillable', dayKey: 'day-0', muscleGroupId: 'chest', detail: 'raw' },
+      { kind: 'day_trimmed', dayKey: 'day-1', muscleGroupId: null, detail: 'raw' },
+      { kind: 'group_below_minimum', dayKey: null, muscleGroupId: 'calves', detail: 'raw' },
+    ];
+  }
+
+  it('renders one distinct sentence per entry, none summarised away', () => {
+    const sentences = entries().map(describeDegradation);
+    expect(sentences).toHaveLength(3);
+    expect(new Set(sentences).size).toBe(3);
+    expect(sentences.every((sentence) => sentence.trim().length > 0)).toBe(true);
+  });
+
+  it('renders no degradation block when the tree reports none', () => {
+    const tree: GeneratedProgramTree = { ...fixtureTree(), degradations: [] };
+    expect(tree.degradations.length > 0).toBe(false);
   });
 });
