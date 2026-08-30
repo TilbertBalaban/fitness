@@ -46,6 +46,7 @@ describe('generate-then-confirm sequencing', () => {
     const deps: GenerateScreenDeps = {
       loadCatalog: jest.fn().mockResolvedValue(emptyCatalog()),
       loadInventory: jest.fn().mockResolvedValue(null),
+      loadExclusions: jest.fn().mockResolvedValue([]),
       generateProgram: jest.fn().mockReturnValue(tree),
       materializeGeneratedProgram: materializeSpy,
     };
@@ -69,6 +70,7 @@ describe('generate-then-confirm sequencing', () => {
     const deps: GenerateScreenDeps = {
       loadCatalog: jest.fn().mockResolvedValue(catalog),
       loadInventory: jest.fn().mockResolvedValue(null),
+      loadExclusions: jest.fn().mockResolvedValue([]),
       generateProgram: generateProgramSpy,
       materializeGeneratedProgram: jest.fn(),
     };
@@ -85,5 +87,41 @@ describe('generate-then-confirm sequencing', () => {
     expect(input.catalog).toBe(catalog);
     expect(input.inventory).toBeNull();
     expect(input.excludedExerciseIds).toEqual([]);
+  });
+});
+
+describe('generation reads the real exclusion list', () => {
+  it('passes the ids loadExclusions returned straight into the generation input', async () => {
+    const generateProgramSpy = jest.fn().mockReturnValue(fixtureTree());
+    const loadExclusions = jest.fn().mockResolvedValue(['ex-excluded-a', 'ex-excluded-b']);
+    const deps: GenerateScreenDeps = {
+      loadCatalog: jest.fn().mockResolvedValue(emptyCatalog()),
+      loadInventory: jest.fn().mockResolvedValue(null),
+      loadExclusions,
+      generateProgram: generateProgramSpy,
+      materializeGeneratedProgram: jest.fn(),
+    };
+
+    const db = {} as never;
+    await runGeneration('user-1', db, deps);
+
+    expect(loadExclusions).toHaveBeenCalledWith(db, 'user-1');
+    expect(generateProgramSpy.mock.calls[0][0].excludedExerciseIds).toEqual(['ex-excluded-a', 'ex-excluded-b']);
+  });
+
+  // Degrading to an empty list here would put an exercise the user refused into their program and
+  // still look like a successful generation (D-09).
+  it('propagates a failed exclusion read instead of generating against an empty list', async () => {
+    const generateProgramSpy = jest.fn().mockReturnValue(fixtureTree());
+    const deps: GenerateScreenDeps = {
+      loadCatalog: jest.fn().mockResolvedValue(emptyCatalog()),
+      loadInventory: jest.fn().mockResolvedValue(null),
+      loadExclusions: jest.fn().mockRejectedValue(new Error('exclusion read failed')),
+      generateProgram: generateProgramSpy,
+      materializeGeneratedProgram: jest.fn(),
+    };
+
+    await expect(runGeneration('user-1', {} as never, deps)).rejects.toThrow('exclusion read failed');
+    expect(generateProgramSpy).not.toHaveBeenCalled();
   });
 });

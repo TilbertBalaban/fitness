@@ -8,6 +8,7 @@ import type { EquipmentType, MovementPattern, MuscleRole, SplitPreference, Train
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { authClient } from '@/lib/auth-client';
 import { loadActiveEquipmentProfileId, loadEquipmentProfile } from '@/lib/db/equipment-profiles';
+import { loadExcludedExerciseIds } from '@/lib/db/exclusions';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { materializeGeneratedProgram } from '@/lib/db/programs/materialize-generated-program';
 import { exercise, exerciseMuscleMapping, seededExercise } from '@/lib/db/schema';
@@ -123,6 +124,7 @@ export async function loadActiveInventory(userId: string, db: WriteDb): Promise<
 export interface GenerateScreenDeps {
   loadCatalog: (db: WriteDb) => Promise<GenerationCatalog>;
   loadInventory: (userId: string, db: WriteDb) => Promise<ResolvedInventory | null>;
+  loadExclusions: (db: WriteDb, userId: string) => Promise<string[]>;
   generateProgram: (input: GenerationInput) => GeneratedProgramTree;
   materializeGeneratedProgram: typeof materializeGeneratedProgram;
 }
@@ -130,27 +132,37 @@ export interface GenerateScreenDeps {
 export const DEFAULT_GENERATE_SCREEN_DEPS: GenerateScreenDeps = {
   loadCatalog: loadGenerationCatalog,
   loadInventory: loadActiveInventory,
+  loadExclusions: loadExcludedExerciseIds,
   generateProgram,
   materializeGeneratedProgram,
 };
 
 // Pure orchestration of the "Generate" action, exported so generate-screen.test.ts can assert the
 // generate-then-confirm sequencing (a writer spy has zero calls after this alone) without
-// rendering the screen. Exclusions are an empty array in this plan (11-03 supplies real ids) — the
-// candidate-pool filter that consumes them already exists and is tested in candidate-pool.test.ts.
+// rendering the screen.
+//
+// A failed exclusion read propagates rather than degrading to an empty list: generating against no
+// exclusions because the read failed would put an exercise the user refused into their program and
+// look like a successful generation, which is exactly the silent failure D-09 forbids. The throw
+// reaches handleGenerate's catch, so the screen shows its error state and deps.generateProgram is
+// never called.
 export async function runGeneration(
   userId: string,
   db: WriteDb,
   deps: GenerateScreenDeps = DEFAULT_GENERATE_SCREEN_DEPS,
 ): Promise<GeneratedProgramTree> {
-  const [catalog, inventory] = await Promise.all([deps.loadCatalog(db), deps.loadInventory(userId, db)]);
+  const [catalog, inventory, excludedExerciseIds] = await Promise.all([
+    deps.loadCatalog(db),
+    deps.loadInventory(userId, db),
+    deps.loadExclusions(db, userId),
+  ]);
 
   const input: GenerationInput = {
     routineName: defaultGeneratedRoutineName(TRACER_DEFAULTS.trainingGoal, TRACER_DEFAULTS.splitPreference),
     ...TRACER_DEFAULTS,
     catalog,
     inventory,
-    excludedExerciseIds: [],
+    excludedExerciseIds,
   };
 
   return deps.generateProgram(input);
