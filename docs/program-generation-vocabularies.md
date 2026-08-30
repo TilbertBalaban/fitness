@@ -94,3 +94,47 @@ Applied per muscle group by `applyEmphasis` (`packages/program-generator/src/emp
 multiplies and clamps to `[mev, mav]` in one expression — an emphasized group can never be
 prescribed past its adaptive maximum, and a deprioritized group is never dropped below its
 minimum-effective bound.
+
+## Split templates
+
+Which `(splitPreference, daysPerWeek)` pairs the generator can build a week for. A supported cell
+resolves to a declared template naming an ordered day pattern and each day's muscle-group slots; a
+not-supported cell resolves to an explicit `unsupported` resolution that `generateProgram` turns
+into a `split_unsupported` degradation entry.
+
+| preference | 2 days | 3 days | 4 days | 5 days | 6 days |
+|---|---|---|---|---|---|
+| `full_body` | supported | supported | supported | not supported — a five-day full-body week leaves no muscle group a recovery day | not supported — same reason, more so |
+| `upper_lower` | supported | supported | supported | supported | supported |
+| `push_pull_legs` | not supported — a three-way rotation cannot fit two training days without dropping a third of it | supported | supported | supported | supported |
+
+The three not-supported pairs are declared in `UNSUPPORTED_SPLIT_PAIRS`, not merely absent from the
+table, so a test can read them rather than infer them from a missing key.
+
+### `AUTO_SPLIT_BY_DAYS`
+
+`auto` is the default preference, so a user can answer only goal, experience level and days per week
+and still get a sensible program.
+
+| days per week | resolves to |
+|---|---|
+| 2 | `full_body` |
+| 3 | `full_body` |
+| 4 | `upper_lower` |
+| 5 | `push_pull_legs` |
+| 6 | `push_pull_legs` |
+
+**`auto` is a lookup, not a heuristic.** With exactly one declared entry per day count there is no
+tie to break, so the same inputs always produce the same week — on any device, in any order, on any
+run. A ranking function over candidate splits would reintroduce the non-determinism D-03 rules out,
+and would leave the user with a week nobody can explain.
+
+**An unsupported pair degrades and reports; it never substitutes.** A day count outside the table
+resolves `unsupported` rather than snapping to the nearest count that does have an entry. Handing
+someone a four-day program because they asked for seven is the silent substitution D-21 forbids —
+the generator says what it could not build and why.
+
+`packages/program-generator/src/__tests__/split-contract.test.ts` keeps this matrix honest. It
+enumerates every `(preference, daysPerWeek)` pair from the `SPLIT_PREFERENCES` tuple and
+`GENERATION_INPUT_LIMITS` at runtime, so a preference added to the vocabulary later with neither a
+template nor an unsupported declaration turns the suite red instead of resolving to nothing.

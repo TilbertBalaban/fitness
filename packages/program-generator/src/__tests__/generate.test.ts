@@ -94,7 +94,7 @@ describe('generateProgram', () => {
   });
 
   it('produces one degradation entry and an empty day/cycle list for an unsupported split resolution', () => {
-    const tree = generateProgram(tracerInput({ splitPreference: 'upper_lower' }));
+    const tree = generateProgram(tracerInput({ splitPreference: 'full_body', daysPerWeek: 5 }));
 
     expect(tree.days).toHaveLength(0);
     expect(tree.degradations.some((entry) => entry.kind === 'split_unsupported')).toBe(true);
