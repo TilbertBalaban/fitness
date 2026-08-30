@@ -73,11 +73,17 @@ export interface TrackedKindSummary {
   localDate: string;
 }
 
-// One batched select over every row the user owns, grouped in JavaScript to the latest row per
-// kind by recordedAt — never one query per kind (records-query.ts's no-N+1 rule). A kind is
-// "tracked" the moment at least one row of it exists (UI-SPEC decision 8); the result is sorted by
-// BODY_METRIC_KIND_ORDER so a caller never has to re-sort it.
-export async function loadTrackedKindSummaries(userId: string, db: WriteDb = getPowerSync()): Promise<TrackedKindSummary[]> {
+interface LatestKindRow {
+  value: string;
+  recordedAt: string;
+  localDate: string;
+}
+
+// The one batched select over every row the user owns, grouped in JavaScript to the latest row per
+// kind by recordedAt — never one query per kind (records-query.ts's no-N+1 rule). Both
+// loadTrackedKindSummaries and loadTrackedKinds read through this single query; neither issues a
+// second one.
+async function loadLatestPerKind(userId: string, db: WriteDb): Promise<Map<string, LatestKindRow>> {
   const rows = await db
     .select({
       kind: bodyMetric.kind,
@@ -88,16 +94,31 @@ export async function loadTrackedKindSummaries(userId: string, db: WriteDb = get
     .from(bodyMetric)
     .where(eq(bodyMetric.userId, userId));
 
-  const latestByKind = new Map<string, { value: string; recordedAt: string; localDate: string }>();
+  const latestByKind = new Map<string, LatestKindRow>();
   for (const row of rows) {
     const existing = latestByKind.get(row.kind);
     if (!existing || row.recordedAt > existing.recordedAt) {
       latestByKind.set(row.kind, row);
     }
   }
+  return latestByKind;
+}
+
+// A kind is "tracked" the moment at least one row of it exists (UI-SPEC decision 8); the result is
+// sorted by BODY_METRIC_KIND_ORDER so a caller never has to re-sort it.
+export async function loadTrackedKindSummaries(userId: string, db: WriteDb = getPowerSync()): Promise<TrackedKindSummary[]> {
+  const latestByKind = await loadLatestPerKind(userId, db);
 
   return BODY_METRIC_KIND_ORDER.filter((kind) => latestByKind.has(kind)).map((kind) => {
     const latest = latestByKind.get(kind)!;
     return { kind, value: latest.value, localDate: latest.localDate };
   });
+}
+
+// The D-07 "tracked kinds" set (UI-SPEC decision 8) — every kind with at least one row, derived
+// from the same batched read loadTrackedKindSummaries performs, not a second query. Feeds
+// TrackKindSheet's untracked-row filter and MetricEntrySheet's quick-measurement kind picker.
+export async function loadTrackedKinds(userId: string, db: WriteDb = getPowerSync()): Promise<Set<BodyMetricKind>> {
+  const latestByKind = await loadLatestPerKind(userId, db);
+  return new Set(BODY_METRIC_KIND_ORDER.filter((kind) => latestByKind.has(kind)));
 }

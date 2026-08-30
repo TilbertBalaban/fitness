@@ -63,11 +63,14 @@ function summary(kind: BodyMetricKind, overrides: Partial<TrackedKindSummary> = 
   return { kind, value: '82.400', localDate: '2026-08-12', ...overrides };
 }
 
+const COLORS = { accent: 'rgb(37, 99, 235)', foregroundMuted: 'rgb(113, 113, 122)', surface: 'rgb(244, 244, 245)' };
+
 function renderView(overrides: Partial<BodyMetricsScreenViewProps> = {}) {
   return BodyMetricsScreenView({
     state: 'ready',
     rows: [summary('bodyweight')],
     weightUnit: 'kg',
+    colors: COLORS,
     onRowPress: jest.fn(),
     onLogPress: jest.fn(),
     onTrackPress: jest.fn(),
@@ -133,14 +136,16 @@ describe('BodyMetricsScreenView — empty', () => {
 });
 
 describe('BodyMetricsScreenView — populated', () => {
-  it('renders one BodyMetricRow per tracked kind, sorted by BODY_METRIC_KIND_ORDER, plus the "Track a measurement" row', () => {
-    const rows = [summary('waist'), summary('bodyweight'), summary('body_fat_percent')];
+  // The view itself renders `rows` in the order given — loadTrackedKindSummaries is the layer that
+  // sorts by BODY_METRIC_KIND_ORDER (proven directly in lib/db/__tests__/body-metrics.test.ts); this
+  // fixture is pre-sorted the same way the real screen always hands it rows.
+  it('renders one BodyMetricRow per tracked kind, in the order it is given, plus the "Track a measurement" row', () => {
+    const sortedKinds = BODY_METRIC_KIND_ORDER.filter((kind) => ['waist', 'bodyweight', 'body_fat_percent'].includes(kind));
+    const rows = sortedKinds.map((kind) => summary(kind));
     const view = renderView({ state: 'ready', rows });
 
     const rowProps = findByType(view, BodyMetricRow);
-    expect(rowProps.map((props) => props.kind)).toEqual(
-      BODY_METRIC_KIND_ORDER.filter((kind) => ['waist', 'bodyweight', 'body_fat_percent'].includes(kind)),
-    );
+    expect(rowProps.map((props) => props.kind)).toEqual(sortedKinds);
 
     const text = findText(view).join(' ');
     expect(text).toContain('Track a measurement');
