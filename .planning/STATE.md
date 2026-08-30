@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Body Metrics & Dashboard
 status: executing
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-08-30T19:19:48.246Z"
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-08-30T19:50:43.701Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 124
-  completed_plans: 117
+  completed_plans: 118
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 12 (Body Metrics & Dashboard) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-08-30 — Phase 12 execution started
 
-Progress: [█████████░] 94%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -73,6 +73,7 @@ Progress: [█████████░] 94%
 | Phase 09 P02 | 35 min | 3 tasks | 7 files |
 | Phase 09 P03 | ~50 min | 3 tasks | 17 files |
 | Phase 12 P01 | 45min | 3 tasks | 11 files |
+| Phase 12 P02 | 30min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 09-03: RowDisplay.e1rm is now the three-branch E1rmDisplay union — the workout summary distinguishes a rep-cap suppression from an absence of data instead of blanking both
 - [Phase ?]: 12-01: BODY_METRIC_KIND_SET imported directly from @fitness/api-contracts into sync.service.ts rather than rebuilt locally from a tuple — single source of truth on both sides of the vocabulary check
 - [Phase ?]: 12-01: body_metric's root-existence lookup reads only (id, userId), following personal_record/equipment_profile's shape, not excluded_exercise's extra identity-column read — kind is genuinely client-patchable (D-10), not identity
+- [Phase ?]: 12-02: cm/in extends units.ts's exact bigint-fraction pipeline (convertByFactor generalized), never a second module — CM_PER_IN substituted for KG_PER_LB
+- [Phase ?]: 12-02: resolveDisplayUnit/toCanonicalValue/fromCanonicalValue in body-metrics.ts are the single place D-08's one-weight_unit-drives-both-mass-and-length rule lives — BodyMetricRow/MetricEntrySheet resolve their own display unit internally rather than the caller pre-formatting a value
+- [Phase ?]: 12-02: loadTrackedKinds and loadTrackedKindSummaries share one batched SQL statement via a private loadLatestPerKind helper, not two independent queries
 
 ### Pending Todos
 
@@ -141,6 +145,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-30T19:19:48.220Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-08-30T19:50:43.674Z
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None

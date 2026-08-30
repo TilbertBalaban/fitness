@@ -594,7 +594,7 @@ Plans:
   3. User sees a dashboard with weekly progress, recent records, and insight tiles, and can add, remove, and reorder those widgets
   4. User can reach quick weigh-in, measurement, progress photo, history, new program, and one-off workout from a single quick-action menu
 
-**Plans**: 1/8 plans executed
+**Plans**: 2/8 plans executed
 
 Plans:
 
@@ -604,7 +604,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 12-02-PLAN.md — Body Metrics overview, the metric entry sheet and its keypad, the track-a-kind picker, and the cm/in half of the unit boundary (wave 2)
+- [x] 12-02-PLAN.md — Body Metrics overview, the metric entry sheet and its keypad, the track-a-kind picker, and the cm/in half of the unit boundary (wave 2)
 - [ ] 12-03-PLAN.md — Progress photos: platform-split capture/downscale/store, `progress_photo`'s push apply path, the gallery, the device-absent placeholder, and photo actions (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -703,4 +703,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
 | 11. Program Generation | 6/6 | Complete    | 2026-08-30 |
-| 12. Body Metrics & Dashboard | 1/8 | In Progress|  |
+| 12. Body Metrics & Dashboard | 2/8 | In Progress|  |
