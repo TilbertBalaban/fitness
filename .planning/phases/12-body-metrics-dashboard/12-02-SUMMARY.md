@@ -218,3 +218,7 @@ No REFACTOR-only commit was needed for either task; both GREEN commits landed cl
 ---
 *Phase: 12-body-metrics-dashboard*
 *Completed: 2026-08-30*
+
+## Self-Check: PASSED
+
+All 16 created/modified files verified present; all 6 commits (`7029d44`, `0576833`, `aebcb19`, `a0cee1b`, `5a63793`, `8b43f3f`) verified present in `git log`.
