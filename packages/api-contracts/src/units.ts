@@ -52,13 +52,30 @@ function formatScaledBigInt(scaledValue: bigint, scale: number): string {
   return `${wholePart}.${fractionPart}`;
 }
 
+// The one place either conversion direction actually multiplies by a factor — kg/lb and cm/in both
+// go through this, substituting their own integer numerator/denominator pair. Never a binary float
+// anywhere in this path (D-03's own rationale).
+function convertByFactor(fraction: Fraction, factor: Fraction, direction: 'toCanonical' | 'fromCanonical'): Fraction {
+  const applied = direction === 'toCanonical' ? factor : { numerator: factor.denominator, denominator: factor.numerator };
+  return {
+    numerator: fraction.numerator * applied.numerator,
+    denominator: fraction.denominator * applied.denominator,
+  };
+}
+
 function convertFraction(fraction: Fraction, unit: WeightUnit, direction: 'toKg' | 'fromKg'): Fraction {
   if (unit === 'kg') return fraction;
-  const factor = direction === 'toKg' ? KG_PER_LB : { numerator: KG_PER_LB.denominator, denominator: KG_PER_LB.numerator };
-  return {
-    numerator: fraction.numerator * factor.numerator,
-    denominator: fraction.denominator * factor.denominator,
-  };
+  return convertByFactor(fraction, KG_PER_LB, direction === 'toKg' ? 'toCanonical' : 'fromCanonical');
+}
+
+// A displayed length is a coarser reading than a displayed weight — a tape measure has no
+// meaningful sub-tenth precision — so, unlike fromCanonicalKg, the rendered string drops a
+// trailing ".0"/trailing zero once rounding to LENGTH_DISPLAY_SCALE lands on a whole or
+// short-decimal value. Purely a display-string transform after the exact bigint arithmetic has
+// already run; it changes no stored value and no conversion result.
+function trimTrailingDecimalZeros(value: string): string {
+  if (!value.includes('.')) return value;
+  return value.replace(/0+$/, '').replace(/\.$/, '');
 }
 
 export function toCanonicalKg(value: string | null, unit: WeightUnit): string | null {
@@ -82,6 +99,58 @@ export function fromCanonicalKg(kg: string | null, unit: WeightUnit): string | n
 // load, and zero would read as a logged weight of zero.
 export function formatWeight(kg: string | null, unit: WeightUnit): string {
   const displayValue = fromCanonicalKg(kg, unit);
+  if (displayValue === null) return '—';
+  return `${displayValue} ${unit}`;
+}
+
+// D-08's length half — every circumference kind stores centimetres canonically; a user under an
+// `lb` weight preference sees inches (resolveDisplayUnit, body-metrics.ts), never a mix of kg and
+// in. Same exact-bigint-fraction pipeline as toCanonicalKg/fromCanonicalKg, CM_PER_IN substituted
+// for KG_PER_LB.
+export const LENGTH_UNITS = ['cm', 'in'] as const;
+export type LengthUnit = (typeof LENGTH_UNITS)[number];
+
+// Matches body_metric.value's numeric(10,3) column precision headroom, but a body measurement is
+// never meaningfully precise past a tenth of a centimetre — one decimal digit of canonical storage
+// is enough to round-trip every real display value exactly (RESEARCH A4).
+export const CANONICAL_CM_SCALE: number = 1;
+
+// A body measurement is not meaningfully precise past one decimal in either unit — a cosmetic
+// display-precision choice (RESEARCH A4), not dictated by D-08. Unlike DISPLAY_SCALE.kg/lb,
+// fromCanonicalCm additionally trims a resulting trailing zero (see trimTrailingDecimalZeros).
+export const LENGTH_DISPLAY_SCALE: Record<LengthUnit, number> = { cm: 1, in: 1 };
+
+// One inch is defined as exactly 2.54 centimetres. Written as an integer numerator/denominator
+// pair for the same reason KG_PER_LB is, even though this ratio happens to be an exact decimal —
+// multiplying by it must never pass through a binary float.
+export const CM_PER_IN = { numerator: 254n, denominator: 100n } as const;
+
+function convertLengthFraction(fraction: Fraction, unit: LengthUnit, direction: 'toCm' | 'fromCm'): Fraction {
+  if (unit === 'cm') return fraction;
+  return convertByFactor(fraction, CM_PER_IN, direction === 'toCm' ? 'toCanonical' : 'fromCanonical');
+}
+
+export function toCanonicalCm(value: string | null, unit: LengthUnit): string | null {
+  if (value === null || value.trim() === '') return null;
+  const fraction = parseDecimalToFraction(value);
+  const cmFraction = convertLengthFraction(fraction, unit, 'toCm');
+  const scaledCm = roundExactFractionToScale(cmFraction, CANONICAL_CM_SCALE);
+  return formatScaledBigInt(scaledCm, CANONICAL_CM_SCALE);
+}
+
+export function fromCanonicalCm(cm: string | null, unit: LengthUnit): string | null {
+  if (cm === null || cm.trim() === '') return null;
+  const fraction = parseDecimalToFraction(cm);
+  const displayFraction = convertLengthFraction(fraction, unit, 'fromCm');
+  const displayScale = LENGTH_DISPLAY_SCALE[unit];
+  const scaledDisplay = roundExactFractionToScale(displayFraction, displayScale);
+  return trimTrailingDecimalZeros(formatScaledBigInt(scaledDisplay, displayScale));
+}
+
+// A null length renders as an em dash rather than "0 cm" — an unlogged measurement has no reading,
+// and zero would read as a logged value of zero.
+export function formatLength(cm: string | null, unit: LengthUnit): string {
+  const displayValue = fromCanonicalCm(cm, unit);
   if (displayValue === null) return '—';
   return `${displayValue} ${unit}`;
 }

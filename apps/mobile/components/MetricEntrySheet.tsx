@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import {
   BODY_METRIC_KIND_LABELS,
-  fromCanonicalKg,
-  toCanonicalKg,
+  fromCanonicalValue,
+  resolveDisplayUnit,
+  toCanonicalValue,
   type BodyMetricKind,
   type WeightUnit,
 } from '@fitness/api-contracts';
@@ -100,10 +101,16 @@ export interface MetricEntrySheetProps {
   onLogged: () => void;
 }
 
-// The stateful wrapper — owns the last-value read, the keypad's reducer state and the write.
-// Bodyweight-only in this task: unit resolution goes through the existing loadWeightUnit /
-// fromCanonicalKg / toCanonicalKg boundary (12-02 Task 2 extends this to every kind via
-// resolveDisplayUnit/toCanonicalValue/fromCanonicalValue).
+// resolveDisplayUnit renders 'percent' as the word "percent"; the sheet's trailing unit label is
+// always the short glyph a user actually reads next to a typed number.
+function unitLabel(displayUnit: ReturnType<typeof resolveDisplayUnit>): string {
+  return displayUnit === 'percent' ? '%' : displayUnit;
+}
+
+// The stateful wrapper — owns the last-value read, the keypad's reducer state and the write. One
+// preference (weightUnit) resolves the display unit for every kind via resolveDisplayUnit — a
+// circumference kind entered under an lb preference is entered in inches, stored in centimetres,
+// and read back in inches (D-08).
 export function MetricEntrySheet({ userId, kind, db, onCancel, onLogged }: MetricEntrySheetProps) {
   const colors = useThemeColors();
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
@@ -116,7 +123,7 @@ export function MetricEntrySheet({ userId, kind, db, onCancel, onLogged }: Metri
       const [unit, latest] = await Promise.all([loadWeightUnit(userId, database), loadLatestMetric(userId, kind, database)]);
       if (!active) return;
       setWeightUnit(unit);
-      setValue(latest ? fromCanonicalKg(latest.value, unit) : null);
+      setValue(latest ? fromCanonicalValue(kind, latest.value, unit) : null);
     })();
     return () => {
       active = false;
@@ -125,7 +132,7 @@ export function MetricEntrySheet({ userId, kind, db, onCancel, onLogged }: Metri
 
   const handleLog = () => {
     if (value === null || value === '') return;
-    const canonical = toCanonicalKg(value, weightUnit);
+    const canonical = toCanonicalValue(kind, value, weightUnit);
     if (canonical === null) return;
     void logMetric({ userId, kind, value: canonical }, db ?? getPowerSync()).then(onLogged);
   };
@@ -133,7 +140,7 @@ export function MetricEntrySheet({ userId, kind, db, onCancel, onLogged }: Metri
   return (
     <MetricEntrySheetView
       kind={kind}
-      unitLabel={weightUnit}
+      unitLabel={unitLabel(resolveDisplayUnit(kind, weightUnit))}
       value={value}
       logEnabled={value !== null && value !== ''}
       onKeypadPress={(press) => setValue((current) => applyKeypadPress(current, press))}

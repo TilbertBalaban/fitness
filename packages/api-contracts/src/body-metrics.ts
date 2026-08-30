@@ -1,3 +1,5 @@
+import { fromCanonicalCm, fromCanonicalKg, toCanonicalCm, toCanonicalKg, type LengthUnit, type WeightUnit } from './units';
+
 // Additive-only from this commit forward — every client build in the field reads this tuple back
 // through its declared order and membership (D-06). Append only; never insert, never reorder,
 // never remove a member once a row of that kind can exist on a device.
@@ -85,3 +87,32 @@ export const BODY_METRIC_CANONICAL_UNIT: Record<BodyMetricKind, BodyMetricCanoni
   right_calf: 'cm',
   body_fat_percent: 'percent',
 };
+
+export type BodyMetricDisplayUnit = WeightUnit | LengthUnit | 'percent';
+
+// D-08's whole "one toggle, not two" rule, and the only place this mapping exists: `weight_unit`
+// drives BOTH the mass and the length display, so a user can never see kilograms alongside inches.
+// kg maps straight through to the user's own preference; cm maps to cm under a kg preference and
+// to in under an lb preference; percent is unaffected by either.
+export function resolveDisplayUnit(kind: BodyMetricKind, weightUnit: WeightUnit): BodyMetricDisplayUnit {
+  const canonicalUnit = BODY_METRIC_CANONICAL_UNIT[kind];
+  if (canonicalUnit === 'kg') return weightUnit;
+  if (canonicalUnit === 'percent') return 'percent';
+  return weightUnit === 'lb' ? 'in' : 'cm';
+}
+
+// Dispatches to the kg or cm converter (or passes a percentage through unchanged) so no call site
+// ever has to branch on BODY_METRIC_CANONICAL_UNIT itself.
+export function toCanonicalValue(kind: BodyMetricKind, displayValue: string | null, weightUnit: WeightUnit): string | null {
+  const canonicalUnit = BODY_METRIC_CANONICAL_UNIT[kind];
+  if (canonicalUnit === 'kg') return toCanonicalKg(displayValue, weightUnit);
+  if (canonicalUnit === 'percent') return displayValue === null || displayValue.trim() === '' ? null : displayValue;
+  return toCanonicalCm(displayValue, resolveDisplayUnit(kind, weightUnit) as LengthUnit);
+}
+
+export function fromCanonicalValue(kind: BodyMetricKind, canonicalValue: string | null, weightUnit: WeightUnit): string | null {
+  const canonicalUnit = BODY_METRIC_CANONICAL_UNIT[kind];
+  if (canonicalUnit === 'kg') return fromCanonicalKg(canonicalValue, weightUnit);
+  if (canonicalUnit === 'percent') return canonicalValue === null || canonicalValue.trim() === '' ? null : canonicalValue;
+  return fromCanonicalCm(canonicalValue, resolveDisplayUnit(kind, weightUnit) as LengthUnit);
+}

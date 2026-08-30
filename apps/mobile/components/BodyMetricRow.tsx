@@ -1,19 +1,35 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
-import { BODY_METRIC_KIND_LABELS, formatWeight, type BodyMetricKind, type WeightUnit } from '@fitness/api-contracts';
+import {
+  BODY_METRIC_KIND_LABELS,
+  formatLength,
+  formatWeight,
+  fromCanonicalValue,
+  resolveDisplayUnit,
+  type BodyMetricKind,
+  type WeightUnit,
+} from '@fitness/api-contracts';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 // The same separator RecordRow/MuscleDrilldownSheet already use for "join a few short facts on one
 // line" — one middle-dot vocabulary, not a second one invented here.
 const MIDDLE_DOT = ' · ';
 
+// The one place a body-metric row turns a stored canonical value into what it shows — every branch
+// of resolveDisplayUnit's five-member union is handled, so a kind never falls through unformatted.
+function formatBodyMetricValue(kind: BodyMetricKind, value: string, weightUnit: WeightUnit): string {
+  const displayUnit = resolveDisplayUnit(kind, weightUnit);
+  if (displayUnit === 'kg' || displayUnit === 'lb') return formatWeight(value, displayUnit);
+  if (displayUnit === 'cm' || displayUnit === 'in') return formatLength(value, displayUnit);
+  const displayValue = fromCanonicalValue(kind, value, weightUnit);
+  return displayValue === null ? '—' : `${displayValue}%`;
+}
+
 export interface BodyMetricRowViewProps {
   kind: BodyMetricKind;
   // The stored canonical value, unparsed by the caller — this row resolves its own display unit
-  // and formats it, so BODY_METRIC_KIND_LABELS/the units boundary stay the single source of truth
-  // for both what a kind is called and what it is shown in (extended to the full vocabulary by
-  // 12-02 Task 2's resolveDisplayUnit/fromCanonicalValue; bodyweight is the only kind this task
-  // itself ever renders).
+  // via resolveDisplayUnit and formats it, so BODY_METRIC_KIND_LABELS/the units boundary stay the
+  // single source of truth for both what a kind is called and what it is shown in.
   value: string;
   weightUnit: WeightUnit;
   dateLabel: string;
@@ -27,7 +43,7 @@ export interface BodyMetricRowViewProps {
 // region rather than sharing the row body's.
 export function BodyMetricRowView({ kind, value, weightUnit, dateLabel, colors, onPress, onLogPress }: BodyMetricRowViewProps) {
   const kindLabel = BODY_METRIC_KIND_LABELS[kind];
-  const valueLabel = formatWeight(value, weightUnit);
+  const valueLabel = formatBodyMetricValue(kind, value, weightUnit);
   const factLine = `${valueLabel}${MIDDLE_DOT}${dateLabel}`;
 
   return (

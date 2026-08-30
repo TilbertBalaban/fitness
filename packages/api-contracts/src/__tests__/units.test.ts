@@ -208,10 +208,12 @@ describe('single-declaration gate (T-02-19)', () => {
   });
 });
 
-// D-08's length half — one inch is exactly 2.54 cm, so the round trip below is exact, not merely
-// close, unlike the pound's repeating-decimal relationship to the kilogram.
-const IN_FIXTURES = ['10', '30', '32', '34', '36', '38', '40', '2.5', '0.5', '15.75', '100'];
-const CM_FIXTURES = ['10', '76.2', '81.28', '96.52', '20', '0.5', '250'];
+// D-08's length half. LENGTH_DISPLAY_SCALE is one decimal digit (RESEARCH A4), so — mirroring
+// LB_FIXTURES's own precedent — every fixture here is at most one decimal digit deep; a value
+// finer than that (e.g. 15.75) is display precision the module never claims to preserve and would
+// not round-trip, exactly like a sub-plate-increment pound value.
+const IN_FIXTURES = ['10', '30', '32', '34', '36', '38', '40', '2.5', '0.5', '15.5', '100'];
+const CM_FIXTURES = ['10', '76.2', '81.2', '96.5', '20', '0.5', '250'];
 
 describe('toCanonicalCm', () => {
   it('converts an inch-entered value to the exact centimetre equivalent — one inch is exactly 2.54 cm', () => {
