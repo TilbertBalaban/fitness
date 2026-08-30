@@ -28,8 +28,15 @@ import {
   type ExercisePreference,
 } from '@/lib/catalog/preferences';
 import { scoreAlternatives, type ScoredCandidate, type SwapExercise, type SwapMuscleMapping, type SwapPreference } from '@/lib/catalog/smart-swap';
+import { addExclusion, isExcluded, removeExclusion } from '@/lib/db/exclusions';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { exercise, exerciseMuscleMapping, seededExercise, userExercisePreference } from '@/lib/db/schema';
+
+// The label names what the app will do with the exercise, never what the user cannot do — an
+// exclusion records a choice, not a judgement about ability.
+export function resolveExclusionAction(excluded: boolean): { label: string } {
+  return { label: excluded ? 'Allow in generated programs' : 'Exclude from generated programs' };
+}
 
 export type DetailScreenState =
   | { status: 'found'; detail: ExerciseDetail }
@@ -145,6 +152,7 @@ export default function ExerciseDetailScreen() {
   const [preference, setPreference] = useState<ExercisePreference>(DEFAULT_PREFERENCE);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [swapCandidates, setSwapCandidates] = useState<ScoredCandidate[]>([]);
+  const [excluded, setExcluded] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -157,13 +165,15 @@ export default function ExerciseDetailScreen() {
       setScreenState(state);
 
       if (state.status === 'found') {
-        const [ownerAndVariation, pref, swapData] = await Promise.all([
+        const [ownerAndVariation, pref, swapData, alreadyExcluded] = await Promise.all([
           loadOwnerAndVariation(db, id),
           userId ? readPreference(db, userId, id) : Promise.resolve(DEFAULT_PREFERENCE),
           loadSwapCandidates(db),
+          userId ? isExcluded(db, userId, id) : Promise.resolve(false),
         ]);
         if (!mounted) return;
         setPreference(pref);
+        setExcluded(alreadyExcluded);
 
         const target: SwapExercise = {
           id: state.detail.id,
@@ -205,6 +215,14 @@ export default function ExerciseDetailScreen() {
     const next = !preference.neverSuggest;
     setPreference((current) => ({ ...current, neverSuggest: next }));
     await setNeverSuggest(getPowerSync(), userId, detail.id, next);
+  };
+
+  const handleToggleExcluded = async () => {
+    if (!userId || !detail) return;
+    const next = !excluded;
+    setExcluded(next);
+    const db = getPowerSync();
+    await (next ? addExclusion(db, userId, detail.id) : removeExclusion(db, userId, detail.id));
   };
 
   const handleDuplicate = async () => {
@@ -295,6 +313,20 @@ export default function ExerciseDetailScreen() {
         >
           <Text className={`text-body font-normal ${preference.neverSuggest ? 'text-accent' : 'text-foreground'}`}>
             Never suggest
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleToggleExcluded}
+          accessibilityRole="button"
+          accessibilityState={{ selected: excluded }}
+          style={{ minWidth: 48, minHeight: 48 }}
+          className={`items-center justify-center rounded-md border px-md py-sm ${
+            excluded ? 'border-accent' : 'border-foreground-muted'
+          }`}
+        >
+          <Text className={`text-body font-normal ${excluded ? 'text-accent' : 'text-foreground'}`}>
+            {resolveExclusionAction(excluded).label}
           </Text>
         </Pressable>
 

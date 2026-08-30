@@ -35,6 +35,7 @@ export default function ExercisesLayout() {
       <Stack.Screen name="[id]" options={{ title: 'Exercise' }} />
       <Stack.Screen name="new" options={{ title: 'Add Custom Exercise' }} />
       <Stack.Screen name="edit/[id]" options={{ title: 'Edit Exercise' }} />
+      <Stack.Screen name="exclusions" options={{ title: 'Excluded Exercises' }} />
     </Stack>
   );
 }
