@@ -560,7 +560,7 @@ Plans:
   4. Generated programs arrive pre-periodized with per-cycle set, rep, and RIR targets
   5. A generated program is editable exactly like a hand-built one and progresses through the same engine
 
-**Plans**: 2/6 plans executed
+**Plans**: 3/6 plans executed
 
 Plans:
 **Wave 1**
@@ -571,7 +571,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [ ] 11-03-PLAN.md — Exclusions on the device: SQLite mirror, read/write module, exclude control and exclusions screen, wired into generation (wave 2)
-- [ ] 11-04-PLAN.md — The complete split table for full body, upper/lower and push/pull/legs across 2-6 days, plus the completeness invariant (wave 2)
+- [x] 11-04-PLAN.md — The complete split table for full body, upper/lower and push/pull/legs across 2-6 days, plus the completeness invariant (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -676,5 +676,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Progression Engine | 6/6 | Complete    | 2026-08-29 |
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
-| 11. Program Generation | 2/6 | In Progress|  |
+| 11. Program Generation | 3/6 | In Progress|  |
 | 12. Body Metrics & Dashboard | 0/TBD | Not started | - |
