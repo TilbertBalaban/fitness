@@ -209,6 +209,18 @@ export const userExercisePreference = sqliteTable('user_exercise_preference', {
   serverSeq: integer('server_seq'),
 });
 
+// Per-user fact that this exercise will never be trained — column names match
+// apps/api/src/db/schema/catalog.ts's excludedExercise exactly, for the reason the file header
+// already gives. A strict subset of userExercisePreference above: no archivedAt and no
+// neverSuggest, because un-excluding is a hard delete rather than a restore.
+export const excludedExercise = sqliteTable('excluded_exercise', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  exerciseId: text('exercise_id').notNull(),
+  createdAt: text('created_at').notNull(),
+  serverSeq: integer('server_seq'),
+});
+
 // Composite-PK on Postgres; PowerSync requires a single TEXT PRIMARY KEY on every managed table,
 // so id is derived deterministically as `${exercise_id}:${muscle_group_id}` at load time — that
 // determinism is what makes loadCatalogSnapshot's upsert idempotent across re-runs.
@@ -311,6 +323,7 @@ export const drizzleSchema = {
   equipmentProfile,
   exercise,
   userExercisePreference,
+  excludedExercise,
   personalRecord,
   bodyMetric,
   progressPhoto,
