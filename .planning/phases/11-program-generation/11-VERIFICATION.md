@@ -1,3 +1,26 @@
+---
+phase: 11-program-generation
+verified: 2026-08-30T18:00:00Z
+status: passed
+score: 5/5 truths verified
+behavior_unverified: 0
+overrides_applied: 0
+deferred:
+  - truth: "An exclusion recorded on one device appears on the user's other device"
+    addressed_in: "Backstop — the sync path established in 11-02"
+    evidence: "excluded_exercise is in PUSH_APPLIED_TABLES with sync.service.ts validation and a Postgres table; verified by the same mechanism every other synced table relies on, not by a device-pair test. Consistent with every prior phase's treatment of cross-device claims."
+  - truth: "Native (iOS/Android) UAT of the generation wizard and preview"
+    addressed_in: "Phase 999.1"
+    evidence: "Standing project decision: no native toolchain is installed on this machine, and Android UAT is swept once at the end via ROADMAP Phase 999.1."
+warnings:
+  - id: W1
+    severity: info
+    summary: "Five stale-assertion breakages occurred across this phase (route-guard child list twice, PUSH_APPLIED_TABLES, the split assertions, the newProgramOptions option set) — all exhaustive hardcoded expectations turned red by legitimate plan-mandated additions. None was a defect; each was corrected in place, and where a structural alternative existed it was taken (LIBRARY_ENTRY_POINTS)."
+  - id: W2
+    severity: info
+    summary: "Every plan in this phase executed on the main working tree rather than in worktrees, because the machine was sleeping on battery and killing background worktree agents before their first commit. All commits are on main; nothing is left to merge."
+---
+
 # Phase 11 — Program Generation: Verification
 
 **Goal:** A user who doesn't want to write their own program gets a complete, pre-periodized one

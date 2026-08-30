@@ -124,13 +124,13 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 ### Program Generation
 
-- [ ] **GEN-01**: User can generate a complete program from training goal, experience level, days per week, and session length
-- [ ] **GEN-02**: User's generated program only uses exercises their active gym profile's equipment supports
-- [ ] **GEN-03**: User's excluded exercises never appear in a generated program
-- [ ] **GEN-04**: User can choose a split preference and set muscle-group emphasis or deprioritization
-- [ ] **GEN-05**: User's generated program arrives pre-periodized with per-cycle set, rep, and RIR targets
-- [ ] **GEN-06**: User can choose whether deloads are included and where they fall
-- [ ] **GEN-07**: User can edit a generated program exactly as they would a hand-built one, and it progresses identically
+- [x] **GEN-01**: User can generate a complete program from training goal, experience level, days per week, and session length
+- [x] **GEN-02**: User's generated program only uses exercises their active gym profile's equipment supports
+- [x] **GEN-03**: User's excluded exercises never appear in a generated program
+- [x] **GEN-04**: User can choose a split preference and set muscle-group emphasis or deprioritization
+- [x] **GEN-05**: User's generated program arrives pre-periodized with per-cycle set, rep, and RIR targets
+- [x] **GEN-06**: User can choose whether deloads are included and where they fall
+- [x] **GEN-07**: User can edit a generated program exactly as they would a hand-built one, and it progresses identically
 
 ### Body Metrics & Photos
 
@@ -279,13 +279,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ANLY-04 | Phase 10 — Server Analytics & Reconciliation | Complete |
 | ANLY-05 | Phase 10 — Server Analytics & Reconciliation | Complete |
 | ANLY-09 | Phase 10 — Server Analytics & Reconciliation | Complete |
-| GEN-01 | Phase 11 — Program Generation | Pending |
-| GEN-02 | Phase 11 — Program Generation | Pending |
-| GEN-03 | Phase 11 — Program Generation | Pending |
-| GEN-04 | Phase 11 — Program Generation | Pending |
-| GEN-05 | Phase 11 — Program Generation | Pending |
-| GEN-06 | Phase 11 — Program Generation | Pending |
-| GEN-07 | Phase 11 — Program Generation | Pending |
+| GEN-01 | Phase 11 — Program Generation | Complete |
+| GEN-02 | Phase 11 — Program Generation | Complete |
+| GEN-03 | Phase 11 — Program Generation | Complete |
+| GEN-04 | Phase 11 — Program Generation | Complete |
+| GEN-05 | Phase 11 — Program Generation | Complete |
+| GEN-06 | Phase 11 — Program Generation | Complete |
+| GEN-07 | Phase 11 — Program Generation | Complete |
 | BODY-01 | Phase 12 — Body Metrics & Dashboard | Pending |
 | BODY-02 | Phase 12 — Body Metrics & Dashboard | Pending |
 | BODY-03 | Phase 12 — Body Metrics & Dashboard | Pending |
