@@ -1,5 +1,5 @@
-import { and, desc, eq } from 'drizzle-orm';
-import { type BodyMetricKind } from '@fitness/api-contracts';
+import { and, eq, desc } from 'drizzle-orm';
+import { BODY_METRIC_KIND_ORDER, type BodyMetricKind } from '@fitness/api-contracts';
 import { captureCalendarDay } from '../calendar-day';
 import { generateClientId } from './id';
 import { getPowerSync, type WriteDb } from './powersync';
@@ -65,4 +65,39 @@ export async function loadLatestMetric(
     .limit(1);
 
   return row;
+}
+
+export interface TrackedKindSummary {
+  kind: BodyMetricKind;
+  value: string;
+  localDate: string;
+}
+
+// One batched select over every row the user owns, grouped in JavaScript to the latest row per
+// kind by recordedAt — never one query per kind (records-query.ts's no-N+1 rule). A kind is
+// "tracked" the moment at least one row of it exists (UI-SPEC decision 8); the result is sorted by
+// BODY_METRIC_KIND_ORDER so a caller never has to re-sort it.
+export async function loadTrackedKindSummaries(userId: string, db: WriteDb = getPowerSync()): Promise<TrackedKindSummary[]> {
+  const rows = await db
+    .select({
+      kind: bodyMetric.kind,
+      value: bodyMetric.value,
+      recordedAt: bodyMetric.recordedAt,
+      localDate: bodyMetric.localDate,
+    })
+    .from(bodyMetric)
+    .where(eq(bodyMetric.userId, userId));
+
+  const latestByKind = new Map<string, { value: string; recordedAt: string; localDate: string }>();
+  for (const row of rows) {
+    const existing = latestByKind.get(row.kind);
+    if (!existing || row.recordedAt > existing.recordedAt) {
+      latestByKind.set(row.kind, row);
+    }
+  }
+
+  return BODY_METRIC_KIND_ORDER.filter((kind) => latestByKind.has(kind)).map((kind) => {
+    const latest = latestByKind.get(kind)!;
+    return { kind, value: latest.value, localDate: latest.localDate };
+  });
 }
