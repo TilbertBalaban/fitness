@@ -653,6 +653,7 @@ Plans:
 - [ ] Phase 09 test 2 (WINDOWS #158): Records screen on a real device — RecordRow, the four-metric chip switch, and the "{reps} reps @ {weight}" row built from the third batched logged_set read
 - [ ] Phase 09 test 3 (WINDOWS #160): Last 7 Days card and History trend card on a real device, including the TrendChart inside the trend card and the progressbar tracks' native accessibility values (the web path needed aria-* rather than accessibilityValue — confirm the native path announces correctly too)
 - [ ] Phase 10 test 1 (WINDOWS #165): the Muscle Map on a real iOS and Android build — both `react-native-svg` figures, the window switch and the drill-down sheet. The native build of this library has never been compiled or rendered on this machine (no Xcode, no Android SDK), so the whole body-map approach is proven on web only, exactly as Phase 9's own chart item records
+- [ ] Phase 12-02 test 1: the Body Metrics overview, MetricEntrySheet's docked `MetricValueKeypad` and TrackKindSheet on a real iOS/Android build — log a weight and a circumference measurement, confirm the two independent press targets on BodyMetricRow work correctly with real touch input, and that the keypad never covers the live value display at any OS font scale
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
 ### Phase 999.2: Human verification sweep — web target (BACKLOG)
@@ -681,6 +682,7 @@ Plans:
 - [ ] Phase 09 test 6 (WINDOWS #161): visual review of the Last 7 Days tracks, the History trend card's headline and delta chip, and the range switch at maximum font scale
 - [ ] Phase 10 test 2 (WINDOWS #166): subjective visual review of the intensity scale and of the untrained-versus-lowest-real-intensity distinction at maximum OS font scale. The categorical hue split is grep-enforced and unit-asserted; whether it is legible, including for a colourblind reader, is human judgment
 - [ ] Phase 10 test 3 (WINDOWS #167): subjective visual review of the Training Volume disambiguation caption and the stale-rollup caption at maximum OS font scale — wrap-and-grow is grep-enforced, but whether the two captions read as informational rather than alarming is human judgment (R25)
+- [ ] Phase 12-02 test 2 (must_haves backstop, UI-SPEC E4/E9): `MetricValueKeypad` and the `PhotoCaptureConfirmSheet` preview card (the latter ships in a later 12-* plan) neither clip nor overlap at maximum OS font scale — the docked-keypad/preview backstop every prior phase has carried
 - [ ] (append human-judgment web items from phases 01-12 as each phase defers them)
 
 ## Progress
