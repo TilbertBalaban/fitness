@@ -8,7 +8,7 @@ import { createRoutine } from '@/lib/db/programs/create-routine';
 import { duplicateRoutine } from '@/lib/db/programs/duplicate-routine';
 import { loadLibraryRoutines, type LibraryRoutineRow } from '@/lib/db/programs/lifecycle';
 
-export type NewProgramChoice = 'blank' | 'duplicate';
+export type NewProgramChoice = 'blank' | 'duplicate' | 'generate';
 
 export const NO_DUPLICATE_SOURCE_COPY = "You don't have another program to duplicate yet.";
 
@@ -34,6 +34,7 @@ export function newProgramOptions(routines: LibraryRoutineRow[]): NewProgramOpti
   return {
     options: [
       { key: 'blank', label: 'Start Blank', available: true, unavailableReason: null },
+      { key: 'generate', label: 'Generate for me', available: true, unavailableReason: null },
       {
         key: 'duplicate',
         label: 'Duplicate Existing',
@@ -79,6 +80,11 @@ export default function NewProgramScreen() {
   const handleCreate = useCallback(async () => {
     setNameError(null);
     setSourceError(null);
+
+    if (choice === 'generate') {
+      router.push('/programs/generate');
+      return;
+    }
 
     if (choice === 'duplicate' && !sourceId) {
       setSourceError('Choose a program to duplicate.');

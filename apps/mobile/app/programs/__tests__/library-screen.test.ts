@@ -26,6 +26,8 @@ import {
   deriveLibraryScreenState,
   formatLibraryRowSubtitle,
   partitionRoutines,
+  GENERATE_PROGRAM_ROUTE,
+  LIBRARY_ENTRY_POINTS,
 } from '../library';
 import { NO_DUPLICATE_SOURCE_COPY, newProgramOptions } from '../new';
 import type { LibraryRoutineRow } from '../../../lib/db/programs/lifecycle';
@@ -339,10 +341,10 @@ describe('actionsForRow', () => {
 });
 
 describe('newProgramOptions', () => {
-  it('leaves Start Blank as the only live path on a truly empty account', () => {
+  it('leaves Start Blank and Generate as the live paths on a truly empty account', () => {
     const { options, sources } = newProgramOptions([]);
 
-    expect(options.filter((option) => option.available).map((option) => option.key)).toEqual(['blank']);
+    expect(options.filter((option) => option.available).map((option) => option.key)).toEqual(['blank', 'generate']);
     expect(sources).toEqual([]);
   });
 
@@ -354,10 +356,10 @@ describe('newProgramOptions', () => {
     expect(duplicate.unavailableReason).toBe(NO_DUPLICATE_SOURCE_COPY);
   });
 
-  it('makes both options available once one program exists', () => {
+  it('makes every option available once one program exists', () => {
     const { options, sources } = newProgramOptions([row({ id: 'r1', status: 'ready' })]);
 
-    expect(options.map((option) => option.available)).toEqual([true, true]);
+    expect(options.map((option) => option.available)).toEqual([true, true, true]);
     expect(options.every((option) => option.unavailableReason === null)).toBe(true);
     expect(sources.map((entry) => entry.id)).toEqual(['r1']);
   });
@@ -377,5 +379,19 @@ describe('newProgramOptions', () => {
 
     expect(sources).toEqual([]);
     expect(options.find((option) => option.key === 'duplicate')!.available).toBe(false);
+  });
+});
+
+
+describe('the way into generation from the library', () => {
+  it('routes to the generation screen', () => {
+    expect(GENERATE_PROGRAM_ROUTE).toBe('/programs/generate');
+  });
+
+  // One list drives both the empty state and the populated footer, so a control that exists in one
+  // and not the other is unrepresentable rather than merely untested.
+  it('sits in the single entry-point list both states render', () => {
+    expect(LIBRARY_ENTRY_POINTS.map((entry) => entry.route)).toEqual(['/programs/new', GENERATE_PROGRAM_ROUTE]);
+    expect(LIBRARY_ENTRY_POINTS.every((entry) => entry.label.trim().length > 0)).toBe(true);
   });
 });

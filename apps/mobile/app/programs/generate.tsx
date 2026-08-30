@@ -1,21 +1,91 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
-import { generateProgram, type GeneratedProgramTree, type GenerationCatalog, type GenerationInput } from '@fitness/program-generator';
+import { useCallback, useEffect, useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  generateProgram,
+  isGenerationInput,
+  type GeneratedProgramTree,
+  type GenerationCatalog,
+  type GenerationInput,
+} from '@fitness/program-generator';
 import { resolveInventory, type ResolvedInventory } from '@fitness/plate-math';
-import type { EquipmentType, MovementPattern, MuscleRole, SplitPreference, TrainingGoal } from '@fitness/api-contracts';
+import {
+  DELOAD_PLACEMENTS,
+  EMPHASIS_LEVELS,
+  EXPERIENCE_LEVELS,
+  MUSCLE_GROUP_BODY_REGION,
+  MUSCLE_GROUPS,
+  SPLIT_PREFERENCES,
+  TRAINING_GOALS,
+  type BodyRegion,
+  type DeloadPlacement,
+  type EmphasisLevel,
+  type EquipmentType,
+  type ExperienceLevel,
+  type MovementPattern,
+  type MuscleGroupId,
+  type MuscleRole,
+  type SplitPreference,
+  type TrainingGoal,
+} from '@fitness/api-contracts';
+import { ErrorBanner } from '@/components/ErrorBanner';
+import { GeneratedProgramPreview } from '@/components/GeneratedProgramPreview';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { SelectField } from '@/components/SelectField';
+import { TextField } from '@/components/TextField';
 import { authClient } from '@/lib/auth-client';
 import { loadActiveEquipmentProfileId, loadEquipmentProfile } from '@/lib/db/equipment-profiles';
 import { loadExcludedExerciseIds } from '@/lib/db/exclusions';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
+import { loadExerciseNameMap } from '@/lib/db/programs/load-program';
 import { materializeGeneratedProgram } from '@/lib/db/programs/materialize-generated-program';
 import { exercise, exerciseMuscleMapping, seededExercise } from '@/lib/db/schema';
+import {
+  buildGenerationInput,
+  defaultGeneratedRoutineName,
+  DELOAD_PLACEMENT_LABEL,
+  EMPHASIS_LEVEL_LABEL,
+  errorField,
+  EXPERIENCE_LEVEL_LABEL,
+  fieldErrorMessage,
+  MUSCLE_GROUP_LABEL,
+  nextVariantSeed,
+  validateWizardAnswers,
+  WIZARD_DEFAULTS,
+  WIZARD_STEPS,
+  type WizardAnswers,
+  type WizardPhase,
+} from '@/lib/programs/generation-wizard';
 
-// The tracer's fixed answers (11-CONTEXT.md's objective scenario): hypertrophy / intermediate /
-// 3 days / 60 minutes / full body / no emphasis / no deload. 11-05 replaces this with a real
-// multi-step wizard; this plan's screen renders exactly this one path end to end.
+export { defaultGeneratedRoutineName };
+
+const TRAINING_GOAL_LABEL: Record<TrainingGoal, string> = {
+  strength: 'Strength',
+  hypertrophy: 'Muscle size',
+  endurance: 'Endurance',
+};
+
+const SPLIT_PREFERENCE_LABEL: Record<SplitPreference, string> = {
+  auto: 'Let the app choose',
+  full_body: 'Full Body',
+  upper_lower: 'Upper/Lower',
+  push_pull_legs: 'Push/Pull/Legs',
+};
+
+const BODY_REGION_ORDER: readonly BodyRegion[] = ['chest', 'back', 'shoulders', 'arms', 'core', 'legs'];
+
+const BODY_REGION_LABEL: Record<BodyRegion, string> = {
+  chest: 'Chest',
+  back: 'Back',
+  shoulders: 'Shoulders',
+  arms: 'Arms',
+  core: 'Core',
+  legs: 'Legs',
+};
+
+// The tracer's fixed answers, kept as the shape 11-01's tests read. The wizard itself starts from
+// WIZARD_DEFAULTS; this remains the objective scenario 11-06's parity run replays.
 export const TRACER_DEFAULTS: Pick<
   GenerationInput,
   | 'trainingGoal'
@@ -40,25 +110,6 @@ export const TRACER_DEFAULTS: Pick<
   trainingCycleCount: 4,
   variantSeed: 1,
 };
-
-const SPLIT_PREFERENCE_LABEL: Record<SplitPreference, string> = {
-  auto: 'Auto',
-  full_body: 'Full Body',
-  upper_lower: 'Upper/Lower',
-  push_pull_legs: 'Push/Pull/Legs',
-};
-
-const TRAINING_GOAL_LABEL: Record<TrainingGoal, string> = {
-  strength: 'Strength',
-  hypertrophy: 'Hypertrophy',
-  endurance: 'Endurance',
-};
-
-// A sensible, editable default — never the sole source of truth for the tree's own `goal` display
-// label, which generateProgram sets independently.
-export function defaultGeneratedRoutineName(goal: TrainingGoal, splitPreference: SplitPreference): string {
-  return `${TRAINING_GOAL_LABEL[goal]} — ${SPLIT_PREFERENCE_LABEL[splitPreference]}`;
-}
 
 // Union of seeded rows and the user's own custom rows, mirroring apps/mobile/app/exercises/
 // index.tsx's loadCatalogRows — a narrower projection (only the fields generateProgram reads).
@@ -150,6 +201,7 @@ export async function runGeneration(
   userId: string,
   db: WriteDb,
   deps: GenerateScreenDeps = DEFAULT_GENERATE_SCREEN_DEPS,
+  answers?: WizardAnswers,
 ): Promise<GeneratedProgramTree> {
   const [catalog, inventory, excludedExerciseIds] = await Promise.all([
     deps.loadCatalog(db),
@@ -157,13 +209,22 @@ export async function runGeneration(
     deps.loadExclusions(db, userId),
   ]);
 
-  const input: GenerationInput = {
-    routineName: defaultGeneratedRoutineName(TRACER_DEFAULTS.trainingGoal, TRACER_DEFAULTS.splitPreference),
-    ...TRACER_DEFAULTS,
-    catalog,
-    inventory,
-    excludedExerciseIds,
-  };
+  const input: GenerationInput = answers
+    ? buildGenerationInput(answers, { catalog, inventory, excludedExerciseIds })
+    : {
+        routineName: defaultGeneratedRoutineName(TRACER_DEFAULTS.trainingGoal, TRACER_DEFAULTS.splitPreference),
+        ...TRACER_DEFAULTS,
+        catalog,
+        inventory,
+        excludedExerciseIds,
+      };
+
+  // T-11-05's second gate. buildGenerationInput assembles but never validates; this rejects the
+  // whole input before the generator does any candidate-pool work, so a wizard that assembles
+  // something the guard refuses surfaces it instead of bypassing it.
+  if (!isGenerationInput(input)) {
+    throw new Error('Those answers cannot be turned into a program. Change one and try again.');
+  }
 
   return deps.generateProgram(input);
 }
@@ -179,33 +240,109 @@ export async function confirmGeneratedProgram(
   return deps.materializeGeneratedProgram({ tree, name }, db);
 }
 
+function parseWholeNumber(raw: string): number {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+export interface EmphasisRegion {
+  region: BodyRegion;
+  label: string;
+  muscleGroupIds: MuscleGroupId[];
+}
+
+// Grouped for display so nineteen controls read as six short lists rather than one long one.
+export function emphasisRegions(): EmphasisRegion[] {
+  return BODY_REGION_ORDER.map((region) => ({
+    region,
+    label: BODY_REGION_LABEL[region],
+    muscleGroupIds: MUSCLE_GROUPS.filter((groupId) => MUSCLE_GROUP_BODY_REGION[groupId] === region),
+  })).filter((entry) => entry.muscleGroupIds.length > 0);
+}
+
 export default function GenerateProgramScreen() {
   const router = useRouter();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
+  const [answers, setAnswers] = useState<WizardAnswers>(WIZARD_DEFAULTS);
+  const [phase, setPhase] = useState<WizardPhase>('answering');
   const [tree, setTree] = useState<GeneratedProgramTree | null>(null);
-  const [name, setName] = useState(defaultGeneratedRoutineName(TRACER_DEFAULTS.trainingGoal, TRACER_DEFAULTS.splitPreference));
+  const [exerciseNames, setExerciseNames] = useState<Map<string, string>>(new Map());
+  const [name, setName] = useState('');
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const names = await loadExerciseNameMap(getPowerSync());
+        if (mounted) setExerciseNames(names);
+      } catch (caught) {
+        console.error('exercise name map load failed', caught);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const validationError = validateWizardAnswers(answers);
+
+  const messageFor = useCallback(
+    (field: keyof WizardAnswers): string | null => {
+      if (validationError === null) return null;
+      if (errorField(validationError) !== field) return null;
+      return fieldErrorMessage(validationError);
+    },
+    [validationError],
+  );
+
+  const update = useCallback((patch: Partial<WizardAnswers>) => {
+    setAnswers((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const runWith = useCallback(
+    async (nextAnswers: WizardAnswers) => {
+      if (!userId) return;
+      if (validateWizardAnswers(nextAnswers) !== null) return;
+
+      setError(null);
+      setGenerating(true);
+      try {
+        const generated = await runGeneration(userId, getPowerSync(), DEFAULT_GENERATE_SCREEN_DEPS, nextAnswers);
+        setTree(generated);
+        setName((current) =>
+          current.trim().length > 0
+            ? current
+            : defaultGeneratedRoutineName(nextAnswers.trainingGoal ?? 'hypertrophy', nextAnswers.splitPreference),
+        );
+        setPhase('previewing');
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Could not generate a program');
+      } finally {
+        setGenerating(false);
+      }
+    },
+    [userId],
+  );
+
   const handleGenerate = useCallback(async () => {
-    if (!userId) return;
-    setError(null);
-    setGenerating(true);
-    try {
-      const generated = await runGeneration(userId, getPowerSync());
-      setTree(generated);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not generate a program');
-    } finally {
-      setGenerating(false);
-    }
-  }, [userId]);
+    await runWith(answers);
+  }, [answers, runWith]);
+
+  const handleRegenerate = useCallback(async () => {
+    const rerolled = { ...answers, variantSeed: nextVariantSeed(answers.variantSeed) };
+    setAnswers(rerolled);
+    await runWith(rerolled);
+  }, [answers, runWith]);
 
   const handleSave = useCallback(async () => {
-    if (!tree) return;
+    if (!tree || saving) return;
     setError(null);
     setSaving(true);
     try {
@@ -216,52 +353,159 @@ export default function GenerateProgramScreen() {
     } finally {
       setSaving(false);
     }
-  }, [name, router, tree]);
+  }, [name, router, saving, tree]);
+
+  const stepTitle = (key: string): string => WIZARD_STEPS.find((step) => step.key === key)?.title ?? '';
+
+  if (phase === 'previewing' && tree) {
+    return (
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
+        <View className="mt-xl gap-md">
+          <Text className="text-heading font-semibold text-foreground">Your program</Text>
+
+          {error ? <ErrorBanner message={error} /> : null}
+
+          <TextField label="Program name" value={name} onChangeText={setName} />
+
+          <GeneratedProgramPreview tree={tree} exerciseNames={exerciseNames} />
+
+          <View className="gap-sm">
+            <PrimaryButton label="Save Program" onPress={() => void handleSave()} submitting={saving} />
+
+            <Pressable
+              onPress={() => void handleRegenerate()}
+              accessibilityRole="button"
+              accessibilityLabel="Regenerate"
+              style={{ minHeight: 48, justifyContent: 'center' }}
+            >
+              <Text className="text-body font-normal text-accent">Regenerate</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setPhase('answering')}
+              accessibilityRole="button"
+              accessibilityLabel="Change your answers"
+              style={{ minHeight: 48, justifyContent: 'center' }}
+            >
+              <Text className="text-body font-normal text-foreground-muted">Change your answers</Text>
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
-      <View className="mt-xl gap-md">
+      <View className="mt-xl gap-lg">
         <Text className="text-heading font-semibold text-foreground">Generate Program</Text>
 
-        {error ? <Text className="text-body font-normal text-destructive">{error}</Text> : null}
+        {error ? <ErrorBanner message={error} /> : null}
 
-        {!tree ? (
-          <PrimaryButton label="Generate" onPress={() => void handleGenerate()} submitting={generating} />
-        ) : (
-          <View className="gap-md">
-            <Text className="text-body font-normal text-foreground-muted">{name}</Text>
+        <SelectField
+          label={stepTitle('goal')}
+          value={answers.trainingGoal}
+          options={TRAINING_GOALS.map((goal) => ({ value: goal, label: TRAINING_GOAL_LABEL[goal] }))}
+          placeholder="Choose a goal"
+          onChange={(value) => update({ trainingGoal: value as TrainingGoal })}
+          error={messageFor('trainingGoal')}
+        />
 
-            {tree.degradations.length > 0 ? (
-              <View className="gap-xs">
-                {tree.degradations.map((entry, index) => (
-                  <Text key={index} className="text-label font-normal text-foreground-muted">
-                    {entry.detail}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
+        <SelectField
+          label={stepTitle('experience')}
+          value={answers.experienceLevel}
+          options={EXPERIENCE_LEVELS.map((level) => ({ value: level, label: EXPERIENCE_LEVEL_LABEL[level] }))}
+          placeholder="Choose how long you have been lifting"
+          onChange={(value) => update({ experienceLevel: value as ExperienceLevel })}
+          error={messageFor('experienceLevel')}
+        />
 
-            {tree.cycles.map((cycle) => (
-              <Text key={cycle.key} className="text-label font-normal text-foreground-muted">
-                {cycle.name}
-              </Text>
-            ))}
+        <TextField
+          label="Training days per week"
+          value={String(answers.daysPerWeek)}
+          keyboardType="number-pad"
+          onChangeText={(value) => update({ daysPerWeek: parseWholeNumber(value) })}
+          error={messageFor('daysPerWeek')}
+        />
 
-            {tree.days.map((day) => (
-              <View key={day.key} className="gap-xs">
-                <Text className="text-body font-semibold text-foreground">{day.name}</Text>
-                {day.slots.map((slot) => (
-                  <Text key={slot.key} className="text-label font-normal text-foreground-muted">
-                    {slot.exerciseId} — {slot.base.targetSets} x {slot.base.targetRepMin}-{slot.base.targetRepMax} @ RIR{' '}
-                    {slot.base.targetRir}
-                  </Text>
-                ))}
-              </View>
-            ))}
+        <TextField
+          label="Minutes per session"
+          value={String(answers.sessionLengthMinutes)}
+          keyboardType="number-pad"
+          onChangeText={(value) => update({ sessionLengthMinutes: parseWholeNumber(value) })}
+          error={messageFor('sessionLengthMinutes')}
+        />
 
-            <PrimaryButton label="Save Program" onPress={() => void handleSave()} submitting={saving} />
-          </View>
-        )}
+        <SelectField
+          label={stepTitle('split')}
+          value={answers.splitPreference}
+          options={SPLIT_PREFERENCES.map((preference) => ({
+            value: preference,
+            label: SPLIT_PREFERENCE_LABEL[preference],
+          }))}
+          placeholder="Choose how to divide the week"
+          onChange={(value) => update({ splitPreference: value as SplitPreference })}
+        />
+
+        <View className="gap-sm">
+          <Text className="text-body font-semibold text-foreground">{stepTitle('emphasis')}</Text>
+          <Text className="text-label font-normal text-foreground-muted">
+            Everything starts at Normal. Choosing More gives a muscle group extra sets each week; choosing Less gives it
+            fewer, and frees that time for the rest.
+          </Text>
+
+          {emphasisRegions().map((region) => (
+            <View key={region.region} className="gap-xs">
+              <Text className="text-label font-normal text-foreground-muted">{region.label}</Text>
+              {region.muscleGroupIds.map((groupId) => (
+                <SelectField
+                  key={groupId}
+                  label={MUSCLE_GROUP_LABEL[groupId]}
+                  // Absent means normal — see buildGenerationInput. The control shows Normal
+                  // selected without writing it into the answers.
+                  value={answers.emphasis[groupId] ?? 'normal'}
+                  options={EMPHASIS_LEVELS.map((level) => ({ value: level, label: EMPHASIS_LEVEL_LABEL[level] }))}
+                  placeholder="Normal"
+                  onChange={(value) => {
+                    const level = value as EmphasisLevel;
+                    const nextEmphasis = { ...answers.emphasis };
+                    if (level === 'normal') delete nextEmphasis[groupId];
+                    else nextEmphasis[groupId] = level;
+                    update({ emphasis: nextEmphasis });
+                  }}
+                />
+              ))}
+            </View>
+          ))}
+        </View>
+
+        <SelectField
+          label={stepTitle('deload')}
+          value={answers.deloadPlacement}
+          options={DELOAD_PLACEMENTS.map((placement) => ({ value: placement, label: DELOAD_PLACEMENT_LABEL[placement] }))}
+          placeholder="Choose when to deload"
+          onChange={(value) => update({ deloadPlacement: value as DeloadPlacement })}
+        />
+
+        {answers.deloadPlacement === 'every_n_cycles' ? (
+          <TextField
+            label="Deload every how many cycles"
+            value={answers.deloadEveryNCycles === null ? '' : String(answers.deloadEveryNCycles)}
+            keyboardType="number-pad"
+            onChangeText={(value) => update({ deloadEveryNCycles: parseWholeNumber(value) })}
+            error={messageFor('deloadEveryNCycles')}
+          />
+        ) : null}
+
+        <TextField
+          label="How many cycles"
+          value={String(answers.trainingCycleCount)}
+          keyboardType="number-pad"
+          onChangeText={(value) => update({ trainingCycleCount: parseWholeNumber(value) })}
+          error={messageFor('trainingCycleCount')}
+        />
+
+        <PrimaryButton label="Generate" onPress={() => void handleGenerate()} submitting={generating} />
       </View>
     </ScrollView>
   );

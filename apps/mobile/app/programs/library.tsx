@@ -24,6 +24,22 @@ import {
 
 const SKELETON_ROW_COUNT = 3;
 
+export const GENERATE_PROGRAM_ROUTE = '/programs/generate';
+const NEW_PROGRAM_ROUTE = '/programs/new';
+
+export interface LibraryEntryPoint {
+  route: string;
+  label: string;
+}
+
+// Both ways in, in both states. An entry point that only appears once the user already owns a
+// program is one a new user never discovers, so the empty state gets the same list rather than a
+// reduced one.
+export const LIBRARY_ENTRY_POINTS: readonly LibraryEntryPoint[] = [
+  { route: NEW_PROGRAM_ROUTE, label: 'New Program' },
+  { route: GENERATE_PROGRAM_ROUTE, label: 'Generate Program' },
+];
+
 export type LibraryScreenState = 'error' | 'loading' | 'empty' | 'populated';
 
 export interface LibraryScreenStateInput {
@@ -431,14 +447,17 @@ export default function ProgramLibraryScreen() {
           screenState === 'empty' ? (
             <View className="mt-xl items-center gap-sm">
               <Text className="text-center text-heading font-semibold text-foreground">No other programs yet</Text>
-              <Pressable
-                onPress={() => router.push('/programs/new')}
-                accessibilityRole="button"
-                accessibilityLabel="New Program"
-                style={{ minHeight: 48, justifyContent: 'center' }}
-              >
-                <Text className="text-body font-normal text-accent">New Program</Text>
-              </Pressable>
+              {LIBRARY_ENTRY_POINTS.map((entry) => (
+                <Pressable
+                  key={entry.route}
+                  onPress={() => router.push(entry.route)}
+                  accessibilityRole="button"
+                  accessibilityLabel={entry.label}
+                  style={{ minHeight: 48, justifyContent: 'center' }}
+                >
+                  <Text className="text-body font-normal text-accent">{entry.label}</Text>
+                </Pressable>
+              ))}
             </View>
           ) : screenState === 'loading' ? (
             <View className="mt-xl gap-sm">
@@ -450,15 +469,19 @@ export default function ProgramLibraryScreen() {
         }
         ListFooterComponent={
           screenState === 'populated' ? (
-            <Pressable
-              onPress={() => router.push('/programs/new')}
-              accessibilityRole="button"
-              accessibilityLabel="New Program"
-              style={{ minHeight: 48, justifyContent: 'center' }}
-              className="mt-lg"
-            >
-              <Text className="text-body font-normal text-accent">New Program</Text>
-            </Pressable>
+            <View className="mt-lg gap-sm">
+              {LIBRARY_ENTRY_POINTS.map((entry) => (
+                <Pressable
+                  key={entry.route}
+                  onPress={() => router.push(entry.route)}
+                  accessibilityRole="button"
+                  accessibilityLabel={entry.label}
+                  style={{ minHeight: 48, justifyContent: 'center' }}
+                >
+                  <Text className="text-body font-normal text-accent">{entry.label}</Text>
+                </Pressable>
+              ))}
+            </View>
           ) : null
         }
       />
