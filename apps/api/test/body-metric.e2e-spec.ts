@@ -1,0 +1,191 @@
+import { ChildProcess, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:net';
+import { resolve } from 'node:path';
+import { config } from 'dotenv';
+import { Client } from 'pg';
+import request from 'supertest';
+import { SYNC_PUSH_PATH, type SyncCrudOp, type SyncCrudOpType, type SyncPushRequest, type SyncPushResponse } from '@fitness/api-contracts';
+
+config({ path: [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../../.env')] });
+
+// Same reason as excluded-exercise.e2e-spec.ts / user-exercise-preference.e2e-spec.ts:
+// @thallesp/nestjs-better-auth and better-auth are ESM-only, so this suite drives the built
+// artifact over real HTTP rather than an in-process testing module.
+const AUTH_BASE_PATH = '/v1/auth';
+const PASSWORD = 'correct-horse-battery-staple';
+
+let api: ChildProcess;
+let baseUrl: string;
+let pg: Client;
+const createdEmails: string[] = [];
+
+function freePort(): Promise<number> {
+  return new Promise((res, rej) => {
+    const srv = createServer();
+    srv.unref();
+    srv.on('error', rej);
+    srv.listen(0, () => {
+      const { port } = srv.address() as { port: number };
+      srv.close(() => res(port));
+    });
+  });
+}
+
+async function waitForReady(url: string, timeoutMs = 30000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await request(url).get(`${AUTH_BASE_PATH}/get-session`);
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  throw new Error(`API did not become ready at ${url} within ${timeoutMs}ms`);
+}
+
+function freshEmail(tag: string): string {
+  const email = `e2e-bm-${tag}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
+  createdEmails.push(email);
+  return email;
+}
+
+function sessionCookie(res: request.Response): string {
+  const raw = res.headers['set-cookie'];
+  const cookies = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  const match = cookies.find((c) => c.includes('better-auth.session_token='));
+  if (!match) throw new Error('sign-up did not return a session cookie');
+  return match.split(';')[0];
+}
+
+async function signUp(tag: string): Promise<{ cookie: string; userId: string }> {
+  const email = freshEmail(tag);
+  const res = await request(baseUrl)
+    .post(`${AUTH_BASE_PATH}/sign-up/email`)
+    .send({ email, password: PASSWORD, name: `E2E ${tag}` })
+    .expect(200);
+  const cookie = sessionCookie(res);
+  const userId: string = res.body.user.id;
+  return { cookie, userId };
+}
+
+async function push(cookie: string, batch: SyncCrudOp[]): Promise<request.Response> {
+  const body: SyncPushRequest = { batch };
+  return request(baseUrl).post(SYNC_PUSH_PATH).send(body).set('Cookie', cookie);
+}
+
+function bodyMetricOp(id: string, data: Record<string, unknown>, op: SyncCrudOpType = 'PUT'): SyncCrudOp {
+  return { op_id: randomUUID(), op, type: 'body_metric', id, data };
+}
+
+interface BodyMetricRow {
+  id: string;
+  user_id: string;
+  kind: string;
+  value: string;
+  recorded_at: string;
+  timezone: string;
+  local_date: string;
+}
+
+async function bodyMetricRow(id: string): Promise<BodyMetricRow | undefined> {
+  const { rows } = await pg.query(
+    'SELECT id, user_id, kind, value, recorded_at, timezone, local_date FROM body_metric WHERE id = $1',
+    [id],
+  );
+  return rows[0];
+}
+
+beforeAll(async () => {
+  const port = await freePort();
+  baseUrl = `http://127.0.0.1:${port}`;
+
+  api = spawn(process.execPath, [resolve(__dirname, '../dist/main.js')], {
+    env: { ...process.env, PORT: String(port), AUTH_RATE_LIMIT_MAX: '1000', AUTH_RATE_LIMIT_WINDOW: '60' },
+    stdio: 'pipe',
+  });
+  api.stderr?.on('data', (d) => process.stderr.write(`[api] ${d}`));
+
+  await waitForReady(baseUrl);
+
+  pg = new Client({ connectionString: process.env.DATABASE_URL });
+  await pg.connect();
+}, 60000);
+
+afterAll(async () => {
+  if (pg) {
+    if (createdEmails.length > 0) {
+      await pg.query('DELETE FROM "user" WHERE email = ANY($1::text[])', [createdEmails]);
+    }
+    await pg.end();
+  }
+  if (api && !api.killed) {
+    api.kill('SIGTERM');
+  }
+});
+
+describe('body_metric sync (e2e)', () => {
+  it('stores a bodyweight PUT with the recorded value, kind and calendar-day stamp', async () => {
+    const { cookie, userId } = await signUp('happy-path');
+    const id = randomUUID();
+
+    const op = bodyMetricOp(id, {
+      kind: 'bodyweight',
+      value: '82.500',
+      recorded_at: '2026-08-30T11:45:00.000Z',
+      timezone: 'America/New_York',
+      local_date: '2026-08-30',
+    });
+    const res = await push(cookie, [op]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([op.op_id]);
+    expect(body.rejected).toEqual([]);
+
+    const row = await bodyMetricRow(id);
+    expect(row?.user_id).toBe(userId);
+    expect(row?.kind).toBe('bodyweight');
+    expect(Number(row?.value)).toBeCloseTo(82.5);
+    expect(row?.timezone).toBe('America/New_York');
+  });
+
+  it("stores a PUT against the authenticated session's user id, never a user_id claimed in the payload (T-12-01)", async () => {
+    const { cookie, userId } = await signUp('claimed-user-id');
+    const id = randomUUID();
+
+    const op = bodyMetricOp(id, {
+      user_id: 'someone-else-entirely',
+      kind: 'bodyweight',
+      value: '90',
+      local_date: '2026-08-30',
+    });
+    const res = await push(cookie, [op]);
+    const body: SyncPushResponse = res.body;
+    expect(body.applied).toEqual([op.op_id]);
+    expect(body.rejected).toEqual([]);
+
+    const row = await bodyMetricRow(id);
+    expect(row?.user_id).toBe(userId);
+    expect(row?.user_id).not.toBe('someone-else-entirely');
+  });
+
+  it('rejects a PUT whose kind is outside the vocabulary with invalid_field, and writes no row (T-12-02)', async () => {
+    const { cookie } = await signUp('bad-kind');
+    const id = randomUUID();
+
+    const op = bodyMetricOp(id, { kind: 'not_a_real_kind', value: '10' });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
+    expect(await bodyMetricRow(id)).toBeUndefined();
+  });
+
+  it('rejects a PUT whose value is negative with invalid_field, and writes no row (T-12-02)', async () => {
+    const { cookie } = await signUp('negative-value');
+    const id = randomUUID();
+
+    const op = bodyMetricOp(id, { kind: 'bodyweight', value: '-5' });
+    const res = await push(cookie, [op]);
+    expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
+    expect(await bodyMetricRow(id)).toBeUndefined();
+  });
+});

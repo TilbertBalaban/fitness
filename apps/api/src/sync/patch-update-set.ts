@@ -91,6 +91,19 @@ export interface ExcludedExerciseValues {
   createdAt: Date;
 }
 
+// value/kind/recordedAt/timezone/localDate are all genuinely client-patchable — editing a logged
+// metric entry (D-10) legitimately changes its value or reclassifies its kind, unlike
+// excluded_exercise's exerciseId identity field.
+export interface BodyMetricValues {
+  id: string;
+  userId: string;
+  kind: string;
+  value: string;
+  recordedAt: Date;
+  timezone: string;
+  localDate: string;
+}
+
 export interface RoutineValues {
   id: string;
   userId: string;
@@ -416,6 +429,21 @@ export const ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS: PatchFieldMap<RoutineEx
 // data.user_id. Every other field — including the three JSONB columns — is genuinely client-owned
 // and maps to its own wire key; the JSONB columns carry pre-validated (hasInvalidField) JS values
 // straight through, same as any other column here.
+// id/userId are server-derived and written unconditionally, mirroring PERSONAL_RECORD_PATCH_FIELDS'
+// ownership guarantee: userId always comes from the authenticated session, never from data.user_id
+// (T-12-01). Every other field is genuinely client-owned and maps to its own wire key — an edit of
+// a logged entry (D-10) legitimately patches value and kind, unlike excluded_exercise's identity
+// exerciseId.
+export const BODY_METRIC_PATCH_FIELDS: PatchFieldMap<BodyMetricValues> = {
+  id: null,
+  userId: null,
+  kind: 'kind',
+  value: 'value',
+  recordedAt: 'recorded_at',
+  timezone: 'timezone',
+  localDate: 'local_date',
+};
+
 export const EQUIPMENT_PROFILE_PATCH_FIELDS: PatchFieldMap<EquipmentProfileValues> = {
   id: null,
   userId: null,

@@ -53,7 +53,9 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // is never a sync parent, the same shape personal_record carries. 'excluded_exercise' (11-02) is a
 // seventh singleton root, alongside exercise/user_exercise_preference/user_preference/
 // personal_record/equipment_profile — a user's exclusion of an exercise owns no synced children and
-// is never referenced as a parent by another table's op.
+// is never referenced as a parent by another table's op. 'body_metric' (12-01) is an eighth: a
+// logged weigh-in or measurement owns no synced children and is never referenced as a parent — the
+// same shape personal_record already established (D-01/D-05).
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -69,6 +71,7 @@ export const PUSH_APPLIED_TABLES = [
   'personal_record',
   'equipment_profile',
   'excluded_exercise',
+  'body_metric',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 
@@ -77,12 +80,12 @@ export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 // when that phase ships. Verified against ROADMAP.md's phase ownership, not guessed:
 // routine_day and routine_exercise moved to PUSH_APPLIED_TABLES in 04-02, user_preference moved
 // in 04-04 (PROG-08 needed activation to sync before Phase 6 could exist), personal_record moved in
-// 05-03 (D-30 — the apply path could not wait for Phase 9), and equipment_profile moved in 06-01 —
-// Phase 4 no longer owes either of its two here, Phase 9 no longer owes personal_record, and Phase 6
-// no longer owes equipment_profile. Only Phase 12's two tables remain.
+// 05-03 (D-30 — the apply path could not wait for Phase 9), equipment_profile moved in 06-01, and
+// body_metric moved in 12-01 — Phase 4 no longer owes either of its two here, Phase 9 no longer owes
+// personal_record, Phase 6 no longer owes equipment_profile, and Phase 12 no longer owes
+// body_metric. Only progress_photo remains, owned by 12-04.
 export const PUSH_DEFERRED_TABLES = [
-  'body_metric', // Phase 12 — Body Metrics & Dashboard
-  'progress_photo', // Phase 12 — Body Metrics & Dashboard
+  'progress_photo', // Phase 12 — Body Metrics & Dashboard (12-04)
 ] as const;
 export type PushDeferredTable = (typeof PUSH_DEFERRED_TABLES)[number];
 

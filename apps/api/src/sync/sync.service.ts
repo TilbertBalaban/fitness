@@ -11,6 +11,7 @@ import {
   WORKOUT_SESSION_STATUSES,
   SET_TYPES as SET_TYPE_TUPLE,
   PR_TYPES as PR_TYPE_TUPLE,
+  BODY_METRIC_KIND_SET,
   DEFAULT_PROGRESSION_PREFERENCE,
   isProgressionPreference,
   isEquipmentProfilePlates,
@@ -38,6 +39,7 @@ import {
   userPreference,
   personalRecord,
   equipmentProfile,
+  bodyMetric,
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { classifyTransactionError } from './rejection-reason';
@@ -50,6 +52,7 @@ import {
   type TombstoneKey,
 } from './conflict-log';
 import {
+  BODY_METRIC_PATCH_FIELDS,
   EQUIPMENT_PROFILE_PATCH_FIELDS,
   EXCLUDED_EXERCISE_PATCH_FIELDS,
   EXERCISE_PATCH_FIELDS,
@@ -65,6 +68,7 @@ import {
   USER_EXERCISE_PREFERENCE_PATCH_FIELDS,
   USER_PREFERENCE_PATCH_FIELDS,
   WORKOUT_SESSION_PATCH_FIELDS,
+  type BodyMetricValues,
   type EquipmentProfileValues,
   type ExcludedExerciseValues,
   type ExerciseValues,
@@ -96,6 +100,7 @@ const TABLE_MAP = {
   personal_record: personalRecord,
   equipment_profile: equipmentProfile,
   excluded_exercise: excludedExercise,
+  body_metric: bodyMetric,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -124,7 +129,9 @@ const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 // parent, the same shape as personal_record — unlike exercise its userId column is NOT NULL, so it
 // follows personal_record's ownership branch, never exercise's nullable-owner special case.
 // excluded_exercise (11-02) is a seventh: a user's exclusion of an exercise owns no synced children
-// and is never referenced as a parent, the same shape as user_exercise_preference.
+// and is never referenced as a parent, the same shape as user_exercise_preference. body_metric
+// (12-01) is an eighth: a logged weigh-in or measurement owns no synced children and is never
+// referenced as a parent — the same shape personal_record already established.
 const SINGLETON_ROOT_TYPES = new Set<string>([
   'exercise',
   'user_exercise_preference',
@@ -132,6 +139,7 @@ const SINGLETON_ROOT_TYPES = new Set<string>([
   'personal_record',
   'equipment_profile',
   'excluded_exercise',
+  'body_metric',
 ]);
 
 // An aggregate root owns synced children and is looked up in its own table; a singleton root
@@ -154,6 +162,7 @@ const ROOT_TABLE_BY_TYPE = {
   personal_record: personalRecord,
   equipment_profile: equipmentProfile,
   excluded_exercise: excludedExercise,
+  body_metric: bodyMetric,
 } as const;
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
@@ -215,6 +224,7 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   personal_record: 0,
   equipment_profile: 0,
   excluded_exercise: 0,
+  body_metric: 0,
 };
 
 const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -340,6 +350,17 @@ interface PersonalRecordOpData {
   logged_set_id?: string | null;
   achieved_at?: string;
   reconciled_at?: string | null;
+}
+
+interface BodyMetricOpData {
+  kind?: string;
+  value?: string | number;
+  recorded_at?: string;
+  timezone?: string;
+  local_date?: string;
+  // Never read — accepted only so a present user_id key does not crash the presence check in
+  // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
+  user_id?: unknown;
 }
 
 interface EquipmentProfileOpData {
@@ -556,6 +577,26 @@ function toExcludedExerciseValues(
     userId,
     exerciseId: storedExerciseId ?? d.exercise_id ?? '',
     createdAt: d.created_at ? new Date(d.created_at) : new Date(),
+  };
+}
+
+// userId always comes from the authenticated session argument, never from data.user_id — a client
+// cannot claim a weigh-in or measurement belongs to another user by naming a different owner in the
+// payload (T-12-01, mirrored from toPersonalRecordValues). Unlike excluded_exercise/
+// user_exercise_preference, kind carries no reparenting hazard: it is genuinely client-patchable
+// data on this table (D-10), not identity, so no stored-linkage resolver is needed here.
+// normalizeRequiredDecimal mirrors toPersonalRecordValues' own value handling — value is NOT NULL
+// on both ends and never becomes a binary float (D-03).
+function toBodyMetricValues(id: string, userId: string, data: Record<string, unknown> | null | undefined): BodyMetricValues {
+  const d = (data ?? {}) as BodyMetricOpData;
+  return {
+    id,
+    userId,
+    kind: d.kind ?? '',
+    value: normalizeRequiredDecimal(d.value),
+    recordedAt: d.recorded_at ? new Date(d.recorded_at) : new Date(),
+    timezone: d.timezone ?? 'UTC',
+    localDate: d.local_date ?? new Date().toISOString().slice(0, 10),
   };
 }
 
@@ -962,6 +1003,22 @@ export function hasInvalidField(op: SyncCrudOp): boolean {
   if (op.type === 'excluded_exercise') {
     const d = data as ExcludedExerciseOpData;
     if (typeof d.exercise_id !== 'string' || d.exercise_id.length === 0) return true;
+    return false;
+  }
+
+  if (op.type === 'body_metric') {
+    const d = data as BodyMetricOpData;
+    if (d.kind !== undefined && !(typeof d.kind === 'string' && BODY_METRIC_KIND_SET.has(d.kind))) {
+      return true;
+    }
+    if (d.value !== undefined && !isNonNegativeDecimalOrNull(d.value)) return true;
+    if (!isValidOptionalIsoOrNull(d.recorded_at)) return true;
+    if (
+      d.local_date !== undefined &&
+      !(typeof d.local_date === 'string' && LOCAL_DATE_RE.test(d.local_date))
+    ) {
+      return true;
+    }
     return false;
   }
 
@@ -1557,6 +1614,7 @@ export class SyncService {
     const personalRecordRootIds = rootIdsByRootType.get('personal_record') ?? [];
     const equipmentProfileRootIds = rootIdsByRootType.get('equipment_profile') ?? [];
     const excludedExerciseRootIds = rootIdsByRootType.get('excluded_exercise') ?? [];
+    const bodyMetricRootIds = rootIdsByRootType.get('body_metric') ?? [];
 
     const existingRoots = workoutSessionRootIds.length
       ? await this.db
@@ -1637,6 +1695,16 @@ export class SyncService {
           .from(equipmentProfile)
           .where(inArray(equipmentProfile.id, equipmentProfileRootIds))
       : [];
+    // body_metric.userId is NOT NULL, the same ownership shape as personal_record — kind carries no
+    // reparenting hazard (D-10 makes it genuinely client-patchable, not identity), so unlike
+    // excluded_exercise/user_exercise_preference this lookup reads only id+userId, never a second
+    // identity column.
+    const existingBodyMetricRoots = bodyMetricRootIds.length
+      ? await this.db
+          .select({ id: bodyMetric.id, userId: bodyMetric.userId })
+          .from(bodyMetric)
+          .where(inArray(bodyMetric.id, bodyMetricRootIds))
+      : [];
     // Keyed by aggregateKey, not by the bare id, for the same reason the aggregate map is: two
     // roots of different types sharing one id would otherwise overwrite each other here and hand
     // one aggregate the other's owner.
@@ -1658,6 +1726,10 @@ export class SyncService {
       ]),
       ...existingExcludedExerciseRoots.map((row): [string, string | null] => [
         aggregateKey('excluded_exercise', row.id),
+        row.userId,
+      ]),
+      ...existingBodyMetricRoots.map((row): [string, string | null] => [
+        aggregateKey('body_metric', row.id),
         row.userId,
       ]),
     ]);
@@ -1929,7 +2001,9 @@ export class SyncService {
                         )
                       : op.type === 'excluded_exercise'
                         ? toExcludedExerciseValues(op.id, userId, op.data, dbExerciseIdByExcludedExerciseId.get(op.id))
-                        : op.type === 'routine'
+                        : op.type === 'body_metric'
+                          ? toBodyMetricValues(op.id, userId, op.data)
+                          : op.type === 'routine'
                           ? toRoutineValues(op.id, userId, op.data)
                           : op.type === 'routine_day'
                           ? toRoutineDayValues(op.id, resolveRoutineIdForRoutineDay(op.id) ?? root, op.data)
@@ -2027,6 +2101,22 @@ export class SyncService {
                 },
               })
               .returning({ serverSeq: excludedExercise.serverSeq });
+            const seqValue = BigInt(serverSeq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else if (op.type === 'body_metric') {
+            // body_metric — an eighth singleton root (SINGLETON_ROOT_TYPES, 12-01), inserted/
+            // upserted the same shape as personal_record: server_seq on insert and on the conflict
+            // set, since a singleton root carries its own server_seq like any other aggregate root.
+            const nextSeq = sql`nextval('sync_seq')`;
+            const bodyMetricValues = values as BodyMetricValues;
+            const [{ serverSeq }] = await tx
+              .insert(bodyMetric)
+              .values({ ...bodyMetricValues, serverSeq: nextSeq })
+              .onConflictDoUpdate({
+                target: bodyMetric.id,
+                set: { ...patchAwareSet(op, bodyMetricValues, BODY_METRIC_PATCH_FIELDS), serverSeq: nextSeq },
+              })
+              .returning({ serverSeq: bodyMetric.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           } else if (op.type === 'routine_day') {

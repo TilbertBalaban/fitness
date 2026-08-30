@@ -47,3 +47,4 @@ export * from './session';
 export * from './equipment';
 export * from './progression';
 export * from './generation';
+export * from './body-metrics';
