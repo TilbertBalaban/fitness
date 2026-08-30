@@ -42,10 +42,10 @@ describe('exercises route hoisting (WR-03 regression)', () => {
       expect(exercisesChildren[0].type).toBe('layout');
     });
 
-    it('nests the detail, edit, index and new routes under the exercises node', () => {
+    it('nests the detail, edit, exclusions, index and new routes under the exercises node', () => {
       const exercisesNode = tree.children.find((child) => child.route === 'exercises')!;
       const childRoutes = exercisesNode.children.map((child) => child.route).sort();
-      expect(childRoutes).toEqual(['[id]', 'edit/[id]', 'index', 'new']);
+      expect(childRoutes).toEqual(['[id]', 'edit/[id]', 'exclusions', 'index', 'new']);
     });
 
     it('has no root-level child whose route starts with exercises/', () => {
@@ -64,9 +64,15 @@ describe('exercises route hoisting (WR-03 regression)', () => {
       expect(nested).not.toEqual(expect.arrayContaining(['[id]', 'new', 'edit/[id]']));
     });
 
-    it('hoists all four exercises routes to the root stack as exercises/-prefixed siblings', () => {
+    it('hoists all five exercises routes to the root stack as exercises/-prefixed siblings', () => {
       const leakedRoutes = tree.children.filter((child) => child.route.startsWith('exercises/')).map((child) => child.route).sort();
-      expect(leakedRoutes).toEqual(['exercises/[id]', 'exercises/edit/[id]', 'exercises/index', 'exercises/new']);
+      expect(leakedRoutes).toEqual([
+        'exercises/[id]',
+        'exercises/edit/[id]',
+        'exercises/exclusions',
+        'exercises/index',
+        'exercises/new',
+      ]);
     });
 
     it('has no root-level child named exactly exercises — the protected Stack.Screen matches nothing', () => {
