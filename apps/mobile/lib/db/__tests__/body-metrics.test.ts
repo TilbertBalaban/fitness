@@ -1,5 +1,6 @@
 import { Column, is, Param, SQL } from 'drizzle-orm';
-import { logMetric, loadLatestMetric } from '../body-metrics';
+import { BODY_METRIC_KIND_ORDER } from '@fitness/api-contracts';
+import { loadLatestMetric, loadTrackedKindSummaries, loadTrackedKinds, logMetric } from '../body-metrics';
 import { captureCalendarDay } from '../../calendar-day';
 import { getPowerSync } from '../powersync';
 import { bodyMetric } from '../schema';
@@ -35,6 +36,9 @@ function fakeDb(seed: Row[] = []) {
         where: (condition: unknown) => {
           const pairs = collectEqPairs(condition);
           const matched = rows.filter((row) => pairs.every(([col, val]) => row[col] === val));
+          // Both directly awaitable (loadTrackedKindSummaries's single batched read) and
+          // .orderBy().limit()-chainable (loadLatestMetric) — the same two shapes the real
+          // drizzle query builder supports on the same returned object.
           return {
             orderBy: () => ({
               limit: (n: number) =>
@@ -45,6 +49,8 @@ function fakeDb(seed: Row[] = []) {
                     .slice(0, n),
                 ),
             }),
+            then: (resolve: (rows: Row[]) => void, reject: (error: unknown) => void) =>
+              Promise.resolve(matched).then(resolve, reject),
           };
         },
       }),
@@ -132,5 +138,64 @@ describe('loadLatestMetric', () => {
     const { db } = fakeDb([]);
 
     await expect(loadLatestMetric('user-1', 'bodyweight', db)).resolves.toBeUndefined();
+  });
+});
+
+describe('loadTrackedKindSummaries', () => {
+  it('returns the latest row per kind, sorted by BODY_METRIC_KIND_ORDER — never insertion order', async () => {
+    const { db } = fakeDb([
+      { id: 'a', userId: 'user-1', kind: 'waist', value: '80.0', recordedAt: '2026-08-01T09:00:00.000Z', timezone: 'UTC', localDate: '2026-08-01' },
+      { id: 'b', userId: 'user-1', kind: 'bodyweight', value: '81.000', recordedAt: '2026-08-02T09:00:00.000Z', timezone: 'UTC', localDate: '2026-08-02' },
+      { id: 'c', userId: 'user-1', kind: 'waist', value: '79.5', recordedAt: '2026-08-10T09:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+    ]);
+
+    const summaries = await loadTrackedKindSummaries('user-1', db);
+
+    expect(summaries.map((row) => row.kind)).toEqual(['bodyweight', 'waist']);
+    expect(summaries.find((row) => row.kind === 'waist')?.value).toBe('79.5');
+  });
+
+  it('returns an empty array when the user has never logged anything', async () => {
+    const { db } = fakeDb([]);
+
+    await expect(loadTrackedKindSummaries('user-1', db)).resolves.toEqual([]);
+  });
+
+  it('never queries once per kind — every member of BODY_METRIC_KIND_ORDER is resolvable from one read', async () => {
+    const rows = BODY_METRIC_KIND_ORDER.map((kind, index) => ({
+      id: `id-${index}`,
+      userId: 'user-1',
+      kind,
+      value: '1.0',
+      recordedAt: `2026-08-${String(index + 1).padStart(2, '0')}T09:00:00.000Z`,
+      timezone: 'UTC',
+      localDate: `2026-08-${String(index + 1).padStart(2, '0')}`,
+    }));
+    const { db } = fakeDb(rows);
+
+    const summaries = await loadTrackedKindSummaries('user-1', db);
+
+    expect(summaries.map((row) => row.kind)).toEqual([...BODY_METRIC_KIND_ORDER]);
+  });
+});
+
+describe('loadTrackedKinds', () => {
+  it('returns the set of kinds with at least one row for the user', async () => {
+    const { db } = fakeDb([
+      { id: 'a', userId: 'user-1', kind: 'waist', value: '80.0', recordedAt: '2026-08-01T09:00:00.000Z', timezone: 'UTC', localDate: '2026-08-01' },
+      { id: 'b', userId: 'user-1', kind: 'bodyweight', value: '81.000', recordedAt: '2026-08-02T09:00:00.000Z', timezone: 'UTC', localDate: '2026-08-02' },
+    ]);
+
+    const tracked = await loadTrackedKinds('user-1', db);
+
+    expect(tracked.has('waist')).toBe(true);
+    expect(tracked.has('bodyweight')).toBe(true);
+    expect(tracked.has('chest')).toBe(false);
+  });
+
+  it('returns an empty set when the user has never logged anything', async () => {
+    const { db } = fakeDb([]);
+
+    await expect(loadTrackedKinds('user-1', db)).resolves.toEqual(new Set());
   });
 });

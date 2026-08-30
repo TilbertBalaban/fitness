@@ -42,9 +42,12 @@ function collect(node: ReactNode, out: Record<string, unknown>[] = []): Record<s
 function renderSheet(overrides: Partial<MetricEntrySheetViewProps> = {}) {
   return MetricEntrySheetView({
     kind: 'bodyweight',
+    pickerKinds: [],
     unitLabel: 'kg',
     value: null,
     logEnabled: false,
+    writeFailed: false,
+    onSelectKind: jest.fn(),
     onKeypadPress: jest.fn(),
     onLog: jest.fn(),
     onCancel: jest.fn(),
@@ -90,5 +93,51 @@ describe('MetricEntrySheetView — keypad reducer', () => {
 
     expect(text).toContain('8');
     expect(logButton?.disabled).toBe(false);
+  });
+});
+
+describe('MetricEntrySheetView — quick-measurement kind picker (decision 6)', () => {
+  it('opened with no named kind, renders a kind picker over the tracked kinds excluding bodyweight', () => {
+    const view = renderSheet({ kind: null, pickerKinds: ['waist', 'chest'] });
+    const [chipRow] = collect(view).filter((props) => props.groupLabel === 'Measurement kind');
+
+    expect(chipRow).toBeDefined();
+    expect((chipRow.options as { id: string }[]).map((option) => option.id)).toEqual(['waist', 'chest']);
+    expect((chipRow.options as { id: string }[]).map((option) => option.id)).not.toContain('bodyweight');
+  });
+
+  it('opened with a named kind, renders no picker', () => {
+    const view = renderSheet({ kind: 'bodyweight', pickerKinds: ['waist', 'chest'] });
+    const chipRows = collect(view).filter((props) => props.groupLabel === 'Measurement kind');
+
+    expect(chipRows).toHaveLength(0);
+  });
+
+  it('selecting a chip calls onSelectKind with that kind', () => {
+    const onSelectKind = jest.fn();
+    const view = renderSheet({ kind: null, pickerKinds: ['waist', 'chest'], onSelectKind });
+    const [chipRow] = collect(view).filter((props) => props.groupLabel === 'Measurement kind');
+
+    (chipRow.onSelect as (id: string) => void)('waist');
+
+    expect(onSelectKind).toHaveBeenCalledWith('waist');
+  });
+});
+
+describe('MetricEntrySheetView — write-failed', () => {
+  it('renders the inline "Couldn\'t save. Try again." line and keeps Log enabled', () => {
+    const view = renderSheet({ value: '82.4', logEnabled: true, writeFailed: true });
+    const text = findText(view).join(' ');
+    const logButton = collect(view).find((props) => props.accessibilityLabel === 'Log');
+
+    expect(text).toContain("Couldn't save. Try again.");
+    expect(logButton?.disabled).toBe(false);
+  });
+
+  it('renders no failure line when the write has not failed', () => {
+    const view = renderSheet({ writeFailed: false });
+    const text = findText(view).join(' ');
+
+    expect(text).not.toContain("Couldn't save. Try again.");
   });
 });
