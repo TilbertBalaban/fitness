@@ -4,7 +4,9 @@
 jest.mock('../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
 jest.mock('../../lib/db/programs/next-up-query', () => ({ loadNextUp: jest.fn() }));
 
-import { resolveDashboardWidgets, readWeeklyProgress } from '../DashboardWidgetHost';
+import type { ReactElement, ReactNode } from 'react';
+import { WIDGET_KINDS } from '@fitness/api-contracts';
+import { DashboardWidgetHost, resolveDashboardWidgets, readWeeklyProgress, type KnownWidget } from '../DashboardWidgetHost';
 import type { DashboardWidgetRow } from '../../lib/db/dashboard-widgets';
 import type { WeeklyProgressData } from '../../lib/db/weekly-progress-query';
 
@@ -18,6 +20,12 @@ describe('resolveDashboardWidgets', () => {
     expect(resolveDashboardWidgets([row('w1', 'not_a_real_widget', 1024)])).toEqual([]);
   });
 
+  it('returns an empty list when every row is an unrecognised kind, without raising', () => {
+    const rows = [row('w1', 'not_a_real_widget', 1024), row('w2', 'also_not_real', 2048)];
+    expect(() => resolveDashboardWidgets(rows)).not.toThrow();
+    expect(resolveDashboardWidgets(rows)).toEqual([]);
+  });
+
   it('excludes a disabled row', () => {
     expect(resolveDashboardWidgets([row('w1', 'next_up', 1024, false)])).toEqual([]);
   });
@@ -29,6 +37,39 @@ describe('resolveDashboardWidgets', () => {
 
   it('returns a known kind untouched', () => {
     expect(resolveDashboardWidgets([row('w1', 'next_up', 1024)])).toEqual([{ id: 'w1', kind: 'next_up', position: 1024 }]);
+  });
+});
+
+// DashboardWidgetHost itself is hook-free — a direct call returns a Fragment of unexecuted JSX
+// element descriptors (each widget component's own hooks never run without a renderer), the same
+// direct-invocation technique DayDeck.test.tsx/SwapSuggestionList.test.tsx already use in this repo.
+type AnyElement = ReactElement<Record<string, unknown>>;
+
+function fragmentChildren(node: ReactNode): AnyElement[] {
+  if (node === null || node === undefined) return [];
+  const element = node as AnyElement;
+  const children = element.props?.children;
+  if (Array.isArray(children)) return children.filter((child): child is AnyElement => child !== null);
+  return [];
+}
+
+describe('DashboardWidgetHost', () => {
+  it('renders each of the six known kinds without raising when handed a row for it', () => {
+    const widgets: KnownWidget[] = WIDGET_KINDS.map((kind, index) => ({ id: `w${index}`, kind, position: index * 1024 }));
+
+    let element: ReturnType<typeof DashboardWidgetHost> | undefined;
+    expect(() => {
+      element = DashboardWidgetHost({ widgets, userId: 'u1' });
+    }).not.toThrow();
+
+    const children = fragmentChildren(element);
+    expect(children).toHaveLength(WIDGET_KINDS.length);
+    expect(children.every((child) => typeof child.type === 'function')).toBe(true);
+  });
+
+  it('renders nothing for an already-filtered empty widget list', () => {
+    const element = DashboardWidgetHost({ widgets: [], userId: 'u1' });
+    expect(fragmentChildren(element)).toEqual([]);
   });
 });
 
