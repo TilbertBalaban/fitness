@@ -2,7 +2,9 @@ import { Column, is, Param, SQL } from 'drizzle-orm';
 import {
   addWidget,
   DEFAULT_WIDGET_KINDS,
+  loadDashboardWidgets,
   loadOrMaterializeDashboardWidgets,
+  moveWidget,
   removeWidget,
   resolveAvailableWidgetKinds,
 } from '../dashboard-widgets';
@@ -260,5 +262,84 @@ describe('resolveAvailableWidgetKinds', () => {
         'history_trend',
       ]),
     ).toEqual([]);
+  });
+});
+
+describe('moveWidget', () => {
+  it('writes exactly one row — the moved widget´s new midpoint position — when neighbours are more than one apart', async () => {
+    const fake = new FakeDashboardWidgetDb();
+    fake.rows.push({ id: 'w1', userId: 'u1', widgetKind: 'next_up', position: 1024, enabled: true });
+    fake.rows.push({ id: 'w2', userId: 'u1', widgetKind: 'weekly_progress', position: 2048, enabled: true });
+    fake.rows.push({ id: 'w3', userId: 'u1', widgetKind: 'recent_records', position: 5000, enabled: true });
+
+    await moveWidget({ userId: 'u1', widgetId: 'w3', beforeId: 'w1', afterId: 'w2' }, fake.asWriteDb());
+
+    expect(fake.updateCount).toBe(1);
+    expect(fake.rows.find((row) => row.id === 'w3')?.position).toBe(1536);
+    expect(fake.rows.find((row) => row.id === 'w1')?.position).toBe(1024);
+    expect(fake.rows.find((row) => row.id === 'w2')?.position).toBe(2048);
+  });
+
+  it('triggers a renumber and writes only the rows whose position actually changed when neighbours are adjacent integers', async () => {
+    const fake = new FakeDashboardWidgetDb();
+    fake.rows.push({ id: 'a', userId: 'u1', widgetKind: 'next_up', position: 1024, enabled: true });
+    fake.rows.push({ id: 'b', userId: 'u1', widgetKind: 'weekly_progress', position: 2048, enabled: true });
+    fake.rows.push({ id: 'c', userId: 'u1', widgetKind: 'recent_records', position: 2049, enabled: true });
+    fake.rows.push({ id: 'x', userId: 'u1', widgetKind: 'muscle_heatmap', position: 4096, enabled: true });
+
+    await moveWidget({ userId: 'u1', widgetId: 'x', beforeId: 'b', afterId: 'c' }, fake.asWriteDb());
+
+    // Renumbered order is [a, b, x, c] -> a:1024 (unchanged), b:2048 (unchanged), x:3072, c:4096 —
+    // only x and c actually moved, mirroring days.test.ts's own moveExercise fixture (WR-10).
+    expect(fake.updateCount).toBe(2);
+    expect(fake.rows.find((row) => row.id === 'a')?.position).toBe(1024);
+    expect(fake.rows.find((row) => row.id === 'b')?.position).toBe(2048);
+    expect(fake.rows.find((row) => row.id === 'x')?.position).toBe(3072);
+    expect(fake.rows.find((row) => row.id === 'c')?.position).toBe(4096);
+  });
+
+  it('moving to the head of the list produces a position strictly greater than zero', async () => {
+    const fake = new FakeDashboardWidgetDb();
+    fake.rows.push({ id: 'a', userId: 'u1', widgetKind: 'next_up', position: 1024, enabled: true });
+    fake.rows.push({ id: 'b', userId: 'u1', widgetKind: 'weekly_progress', position: 2048, enabled: true });
+
+    await moveWidget({ userId: 'u1', widgetId: 'b', beforeId: null, afterId: 'a' }, fake.asWriteDb());
+
+    const moved = fake.rows.find((row) => row.id === 'b');
+    expect(moved?.position).toBeGreaterThan(0);
+  });
+
+  it('reads back through sortByOrderThenId in the order the user dragged to', async () => {
+    const fake = new FakeDashboardWidgetDb();
+    fake.rows.push({ id: 'w1', userId: 'u1', widgetKind: 'next_up', position: 1024, enabled: true });
+    fake.rows.push({ id: 'w2', userId: 'u1', widgetKind: 'weekly_progress', position: 2048, enabled: true });
+    fake.rows.push({ id: 'w3', userId: 'u1', widgetKind: 'recent_records', position: 3072, enabled: true });
+    const db = fake.asWriteDb();
+
+    await moveWidget({ userId: 'u1', widgetId: 'w3', beforeId: null, afterId: 'w1' }, db);
+
+    const rows = await loadDashboardWidgets('u1', db);
+    expect(rows.map((row) => row.widgetKind)).toEqual(['recent_records', 'next_up', 'weekly_progress']);
+  });
+
+  it('two rows sharing a position (an LWW artifact) still render in a stable, total order broken by id', async () => {
+    const fake = new FakeDashboardWidgetDb();
+    fake.rows.push({ id: 'b', userId: 'u1', widgetKind: 'weekly_progress', position: 1024, enabled: true });
+    fake.rows.push({ id: 'a', userId: 'u1', widgetKind: 'next_up', position: 1024, enabled: true });
+
+    const rows = await loadDashboardWidgets('u1', fake.asWriteDb());
+
+    expect(rows.map((row) => row.id)).toEqual(['a', 'b']);
+  });
+
+  it('writes nothing for a widget id the user does not own (T-12-29)', async () => {
+    const fake = new FakeDashboardWidgetDb();
+    fake.rows.push({ id: 'w1', userId: 'u1', widgetKind: 'next_up', position: 1024, enabled: true });
+    fake.rows.push({ id: 'w2', userId: 'u2', widgetKind: 'weekly_progress', position: 2048, enabled: true });
+
+    await moveWidget({ userId: 'u1', widgetId: 'w2', beforeId: null, afterId: 'w1' }, fake.asWriteDb());
+
+    expect(fake.updateCount).toBe(0);
+    expect(fake.rows.find((row) => row.id === 'w2')?.position).toBe(2048);
   });
 });

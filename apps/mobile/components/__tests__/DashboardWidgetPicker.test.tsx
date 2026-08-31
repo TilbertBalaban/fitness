@@ -115,4 +115,17 @@ describe('DashboardWidgetPickerView', () => {
 
     expect(clamped).toHaveLength(0);
   });
+
+  it('wires each row´s DragHandle onReorder into onReorder(widgetId, beforeId, afterId)', () => {
+    const onReorder = jest.fn();
+    const widgets: DashboardWidgetPickerViewProps['widgets'] = [widgetRow('a', 'next_up'), widgetRow('b', 'weekly_progress')];
+
+    const dragHandles = collect(renderPicker({ widgets, onReorder })).filter(
+      (props) => typeof props.onReorder === 'function' && props.exerciseId === 'b',
+    );
+
+    expect(dragHandles).toHaveLength(1);
+    (dragHandles[0].onReorder as (beforeId: string | null, afterId: string | null) => void)('a', null);
+    expect(onReorder).toHaveBeenCalledWith('b', 'a', null);
+  });
 });
