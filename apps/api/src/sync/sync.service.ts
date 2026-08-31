@@ -12,6 +12,7 @@ import {
   SET_TYPES as SET_TYPE_TUPLE,
   PR_TYPES as PR_TYPE_TUPLE,
   BODY_METRIC_KIND_SET,
+  WIDGET_KIND_SET,
   DEFAULT_PROGRESSION_PREFERENCE,
   isProgressionPreference,
   isEquipmentProfilePlates,
@@ -41,6 +42,7 @@ import {
   equipmentProfile,
   bodyMetric,
   progressPhoto,
+  dashboardWidget,
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { classifyTransactionError } from './rejection-reason';
@@ -54,6 +56,7 @@ import {
 } from './conflict-log';
 import {
   BODY_METRIC_PATCH_FIELDS,
+  DASHBOARD_WIDGET_PATCH_FIELDS,
   EQUIPMENT_PROFILE_PATCH_FIELDS,
   EXCLUDED_EXERCISE_PATCH_FIELDS,
   EXERCISE_PATCH_FIELDS,
@@ -71,6 +74,7 @@ import {
   USER_PREFERENCE_PATCH_FIELDS,
   WORKOUT_SESSION_PATCH_FIELDS,
   type BodyMetricValues,
+  type DashboardWidgetValues,
   type EquipmentProfileValues,
   type ExcludedExerciseValues,
   type ExerciseValues,
@@ -105,6 +109,7 @@ const TABLE_MAP = {
   excluded_exercise: excludedExercise,
   body_metric: bodyMetric,
   progress_photo: progressPhoto,
+  dashboard_widget: dashboardWidget,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -137,7 +142,9 @@ const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 // (12-01) is an eighth: a logged weigh-in or measurement owns no synced children and is never
 // referenced as a parent — the same shape personal_record already established. progress_photo
 // (12-03) is a ninth: a captured photo's metadata row owns no synced children and is never
-// referenced as a parent — the same shape body_metric carries.
+// referenced as a parent — the same shape body_metric carries. dashboard_widget (12-05) is a
+// tenth: a widget's position/enabled row owns no synced children and is never referenced as a
+// parent — the same shape progress_photo carries.
 const SINGLETON_ROOT_TYPES = new Set<string>([
   'exercise',
   'user_exercise_preference',
@@ -147,6 +154,7 @@ const SINGLETON_ROOT_TYPES = new Set<string>([
   'excluded_exercise',
   'body_metric',
   'progress_photo',
+  'dashboard_widget',
 ]);
 
 // An aggregate root owns synced children and is looked up in its own table; a singleton root
@@ -171,6 +179,7 @@ const ROOT_TABLE_BY_TYPE = {
   excluded_exercise: excludedExercise,
   body_metric: bodyMetric,
   progress_photo: progressPhoto,
+  dashboard_widget: dashboardWidget,
 } as const;
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
@@ -234,6 +243,7 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   excluded_exercise: 0,
   body_metric: 0,
   progress_photo: 0,
+  dashboard_widget: 0,
 };
 
 const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -378,6 +388,15 @@ interface ProgressPhotoOpData {
   local_date?: string;
   storage_key?: string;
   note?: string | null;
+  // Never read — accepted only so a present user_id key does not crash the presence check in
+  // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
+  user_id?: unknown;
+}
+
+interface DashboardWidgetOpData {
+  widget_kind?: string;
+  position?: number;
+  enabled?: boolean;
   // Never read — accepted only so a present user_id key does not crash the presence check in
   // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
   user_id?: unknown;
@@ -639,6 +658,26 @@ function toProgressPhotoValues(
     localDate: d.local_date ?? new Date().toISOString().slice(0, 10),
     storageKey: d.storage_key ?? '',
     note: d.note ?? null,
+  };
+}
+
+// userId always comes from the authenticated session argument, never from data.user_id — a client
+// cannot claim a dashboard row belongs to another user by naming a different owner in the payload
+// (T-12-19, mirrored from toProgressPhotoValues). widget_kind carries no reparenting hazard: it is
+// genuinely client-patchable data on this table (D-21), not identity, so no stored-linkage
+// resolver is needed here.
+function toDashboardWidgetValues(
+  id: string,
+  userId: string,
+  data: Record<string, unknown> | null | undefined,
+): DashboardWidgetValues {
+  const d = (data ?? {}) as DashboardWidgetOpData;
+  return {
+    id,
+    userId,
+    widgetKind: d.widget_kind ?? '',
+    position: d.position ?? 0,
+    enabled: d.enabled ?? true,
   };
 }
 
@@ -1079,6 +1118,19 @@ export function hasInvalidField(op: SyncCrudOp): boolean {
     ) {
       return true;
     }
+    return false;
+  }
+
+  if (op.type === 'dashboard_widget') {
+    const d = data as DashboardWidgetOpData;
+    // widget_kind validated against WIDGET_KIND_SET imported from @fitness/api-contracts, never a
+    // retyped literal (RESEARCH.md Pitfall 4) — the same source both the server validator and the
+    // client's forward-compatible skip-unknown render dispatch (D-22) read.
+    if (d.widget_kind !== undefined && !(typeof d.widget_kind === 'string' && WIDGET_KIND_SET.has(d.widget_kind))) {
+      return true;
+    }
+    if (d.position !== undefined && !isNonNegativeInteger(d.position)) return true;
+    if (!isValidOptionalBoolean(d.enabled)) return true;
     return false;
   }
 
@@ -1676,6 +1728,7 @@ export class SyncService {
     const excludedExerciseRootIds = rootIdsByRootType.get('excluded_exercise') ?? [];
     const bodyMetricRootIds = rootIdsByRootType.get('body_metric') ?? [];
     const progressPhotoRootIds = rootIdsByRootType.get('progress_photo') ?? [];
+    const dashboardWidgetRootIds = rootIdsByRootType.get('dashboard_widget') ?? [];
 
     const existingRoots = workoutSessionRootIds.length
       ? await this.db
@@ -1775,6 +1828,15 @@ export class SyncService {
           .from(progressPhoto)
           .where(inArray(progressPhoto.id, progressPhotoRootIds))
       : [];
+    // dashboard_widget.userId is NOT NULL, the same ownership shape as progress_photo — widgetKind
+    // carries no reparenting hazard (it is genuinely client-patchable, not identity), so this
+    // lookup reads only id+userId, never a second identity column.
+    const existingDashboardWidgetRoots = dashboardWidgetRootIds.length
+      ? await this.db
+          .select({ id: dashboardWidget.id, userId: dashboardWidget.userId })
+          .from(dashboardWidget)
+          .where(inArray(dashboardWidget.id, dashboardWidgetRootIds))
+      : [];
     // Keyed by aggregateKey, not by the bare id, for the same reason the aggregate map is: two
     // roots of different types sharing one id would otherwise overwrite each other here and hand
     // one aggregate the other's owner.
@@ -1804,6 +1866,10 @@ export class SyncService {
       ]),
       ...existingProgressPhotoRoots.map((row): [string, string | null] => [
         aggregateKey('progress_photo', row.id),
+        row.userId,
+      ]),
+      ...existingDashboardWidgetRoots.map((row): [string, string | null] => [
+        aggregateKey('dashboard_widget', row.id),
         row.userId,
       ]),
     ]);
@@ -2079,7 +2145,9 @@ export class SyncService {
                           ? toBodyMetricValues(op.id, userId, op.data)
                           : op.type === 'progress_photo'
                             ? toProgressPhotoValues(op.id, userId, op.data)
-                            : op.type === 'routine'
+                            : op.type === 'dashboard_widget'
+                              ? toDashboardWidgetValues(op.id, userId, op.data)
+                              : op.type === 'routine'
                           ? toRoutineValues(op.id, userId, op.data)
                           : op.type === 'routine_day'
                           ? toRoutineDayValues(op.id, resolveRoutineIdForRoutineDay(op.id) ?? root, op.data)
@@ -2210,6 +2278,23 @@ export class SyncService {
                 set: { ...patchAwareSet(op, progressPhotoValues, PROGRESS_PHOTO_PATCH_FIELDS), serverSeq: nextSeq },
               })
               .returning({ serverSeq: progressPhoto.serverSeq });
+            const seqValue = BigInt(serverSeq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else if (op.type === 'dashboard_widget') {
+            // dashboard_widget — a tenth singleton root (SINGLETON_ROOT_TYPES, 12-05), inserted/
+            // upserted the same shape as progress_photo. Unlike body_metric/progress_photo, this
+            // table is wholly new this phase — the Postgres table, the sync-rules.yaml query and
+            // the client sqliteTable are all created in this same plan (D-21).
+            const nextSeq = sql`nextval('sync_seq')`;
+            const dashboardWidgetValues = values as DashboardWidgetValues;
+            const [{ serverSeq }] = await tx
+              .insert(dashboardWidget)
+              .values({ ...dashboardWidgetValues, serverSeq: nextSeq })
+              .onConflictDoUpdate({
+                target: dashboardWidget.id,
+                set: { ...patchAwareSet(op, dashboardWidgetValues, DASHBOARD_WIDGET_PATCH_FIELDS), serverSeq: nextSeq },
+              })
+              .returning({ serverSeq: dashboardWidget.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           } else if (op.type === 'routine_day') {

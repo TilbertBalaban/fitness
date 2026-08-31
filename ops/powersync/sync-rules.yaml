@@ -59,3 +59,8 @@ streams:
       - SELECT * FROM muscle_volume_rollup WHERE user_id = auth.user_id()
       - SELECT * FROM analytics_watermark WHERE user_id = auth.user_id()
       - SELECT * FROM excluded_exercise WHERE user_id = auth.user_id()
+      # dashboard_widget (12-05, D-21) is a wholly new table, unlike body_metric/progress_photo
+      # above which already had this query before this phase — the PowerSync Service must be
+      # restarted for this line to take effect, and cross-device arrival of a dashboard_widget row
+      # is unverified in this environment; both are deferred to ROADMAP Phase 999.1.
+      - SELECT * FROM dashboard_widget WHERE user_id = auth.user_id()

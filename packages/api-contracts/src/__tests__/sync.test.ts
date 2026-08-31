@@ -18,10 +18,11 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('contains exactly workout_session, session_exercise, logged_set, personal_record, equipment_profile, exercise, user_exercise_preference, excluded_exercise, routine, routine_day, routine_exercise, user_preference, routine_cycle, routine_exercise_cycle_target, body_metric and progress_photo in PUSH_APPLIED_TABLES', () => {
+  it('contains exactly workout_session, session_exercise, logged_set, personal_record, equipment_profile, exercise, user_exercise_preference, excluded_exercise, routine, routine_day, routine_exercise, user_preference, routine_cycle, routine_exercise_cycle_target, body_metric, progress_photo and dashboard_widget in PUSH_APPLIED_TABLES', () => {
     expect([...PUSH_APPLIED_TABLES].sort()).toEqual(
       [
         'body_metric',
+        'dashboard_widget',
         'equipment_profile',
         'excluded_exercise',
         'exercise',
@@ -86,6 +87,11 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
   it('progress_photo is applied, not deferred — 12-03 gives progress-photo metadata rows a server-side apply path', () => {
     expect((PUSH_APPLIED_TABLES as readonly string[]).includes('progress_photo')).toBe(true);
     expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('progress_photo')).toBe(false);
+  });
+
+  it('dashboard_widget is applied, not deferred — 12-05 ships it as a wholly new table with an apply path from the start (D-21)', () => {
+    expect((PUSH_APPLIED_TABLES as readonly string[]).includes('dashboard_widget')).toBe(true);
+    expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('dashboard_widget')).toBe(false);
   });
 });
 

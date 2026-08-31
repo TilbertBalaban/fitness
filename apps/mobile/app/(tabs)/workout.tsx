@@ -80,7 +80,7 @@ import {
 import { restTargetFrom } from '@/lib/rest-timer';
 import { SessionModeProvider, type SessionScreenMode } from '@/lib/session/session-mode';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
-import { formatTimeOffRemaining, nextUpHeading as formatNextUpHeading } from './index';
+import { formatTimeOffRemaining, nextUpHeading as formatNextUpHeading } from '@/components/NextUpWidget';
 
 const DEFAULT_WEIGHT_UNIT: WeightUnit = 'kg';
 const LIVE_MODE: SessionScreenMode = 'live';

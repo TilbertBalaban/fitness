@@ -1,203 +1,26 @@
-import { resolveTarget, type ResolvedTarget } from '@fitness/api-contracts';
-import { weeklyProgress, type WeeklyProgressResult } from '@fitness/analytics-engine';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { DashboardWidgetHost, resolveDashboardWidgets, type KnownWidget } from '@/components/DashboardWidgetHost';
 import { PrimaryButton } from '@/components/PrimaryButton';
-import { WeeklyProgressCard } from '@/components/WeeklyProgressCard';
 import { WorkoutInProgressBanner } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
-import { captureCalendarDay } from '@/lib/calendar-day';
+import { loadOrMaterializeDashboardWidgets } from '@/lib/db/dashboard-widgets';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
-import { loadNextUp, type NextUpData } from '@/lib/db/programs/next-up-query';
-import type { ProgramCycle, ProgramDay, ProgramSlot } from '@/lib/db/programs/load-program';
 import { discardSession, loadInProgressSessionSummary, type InProgressSessionSummary } from '@/lib/db/session-lifecycle';
-import { loadWeeklyProgress, type LoadWeeklyProgressInput, type WeeklyProgressData } from '@/lib/db/weekly-progress-query';
-import { resolveNextUp, type NextUp } from '@/lib/programs/next-up';
+import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
+// Widget-list-area first-paint skeleton, distinct from NextUpWidget's own (12-UI-SPEC design
+// decision 2 retires the old screen-level HomeScreenState machine for everything except this
+// pinned chrome + the widget-list read itself).
 const SKELETON_ROW_COUNT = 3;
-
-export type HomeScreenState = 'error' | 'loading' | 'no-program' | 'ready';
-
-export interface HomeScreenStateInput {
-  failed: boolean;
-  data: { routine: unknown } | null;
-}
-
-export function deriveHomeScreenState({ failed, data }: HomeScreenStateInput): HomeScreenState {
-  if (failed) return 'error';
-  if (data === null) return 'loading';
-  if (data.routine === null) return 'no-program';
-  return 'ready';
-}
-
-export function formatTimeOffRemaining(daysRemaining: number): string {
-  if (daysRemaining <= 0) return 'Back tomorrow';
-  return daysRemaining === 1 ? '1 day left' : `${daysRemaining} days left`;
-}
-
-export function nextUpHeading(nextUp: NextUp<ProgramDay, ProgramCycle>): string {
-  switch (nextUp.kind) {
-    case 'workout':
-      return nextUp.cycle ? `${nextUp.day.name} · ${nextUp.cycle.name}` : nextUp.day.name;
-    case 'time-off':
-      return "You're on scheduled time off.";
-    case 'program-complete':
-      return 'Block complete';
-    case 'no-days':
-      return 'No days yet';
-    default:
-      return 'No active program';
-  }
-}
-
-function displayOrDash(value: number | null): string {
-  return value === null ? '—' : `${value}`;
-}
-
-function baseOf(slot: ProgramSlot): ResolvedTarget {
-  return {
-    targetSets: slot.targetSets,
-    targetRepMin: slot.targetRepMin,
-    targetRepMax: slot.targetRepMax,
-    targetRir: slot.targetRir,
-    targetRestSeconds: slot.targetRestSeconds,
-  };
-}
-
-// The Home card's own line format (04-UI-SPEC "Home 'Next Up' Card") — deliberately *not* the slot
-// row's compact summary line: this one uses × and @, and omits rest entirely. It shares only the
-// em-dash-for-null convention, and it never collapses an equal rep range to one number.
-export function formatNextUpExerciseLine(slot: ProgramSlot, cycleId: string | null): string {
-  const resolved = resolveTarget(baseOf(slot), cycleId ? (slot.overridesByCycleId[cycleId] ?? null) : null);
-  const untargeted =
-    resolved.targetSets === null &&
-    resolved.targetRepMin === null &&
-    resolved.targetRepMax === null &&
-    resolved.targetRir === null &&
-    resolved.targetRestSeconds === null;
-  if (untargeted) return `${slot.exerciseName}: No targets set.`;
-
-  const sets = displayOrDash(resolved.targetSets);
-  const reps = `${displayOrDash(resolved.targetRepMin)}–${displayOrDash(resolved.targetRepMax)}`;
-  return `${slot.exerciseName}: ${sets} × ${reps} reps @ ${displayOrDash(resolved.targetRir)} RIR`;
-}
-
-export function dayTargetMuscles(slots: ProgramSlot[], musclesByExerciseId: Record<string, string[]>): string[] {
-  const seen: string[] = [];
-  for (const slot of slots) {
-    for (const name of musclesByExerciseId[slot.exerciseId] ?? []) {
-      if (!seen.includes(name)) seen.push(name);
-    }
-  }
-  return seen;
-}
-
-// FilterChipRow's chip shape without its interaction: no Pressable, no accessibilityRole, no
-// selected state, and no numberOfLines (R4 — new Phase 4 surfaces wrap and grow).
-function MuscleChips({ muscles }: { muscles: string[] }) {
-  if (muscles.length === 0) return null;
-  return (
-    <View className="flex-row flex-wrap gap-sm">
-      {muscles.map((muscle) => (
-        <View key={muscle} className="rounded-md border border-foreground-muted bg-surface px-md py-sm">
-          <Text className="text-label font-normal text-foreground-muted">{muscle}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function CardHeading({ children }: { children: string }) {
-  return <Text className="text-heading font-semibold text-foreground">{children}</Text>;
-}
-
-function CardBody({ children }: { children: string }) {
-  return <Text className="text-body font-normal text-foreground-muted">{children}</Text>;
-}
-
-function NextUpCard({
-  nextUp,
-  musclesByExerciseId,
-}: {
-  nextUp: NextUp<ProgramDay, ProgramCycle>;
-  musclesByExerciseId: Record<string, string[]>;
-}) {
-  if (nextUp.kind === 'no-days') {
-    return (
-      <View className="gap-sm rounded-md bg-surface p-md">
-        <CardHeading>{nextUpHeading(nextUp)}</CardHeading>
-        <CardBody>Add a training day to this program to see what&apos;s next.</CardBody>
-      </View>
-    );
-  }
-
-  if (nextUp.kind === 'time-off') {
-    return (
-      <View className="gap-sm rounded-md bg-surface p-md opacity-60">
-        <CardHeading>{nextUpHeading(nextUp)}</CardHeading>
-        <CardBody>{formatTimeOffRemaining(nextUp.daysRemaining)}</CardBody>
-      </View>
-    );
-  }
-
-  if (nextUp.kind === 'program-complete') {
-    return (
-      <View className="gap-sm rounded-md bg-surface p-md">
-        <CardHeading>{nextUpHeading(nextUp)}</CardHeading>
-        <CardBody>You have finished every cycle in this program. Start it again or build a new one.</CardBody>
-      </View>
-    );
-  }
-
-  if (nextUp.kind !== 'workout') return null;
-
-  const muscles = dayTargetMuscles(nextUp.day.slots, musclesByExerciseId);
-
-  return (
-    <View className="gap-md rounded-md bg-surface p-md">
-      <CardHeading>{nextUpHeading(nextUp)}</CardHeading>
-      <MuscleChips muscles={muscles} />
-      {nextUp.day.slots.length === 0 ? (
-        <CardBody>This day has no exercises yet.</CardBody>
-      ) : (
-        <View className="gap-sm">
-          {nextUp.day.slots.map((slot) => (
-            <Text key={slot.id} className="text-body font-normal text-foreground">
-              {formatNextUpExerciseLine(slot, nextUp.cycle?.id ?? null)}
-            </Text>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-export type NextUpRead = { data: NextUpData } | { failed: true };
-
-// The whole body of the screen's focus effect, extracted so the read/failure sequence is exercised
-// without a renderer (there is none in this workspace's lockfile). A success clears a previous
-// failure: with the card now re-reading on every focus, a transient error must not outlive the
-// read that succeeded after it.
-export async function readNextUp(
-  userId: string | null,
-  load: (id: string | null) => Promise<NextUpData> = (id) => loadNextUp(id, getPowerSync()),
-): Promise<NextUpRead> {
-  try {
-    return { data: await load(userId) };
-  } catch (error) {
-    console.error('next up load failed', error);
-    return { failed: true };
-  }
-}
 
 export type InProgressRead = { data: InProgressSessionSummary | null } | { failed: true };
 
 // D-28's cost constraint lives here, not just in the render: a signed-out call never reaches
-// `load` at all, mirroring readNextUp's own guard-before-read shape and making the guard a unit
-// test rather than a runtime assumption. A rejection (the E8 backstop UI-state) is reported
-// distinctly from "no session" so the caller can tell the two apart even though this app's chosen
-// rendering for both collapses to the same "banner absent" outcome (see HomeScreen below).
+// `load` at all. A rejection (the E8 backstop UI-state) is reported distinctly from "no session"
+// so the caller can tell the two apart even though both collapse to "banner absent" below.
 export async function readInProgressSession(
   userId: string | null,
   load: (id: string) => Promise<InProgressSessionSummary | null> = (id) => loadInProgressSessionSummary(id, getPowerSync()),
@@ -211,24 +34,95 @@ export async function readInProgressSession(
   }
 }
 
-export type WeeklyProgressRead = { data: WeeklyProgressResult } | { failed: true };
+export interface HomeDashboardViewProps {
+  colors: ThemeColors;
+  userId: string | null;
+  db?: WriteDb;
+  inProgress: InProgressSessionSummary | null;
+  widgets: KnownWidget[] | null;
+  pickerOpen: boolean;
+  onOpenPicker: () => void;
+  onClosePicker: () => void;
+  onOpenQuickActions: () => void;
+  onResumeSession: () => void;
+  onDiscardSession: () => void;
+  onBrowseExercises: () => void;
+}
 
-// The third focus read's body, extracted for the same reason the two above it are: the read, the
-// derivation and the failure branch are exercised without a renderer. The screen supplies
-// todayLocalDate rather than letting the aggregation reach for a clock — the pure package holds
-// none, and captureCalendarDay is the one place in this codebase permitted to read the device zone.
-export async function readWeeklyProgress(
-  userId: string | null,
-  todayLocalDate: string,
-  load: (input: LoadWeeklyProgressInput) => Promise<WeeklyProgressData> = (input) => loadWeeklyProgress(input),
-): Promise<WeeklyProgressRead> {
-  try {
-    const { sessions, programTarget } = await load({ userId, todayLocalDate });
-    return { data: weeklyProgress({ todayLocalDate, sessions, programTarget }) };
-  } catch (error) {
-    console.error('weekly progress load failed', error);
-    return { failed: true };
-  }
+// Hook-free — every state this screen can render is a prop, matching NextUpWidget/
+// DashboardWidgetHost's own split, so the states are unit testable without a renderer.
+export function HomeDashboardView({
+  colors,
+  userId,
+  db,
+  inProgress,
+  widgets,
+  pickerOpen,
+  onOpenPicker,
+  onClosePicker,
+  onOpenQuickActions,
+  onResumeSession,
+  onDiscardSession,
+  onBrowseExercises,
+}: HomeDashboardViewProps) {
+  return (
+    <ScrollView
+      className="flex-1 bg-background"
+      contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 32 }}
+    >
+      <View className="mt-xl gap-lg">
+        {/* Both controls keep working in every screen state, including mid-error and
+            mid-loading — neither depends on the widget-list read (12-UI-SPEC "Home header row"). */}
+        <View className="flex-row items-center justify-between px-lg pt-md">
+          <Pressable
+            onPress={onOpenQuickActions}
+            accessibilityRole="button"
+            accessibilityLabel="Quick Actions"
+            style={{ minHeight: 48 }}
+            className="flex-row items-center gap-xs"
+          >
+            <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
+            <Text className="text-body font-normal text-accent">Quick Actions</Text>
+          </Pressable>
+          <Pressable
+            onPress={pickerOpen ? onClosePicker : onOpenPicker}
+            accessibilityRole="button"
+            accessibilityLabel={pickerOpen ? 'Done editing dashboard' : 'Edit Dashboard'}
+            style={{ minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text className="text-body font-normal text-accent">{pickerOpen ? 'Done' : 'Edit'}</Text>
+          </Pressable>
+        </View>
+
+        {inProgress ? (
+          <WorkoutInProgressBanner
+            session={{
+              id: inProgress.id,
+              startedAtMs: new Date(inProgress.startedAt).getTime(),
+              accumulatedPausedSeconds: inProgress.accumulatedPausedSeconds,
+              pausedAtMs: inProgress.pausedAt ? new Date(inProgress.pausedAt).getTime() : null,
+            }}
+            onResume={onResumeSession}
+            onDiscard={onDiscardSession}
+          />
+        ) : null}
+
+        <View className="gap-lg">
+          {widgets === null ? (
+            Array.from({ length: SKELETON_ROW_COUNT }).map((_, index) => (
+              <View key={index} className="rounded-md bg-surface" style={{ height: 64 }} />
+            ))
+          ) : (
+            <DashboardWidgetHost widgets={widgets} userId={userId} db={db} />
+          )}
+        </View>
+
+        <View className="items-center">
+          <PrimaryButton label="Browse exercises" onPress={onBrowseExercises} />
+        </View>
+      </View>
+    </ScrollView>
+  );
 }
 
 export interface HomeScreenProps {
@@ -238,44 +132,19 @@ export interface HomeScreenProps {
 
 export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenProps = {}) {
   const router = useRouter();
+  const colors = useThemeColors();
   const session = authClient.useSession();
   const userId = userIdOverride ?? session.data?.user?.id ?? null;
-  const [data, setData] = useState<NextUpData | null>(null);
-  const [failed, setFailed] = useState(false);
   const [inProgress, setInProgress] = useState<InProgressSessionSummary | null>(null);
-  const [weekly, setWeekly] = useState<WeeklyProgressResult | null>(null);
+  const [widgets, setWidgets] = useState<KnownWidget[] | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Mounts nothing yet — 12-08 mounts QuickActionSheet on this flag. Held here now so the header
+  // row's Quick Actions control has a real state to set rather than a placeholder no-op.
+  const [, setQuickActionsOpen] = useState(false);
 
-  // On focus, not on mount. Both tabs stay mounted in a tab navigator, so a mount-only read meant
-  // activating a program on the Programs tab left Home reading "No active program" until the app
-  // was killed — and the same staleness covered every day, exercise and target edit.
-  //
-  // This does not make the card reactive: a change arriving from the other device while Home is
-  // already focused still waits for the next focus. Closing that needs a PowerSync watched query
-  // over the seven tables the card derives from.
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-
-      void (async () => {
-        const result = await readNextUp(userId, (id) => loadNextUp(id, db ?? getPowerSync()));
-        if (!active) return;
-        if ('failed' in result) {
-          setFailed(true);
-          return;
-        }
-        setData(result.data);
-        setFailed(false);
-      })();
-
-      return () => {
-        active = false;
-      };
-    }, [userId, db]),
-  );
-
-  // A second, independent focus read — the in-progress banner is not part of deriveHomeScreenState
-  // (the next-up card's own error/loading/no-program/ready machine) and must not gate or be gated
-  // by it: a failed next-up read must not hide a real in-progress session, and vice versa.
+  // A second, independent focus read — the in-progress banner is pinned chrome, not part of the
+  // widget-list read below, and must not gate or be gated by it: a failed widget read must not
+  // hide a real in-progress session, and vice versa.
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -283,9 +152,8 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
       void (async () => {
         const result = await readInProgressSession(userId, (id) => loadInProgressSessionSummary(id, db ?? getPowerSync()));
         if (!active) return;
-        // A query failure (the E8 backstop) is a deliberate, pinned choice to render identically to
-        // "no in-progress session" — the banner's absence either way, never a second error surface
-        // stacked above the next-up card's own.
+        // A query failure (the E8 backstop) is a deliberate, pinned choice to render identically
+        // to "no in-progress session" — the banner's absence either way.
         setInProgress('failed' in result ? null : result.data);
       })();
 
@@ -295,22 +163,23 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
     }, [userId, db]),
   );
 
-  // A third independent focus read (ANLY-08). It neither gates nor is gated by the two above: a
-  // failed next-up read must not hide this card, and a failed card read must not hide the Next Up
-  // card. The failure branch renders the card ABSENT and logs, which is the same pinned choice the
-  // in-progress read directly above makes — never a second error surface stacked above the Next Up
-  // card's own. Absent is also what an unlanded read renders, because R6 forbids a spinner for a
-  // local read and this screen already shows one skeleton on first paint.
   useFocusEffect(
     useCallback(() => {
+      if (!userId) {
+        setWidgets([]);
+        return;
+      }
       let active = true;
 
       void (async () => {
-        const result = await readWeeklyProgress(userId, captureCalendarDay(new Date()).localDate, (input) =>
-          loadWeeklyProgress(input, db ?? getPowerSync()),
-        );
-        if (!active) return;
-        setWeekly('failed' in result ? null : result.data);
+        try {
+          const rows = await loadOrMaterializeDashboardWidgets(userId, db ?? getPowerSync());
+          if (!active) return;
+          setWidgets(resolveDashboardWidgets(rows));
+        } catch (error) {
+          console.error('dashboard widgets load failed', error);
+          if (active) setWidgets([]);
+        }
       })();
 
       return () => {
@@ -319,100 +188,23 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
     }, [userId, db]),
   );
 
-  const nextUp = useMemo(
-    () =>
-      data
-        ? resolveNextUp<ProgramDay, ProgramCycle>({
-            routine: data.routine,
-            days: data.days,
-            cycles: data.cycles,
-            history: data.history,
-            today: data.today,
-          })
-        : null,
-    [data],
-  );
-
-  const screenState = deriveHomeScreenState({ failed, data });
-
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 32 }}
-    >
-      <View className="mt-xl gap-lg">
-        {inProgress ? (
-          <WorkoutInProgressBanner
-            session={{
-              id: inProgress.id,
-              startedAtMs: new Date(inProgress.startedAt).getTime(),
-              accumulatedPausedSeconds: inProgress.accumulatedPausedSeconds,
-              pausedAtMs: inProgress.pausedAt ? new Date(inProgress.pausedAt).getTime() : null,
-            }}
-            onResume={() => router.push('/(tabs)/workout')}
-            onDiscard={async () => {
-              await discardSession(inProgress.id);
-              setInProgress(null);
-            }}
-          />
-        ) : null}
-
-        {screenState === 'error' ? (
-          <View className="gap-sm">
-            <CardHeading>{"Your program couldn't load"}</CardHeading>
-            <CardBody>Restart the app to try again. Your programs and history are safe.</CardBody>
-          </View>
-        ) : null}
-
-        {/* R6 — a local SQLite read renders no spinner; only the very first paint shows the
-            skeleton pattern already shipped on the Programs tab. */}
-        {screenState === 'loading' ? (
-          <View className="gap-sm">
-            {Array.from({ length: SKELETON_ROW_COUNT }).map((_, index) => (
-              <View key={index} className="rounded-md bg-surface" style={{ height: 64 }} />
-            ))}
-          </View>
-        ) : null}
-
-        {screenState === 'no-program' ? (
-          <View className="gap-sm">
-            <CardHeading>No active program</CardHeading>
-            <CardBody>Build or activate one to see what&apos;s next.</CardBody>
-            <Pressable
-              onPress={() => router.push('/programs/library')}
-              accessibilityRole="button"
-              accessibilityLabel="Build or activate one"
-              style={{ minHeight: 48, justifyContent: 'center' }}
-            >
-              <Text className="text-body font-normal text-accent">Build or activate one</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {screenState === 'ready' && nextUp ? (
-          <NextUpCard nextUp={nextUp} musclesByExerciseId={data?.musclesByExerciseId ?? {}} />
-        ) : null}
-
-        {nextUp?.kind === 'program-complete' ? (
-          <Pressable
-            onPress={() => router.push('/(tabs)/programs')}
-            accessibilityRole="button"
-            accessibilityLabel="Go to Programs"
-            style={{ minHeight: 48, justifyContent: 'center' }}
-          >
-            <Text className="text-body font-normal text-accent">Go to Programs</Text>
-          </Pressable>
-        ) : null}
-
-        {/* Below the Next Up card and after its own "Go to Programs" link rather than between the
-            two: that link belongs to the card above it, and splitting the pair to sit one row
-            higher would read as the link belonging to this card instead. */}
-        {weekly ? <WeeklyProgressCard progress={weekly} /> : null}
-
-        <View className="items-center">
-          <PrimaryButton label="Browse exercises" onPress={() => router.push('/exercises')} />
-        </View>
-      </View>
-    </ScrollView>
+    <HomeDashboardView
+      colors={colors}
+      userId={userId}
+      db={db}
+      inProgress={inProgress}
+      widgets={widgets}
+      pickerOpen={pickerOpen}
+      onOpenPicker={() => setPickerOpen(true)}
+      onClosePicker={() => setPickerOpen(false)}
+      onOpenQuickActions={() => setQuickActionsOpen(true)}
+      onResumeSession={() => router.push('/(tabs)/workout')}
+      onDiscardSession={async () => {
+        if (inProgress) await discardSession(inProgress.id);
+        setInProgress(null);
+      }}
+      onBrowseExercises={() => router.push('/exercises')}
+    />
   );
 }

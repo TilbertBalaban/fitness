@@ -274,6 +274,19 @@ export const progressPhoto = sqliteTable('progress_photo', {
   serverSeq: integer('server_seq'),
 });
 
+// D-21's third singleton root this phase: one row per widget, never a JSON list on
+// user_preference. enabled is stored as integer-in-boolean-mode, matching progressPhoto's own
+// boolean columns; position is a sparse gap-1024 integer resolved through
+// apps/mobile/lib/db/programs/order-index.ts, never reimplemented.
+export const dashboardWidget = sqliteTable('dashboard_widget', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  widgetKind: text('widget_kind').notNull(),
+  position: integer('position').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+  serverSeq: integer('server_seq'),
+});
+
 // id is the primary key (not userId) and is deterministically equal to user_id — mirrors
 // apps/api/src/db/schema/preference.ts's option-a wire contract; applyBatch/PowerSync both key
 // every managed table on a single TEXT id column.
@@ -327,6 +340,7 @@ export const drizzleSchema = {
   personalRecord,
   bodyMetric,
   progressPhoto,
+  dashboardWidget,
   userPreference,
   muscleGroup,
   seededExercise,

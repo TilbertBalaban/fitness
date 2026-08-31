@@ -116,3 +116,28 @@ export function fromCanonicalValue(kind: BodyMetricKind, canonicalValue: string 
   if (canonicalUnit === 'percent') return canonicalValue === null || canonicalValue.trim() === '' ? null : canonicalValue;
   return fromCanonicalCm(canonicalValue, resolveDisplayUnit(kind, weightUnit) as LengthUnit);
 }
+
+// D-22 requires the dashboard widget vocabulary to live in this SAME shared constants module as
+// the body-metric kind vocabulary above, despite the filename reading narrower than its contents —
+// a header note, not a coincidence. Renaming the module later is a mechanical, reversible change
+// (12-05-PLAN.md planner_assumptions #2). Additive-only, same discipline as BODY_METRIC_KINDS: an
+// unrecognised widget_kind is skipped at render time, never thrown, once it exists on a device.
+export const WIDGET_KINDS = [
+  'next_up',
+  'weekly_progress',
+  'recent_records',
+  'muscle_heatmap',
+  'bodyweight_trend',
+  'history_trend',
+] as const;
+export type WidgetKind = (typeof WIDGET_KINDS)[number];
+export const WIDGET_KIND_SET: ReadonlySet<string> = new Set(WIDGET_KINDS);
+
+export const WIDGET_KIND_LABELS: Record<WidgetKind, string> = {
+  next_up: 'Next Up',
+  weekly_progress: 'Weekly Progress',
+  recent_records: 'Recent Records',
+  muscle_heatmap: 'Muscle Heatmap',
+  bodyweight_trend: 'Bodyweight Trend',
+  history_trend: 'History Trend',
+};

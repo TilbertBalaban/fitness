@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { bigint, check, date, index, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { bigint, boolean, check, date, index, integer, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { user } from '../schema';
 import { exercise } from './catalog';
 import { loggedSet } from './session';
@@ -70,6 +70,23 @@ export const progressPhoto = pgTable(
   (table) => [index('progress_photo_userId_idx').on(table.userId)],
 );
 
+export const dashboardWidget = pgTable(
+  'dashboard_widget',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    widgetKind: text('widget_kind').notNull(),
+    position: integer('position').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    serverSeq: bigint('server_seq', { mode: 'number' })
+      .notNull()
+      .default(sql`nextval('sync_seq')`),
+  },
+  (table) => [index('dashboard_widget_userId_idx').on(table.userId)],
+);
+
 export const personalRecordRelations = relations(personalRecord, ({ one }) => ({
   user: one(user, { fields: [personalRecord.userId], references: [user.id] }),
   exercise: one(exercise, { fields: [personalRecord.exerciseId], references: [exercise.id] }),
@@ -82,4 +99,8 @@ export const bodyMetricRelations = relations(bodyMetric, ({ one }) => ({
 
 export const progressPhotoRelations = relations(progressPhoto, ({ one }) => ({
   user: one(user, { fields: [progressPhoto.userId], references: [user.id] }),
+}));
+
+export const dashboardWidgetRelations = relations(dashboardWidget, ({ one }) => ({
+  user: one(user, { fields: [dashboardWidget.userId], references: [user.id] }),
 }));

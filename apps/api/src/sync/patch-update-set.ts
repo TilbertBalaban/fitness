@@ -471,6 +471,27 @@ export const PROGRESS_PHOTO_PATCH_FIELDS: PatchFieldMap<ProgressPhotoValues> = {
   note: 'note',
 };
 
+// id/userId are server-derived and written unconditionally, mirroring PROGRESS_PHOTO_PATCH_FIELDS'
+// ownership guarantee: userId always comes from the authenticated session, never from data.user_id
+// (T-12-19). widgetKind/position/enabled ARE genuinely user-patchable — unlike excluded_exercise's
+// identity-only exerciseId, reordering and toggling a widget's visibility are exactly the edits
+// this table exists for (D-21).
+export interface DashboardWidgetValues {
+  id: string;
+  userId: string;
+  widgetKind: string;
+  position: number;
+  enabled: boolean;
+}
+
+export const DASHBOARD_WIDGET_PATCH_FIELDS: PatchFieldMap<DashboardWidgetValues> = {
+  id: null,
+  userId: null,
+  widgetKind: 'widget_kind',
+  position: 'position',
+  enabled: 'enabled',
+};
+
 export const EQUIPMENT_PROFILE_PATCH_FIELDS: PatchFieldMap<EquipmentProfileValues> = {
   id: null,
   userId: null,

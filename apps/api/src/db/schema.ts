@@ -12,7 +12,7 @@ import {
 } from './schema/catalog';
 import { equipmentProfile } from './schema/equipment';
 import { routine, routineCycle, routineDay, routineExercise, routineExerciseCycleTarget } from './schema/program';
-import { personalRecord, bodyMetric, progressPhoto } from './schema/records';
+import { personalRecord, bodyMetric, progressPhoto, dashboardWidget } from './schema/records';
 import { userPreference } from './schema/preference';
 import { syncConflictLog, syncTombstone } from './schema/sync';
 import { muscleVolumeRollup, analyticsWatermark } from './schema/analytics';
@@ -39,6 +39,7 @@ export {
   personalRecord,
   bodyMetric,
   progressPhoto,
+  dashboardWidget,
   userPreference,
   syncConflictLog,
   syncTombstone,
@@ -130,6 +131,7 @@ export const userRelations = relations(user, ({ many, one }) => ({
   personalRecords: many(personalRecord),
   bodyMetrics: many(bodyMetric),
   progressPhotos: many(progressPhoto),
+  dashboardWidgets: many(dashboardWidget),
   syncConflictLogs: many(syncConflictLog),
   syncTombstones: many(syncTombstone),
   preference: one(userPreference, { fields: [user.id], references: [userPreference.userId] }),
@@ -163,6 +165,7 @@ export const schema = {
   personalRecord,
   bodyMetric,
   progressPhoto,
+  dashboardWidget,
   userPreference,
   syncConflictLog,
   syncTombstone,

@@ -24,6 +24,7 @@ export const SYNCED_TABLES = [
   'routine_cycle',
   'routine_exercise_cycle_target',
   'excluded_exercise',
+  'dashboard_widget',
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -58,6 +59,11 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // same shape personal_record already established (D-01/D-05). 'progress_photo' (12-03) is a ninth:
 // the metadata row for an on-device photo owns no synced children and is never referenced as a
 // parent — the bytes themselves never cross this boundary at all (D-15), only the row does.
+// 'dashboard_widget' (12-05) is a tenth: unlike the two above, it is not a previously-deferred
+// table moving here — it is a wholly new table created directly in PUSH_APPLIED_TABLES, because a
+// dashboard layout row is a first-class, forward-compatible singleton root from the moment it
+// exists (D-21). It owns no synced children and is never referenced as a parent by another table's
+// op, the same shape body_metric/progress_photo/personal_record already established.
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -75,6 +81,7 @@ export const PUSH_APPLIED_TABLES = [
   'excluded_exercise',
   'body_metric',
   'progress_photo',
+  'dashboard_widget',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 
