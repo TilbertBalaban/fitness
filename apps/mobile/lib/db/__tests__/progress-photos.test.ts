@@ -239,6 +239,14 @@ describe('deletePhoto', () => {
     await expect(deletePhoto({ userId: 'user-1', id: 'pp-1' }, db)).resolves.toBeUndefined();
   });
 
+  it('leaves the row deleted even when deletePhotoBytes rejects — the row-then-bytes ordering the caller must handle (WR-04)', async () => {
+    (deletePhotoBytes as jest.Mock).mockImplementationOnce(() => Promise.reject(new Error('locked')));
+    const { db, rows } = fakePhotoDb([storedRow()]);
+
+    await expect(deletePhoto({ userId: 'user-1', id: 'pp-1' }, db)).rejects.toThrow('locked');
+    expect(rows).toHaveLength(0);
+  });
+
   it('only removes the row matching both id and userId — never another user\'s photo of the same id', async () => {
     const { db, rows } = fakePhotoDb([storedRow({ userId: 'user-1' }), storedRow({ userId: 'user-2' })]);
 

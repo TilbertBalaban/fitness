@@ -289,7 +289,14 @@ export default function ProgressPhotosScreen({ userId: userIdOverride, db }: Pro
     if (!confirmDeleteRow || !userId) return;
     const row = confirmDeleteRow;
     setConfirmDeleteRow(null);
-    await deletePhoto({ userId, id: row.id }, db ?? getPowerSync());
+    try {
+      await deletePhoto({ userId, id: row.id }, db ?? getPowerSync());
+    } catch (error) {
+      // deletePhoto removes the row before the bytes (progress-photos.ts's own documented
+      // ordering) — a deletePhotoBytes rejection here still means the row is gone, so reload()
+      // below must still run rather than leaving the just-deleted photo showing until next focus.
+      console.error('progress photo delete failed', error);
+    }
     await reload();
   };
 
