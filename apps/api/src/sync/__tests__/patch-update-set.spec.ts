@@ -1,12 +1,18 @@
 import {
+  BODY_METRIC_PATCH_FIELDS,
+  DASHBOARD_WIDGET_PATCH_FIELDS,
   EXERCISE_PATCH_FIELDS,
   LOGGED_SET_PATCH_FIELDS,
   patchAwareSet,
+  PROGRESS_PHOTO_PATCH_FIELDS,
   SESSION_EXERCISE_PATCH_FIELDS,
   USER_EXERCISE_PREFERENCE_PATCH_FIELDS,
   WORKOUT_SESSION_PATCH_FIELDS,
+  type BodyMetricValues,
+  type DashboardWidgetValues,
   type ExerciseValues,
   type LoggedSetValues,
+  type ProgressPhotoValues,
   type SessionExerciseValues,
   type UserExercisePreferenceValues,
   type WorkoutSessionValues,
@@ -104,6 +110,43 @@ function userExercisePreferenceValues(overrides: Partial<UserExercisePreferenceV
     archivedAt: null,
     neverSuggest: false,
     updatedAt: new Date('2026-06-15T20:00:00Z'),
+    ...overrides,
+  };
+}
+
+function bodyMetricValues(overrides: Partial<BodyMetricValues> = {}): BodyMetricValues {
+  return {
+    id: 'bm-1',
+    userId: 'user-1',
+    kind: 'bodyweight',
+    value: '82.500',
+    recordedAt: new Date('2026-06-15T20:00:00Z'),
+    timezone: 'America/New_York',
+    localDate: '2026-06-15',
+    ...overrides,
+  };
+}
+
+function progressPhotoValues(overrides: Partial<ProgressPhotoValues> = {}): ProgressPhotoValues {
+  return {
+    id: 'pp-1',
+    userId: 'user-1',
+    takenAt: new Date('2026-06-15T20:00:00Z'),
+    timezone: 'America/New_York',
+    localDate: '2026-06-15',
+    storageKey: 'progress-photo/pp-1.jpg',
+    note: null,
+    ...overrides,
+  };
+}
+
+function dashboardWidgetValues(overrides: Partial<DashboardWidgetValues> = {}): DashboardWidgetValues {
+  return {
+    id: 'dw-1',
+    userId: 'user-1',
+    widgetKind: 'next_up',
+    position: 1024,
+    enabled: true,
     ...overrides,
   };
 }
@@ -357,6 +400,128 @@ describe('patchAwareSet', () => {
       data: { archived_at: null, never_suggest: false, updated_at: '2026-06-15T20:00:00Z' },
     });
     const result = patchAwareSet(putOp, values, USER_EXERCISE_PREFERENCE_PATCH_FIELDS);
+    expect(result).toBe(values);
+  });
+
+  it('a PATCH for body_metric naming only value produces an update set of exactly the identity keys plus value — kind, recordedAt, timezone and localDate are absent', () => {
+    const values = bodyMetricValues({ value: '83.000' });
+    const patchOp = op({ type: 'body_metric', id: 'bm-1', data: { value: '83.000' } });
+    const result = patchAwareSet(patchOp, values, BODY_METRIC_PATCH_FIELDS);
+    expect(Object.keys(result).sort()).toEqual(['id', 'userId', 'value'].sort());
+    expect(result.value).toBe('83.000');
+    expect('kind' in result).toBe(false);
+    expect('recordedAt' in result).toBe(false);
+    expect('timezone' in result).toBe(false);
+    expect('localDate' in result).toBe(false);
+  });
+
+  it('always retains identity/server-owned keys regardless of op.data — body_metric (id, userId), and never with a client-claimed value', () => {
+    const values = bodyMetricValues();
+    const patchOp = op({
+      type: 'body_metric',
+      id: 'bm-1',
+      data: { user_id: 'someone-else', kind: 'waist' },
+    });
+    const result = patchAwareSet(patchOp, values, BODY_METRIC_PATCH_FIELDS);
+    expect(result.id).toBe(values.id);
+    expect(result.userId).toBe(values.userId);
+    expect(result.userId).not.toBe('someone-else');
+    expect(Object.keys(result).sort()).toEqual(['id', 'kind', 'userId'].sort());
+  });
+
+  it('a PUT for body_metric produces an update set containing every patchable column', () => {
+    const values = bodyMetricValues();
+    const putOp = op({
+      op: 'PUT',
+      type: 'body_metric',
+      id: 'bm-1',
+      data: {
+        kind: 'bodyweight',
+        value: '82.500',
+        recorded_at: '2026-06-15T20:00:00Z',
+        timezone: 'America/New_York',
+        local_date: '2026-06-15',
+      },
+    });
+    const result = patchAwareSet(putOp, values, BODY_METRIC_PATCH_FIELDS);
+    expect(result).toBe(values);
+  });
+
+  it('a PATCH for progress_photo naming only note produces an update set of exactly the identity keys plus note — storageKey, takenAt, timezone and localDate are absent', () => {
+    const values = progressPhotoValues({ note: 'after week 4' });
+    const patchOp = op({ type: 'progress_photo', id: 'pp-1', data: { note: 'after week 4' } });
+    const result = patchAwareSet(patchOp, values, PROGRESS_PHOTO_PATCH_FIELDS);
+    expect(Object.keys(result).sort()).toEqual(['id', 'userId', 'note'].sort());
+    expect(result.note).toBe('after week 4');
+    expect('storageKey' in result).toBe(false);
+    expect('takenAt' in result).toBe(false);
+  });
+
+  it('always retains identity/server-owned keys regardless of op.data — progress_photo (id, userId), and never with a client-claimed value', () => {
+    const values = progressPhotoValues();
+    const patchOp = op({
+      type: 'progress_photo',
+      id: 'pp-1',
+      data: { user_id: 'someone-else', storage_key: 'progress-photo/other.jpg' },
+    });
+    const result = patchAwareSet(patchOp, values, PROGRESS_PHOTO_PATCH_FIELDS);
+    expect(result.id).toBe(values.id);
+    expect(result.userId).toBe(values.userId);
+    expect(result.userId).not.toBe('someone-else');
+    expect(Object.keys(result).sort()).toEqual(['id', 'storageKey', 'userId'].sort());
+  });
+
+  it('a PUT for progress_photo produces an update set containing every patchable column', () => {
+    const values = progressPhotoValues();
+    const putOp = op({
+      op: 'PUT',
+      type: 'progress_photo',
+      id: 'pp-1',
+      data: {
+        taken_at: '2026-06-15T20:00:00Z',
+        timezone: 'America/New_York',
+        local_date: '2026-06-15',
+        storage_key: 'progress-photo/pp-1.jpg',
+        note: null,
+      },
+    });
+    const result = patchAwareSet(putOp, values, PROGRESS_PHOTO_PATCH_FIELDS);
+    expect(result).toBe(values);
+  });
+
+  it('a PATCH for dashboard_widget naming only position produces an update set of exactly the identity keys plus position — widgetKind and enabled are absent', () => {
+    const values = dashboardWidgetValues({ position: 2048 });
+    const patchOp = op({ type: 'dashboard_widget', id: 'dw-1', data: { position: 2048 } });
+    const result = patchAwareSet(patchOp, values, DASHBOARD_WIDGET_PATCH_FIELDS);
+    expect(Object.keys(result).sort()).toEqual(['id', 'userId', 'position'].sort());
+    expect(result.position).toBe(2048);
+    expect('widgetKind' in result).toBe(false);
+    expect('enabled' in result).toBe(false);
+  });
+
+  it('always retains identity/server-owned keys regardless of op.data — dashboard_widget (id, userId), and never with a client-claimed value', () => {
+    const values = dashboardWidgetValues();
+    const patchOp = op({
+      type: 'dashboard_widget',
+      id: 'dw-1',
+      data: { user_id: 'someone-else', enabled: false },
+    });
+    const result = patchAwareSet(patchOp, values, DASHBOARD_WIDGET_PATCH_FIELDS);
+    expect(result.id).toBe(values.id);
+    expect(result.userId).toBe(values.userId);
+    expect(result.userId).not.toBe('someone-else');
+    expect(Object.keys(result).sort()).toEqual(['id', 'enabled', 'userId'].sort());
+  });
+
+  it('a PUT for dashboard_widget produces an update set containing every patchable column', () => {
+    const values = dashboardWidgetValues();
+    const putOp = op({
+      op: 'PUT',
+      type: 'dashboard_widget',
+      id: 'dw-1',
+      data: { widget_kind: 'next_up', position: 1024, enabled: true },
+    });
+    const result = patchAwareSet(putOp, values, DASHBOARD_WIDGET_PATCH_FIELDS);
     expect(result).toBe(values);
   });
 });
