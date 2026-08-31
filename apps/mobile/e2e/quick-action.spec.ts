@@ -14,6 +14,7 @@ interface QuickActionHarness {
   mountDashboard(): Promise<void>;
   seedBodyMetrics(entries: SeedBodyMetricEntry[]): Promise<string[]>;
   readBodyMetrics(): Promise<Record<string, unknown>[]>;
+  readPushedRoutes(): Promise<string[]>;
 }
 
 // page.evaluate serializes the passed function's source text alone and re-evaluates it inside the
@@ -41,6 +42,13 @@ async function seedBodyMetrics(page: Page, entries: SeedBodyMetricEntry[]): Prom
 async function readBodyMetrics(page: Page): Promise<Record<string, unknown>[]> {
   return page.evaluate(
     (globalKey) => (window as unknown as HarnessWindow)[globalKey].readBodyMetrics(),
+    DURABILITY_HARNESS_GLOBAL,
+  );
+}
+
+async function readPushedRoutes(page: Page): Promise<string[]> {
+  return page.evaluate(
+    (globalKey) => (window as unknown as HarnessWindow)[globalKey].readPushedRoutes(),
     DURABILITY_HARNESS_GLOBAL,
   );
 }
@@ -117,5 +125,25 @@ test.describe('quick-action sheet — two-tap weigh-in, no navigation, in a real
 
     // D-29's whole point: the write happens without a route change.
     expect(page.url()).toBe(urlBefore);
+  });
+
+  test('tapping History dismisses the sheet before navigating, and requests the real history route (R30)', async ({ page }) => {
+    // `/(tabs)/history` sits inside root-stack.tsx's signed-in-only Stack.Protected group, and this
+    // harness's unauthenticated session cannot cross that boundary (no live auth backend — see
+    // __durability.web.tsx's own router.push spy comment) — so the browser URL itself cannot move
+    // for this destination here. Reading back the app's own real router.push call is the strongest
+    // same-process proof available for a click that is otherwise fully real end-to-end.
+    await bootAndMount(page);
+
+    await page.getByRole('button', { name: 'Quick Actions', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'History', exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'History', exact: true }).click();
+
+    await expect.poll(() => readPushedRoutes(page)).toEqual(['/(tabs)/history']);
+    // The sheet's own Cancel row only exists while QuickActionSheet is mounted — its absence
+    // proves the sheet unmounted BEFORE the navigate call above fired, not merely that it was
+    // covered by a new screen (R30's dismiss-before-navigate ordering, proven in the DOM).
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
   });
 });

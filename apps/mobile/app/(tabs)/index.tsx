@@ -6,14 +6,18 @@ import type { BodyMetricKind } from '@fitness/api-contracts';
 import { DashboardWidgetHost, resolveDashboardWidgets, type KnownWidget } from '@/components/DashboardWidgetHost';
 import { DashboardWidgetPicker } from '@/components/DashboardWidgetPicker';
 import { MetricEntrySheet } from '@/components/MetricEntrySheet';
+import { PhotoCaptureConfirmSheet } from '@/components/PhotoCaptureConfirmSheet';
 import { PrimaryButton } from '@/components/PrimaryButton';
-import { QuickActionSheet, type QuickActionId } from '@/components/QuickActionSheet';
+import { QuickActionSheet, resolveQuickAction, type QuickActionId } from '@/components/QuickActionSheet';
 import { WorkoutInProgressBanner } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
+import { loadTrackedKinds } from '@/lib/db/body-metrics';
 import { loadOrMaterializeDashboardWidgets } from '@/lib/db/dashboard-widgets';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { discardSession, loadInProgressSessionSummary, type InProgressSessionSummary } from '@/lib/db/session-lifecycle';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
+import { capturePhoto } from '@/lib/photos/capture';
+import { downscalePhoto } from '@/lib/photos/downscale';
 
 // Widget-list-area first-paint skeleton, distinct from NextUpWidget's own (12-UI-SPEC design
 // decision 2 retires the old screen-level HomeScreenState machine for everything except this
@@ -57,6 +61,36 @@ export function deriveDashboardState({ failed, widgets }: DashboardStateInput): 
   return 'ready';
 }
 
+export interface QuickActionHandlers {
+  dismiss: () => void;
+  navigate: (route: string) => void;
+  openMetricEntry: (kind: BodyMetricKind) => void;
+  openMeasurementPicker: () => void;
+  openPhotoCapture: () => void;
+}
+
+// The whole dispatch decision, extracted so R30's dismiss-before-navigate ordering is exercised
+// without a renderer — same technique as readInProgressSession/deriveDashboardState above. dismiss
+// fires unconditionally, before either branch, which is what makes "a pure-navigation destination
+// dismisses the sheet before navigating" true by construction rather than by call-site discipline.
+export function dispatchQuickAction(id: QuickActionId, handlers: QuickActionHandlers): void {
+  const destination = resolveQuickAction(id);
+  handlers.dismiss();
+  if (destination.kind === 'navigate') {
+    handlers.navigate(destination.route);
+    return;
+  }
+  if (id === 'quick_weigh_in') {
+    handlers.openMetricEntry('bodyweight');
+    return;
+  }
+  if (id === 'quick_measurement') {
+    handlers.openMeasurementPicker();
+    return;
+  }
+  handlers.openPhotoCapture();
+}
+
 export interface HomeDashboardViewProps {
   colors: ThemeColors;
   userId: string | null;
@@ -74,8 +108,14 @@ export interface HomeDashboardViewProps {
   // null closed; { kind: null } opens on the Quick Measurement kind picker; { kind: 'bodyweight' }
   // (or another named kind) opens straight to the value field, skipping the picker step entirely.
   metricEntry: { kind: BodyMetricKind | null } | null;
+  trackedKinds: ReadonlySet<BodyMetricKind>;
   onCancelMetricEntry: () => void;
   onMetricLogged: () => void;
+  // Present once capturePhoto()+downscalePhoto() have both resolved — this sheet never shows the
+  // raw, unbounded original (D-17, matching progress-photos.tsx's own handleAddPhoto shape).
+  pendingPhotoCapture: { photoUri: string; bytes: Uint8Array } | null;
+  onSavedPhotoCapture: () => void;
+  onDiscardPhotoCapture: () => void;
   onResumeSession: () => void;
   onDiscardSession: () => void;
   onBrowseExercises: () => void;
@@ -98,8 +138,12 @@ export function HomeDashboardView({
   onCloseQuickActions,
   onSelectQuickAction,
   metricEntry,
+  trackedKinds,
   onCancelMetricEntry,
   onMetricLogged,
+  pendingPhotoCapture,
+  onSavedPhotoCapture,
+  onDiscardPhotoCapture,
   onResumeSession,
   onDiscardSession,
   onBrowseExercises,
@@ -193,9 +237,21 @@ export function HomeDashboardView({
         <MetricEntrySheet
           userId={userId}
           kind={metricEntry.kind}
+          trackedKinds={trackedKinds}
           db={db}
           onCancel={onCancelMetricEntry}
           onLogged={onMetricLogged}
+        />
+      ) : null}
+
+      {pendingPhotoCapture && userId ? (
+        <PhotoCaptureConfirmSheet
+          userId={userId}
+          photoUri={pendingPhotoCapture.photoUri}
+          bytes={pendingPhotoCapture.bytes}
+          db={db}
+          onSaved={onSavedPhotoCapture}
+          onDiscard={onDiscardPhotoCapture}
         />
       ) : null}
     </ScrollView>
@@ -220,6 +276,8 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
   // null closed; { kind: null } opens on the Quick Measurement kind picker; a named kind (Quick
   // Weigh-In's 'bodyweight') opens straight to the value field (D-29).
   const [metricEntry, setMetricEntry] = useState<{ kind: BodyMetricKind | null } | null>(null);
+  const [trackedKinds, setTrackedKinds] = useState<ReadonlySet<BodyMetricKind>>(new Set());
+  const [pendingPhotoCapture, setPendingPhotoCapture] = useState<{ photoUri: string; bytes: Uint8Array } | null>(null);
 
   // A second, independent focus read — the in-progress banner is pinned chrome, not part of the
   // widget-list read below, and must not gate or be gated by it: a failed widget read must not
@@ -276,11 +334,37 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
     }, [loadWidgets]),
   );
 
-  // Wires only Quick Weigh-In so far (Task 1) — the remaining five rows are no-ops until Task 2's
-  // dispatchQuickAction replaces this handler wholesale.
+  // Quick Measurement's own kind-picker chip set — loaded lazily right before the sheet opens,
+  // matching body-metrics.tsx's own reload-then-open shape, rather than kept live on every focus.
+  async function handleOpenMeasurementPicker() {
+    if (!userId) return;
+    try {
+      const tracked = await loadTrackedKinds(userId, db ?? getPowerSync());
+      setTrackedKinds(tracked);
+    } catch (error) {
+      console.error('tracked kinds load failed', error);
+    }
+    setMetricEntry({ kind: null });
+  }
+
+  // Opens capture directly — native picker / web file input, then the same downscale step
+  // progress-photos.tsx's own handleAddPhoto runs — rather than routing to the gallery (D-28's
+  // "Progress Photo" row, UI-SPEC S3 destination table).
+  async function handleOpenPhotoCapture() {
+    const captured = await capturePhoto();
+    if (!captured) return;
+    const downscaled = await downscalePhoto(captured);
+    setPendingPhotoCapture({ photoUri: downscaled.uri, bytes: downscaled.bytes });
+  }
+
   function handleSelectQuickAction(id: QuickActionId) {
-    setQuickActionsOpen(false);
-    if (id === 'quick_weigh_in') setMetricEntry({ kind: 'bodyweight' });
+    dispatchQuickAction(id, {
+      dismiss: () => setQuickActionsOpen(false),
+      navigate: (route) => router.push(route),
+      openMetricEntry: (kind) => setMetricEntry({ kind }),
+      openMeasurementPicker: () => void handleOpenMeasurementPicker(),
+      openPhotoCapture: () => void handleOpenPhotoCapture(),
+    });
   }
 
   return (
@@ -302,8 +386,12 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
       onCloseQuickActions={() => setQuickActionsOpen(false)}
       onSelectQuickAction={handleSelectQuickAction}
       metricEntry={metricEntry}
+      trackedKinds={trackedKinds}
       onCancelMetricEntry={() => setMetricEntry(null)}
       onMetricLogged={() => setMetricEntry(null)}
+      pendingPhotoCapture={pendingPhotoCapture}
+      onSavedPhotoCapture={() => setPendingPhotoCapture(null)}
+      onDiscardPhotoCapture={() => setPendingPhotoCapture(null)}
       onResumeSession={() => router.push('/(tabs)/workout')}
       onDiscardSession={async () => {
         if (inProgress) await discardSession(inProgress.id);

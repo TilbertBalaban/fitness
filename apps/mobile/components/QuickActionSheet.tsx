@@ -28,6 +28,26 @@ export const QUICK_ACTIONS: QuickAction[] = [
   { id: 'one_off_workout', label: 'One-off Workout', icon: 'barbell-outline' },
 ];
 
+export type QuickActionDestination = { kind: 'navigate'; route: string } | { kind: 'in-place' };
+
+// R30's testable distinction: a pure-navigation destination carries the route the caller dismisses
+// the sheet THEN pushes to; an in-place destination carries none, because it writes/opens over
+// Home instead (D-28). The one-off route carries `openOneOff=1`, the param workout.tsx reads once
+// on mount to open its own existing picker (see workout.tsx's own doc comment) — no picker or
+// session logic is duplicated here.
+export function resolveQuickAction(id: QuickActionId): QuickActionDestination {
+  switch (id) {
+    case 'history':
+      return { kind: 'navigate', route: '/(tabs)/history' };
+    case 'new_program':
+      return { kind: 'navigate', route: '/programs/generate' };
+    case 'one_off_workout':
+      return { kind: 'navigate', route: '/(tabs)/workout?openOneOff=1' };
+    default:
+      return { kind: 'in-place' };
+  }
+}
+
 export interface QuickActionSheetViewProps {
   colors: ThemeColors;
   onSelect: (id: QuickActionId) => void;

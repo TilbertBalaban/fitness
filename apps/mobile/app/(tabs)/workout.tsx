@@ -751,6 +751,9 @@ export interface UseWorkoutScreenOptions {
   // on this single typed value — never on session.status (D-32/R10) — exactly as if it had been
   // read from context; only the plumbing differs.
   mode?: SessionScreenMode;
+  // 12-08's quick-action seam: true when the route carries `openOneOff=1` — opens the SAME picker
+  // handleStartOneOff already owns, never a duplicate (D-28).
+  openOneOffPicker?: boolean;
 }
 
 export type WorkoutScreenViewModel = Omit<WorkoutScreenViewProps, 'colors'>;
@@ -758,7 +761,12 @@ export type WorkoutScreenViewModel = Omit<WorkoutScreenViewProps, 'colors'>;
 // The whole screen's state machine, extracted so __durability.web.tsx's workout-screen harness
 // mode can mount the exact same behaviour against its own database — the real WorkoutScreenView,
 // driven by real DOM clicks in a real browser, is what workout-screen.spec.ts proves (D-01).
-export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScreenOptions): WorkoutScreenViewModel {
+export function useWorkoutScreen({
+  userId,
+  db,
+  mode = LIVE_MODE,
+  openOneOffPicker,
+}: UseWorkoutScreenOptions): WorkoutScreenViewModel {
   // Resolved once, here, for the raw workout_session/logged_set updates this hook makes directly
   // (rest-target and rest-taken-seconds writes) — every other write in this file goes through a
   // db.ts helper that already defaults its own `db` parameter to getPowerSync(), so this is the
@@ -793,7 +801,8 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
   const [notificationPermission, setNotificationPermission] = useState<AlertPermission>('undetermined');
   const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
   const [offNoteDismissedForSessionId, setOffNoteDismissedForSessionId] = useState<string | null>(null);
-  const [oneOffPickerOpen, setOneOffPickerOpen] = useState(false);
+  // Lazy initial state, not an effect — reads the route param exactly once, on first render.
+  const [oneOffPickerOpen, setOneOffPickerOpen] = useState(() => openOneOffPicker ?? false);
   const [addExercisePickerOpen, setAddExercisePickerOpen] = useState(false);
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
@@ -1621,8 +1630,16 @@ export function useWorkoutScreen({ userId, db, mode = LIVE_MODE }: UseWorkoutScr
 // The 'live' subtree: the exact screen that shipped before 05-10, unchanged. A distinct component
 // so it mounts its own hooks unconditionally (rules of hooks) — the root below selects between
 // this and EditingWorkoutRoute once, never calls both hooks from one function body.
-function LiveWorkoutRoute({ colors, userId }: { colors: ThemeColors; userId: string | null }) {
-  const vm = useWorkoutScreen({ userId });
+function LiveWorkoutRoute({
+  colors,
+  userId,
+  openOneOffPicker,
+}: {
+  colors: ThemeColors;
+  userId: string | null;
+  openOneOffPicker?: boolean;
+}) {
+  const vm = useWorkoutScreen({ userId, openOneOffPicker });
 
   return (
     <SessionModeProvider mode="live">
@@ -1642,12 +1659,12 @@ export default function WorkoutScreen() {
   const colors = useThemeColors();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
-  const params = useLocalSearchParams<{ sessionId?: string }>();
+  const params = useLocalSearchParams<{ sessionId?: string; openOneOff?: string }>();
   const routeSessionId = params.sessionId ?? null;
 
   if (routeSessionId) {
     return <EditingWorkoutRoute sessionId={routeSessionId} userId={userId} colors={colors} />;
   }
 
-  return <LiveWorkoutRoute colors={colors} userId={userId} />;
+  return <LiveWorkoutRoute colors={colors} userId={userId} openOneOffPicker={params.openOneOff === '1'} />;
 }

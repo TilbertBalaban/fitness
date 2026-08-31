@@ -138,6 +138,36 @@ export function GymRow({ gymName, onPress }: { gymName?: string; onPress: () => 
   );
 }
 
+// S5/S8 entry points (12-08). Same bordered, surface-filled, rounded row chrome as GymRow, minus
+// its optional trailing status label — the two rows below carry no live summary here.
+function DataRow({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  const colors = useThemeColors();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="flex-row items-center justify-between rounded-md border border-foreground-muted bg-surface px-md py-sm"
+      style={{ minHeight: 48 }}
+    >
+      <View className="flex-row items-center gap-sm">
+        <Ionicons name={icon} size={20} color={colors.foregroundMuted} />
+        <Text className="text-body font-normal text-foreground">{label}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={colors.foregroundMuted} />
+    </Pressable>
+  );
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const { data: sessionData, refetch: refetchSession } = authClient.useSession();
@@ -268,6 +298,8 @@ export default function ProfileScreen() {
         <View className="gap-sm">
           <Text className="text-label font-normal text-foreground-muted">Gyms</Text>
           <GymRow gymName={activeGymName} onPress={() => router.push('/gym-profiles')} />
+          <DataRow icon="body-outline" label="Body Metrics" onPress={() => router.push('/body-metrics')} />
+          <DataRow icon="images-outline" label="Progress Photos" onPress={() => router.push('/progress-photos')} />
         </View>
 
         <Pressable

@@ -132,6 +132,22 @@ const WORKOUT_HARNESS_USER_ID = 'harness-user';
 // fixed wait is, and the spec polls for the result rather than depending on this number's exactness.
 const HARNESS_NAVIGATION_SETTLE_MS = 250;
 
+// 12-08's quick-action seam: `router.push('/(tabs)/history')` (and every other push into the
+// signed-in-only Stack.Protected group) is a real, silent no-op when this harness's unauthenticated
+// session mounts a screen outside that group (root-stack.tsx) — there is no live auth backend for
+// this harness to sign into (playwright.config.ts's own "no PowerSync Service, no API, no Postgres"
+// contract for the `durability` project), so the browser URL genuinely cannot change for a
+// protected destination here. Spying on the real router.push call is the strongest same-process
+// proof available: it still drives the production QuickActionSheet -> dispatchQuickAction code
+// through a real DOM click, and records the exact Href the app asked for, rather than replacing or
+// stubbing any app behaviour.
+const pushedRoutes: string[] = [];
+const originalRouterPush = router.push.bind(router);
+router.push = ((href: Parameters<typeof router.push>[0]) => {
+  pushedRoutes.push(typeof href === 'string' ? href : JSON.stringify(href));
+  return originalRouterPush(href);
+}) as typeof router.push;
+
 function WorkoutHarnessScreen({ db, userId }: { db: WriteDb; userId: string }) {
   const colors = useThemeColors();
   const vm = useWorkoutScreen({ userId, db });
@@ -906,6 +922,13 @@ export default function DurabilityHarnessScreen() {
         setProgressPhotosHarness(null);
         setBodyMetricTrendHarness(null);
         setPhotoCompositeHarness(null);
+      },
+      // 12-08's quick-action.spec.ts proof: the exact route(s) real code (QuickActionSheet's
+      // dispatchQuickAction, reached through a real DOM click) asked router.push for — see the
+      // router.push spy above. pushedRoutes starts empty on every page.goto() (a fresh module
+      // scope), so no reset method is needed alongside open()/close().
+      async readPushedRoutes() {
+        return pushedRoutes;
       },
     };
 
