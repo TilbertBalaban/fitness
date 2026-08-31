@@ -15,7 +15,7 @@ import { SegmentedChipRowView } from './SegmentedChipRow';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { loadWeightUnit } from '@/lib/db/preferences';
-import { loadLatestMetric, logMetric } from '@/lib/db/body-metrics';
+import { loadLatestMetric, logMetric, updateMetric } from '@/lib/db/body-metrics';
 
 // Matches the shipped ReorderExercisesSheet/HistoryActionSheet modal card width — this sheet is
 // the same card shape as every other action sheet in this app, never a bespoke width (R32).
@@ -138,6 +138,12 @@ export interface MetricEntrySheetProps {
   // Required when kind is null — the picker's own chip options are derived from it (bodyweight
   // excluded). Unused once a kind is named.
   trackedKinds?: ReadonlySet<BodyMetricKind>;
+  // Present only when this sheet is editing an existing S6 entry rather than logging a new one —
+  // pre-fills THIS entry's own canonical value rather than the kind's latest (UI-SPEC Confirmations:
+  // "not the kind's latest, since this IS the entry being edited"), and routes the confirm action
+  // through updateMetric instead of logMetric. D-10: no separate correction concept — this is an
+  // ordinary row edit, saved with no confirmation.
+  editEntry?: { id: string; canonicalValue: string };
   db?: WriteDb;
   onCancel: () => void;
   onLogged: () => void;
@@ -153,7 +159,15 @@ function unitLabel(displayUnit: ReturnType<typeof resolveDisplayUnit>): string {
 // state, the write and its failure state. One preference (weightUnit) resolves the display unit for
 // every kind via resolveDisplayUnit — a circumference kind entered under an lb preference is
 // entered in inches, stored in centimetres, and read back in inches (D-08).
-export function MetricEntrySheet({ userId, kind: initialKind, trackedKinds, db, onCancel, onLogged }: MetricEntrySheetProps) {
+export function MetricEntrySheet({
+  userId,
+  kind: initialKind,
+  trackedKinds,
+  editEntry,
+  db,
+  onCancel,
+  onLogged,
+}: MetricEntrySheetProps) {
   const colors = useThemeColors();
   const [selectedKind, setSelectedKind] = useState<BodyMetricKind | null>(initialKind);
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
@@ -165,25 +179,34 @@ export function MetricEntrySheet({ userId, kind: initialKind, trackedKinds, db, 
     let active = true;
     void (async () => {
       const database = db ?? getPowerSync();
-      const [unit, latest] = await Promise.all([
-        loadWeightUnit(userId, database),
-        loadLatestMetric(userId, selectedKind, database),
-      ]);
+      const unit = await loadWeightUnit(userId, database);
       if (!active) return;
       setWeightUnit(unit);
+      // editEntry checked BEFORE any loadLatestMetric read — an edit pre-fills the entry being
+      // edited, never the kind's latest (which could be a newer, different entry).
+      if (editEntry) {
+        setValue(fromCanonicalValue(selectedKind, editEntry.canonicalValue, unit));
+        return;
+      }
+      const latest = await loadLatestMetric(userId, selectedKind, database);
+      if (!active) return;
       setValue(latest ? fromCanonicalValue(selectedKind, latest.value, unit) : null);
     })();
     return () => {
       active = false;
     };
-  }, [userId, selectedKind, db]);
+  }, [userId, selectedKind, editEntry, db]);
 
   const handleLog = async () => {
     if (selectedKind === null || value === null || value === '') return;
     const canonical = toCanonicalValue(selectedKind, value, weightUnit);
     if (canonical === null) return;
     try {
-      await logMetric({ userId, kind: selectedKind, value: canonical }, db ?? getPowerSync());
+      if (editEntry) {
+        await updateMetric({ userId, id: editEntry.id, value: canonical }, db ?? getPowerSync());
+      } else {
+        await logMetric({ userId, kind: selectedKind, value: canonical }, db ?? getPowerSync());
+      }
       setWriteFailed(false);
       onLogged();
     } catch (error) {

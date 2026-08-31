@@ -10,6 +10,7 @@ import {
   deriveBodyMetricTrendState,
   type BodyMetricTrendViewProps,
 } from '../body-metric-trend';
+import { MetricEntryRow } from '@/components/MetricEntryRow';
 import { SegmentedChipRow } from '@/components/SegmentedChipRow';
 import { TrendChart } from '@/components/TrendChart';
 
@@ -58,6 +59,8 @@ function renderView(overrides: Partial<BodyMetricTrendViewProps> = {}) {
     onSelectWindow: jest.fn(),
     points: [{ key: '2026-08-10', value: 80, valueLabel: '80.00 kg', dateLabel: '10 Aug' }],
     latest: { key: '2026-08-10', value: 80, valueLabel: '80.00 kg', dateLabel: '10 Aug' },
+    entries: [],
+    onEntryPress: jest.fn(),
     colors: COLORS,
     chartWidth: 320,
     onLogPress: jest.fn(),
@@ -190,5 +193,24 @@ describe('BodyMetricTrendView — ready', () => {
 
     (chipRow.props.onSelect as (id: string) => void)('1m');
     expect(onSelectWindow).toHaveBeenCalledWith('1m');
+  });
+
+  it('renders one MetricEntryRow per entry — a genuinely different list from the chart series (D-09)', () => {
+    const onEntryPress = jest.fn();
+    const element = renderView({
+      state: 'ready',
+      entries: [
+        { id: 'e1', valueLabel: '80.20 kg', dateLabel: '10 Aug', timeLabel: '7:00 PM' },
+        { id: 'e2', valueLabel: '80.00 kg', dateLabel: '10 Aug', timeLabel: '7:00 AM' },
+      ],
+      onEntryPress,
+    });
+
+    const rows = findAll(element, isByType(MetricEntryRow));
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.props.valueLabel)).toEqual(['80.20 kg', '80.00 kg']);
+
+    (rows[0].props.onPress as () => void)();
+    expect(onEntryPress).toHaveBeenCalledWith('e1');
   });
 });

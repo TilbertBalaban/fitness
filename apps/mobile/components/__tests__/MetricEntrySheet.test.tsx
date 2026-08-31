@@ -5,7 +5,7 @@ jest.mock('../../lib/db/powersync', () => ({ getPowerSync: jest.fn() }));
 
 import type { ReactNode } from 'react';
 import { applyKeypadPress } from '../MetricValueKeypad';
-import { MetricEntrySheetView, type MetricEntrySheetViewProps } from '../MetricEntrySheet';
+import { MetricEntrySheet, MetricEntrySheetView, type MetricEntrySheetViewProps } from '../MetricEntrySheet';
 
 const COLORS = { accent: 'rgb(37, 99, 235)', foregroundMuted: 'rgb(113, 113, 122)', surface: 'rgb(244, 244, 245)' };
 
@@ -139,5 +139,41 @@ describe('MetricEntrySheetView — write-failed', () => {
     const text = findText(view).join(' ');
 
     expect(text).not.toContain("Couldn't save. Try again.");
+  });
+});
+
+// The stateful wrapper's own effect/write logic has no @testing-library/react-native or
+// react-test-renderer available in this worktree's lockfile to mount and exercise directly
+// (installing either is out of scope per the package-legitimacy gate) — the same constraint
+// exercise-detail-screen.test.ts's own "structural invariants" describe block documents. Structural
+// assertions over the compiled function's own source are the sanctioned technique here; the
+// end-to-end proof that an edit pre-fills the right value and overwrites in place runs in a real
+// browser (apps/mobile/e2e/body-metric.spec.ts).
+describe('MetricEntrySheet — edit mode pre-fill (D-10, UI-SPEC Confirmations)', () => {
+  it('checks editEntry and resolves the pre-fill from its own canonical value BEFORE ever calling loadLatestMetric', () => {
+    // Babel's own module-interop rewrite (jest's transform) qualifies every cross-module call as
+    // `_module.exportName` rather than the bare identifier the source file itself uses — asserted
+    // against that transpiled shape, not the pre-transform source, since .toString() on a jest-run
+    // function returns the compiled body.
+    const source = MetricEntrySheet.toString();
+
+    expect(source).toContain('editEntry');
+    expect(source).toContain('fromCanonicalValue');
+    const editEntryCheckIndex = source.indexOf('if (editEntry)');
+    const loadLatestCallIndex = source.indexOf('.loadLatestMetric)(userId');
+    expect(editEntryCheckIndex).toBeGreaterThan(-1);
+    expect(loadLatestCallIndex).toBeGreaterThan(-1);
+    expect(editEntryCheckIndex).toBeLessThan(loadLatestCallIndex);
+  });
+
+  it('routes the confirm action through updateMetric, not logMetric, when editing', () => {
+    const source = MetricEntrySheet.toString();
+
+    expect(source).toContain('.updateMetric)({');
+    const editBranchIndex = source.indexOf('if (editEntry)', source.indexOf('handleLog'));
+    const updateCallIndex = source.indexOf('.updateMetric)({');
+    const logCallIndex = source.indexOf('.logMetric)({');
+    expect(editBranchIndex).toBeLessThan(updateCallIndex);
+    expect(updateCallIndex).toBeLessThan(logCallIndex);
   });
 });

@@ -122,3 +122,69 @@ export async function loadTrackedKinds(userId: string, db: WriteDb = getPowerSyn
   const latestByKind = await loadLatestPerKind(userId, db);
   return new Set(BODY_METRIC_KIND_ORDER.filter((kind) => latestByKind.has(kind)));
 }
+
+export interface MetricEntryListRow {
+  id: string;
+  kind: BodyMetricKind;
+  value: string;
+  recordedAt: string;
+  localDate: string;
+}
+
+// The S6 entries list's own read — every entry for a kind, most recent first, INCLUDING a same-day
+// second entry the chart's own loadBodyMetricTrend dedupes away (D-09: this is a genuinely
+// different list from the chart's series). One batched select, ordered in SQL rather than JS, since
+// there is no per-date reduction here.
+export async function loadMetricEntries(
+  userId: string,
+  kind: BodyMetricKind,
+  db: WriteDb = getPowerSync(),
+): Promise<MetricEntryListRow[]> {
+  const rows = await db
+    .select({
+      id: bodyMetric.id,
+      kind: bodyMetric.kind,
+      value: bodyMetric.value,
+      recordedAt: bodyMetric.recordedAt,
+      localDate: bodyMetric.localDate,
+    })
+    .from(bodyMetric)
+    .where(and(eq(bodyMetric.userId, userId), eq(bodyMetric.kind, kind)))
+    .orderBy(desc(bodyMetric.recordedAt));
+
+  return rows.map((row) => ({ ...row, kind: row.kind as BodyMetricKind }));
+}
+
+export interface UpdateMetricInput {
+  userId: string;
+  id: string;
+  value: string;
+  // Present only when the caller also wants to change which kind the row belongs to — kind is
+  // client-patchable (12-01's own root-lookup rationale), but the trend-detail edit sheet (S6) only
+  // ever supplies value: an edit corrects the number, never the day it was logged.
+  kind?: BodyMetricKind;
+}
+
+// Writes ONLY value (and kind, when supplied) — recordedAt/timezone/localDate stay exactly as
+// originally captured, matching renameSession's own single-column-update shape (history-mutations.ts).
+// An edit is a correction of the number, not a claim about when the measurement happened (D-10,
+// this plan's own planner_assumptions #2): moving the timestamp would silently re-attribute the
+// entry to a different day and change which point the chart plots. Scoped by BOTH id and userId
+// (T-12-17) — the same ownership discipline progress-photos.ts's updatePhotoNote/deletePhoto use.
+export async function updateMetric(input: UpdateMetricInput, db: WriteDb = getPowerSync()): Promise<void> {
+  const patch: Partial<{ value: string; kind: BodyMetricKind }> = { value: input.value };
+  if (input.kind !== undefined) patch.kind = input.kind;
+
+  await db.update(bodyMetric).set(patch).where(and(eq(bodyMetric.id, input.id), eq(bodyMetric.userId, input.userId)));
+}
+
+export interface DeleteMetricInput {
+  userId: string;
+  id: string;
+}
+
+// A hard delete, matching the class excluded_exercise established — no separate correction concept
+// exists for a logged metric (D-10). Scoped by both id and userId (T-12-17).
+export async function deleteMetric(input: DeleteMetricInput, db: WriteDb = getPowerSync()): Promise<void> {
+  await db.delete(bodyMetric).where(and(eq(bodyMetric.id, input.id), eq(bodyMetric.userId, input.userId)));
+}
