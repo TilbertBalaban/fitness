@@ -10,10 +10,17 @@ export function capturePhoto(): Promise<CapturedPhoto | null> {
     const input = window.document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
+    let settled = false;
     input.onchange = () => {
+      settled = true;
       const file = input.files?.[0];
       resolve(file ? { blob: file } : null);
     };
+    // Chromium/Firefox fire `cancel` on the input when the picker is dismissed without a
+    // selection; without this, a cancelled picker never fires `onchange` and the promise hangs.
+    input.addEventListener('cancel', () => {
+      if (!settled) resolve(null);
+    });
     input.click();
   });
 }
