@@ -104,6 +104,20 @@ export interface BodyMetricValues {
   localDate: string;
 }
 
+// takenAt/timezone/localDate/storageKey/note are all genuinely client-patchable — editing a
+// progress photo's note or reclassifying its calendar day (D-10) legitimately changes them, the
+// same reasoning BodyMetricValues carries. storageKey is client-patchable data here too, not
+// identity resolved by a stored-linkage lookup — the row's id is its identity.
+export interface ProgressPhotoValues {
+  id: string;
+  userId: string;
+  takenAt: Date;
+  timezone: string;
+  localDate: string;
+  storageKey: string;
+  note: string | null;
+}
+
 export interface RoutineValues {
   id: string;
   userId: string;
@@ -442,6 +456,19 @@ export const BODY_METRIC_PATCH_FIELDS: PatchFieldMap<BodyMetricValues> = {
   recordedAt: 'recorded_at',
   timezone: 'timezone',
   localDate: 'local_date',
+};
+
+// id/userId are server-derived and written unconditionally, mirroring BODY_METRIC_PATCH_FIELDS'
+// ownership guarantee: userId always comes from the authenticated session, never from data.user_id
+// (T-12-10). Every other field is genuinely client-owned and maps to its own wire key.
+export const PROGRESS_PHOTO_PATCH_FIELDS: PatchFieldMap<ProgressPhotoValues> = {
+  id: null,
+  userId: null,
+  takenAt: 'taken_at',
+  timezone: 'timezone',
+  localDate: 'local_date',
+  storageKey: 'storage_key',
+  note: 'note',
 };
 
 export const EQUIPMENT_PROFILE_PATCH_FIELDS: PatchFieldMap<EquipmentProfileValues> = {

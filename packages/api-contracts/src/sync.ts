@@ -55,7 +55,9 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
 // personal_record/equipment_profile — a user's exclusion of an exercise owns no synced children and
 // is never referenced as a parent by another table's op. 'body_metric' (12-01) is an eighth: a
 // logged weigh-in or measurement owns no synced children and is never referenced as a parent — the
-// same shape personal_record already established (D-01/D-05).
+// same shape personal_record already established (D-01/D-05). 'progress_photo' (12-03) is a ninth:
+// the metadata row for an on-device photo owns no synced children and is never referenced as a
+// parent — the bytes themselves never cross this boundary at all (D-15), only the row does.
 export const PUSH_APPLIED_TABLES = [
   'workout_session',
   'session_exercise',
@@ -72,6 +74,7 @@ export const PUSH_APPLIED_TABLES = [
   'equipment_profile',
   'excluded_exercise',
   'body_metric',
+  'progress_photo',
 ] as const;
 export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 
@@ -80,13 +83,12 @@ export type PushAppliedTable = (typeof PUSH_APPLIED_TABLES)[number];
 // when that phase ships. Verified against ROADMAP.md's phase ownership, not guessed:
 // routine_day and routine_exercise moved to PUSH_APPLIED_TABLES in 04-02, user_preference moved
 // in 04-04 (PROG-08 needed activation to sync before Phase 6 could exist), personal_record moved in
-// 05-03 (D-30 — the apply path could not wait for Phase 9), equipment_profile moved in 06-01, and
-// body_metric moved in 12-01 — Phase 4 no longer owes either of its two here, Phase 9 no longer owes
-// personal_record, Phase 6 no longer owes equipment_profile, and Phase 12 no longer owes
-// body_metric. Only progress_photo remains, owned by 12-04.
-export const PUSH_DEFERRED_TABLES = [
-  'progress_photo', // Phase 12 — Body Metrics & Dashboard (12-04)
-] as const;
+// 05-03 (D-30 — the apply path could not wait for Phase 9), equipment_profile moved in 06-01,
+// body_metric moved in 12-01, and progress_photo moved in 12-03 — Phase 4 no longer owes either of
+// its two here, Phase 9 no longer owes personal_record, Phase 6 no longer owes equipment_profile,
+// and Phase 12 no longer owes body_metric or progress_photo. This tuple is now empty for the first
+// time in the project's life; 12-08 owns asserting that as a falsifiable test.
+export const PUSH_DEFERRED_TABLES = [] as const;
 export type PushDeferredTable = (typeof PUSH_DEFERRED_TABLES)[number];
 
 export type SyncCrudOpType = 'PUT' | 'PATCH' | 'DELETE';

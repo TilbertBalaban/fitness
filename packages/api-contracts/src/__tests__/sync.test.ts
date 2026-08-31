@@ -18,7 +18,7 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('contains exactly workout_session, session_exercise, logged_set, personal_record, equipment_profile, exercise, user_exercise_preference, excluded_exercise, routine, routine_day, routine_exercise, user_preference, routine_cycle, routine_exercise_cycle_target and body_metric in PUSH_APPLIED_TABLES', () => {
+  it('contains exactly workout_session, session_exercise, logged_set, personal_record, equipment_profile, exercise, user_exercise_preference, excluded_exercise, routine, routine_day, routine_exercise, user_preference, routine_cycle, routine_exercise_cycle_target, body_metric and progress_photo in PUSH_APPLIED_TABLES', () => {
     expect([...PUSH_APPLIED_TABLES].sort()).toEqual(
       [
         'body_metric',
@@ -27,6 +27,7 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
         'exercise',
         'logged_set',
         'personal_record',
+        'progress_photo',
         'routine',
         'routine_cycle',
         'routine_day',
@@ -81,15 +82,25 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
     expect((PUSH_APPLIED_TABLES as readonly string[]).includes('equipment_profile')).toBe(true);
     expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('equipment_profile')).toBe(false);
   });
+
+  it('progress_photo is applied, not deferred — 12-03 gives progress-photo metadata rows a server-side apply path', () => {
+    expect((PUSH_APPLIED_TABLES as readonly string[]).includes('progress_photo')).toBe(true);
+    expect((PUSH_DEFERRED_TABLES as readonly string[]).includes('progress_photo')).toBe(false);
+  });
 });
 
 describe('isTerminalRejection', () => {
-  it('is true for a deferred table\'s unknown_table rejection — retrying cannot cure it', () => {
-    expect(isTerminalRejection('unknown_table', 'progress_photo')).toBe(true);
-  });
-
+  // The "is true for a deferred table's unknown_table rejection" case this test used to cover
+  // (against progress_photo, the last member) has no real table left to exercise it against —
+  // PUSH_DEFERRED_TABLES is empty as of this plan. 12-08 owns asserting that emptiness directly;
+  // both tripwires below prove the tuple move happened rather than re-asserting the now-untestable
+  // true branch with a fabricated table name.
   it("isTerminalRejection('unknown_table', 'body_metric') is now false — the tripwire proving the tuple move happened (12-01)", () => {
     expect(isTerminalRejection('unknown_table', 'body_metric')).toBe(false);
+  });
+
+  it("isTerminalRejection('unknown_table', 'progress_photo') is now false — the tripwire proving the tuple move happened (12-03)", () => {
+    expect(isTerminalRejection('unknown_table', 'progress_photo')).toBe(false);
   });
 
   it('is false for equipment_profile\'s unknown_table rejection — no longer a known permanent gap (06-01)', () => {
@@ -130,7 +141,7 @@ describe('isTerminalRejection', () => {
   // CR-04 of 04-REVIEW.md: the server used to report every transaction-level throw as
   // invalid_field, so a deadlock between the same user's two devices read on the wire as "this
   // data is permanently unacceptable" and the connector completed the crud transaction away.
-  it('is false for server_error on every table, including a deferred one — a transient server failure never destroys a queued write', () => {
+  it('is false for server_error on every table — a transient server failure never destroys a queued write, regardless of PUSH_DEFERRED_TABLES membership', () => {
     expect(isTerminalRejection('server_error', 'routine')).toBe(false);
     expect(isTerminalRejection('server_error', 'routine_exercise_cycle_target')).toBe(false);
     expect(isTerminalRejection('server_error', 'progress_photo')).toBe(false);

@@ -1802,3 +1802,40 @@ export async function readRoutineRaw(routineId: string): Promise<Record<string, 
   const rows = await rawDb.getAll<Record<string, unknown>>('SELECT * FROM routine WHERE id = ?', [routineId]);
   return rows[0] ?? null;
 }
+
+export interface SeedProgressPhotoInput {
+  userId: string;
+  storageKey: string;
+  note?: string | null;
+  takenAt?: string;
+  timezone?: string;
+  localDate?: string;
+}
+
+// A direct, minimal write of the progress_photo row alone — never through savePhoto, since the
+// R27 harness cases need a row that DELIBERATELY has no matching bytes (12-03's own byte-presence
+// precondition). A caller that also wants bytes present calls putPhotoBytes(storageKey, ...)
+// separately, exactly as the e2e spec does.
+export async function seedProgressPhoto(db: TestWriteDb, input: SeedProgressPhotoInput): Promise<string> {
+  const id = generateClientId();
+  const takenAt = input.takenAt ?? new Date().toISOString();
+
+  await db.insert(progressPhoto).values({
+    id,
+    userId: input.userId,
+    takenAt,
+    timezone: input.timezone ?? 'UTC',
+    localDate: input.localDate ?? takenAt.slice(0, 10),
+    storageKey: input.storageKey,
+    note: input.note ?? null,
+  });
+
+  return id;
+}
+
+export async function readProgressPhotosRaw(userId: string): Promise<Record<string, unknown>[]> {
+  if (!rawDb) {
+    throw new Error('readProgressPhotosRaw() called before openTestPowerSync()');
+  }
+  return rawDb.getAll<Record<string, unknown>>('SELECT * FROM progress_photo WHERE user_id = ?', [userId]);
+}

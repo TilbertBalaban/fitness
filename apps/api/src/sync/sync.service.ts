@@ -40,6 +40,7 @@ import {
   personalRecord,
   equipmentProfile,
   bodyMetric,
+  progressPhoto,
 } from '../db/schema';
 import { resolveConflict } from './conflict-policy';
 import { classifyTransactionError } from './rejection-reason';
@@ -64,6 +65,7 @@ import {
   ROUTINE_EXERCISE_CYCLE_TARGET_PATCH_FIELDS,
   ROUTINE_EXERCISE_PATCH_FIELDS,
   ROUTINE_PATCH_FIELDS,
+  PROGRESS_PHOTO_PATCH_FIELDS,
   SESSION_EXERCISE_PATCH_FIELDS,
   USER_EXERCISE_PREFERENCE_PATCH_FIELDS,
   USER_PREFERENCE_PATCH_FIELDS,
@@ -74,6 +76,7 @@ import {
   type ExerciseValues,
   type LoggedSetValues,
   type PersonalRecordValues,
+  type ProgressPhotoValues,
   type RoutineCycleValues,
   type RoutineDayValues,
   type RoutineExerciseCycleTargetValues,
@@ -101,6 +104,7 @@ const TABLE_MAP = {
   equipment_profile: equipmentProfile,
   excluded_exercise: excludedExercise,
   body_metric: bodyMetric,
+  progress_photo: progressPhoto,
 } as const;
 
 type MappedTable = keyof typeof TABLE_MAP;
@@ -131,7 +135,9 @@ const HARD_DELETE_FORBIDDEN = new Set(['exercise', 'routine']);
 // excluded_exercise (11-02) is a seventh: a user's exclusion of an exercise owns no synced children
 // and is never referenced as a parent, the same shape as user_exercise_preference. body_metric
 // (12-01) is an eighth: a logged weigh-in or measurement owns no synced children and is never
-// referenced as a parent — the same shape personal_record already established.
+// referenced as a parent — the same shape personal_record already established. progress_photo
+// (12-03) is a ninth: a captured photo's metadata row owns no synced children and is never
+// referenced as a parent — the same shape body_metric carries.
 const SINGLETON_ROOT_TYPES = new Set<string>([
   'exercise',
   'user_exercise_preference',
@@ -140,6 +146,7 @@ const SINGLETON_ROOT_TYPES = new Set<string>([
   'equipment_profile',
   'excluded_exercise',
   'body_metric',
+  'progress_photo',
 ]);
 
 // An aggregate root owns synced children and is looked up in its own table; a singleton root
@@ -163,6 +170,7 @@ const ROOT_TABLE_BY_TYPE = {
   equipment_profile: equipmentProfile,
   excluded_exercise: excludedExercise,
   body_metric: bodyMetric,
+  progress_photo: progressPhoto,
 } as const;
 type RootTableType = keyof typeof ROOT_TABLE_BY_TYPE;
 
@@ -225,6 +233,7 @@ const AGGREGATE_RANK: Record<MappedTable, number> = {
   equipment_profile: 0,
   excluded_exercise: 0,
   body_metric: 0,
+  progress_photo: 0,
 };
 
 const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -358,6 +367,17 @@ interface BodyMetricOpData {
   recorded_at?: string;
   timezone?: string;
   local_date?: string;
+  // Never read — accepted only so a present user_id key does not crash the presence check in
+  // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
+  user_id?: unknown;
+}
+
+interface ProgressPhotoOpData {
+  taken_at?: string;
+  timezone?: string;
+  local_date?: string;
+  storage_key?: string;
+  note?: string | null;
   // Never read — accepted only so a present user_id key does not crash the presence check in
   // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
   user_id?: unknown;
@@ -597,6 +617,28 @@ function toBodyMetricValues(id: string, userId: string, data: Record<string, unk
     recordedAt: d.recorded_at ? new Date(d.recorded_at) : new Date(),
     timezone: d.timezone ?? 'UTC',
     localDate: d.local_date ?? new Date().toISOString().slice(0, 10),
+  };
+}
+
+// userId always comes from the authenticated session argument, never from data.user_id — a client
+// cannot claim a photo belongs to another user by naming a different owner in the payload
+// (T-12-10, mirrored from toBodyMetricValues). storage_key carries no reparenting hazard: it is
+// genuinely client-patchable data on this table, not identity, so no stored-linkage resolver is
+// needed here.
+function toProgressPhotoValues(
+  id: string,
+  userId: string,
+  data: Record<string, unknown> | null | undefined,
+): ProgressPhotoValues {
+  const d = (data ?? {}) as ProgressPhotoOpData;
+  return {
+    id,
+    userId,
+    takenAt: d.taken_at ? new Date(d.taken_at) : new Date(),
+    timezone: d.timezone ?? 'UTC',
+    localDate: d.local_date ?? new Date().toISOString().slice(0, 10),
+    storageKey: d.storage_key ?? '',
+    note: d.note ?? null,
   };
 }
 
@@ -1013,6 +1055,24 @@ export function hasInvalidField(op: SyncCrudOp): boolean {
     }
     if (d.value !== undefined && !isNonNegativeDecimalOrNull(d.value)) return true;
     if (!isValidOptionalIsoOrNull(d.recorded_at)) return true;
+    if (
+      d.local_date !== undefined &&
+      !(typeof d.local_date === 'string' && LOCAL_DATE_RE.test(d.local_date))
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  if (op.type === 'progress_photo') {
+    const d = data as ProgressPhotoOpData;
+    // storage_key is the only identifier linking this metadata row to the device-local bytes
+    // (D-15/R27) — an empty value would leave a row no device can ever resolve to a placeholder OR
+    // a photo, so it is rejected the same way session_exercise's NOT NULL exercise_id is.
+    if (d.storage_key !== undefined && !(typeof d.storage_key === 'string' && d.storage_key.length > 0)) {
+      return true;
+    }
+    if (!isValidOptionalIsoOrNull(d.taken_at)) return true;
     if (
       d.local_date !== undefined &&
       !(typeof d.local_date === 'string' && LOCAL_DATE_RE.test(d.local_date))
@@ -1615,6 +1675,7 @@ export class SyncService {
     const equipmentProfileRootIds = rootIdsByRootType.get('equipment_profile') ?? [];
     const excludedExerciseRootIds = rootIdsByRootType.get('excluded_exercise') ?? [];
     const bodyMetricRootIds = rootIdsByRootType.get('body_metric') ?? [];
+    const progressPhotoRootIds = rootIdsByRootType.get('progress_photo') ?? [];
 
     const existingRoots = workoutSessionRootIds.length
       ? await this.db
@@ -1705,6 +1766,15 @@ export class SyncService {
           .from(bodyMetric)
           .where(inArray(bodyMetric.id, bodyMetricRootIds))
       : [];
+    // progress_photo.userId is NOT NULL, the same ownership shape as body_metric — storage_key
+    // carries no reparenting hazard (it is genuinely client-patchable, not identity), so this
+    // lookup reads only id+userId, never a second identity column.
+    const existingProgressPhotoRoots = progressPhotoRootIds.length
+      ? await this.db
+          .select({ id: progressPhoto.id, userId: progressPhoto.userId })
+          .from(progressPhoto)
+          .where(inArray(progressPhoto.id, progressPhotoRootIds))
+      : [];
     // Keyed by aggregateKey, not by the bare id, for the same reason the aggregate map is: two
     // roots of different types sharing one id would otherwise overwrite each other here and hand
     // one aggregate the other's owner.
@@ -1730,6 +1800,10 @@ export class SyncService {
       ]),
       ...existingBodyMetricRoots.map((row): [string, string | null] => [
         aggregateKey('body_metric', row.id),
+        row.userId,
+      ]),
+      ...existingProgressPhotoRoots.map((row): [string, string | null] => [
+        aggregateKey('progress_photo', row.id),
         row.userId,
       ]),
     ]);
@@ -2003,7 +2077,9 @@ export class SyncService {
                         ? toExcludedExerciseValues(op.id, userId, op.data, dbExerciseIdByExcludedExerciseId.get(op.id))
                         : op.type === 'body_metric'
                           ? toBodyMetricValues(op.id, userId, op.data)
-                          : op.type === 'routine'
+                          : op.type === 'progress_photo'
+                            ? toProgressPhotoValues(op.id, userId, op.data)
+                            : op.type === 'routine'
                           ? toRoutineValues(op.id, userId, op.data)
                           : op.type === 'routine_day'
                           ? toRoutineDayValues(op.id, resolveRoutineIdForRoutineDay(op.id) ?? root, op.data)
@@ -2117,6 +2193,23 @@ export class SyncService {
                 set: { ...patchAwareSet(op, bodyMetricValues, BODY_METRIC_PATCH_FIELDS), serverSeq: nextSeq },
               })
               .returning({ serverSeq: bodyMetric.serverSeq });
+            const seqValue = BigInt(serverSeq);
+            if (seqValue > highestServerSeq) highestServerSeq = seqValue;
+          } else if (op.type === 'progress_photo') {
+            // progress_photo — a ninth singleton root (SINGLETON_ROOT_TYPES, 12-03), inserted/
+            // upserted the same shape as body_metric. Only the metadata row lands here — the photo
+            // bytes never cross this boundary at all (D-15/T-12-11), by construction: nothing in
+            // this file ever reads or writes photo bytes.
+            const nextSeq = sql`nextval('sync_seq')`;
+            const progressPhotoValues = values as ProgressPhotoValues;
+            const [{ serverSeq }] = await tx
+              .insert(progressPhoto)
+              .values({ ...progressPhotoValues, serverSeq: nextSeq })
+              .onConflictDoUpdate({
+                target: progressPhoto.id,
+                set: { ...patchAwareSet(op, progressPhotoValues, PROGRESS_PHOTO_PATCH_FIELDS), serverSeq: nextSeq },
+              })
+              .returning({ serverSeq: progressPhoto.serverSeq });
             const seqValue = BigInt(serverSeq);
             if (seqValue > highestServerSeq) highestServerSeq = seqValue;
           } else if (op.type === 'routine_day') {

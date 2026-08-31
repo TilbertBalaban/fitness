@@ -23,7 +23,14 @@
       "expo-secure-store",
       "expo-sharing",
       "expo-asset",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to add a progress photo.",
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }

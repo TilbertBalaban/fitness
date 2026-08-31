@@ -89,6 +89,12 @@ import {
   readCycleTargetCountForRoutine,
   readRoutineRaw,
 } from '../lib/db/test-support';
+// 12-03's progress-photos seam — a separate import statement, not folded into the block above, so
+// this append touches no existing line (this file's own append-only convention).
+import ProgressPhotosScreen from './progress-photos';
+import { savePhoto } from '../lib/db/progress-photos';
+import { putPhotoBytes, hasPhotoBytes } from '../lib/photos/photo-store';
+import { seedProgressPhoto, readProgressPhotosRaw } from '../lib/db/test-support';
 import { loadCatalogSnapshot } from '../lib/catalog/load-snapshot';
 import { generateProgram } from '@fitness/program-generator';
 import { loadProgramTree } from '../lib/db/programs/load-program';
@@ -173,6 +179,12 @@ export default function DurabilityHarnessScreen() {
   // single-active-mount convention. Carries only the db and a userId, matching the /muscle-map
   // route's own {userId, db} override shape.
   const [muscleMapHarness, setMuscleMapHarness] = useState<{ db: TestWriteDb; userId: string } | null>(null);
+  // 12-03's progress-photos mount — mutually exclusive with the others, same single-active-mount
+  // convention. Carries only the db and a userId, matching the /muscle-map route's own
+  // {userId, db} override shape.
+  const [progressPhotosHarness, setProgressPhotosHarness] = useState<{ db: TestWriteDb; userId: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -221,6 +233,7 @@ export default function DurabilityHarnessScreen() {
         setRecordsHarness(null);
         setHomeHarness(null);
         setHistoryTrendHarness(null);
+        setProgressPhotosHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -724,6 +737,50 @@ export default function DurabilityHarnessScreen() {
       ) {
         await setExerciseTargets(routineExerciseId, draft, requireOpenDb());
       },
+      // 12-03's progress-photo.spec.ts proof: real test-support.ts writes and real photo-store.web.ts
+      // reads/writes against real IndexedDB — no reimplementation. Seeds a row with NO matching bytes
+      // (the R27 device-absent precondition); a spec that also wants bytes present calls
+      // putPhotoBytes(storageKey, ...) separately.
+      async seedProgressPhoto(input: Omit<Parameters<typeof seedProgressPhoto>[1], 'userId'>) {
+        const db = requireOpenDb();
+        return seedProgressPhoto(db, { ...input, userId: WORKOUT_HARNESS_USER_ID });
+      },
+      async readProgressPhotos() {
+        return readProgressPhotosRaw(WORKOUT_HARNESS_USER_ID);
+      },
+      // bytes crosses the CDP boundary as a plain number array (page.evaluate cannot carry a
+      // Uint8Array), reconstructed here — the same real photo-store.web.ts putPhotoBytes/
+      // hasPhotoBytes the production capture flow calls, no stub.
+      async putPhotoBytes(key: string, bytes: number[]) {
+        await putPhotoBytes(key, new Uint8Array(bytes));
+      },
+      async hasPhotoBytes(key: string) {
+        return hasPhotoBytes(key);
+      },
+      // Real progress-photos.ts savePhoto against the currently open() database — proves the
+      // bytes-first-then-row write order and the storage_key linkage end to end, no reimplementation.
+      async savePhotoFromBytes(input: { bytes: number[]; note?: string | null }) {
+        const db = requireOpenDb();
+        return savePhoto({ userId: WORKOUT_HARNESS_USER_ID, bytes: new Uint8Array(input.bytes), note: input.note ?? null }, db);
+      },
+      // Mounts the real /progress-photos route against the currently open() database via its own
+      // {userId, db} override — matching seedMuscleMapAndOpenMuscleMap's seed-then-mount convention
+      // above, but with no seeding step of its own (callers seed via seedProgressPhoto/
+      // savePhotoFromBytes first, matching workout-screen.spec.ts's own openWorkoutScreen shape).
+      async openProgressPhotosScreen() {
+        const db = requireOpenDb();
+        setProgressPhotosHarness({ db, userId: WORKOUT_HARNESS_USER_ID });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setProgramsHarness(null);
+        setPerformanceHarness(null);
+        setRecordsHarness(null);
+        setHomeHarness(null);
+        setHistoryTrendHarness(null);
+        setMuscleMapHarness(null);
+      },
     };
 
     setReady(true);
@@ -762,6 +819,9 @@ export default function DurabilityHarnessScreen() {
       {homeHarness ? <HomeScreen db={homeHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
       {historyTrendHarness ? <HistoryScreen db={historyTrendHarness.db} userId={WORKOUT_HARNESS_USER_ID} /> : null}
       {muscleMapHarness ? <MuscleMapScreen db={muscleMapHarness.db} userId={muscleMapHarness.userId} /> : null}
+      {progressPhotosHarness ? (
+        <ProgressPhotosScreen db={progressPhotosHarness.db} userId={progressPhotosHarness.userId} />
+      ) : null}
       <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>
   );

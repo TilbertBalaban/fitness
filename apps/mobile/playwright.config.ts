@@ -52,6 +52,7 @@ export default defineConfig({
         'history-trend.spec.ts',
         'muscle-map.spec.ts',
         'generated-program.spec.ts',
+        'progress-photo.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },
