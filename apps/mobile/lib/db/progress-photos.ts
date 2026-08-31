@@ -1,6 +1,6 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { captureCalendarDay } from '../calendar-day';
-import { putPhotoBytes } from '../photos/photo-store';
+import { deletePhotoBytes, putPhotoBytes } from '../photos/photo-store';
 import { photoStorageKey } from '../photos/constants';
 import { generateClientId } from './id';
 import { getPowerSync, type WriteDb } from './powersync';
@@ -101,4 +101,40 @@ export function derivePhotoGalleryState({ failed, cells }: PhotoGalleryStateInpu
 // structurally-impossible actions).
 export function canBuildComposite(cells: GalleryCell[]): boolean {
   return cells.filter((cell) => cell.present).length >= 2;
+}
+
+export interface DeletePhotoInput {
+  userId: string;
+  id: string;
+}
+
+// Reads the row's storage_key first — deletePhotoBytes needs it — then removes the row and the
+// bytes. deletePhotoBytes tolerates an already-absent blob without throwing (photo-store.ts's own
+// contract): a device that never held the bytes must still be able to delete the row it can see.
+export async function deletePhoto(input: DeletePhotoInput, db: WriteDb = getPowerSync()): Promise<void> {
+  const [existing] = await db
+    .select({ storageKey: progressPhoto.storageKey })
+    .from(progressPhoto)
+    .where(and(eq(progressPhoto.id, input.id), eq(progressPhoto.userId, input.userId)));
+
+  await db.delete(progressPhoto).where(and(eq(progressPhoto.id, input.id), eq(progressPhoto.userId, input.userId)));
+
+  if (existing) {
+    await deletePhotoBytes(existing.storageKey);
+  }
+}
+
+export interface UpdatePhotoNoteInput {
+  userId: string;
+  id: string;
+  note: string | null;
+}
+
+// Sets only the note column — taken_at/timezone/local_date/storage_key are never touched by this
+// mutation, matching renameSession's own single-column update shape (history-mutations.ts).
+export async function updatePhotoNote(input: UpdatePhotoNoteInput, db: WriteDb = getPowerSync()): Promise<void> {
+  await db
+    .update(progressPhoto)
+    .set({ note: input.note })
+    .where(and(eq(progressPhoto.id, input.id), eq(progressPhoto.userId, input.userId)));
 }

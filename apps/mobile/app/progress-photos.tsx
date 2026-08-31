@@ -1,20 +1,24 @@
 import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { NavBackButton } from '@/components/NavBackButton';
 import { PhotoCaptureConfirmSheet } from '@/components/PhotoCaptureConfirmSheet';
+import { DeletePhotoDialog, ProgressPhotoActionSheet, type ProgressPhotoActionId } from '@/components/ProgressPhotoActionSheet';
 import { ProgressPhotoPlaceholder } from '@/components/ProgressPhotoPlaceholder';
 import { PHOTO_GRID_COLUMNS, PHOTO_TILE_GAP, ProgressPhotoTile, resolvePhotoTileSize } from '@/components/ProgressPhotoTile';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { TextField } from '@/components/TextField';
 import { formatChartDateLabel } from '@/lib/analytics/chart-labels';
 import { authClient } from '@/lib/auth-client';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import {
   canBuildComposite,
+  deletePhoto,
   derivePhotoGalleryState,
   loadProgressPhotos,
   resolveGalleryCells,
+  updatePhotoNote,
   type GalleryCell,
   type PhotoGalleryState,
   type ProgressPhotoRow,
@@ -139,6 +143,55 @@ export function ProgressPhotosScreenView({
   );
 }
 
+export interface EditPhotoNoteSheetProps {
+  initialNote: string;
+  saving: boolean;
+  onSave: (note: string) => void;
+  onCancel: () => void;
+}
+
+// Reuses TextField the same way PhotoCaptureConfirmSheet's note field does, rather than inventing
+// a second note editor — this sheet edits an EXISTING row's note only, never taken_at/timezone/
+// local_date/storage_key (updatePhotoNote's own single-column contract).
+export function EditPhotoNoteSheet({ initialNote, saving, onSave, onCancel }: EditPhotoNoteSheetProps) {
+  const [note, setNote] = useState(initialNote);
+
+  return (
+    <Modal transparent animationType="fade" onRequestClose={onCancel}>
+      <View className="flex-1 items-center justify-center bg-background/80 px-lg">
+        <View className="w-full rounded-md bg-surface p-lg" style={{ maxWidth: 400 }}>
+          <Text className="text-heading font-semibold text-foreground">Edit Note</Text>
+          <View className="mt-lg">
+            <TextField label="Note" placeholder="Add a note (optional)" value={note} onChangeText={setNote} multiline />
+          </View>
+          <View className="mt-lg flex-row justify-end gap-sm">
+            <Pressable
+              onPress={onCancel}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+              style={{ minWidth: 48, minHeight: 48 }}
+              className="items-center justify-center rounded-md px-md py-sm"
+            >
+              <Text className="text-body text-foreground-muted">Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onSave(note)}
+              disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel="Save"
+              accessibilityState={{ disabled: saving }}
+              style={{ minWidth: 48, minHeight: 48 }}
+              className={`items-center justify-center rounded-md bg-accent px-md py-sm ${saving ? 'opacity-60' : ''}`}
+            >
+              <Text className="text-body font-semibold text-white">Save</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export interface ProgressPhotosScreenProps {
   // The durability harness's seam, matching every other route in this app: mounts this exact route
   // against a caller-chosen db/userId instead of the production singleton.
@@ -157,6 +210,10 @@ export default function ProgressPhotosScreen({ userId: userIdOverride, db }: Pro
   const [photoUris, setPhotoUris] = useState<Map<string, string>>(new Map());
   const [failed, setFailed] = useState(false);
   const [pendingCapture, setPendingCapture] = useState<{ photoUri: string; bytes: Uint8Array } | null>(null);
+  const [actionSheetRow, setActionSheetRow] = useState<ProgressPhotoRow | null>(null);
+  const [confirmDeleteRow, setConfirmDeleteRow] = useState<ProgressPhotoRow | null>(null);
+  const [editingNoteRow, setEditingNoteRow] = useState<ProgressPhotoRow | null>(null);
+  const [savingNote, setSavingNote] = useState(false);
   const objectUrisRef = useRef<string[]>([]);
 
   const reload = useCallback(async () => {
@@ -218,6 +275,33 @@ export default function ProgressPhotosScreen({ userId: userIdOverride, db }: Pro
     setPendingCapture({ photoUri: downscaled.uri, bytes: downscaled.bytes });
   };
 
+  // Selecting delete only asks (DeletePhotoDialog) — this sheet never mutates directly.
+  // 'view' has no dedicated full-size viewer yet; selecting it simply closes the sheet.
+  const handleActionSelect = (id: ProgressPhotoActionId) => {
+    if (!actionSheetRow) return;
+    const row = actionSheetRow;
+    setActionSheetRow(null);
+    if (id === 'delete') setConfirmDeleteRow(row);
+    if (id === 'edit-note') setEditingNoteRow(row);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDeleteRow || !userId) return;
+    const row = confirmDeleteRow;
+    setConfirmDeleteRow(null);
+    await deletePhoto({ userId, id: row.id }, db ?? getPowerSync());
+    await reload();
+  };
+
+  const handleSaveNote = async (note: string) => {
+    if (!editingNoteRow || !userId) return;
+    setSavingNote(true);
+    await updatePhotoNote({ userId, id: editingNoteRow.id, note: note.trim().length > 0 ? note.trim() : null }, db ?? getPowerSync());
+    setSavingNote(false);
+    setEditingNoteRow(null);
+    await reload();
+  };
+
   const baseCells: GalleryCell[] = rows !== null ? resolveGalleryCells(rows, presenceByKey) : [];
   const cells: ProgressPhotoCell[] = baseCells.map((cell) => ({
     row: cell.row,
@@ -237,8 +321,7 @@ export default function ProgressPhotosScreen({ userId: userIdOverride, db }: Pro
         canComposite={canComposite}
         onAddPhoto={() => void handleAddPhoto()}
         onCompositePress={() => router.push('/photo-composite')}
-        // Task 4 wires this to ProgressPhotoActionSheet — a no-op until then.
-        onTilePress={() => {}}
+        onTilePress={(row) => setActionSheetRow(row)}
       />
 
       {pendingCapture && userId ? (
@@ -256,6 +339,27 @@ export default function ProgressPhotosScreen({ userId: userIdOverride, db }: Pro
             revokeObjectUri(pendingCapture.photoUri);
             setPendingCapture(null);
           }}
+        />
+      ) : null}
+
+      {actionSheetRow ? (
+        <ProgressPhotoActionSheet
+          dateLabel={formatChartDateLabel(actionSheetRow.localDate)}
+          onSelect={handleActionSelect}
+          onCancel={() => setActionSheetRow(null)}
+        />
+      ) : null}
+
+      {confirmDeleteRow ? (
+        <DeletePhotoDialog onConfirm={() => void handleConfirmDelete()} onCancel={() => setConfirmDeleteRow(null)} />
+      ) : null}
+
+      {editingNoteRow ? (
+        <EditPhotoNoteSheet
+          initialNote={editingNoteRow.note ?? ''}
+          saving={savingNote}
+          onSave={(note) => void handleSaveNote(note)}
+          onCancel={() => setEditingNoteRow(null)}
         />
       ) : null}
     </>
