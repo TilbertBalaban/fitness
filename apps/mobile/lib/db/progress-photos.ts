@@ -62,3 +62,43 @@ export async function loadProgressPhotos(userId: string, db: WriteDb = getPowerS
     .where(eq(progressPhoto.userId, userId))
     .orderBy(desc(progressPhoto.takenAt));
 }
+
+export interface GalleryCell {
+  row: ProgressPhotoRow;
+  present: boolean;
+}
+
+// Present and absent cells interleave in the rows' own date order — never grouped or reordered
+// separately (S8 partial, design decision 11). The caller resolves presenceByKey with ONE batched
+// hasPhotoBytes pass over the distinct storage keys, never once per cell here.
+export function resolveGalleryCells(
+  rows: ProgressPhotoRow[],
+  presenceByKey: Map<string, boolean>,
+): GalleryCell[] {
+  return rows.map((row) => ({ row, present: presenceByKey.get(row.storageKey) ?? false }));
+}
+
+export type PhotoGalleryState = 'error' | 'loading' | 'empty' | 'ready';
+
+export interface PhotoGalleryStateInput {
+  failed: boolean;
+  cells: GalleryCell[] | null;
+}
+
+// Mirrors deriveBodyMetricsScreenState/deriveHomeScreenState's shape exactly: error beats
+// everything, null cells means the read has not landed yet (never reported as empty — that would
+// tell the user their photos are gone while they are still being read), and a landed empty array
+// is the real empty state.
+export function derivePhotoGalleryState({ failed, cells }: PhotoGalleryStateInput): PhotoGalleryState {
+  if (failed) return 'error';
+  if (cells === null) return 'loading';
+  if (cells.length === 0) return 'empty';
+  return 'ready';
+}
+
+// The "Create Before & After" control's gate (S8 zero-one-many) — absent below two present
+// cells, never merely disabled (this app's established "absent over disabled" bias for
+// structurally-impossible actions).
+export function canBuildComposite(cells: GalleryCell[]): boolean {
+  return cells.filter((cell) => cell.present).length >= 2;
+}
