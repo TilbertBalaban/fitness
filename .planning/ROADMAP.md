@@ -594,7 +594,7 @@ Plans:
   3. User sees a dashboard with weekly progress, recent records, and insight tiles, and can add, remove, and reorder those widgets
   4. User can reach quick weigh-in, measurement, progress photo, history, new program, and one-off workout from a single quick-action menu
 
-**Plans**: 6/8 plans executed
+**Plans**: 7/8 plans executed
 
 Plans:
 
@@ -618,7 +618,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 12-07-PLAN.md — The dashboard widget picker: add, remove and drag-reorder on the shipped order-index arithmetic (wave 5)
+- [x] 12-07-PLAN.md — The dashboard widget picker: add, remove and drag-reorder on the shipped order-index arithmetic (wave 5)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -655,6 +655,8 @@ Plans:
 - [ ] Phase 10 test 1 (WINDOWS #165): the Muscle Map on a real iOS and Android build — both `react-native-svg` figures, the window switch and the drill-down sheet. The native build of this library has never been compiled or rendered on this machine (no Xcode, no Android SDK), so the whole body-map approach is proven on web only, exactly as Phase 9's own chart item records
 - [ ] Phase 12-02 test 1: the Body Metrics overview, MetricEntrySheet's docked `MetricValueKeypad` and TrackKindSheet on a real iOS/Android build — log a weight and a circumference measurement, confirm the two independent press targets on BodyMetricRow work correctly with real touch input, and that the keypad never covers the live value display at any OS font scale
 - [ ] Phase 12-04 test 1 (BODY-03): the trend detail screen on a real iOS/Android build — open a kind's trend from the overview, switch windows via `SegmentedChipRow`, and confirm `TrendChart`'s native `react-native-svg` render, the entries list's row press, `MetricEntryActionSheet`'s edit/delete and `DeleteMetricEntryDialog`'s confirm all work with real touch input
+- [ ] Phase 12-07 test 1 (DASH-02): `DashboardWidgetPicker` on a real iOS/Android build — add, remove and drag-reorder a widget via `DragHandle.tsx`'s real gesture path (never compiled or rendered on this machine; only `DragHandle.web.tsx`'s pointer-capture contract is browser-proven) and confirm the reordered dashboard renders correctly with real touch input
+- [ ] Phase 12-07 test 2 (T-12-32/D-21, planner_assumptions #1): two devices reordering the dashboard offline converge without losing a widget — asserted structurally by the row-per-widget table shape and by `moveWidget`'s unit tests, but never exercised against two live, syncing devices
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
 ### Phase 999.2: Human verification sweep — web target (BACKLOG)
@@ -705,4 +707,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
 | 11. Program Generation | 6/6 | Complete    | 2026-08-30 |
-| 12. Body Metrics & Dashboard | 6/8 | In Progress|  |
+| 12. Body Metrics & Dashboard | 7/8 | In Progress|  |

@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Body Metrics & Dashboard
 status: executing
-stopped_at: Completed 12-06-PLAN.md
-last_updated: "2026-08-31T09:02:07.229Z"
+stopped_at: Completed 12-07-PLAN.md
+last_updated: "2026-08-31T10:32:48.775Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 124
-  completed_plans: 122
+  completed_plans: 123
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 12 (Body Metrics & Dashboard) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-08-30 — Phase 12 execution started
 
-Progress: [██████████] 98%
+Progress: [██████████] 99%
 
 ## Performance Metrics
 
@@ -78,6 +78,7 @@ Progress: [██████████] 98%
 | Phase 12 P04 | 62min | 3 tasks | 16 files |
 | Phase 12 P05 | 35min | 4 tasks | 24 files |
 | Phase 12 P06 | 30min | 2 tasks | 11 files |
+| Phase 12 P07 | 49min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 12-06: shareComposite's ShareCompositeInput carries an unused-on-web viewRef alongside before/after so photo-composite.tsx's single call site never branches on Platform.OS
 - [Phase ?]: 12-06: composite.ts stays a plain .ts file (matching the plan's platform-split naming) by building the hidden CompositeCaptureView with React.createElement instead of JSX
 - [Phase ?]: 12-06: deriveCompositeStep computes the step from the selection object every render rather than storing it separately, so Start Over resetting both ids is, by construction, also resetting the step
+- [Phase ?]: 12-07: moveWidget scopes both the sibling read and every write by userId (T-12-29) — a widget id the user does not own resolves to no sibling and writes nothing, matching moveDay's own per-row scoping
+- [Phase ?]: 12-07: dashboard_widget's position column is aliased to computeReorder's orderIndex shape via a plain post-read .map(), never a select-level column alias
 
 ### Pending Todos
 
@@ -162,6 +165,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-31T09:02:07.202Z
-Stopped at: Completed 12-06-PLAN.md
+Last session: 2026-08-31T10:32:48.748Z
+Stopped at: Completed 12-07-PLAN.md
 Resume file: None
