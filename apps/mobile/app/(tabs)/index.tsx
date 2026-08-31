@@ -2,9 +2,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import type { BodyMetricKind } from '@fitness/api-contracts';
 import { DashboardWidgetHost, resolveDashboardWidgets, type KnownWidget } from '@/components/DashboardWidgetHost';
 import { DashboardWidgetPicker } from '@/components/DashboardWidgetPicker';
+import { MetricEntrySheet } from '@/components/MetricEntrySheet';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { QuickActionSheet, type QuickActionId } from '@/components/QuickActionSheet';
 import { WorkoutInProgressBanner } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
 import { loadOrMaterializeDashboardWidgets } from '@/lib/db/dashboard-widgets';
@@ -64,7 +67,15 @@ export interface HomeDashboardViewProps {
   pickerOpen: boolean;
   onOpenPicker: () => void;
   onClosePicker: () => void;
+  quickActionsOpen: boolean;
   onOpenQuickActions: () => void;
+  onCloseQuickActions: () => void;
+  onSelectQuickAction: (id: QuickActionId) => void;
+  // null closed; { kind: null } opens on the Quick Measurement kind picker; { kind: 'bodyweight' }
+  // (or another named kind) opens straight to the value field, skipping the picker step entirely.
+  metricEntry: { kind: BodyMetricKind | null } | null;
+  onCancelMetricEntry: () => void;
+  onMetricLogged: () => void;
   onResumeSession: () => void;
   onDiscardSession: () => void;
   onBrowseExercises: () => void;
@@ -82,7 +93,13 @@ export function HomeDashboardView({
   pickerOpen,
   onOpenPicker,
   onClosePicker,
+  quickActionsOpen,
   onOpenQuickActions,
+  onCloseQuickActions,
+  onSelectQuickAction,
+  metricEntry,
+  onCancelMetricEntry,
+  onMetricLogged,
   onResumeSession,
   onDiscardSession,
   onBrowseExercises,
@@ -169,6 +186,18 @@ export function HomeDashboardView({
       {pickerOpen ? (
         <DashboardWidgetPicker userId={userId} db={db} widgets={widgets} onDone={onClosePicker} />
       ) : null}
+
+      {quickActionsOpen ? <QuickActionSheet onSelect={onSelectQuickAction} onCancel={onCloseQuickActions} /> : null}
+
+      {metricEntry && userId ? (
+        <MetricEntrySheet
+          userId={userId}
+          kind={metricEntry.kind}
+          db={db}
+          onCancel={onCancelMetricEntry}
+          onLogged={onMetricLogged}
+        />
+      ) : null}
     </ScrollView>
   );
 }
@@ -187,9 +216,10 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
   const [widgets, setWidgets] = useState<KnownWidget[] | null>(null);
   const [widgetsFailed, setWidgetsFailed] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Mounts nothing yet — 12-08 mounts QuickActionSheet on this flag. Held here now so the header
-  // row's Quick Actions control has a real state to set rather than a placeholder no-op.
-  const [, setQuickActionsOpen] = useState(false);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  // null closed; { kind: null } opens on the Quick Measurement kind picker; a named kind (Quick
+  // Weigh-In's 'bodyweight') opens straight to the value field (D-29).
+  const [metricEntry, setMetricEntry] = useState<{ kind: BodyMetricKind | null } | null>(null);
 
   // A second, independent focus read — the in-progress banner is pinned chrome, not part of the
   // widget-list read below, and must not gate or be gated by it: a failed widget read must not
@@ -246,6 +276,13 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
     }, [loadWidgets]),
   );
 
+  // Wires only Quick Weigh-In so far (Task 1) — the remaining five rows are no-ops until Task 2's
+  // dispatchQuickAction replaces this handler wholesale.
+  function handleSelectQuickAction(id: QuickActionId) {
+    setQuickActionsOpen(false);
+    if (id === 'quick_weigh_in') setMetricEntry({ kind: 'bodyweight' });
+  }
+
   return (
     <HomeDashboardView
       colors={colors}
@@ -260,7 +297,13 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
         setPickerOpen(false);
         void loadWidgets();
       }}
+      quickActionsOpen={quickActionsOpen}
       onOpenQuickActions={() => setQuickActionsOpen(true)}
+      onCloseQuickActions={() => setQuickActionsOpen(false)}
+      onSelectQuickAction={handleSelectQuickAction}
+      metricEntry={metricEntry}
+      onCancelMetricEntry={() => setMetricEntry(null)}
+      onMetricLogged={() => setMetricEntry(null)}
       onResumeSession={() => router.push('/(tabs)/workout')}
       onDiscardSession={async () => {
         if (inProgress) await discardSession(inProgress.id);
