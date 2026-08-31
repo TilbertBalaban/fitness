@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 136
+open_count: 139
 waived_count: 4
 fixed_count: 30
-total_count: 170
-last_updated: 2026-08-30T16:52:57.577Z
+total_count: 173
+last_updated: 2026-08-31T07:12:12.059Z
 ---
 
 # Broken Windows Ledger
@@ -185,6 +185,9 @@ last_updated: 2026-08-30T16:52:57.577Z
 | 171 | 10 | deviation | apps/mobile/app/muscle-map.tsx |  | Code review WR-01 ('loadHasAnyHistory accepts userId but never filters on it') is a FALSE POSITIVE and its fix was applied then reverted (bcde0c0 -> c219dfa). Adding eq(workoutSession.userId, userId) broke 5 of 6 muscle-map durability specs. Reason: workout_session.user_id is assigned SERVER-side, so a locally-logged, not-yet-synced session legitimately carries user_id NULL -- seedMuscleMapHistory reproduces exactly this (userId: seededSession.syncedToServer ? input.userId : null). Filtering the local read by userId therefore tells a lifter whose only history is unsynced that they have no history at all, collapsing the screen to its no-history empty state. In this local-first architecture the on-device DB holds only the signed-in user's rows by PowerSync sync-rule construction, so a userId filter on a LOCAL workoutSession read is redundant AND wrong. Do not re-apply. Rollup/watermark reads in muscle-volume-query.ts do scope by userId -- that is a different table and not a precedent for this one. | open |  | 2026-08-29T17:41:17.594Z |  |
 | 172 | 11 | deviation |  |  | 11-04 edited packages/program-generator/src/__tests__/generate.test.ts, a file its plan does not name. 11-01's case used splitPreference 'upper_lower' as its stand-in for an unsupported split resolution, which held only while 11-04's table rows were empty. Filling upper_lower made the assertion false, so the case now uses full_body at 5 days - a pair declared in UNSUPPORTED_SPLIT_PAIRS, unsupported by construction rather than by omission. generate.ts itself is untouched (git diff empty); only the test fixture choice changed. | open |  | 2026-08-30T16:44:51.288Z |  |
 | 173 | 11 | deviation |  |  | 11-03 edited apps/mobile/app/programs/__tests__/generate-screen.test.ts, a file its plan does not name. Adding the required loadExclusions field to GenerateScreenDeps made the two existing deps literals in that test incomplete, so typecheck failed until they were updated. The alternative - making loadExclusions optional - would have weakened the injection contract the screen relies on. Two new cases were appended in the same file for the D-09 failed-read path. | open |  | 2026-08-30T16:52:57.577Z |  |
+| 174 | 12 | unrun-verify | apps/mobile/lib/photos/capture.ts |  | 12-03: native expo-image-picker capture path (capture.ts) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling fully exercised in e2e/progress-photo.spec.ts. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-31T07:12:11.545Z |  |
+| 175 | 12 | unrun-verify | apps/mobile/lib/photos/downscale.ts |  | 12-03: native expo-image-manipulator downscale path (downscale.ts) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling (canvas re-encode) fully exercised via lib/photos/__tests__/downscale.test.ts's shared resolveDownscaledDimensions and e2e/progress-photo.spec.ts. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-31T07:12:11.809Z |  |
+| 176 | 12 | unrun-verify | apps/mobile/lib/photos/photo-store.ts |  | 12-03: native expo-file-system photo store (photo-store.ts, File/Paths.document) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling (IndexedDB) fully exercised in e2e/progress-photo.spec.ts against a real browser. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-31T07:12:12.059Z |  |
 
 ````json
 [
@@ -2226,6 +2229,42 @@ last_updated: 2026-08-30T16:52:57.577Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-30T16:52:57.577Z",
+    "resolved_at": null
+  },
+  {
+    "id": 174,
+    "kind": "unrun-verify",
+    "phase": "12",
+    "file": "apps/mobile/lib/photos/capture.ts",
+    "line": null,
+    "description": "12-03: native expo-image-picker capture path (capture.ts) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling fully exercised in e2e/progress-photo.spec.ts. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-31T07:12:11.545Z",
+    "resolved_at": null
+  },
+  {
+    "id": 175,
+    "kind": "unrun-verify",
+    "phase": "12",
+    "file": "apps/mobile/lib/photos/downscale.ts",
+    "line": null,
+    "description": "12-03: native expo-image-manipulator downscale path (downscale.ts) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling (canvas re-encode) fully exercised via lib/photos/__tests__/downscale.test.ts's shared resolveDownscaledDimensions and e2e/progress-photo.spec.ts. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-31T07:12:11.809Z",
+    "resolved_at": null
+  },
+  {
+    "id": 176,
+    "kind": "unrun-verify",
+    "phase": "12",
+    "file": "apps/mobile/lib/photos/photo-store.ts",
+    "line": null,
+    "description": "12-03: native expo-file-system photo store (photo-store.ts, File/Paths.document) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling (IndexedDB) fully exercised in e2e/progress-photo.spec.ts against a real browser. Deferred to ROADMAP Phase 999.1.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-31T07:12:12.059Z",
     "resolved_at": null
   }
 ]
