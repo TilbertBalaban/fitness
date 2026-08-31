@@ -58,7 +58,8 @@ test.describe('body-metric trend — one kind, one window, in a real browser (BO
       { globalKey: DURABILITY_HARNESS_GLOBAL, kind: 'bodyweight' },
     );
 
-    await expect(page.getByRole('img', { name: /Weight over all time/ })).toBeVisible();
+    // Default window is 3 months (D-14) — every seeded date here is well inside it.
+    await expect(page.getByRole('img', { name: /Weight over 3 months/ })).toBeVisible();
     await expect(page.getByRole('img', { name: /3 points/ })).toBeVisible();
     // The headline is the LATEST entry's value, not the heaviest ever logged.
     await expect(page.getByText('80.50 kg', { exact: true })).toBeVisible();
@@ -131,5 +132,75 @@ test.describe('body-metric trend — one kind, one window, in a real browser (BO
 
     await expect(page.getByRole('img', { name: /2 points/ })).toBeVisible();
     await expect(page.getByText('84.00 kg', { exact: true })).toBeVisible();
+  });
+});
+
+// The window switch (D-14, UI-SPEC decision 9): default 3m, and every window is one filter over
+// the SAME already-loaded series — no re-query per chip press (records-query.ts's no-N+1 posture).
+test.describe('body-metric trend — window switch (BODY-03, D-14)', () => {
+  test('the 3-month default hides older entries; switching to 1 Year reveals them and renames the chart', async ({ page }) => {
+    await bootHarness(page);
+
+    await page.evaluate(
+      ({ globalKey, entries }) => (window as unknown as HarnessWindow)[globalKey].seedBodyMetrics(entries),
+      {
+        globalKey: DURABILITY_HARNESS_GLOBAL,
+        entries: [
+          // Older than 3 months but inside 1 year — invisible at the default window.
+          { kind: 'bodyweight', value: '90.000', localDate: daysAgo(200), recordedAt: `${daysAgo(200)}T07:00:00.000Z` },
+          { kind: 'bodyweight', value: '89.000', localDate: daysAgo(150), recordedAt: `${daysAgo(150)}T07:00:00.000Z` },
+          // Inside both windows.
+          { kind: 'bodyweight', value: '82.000', localDate: daysAgo(30), recordedAt: `${daysAgo(30)}T07:00:00.000Z` },
+          { kind: 'bodyweight', value: '81.000', localDate: daysAgo(5), recordedAt: `${daysAgo(5)}T07:00:00.000Z` },
+        ] satisfies SeedBodyMetricEntry[],
+      },
+    );
+
+    await page.evaluate(
+      ({ globalKey, kind }) => (window as unknown as HarnessWindow)[globalKey].mountBodyMetricTrend(kind),
+      { globalKey: DURABILITY_HARNESS_GLOBAL, kind: 'bodyweight' },
+    );
+
+    await expect(page.getByRole('img', { name: /Weight over 3 months\. 2 points/ })).toBeVisible();
+
+    await page.getByRole('radio', { name: '1 Year' }).click();
+
+    await expect(page.getByRole('img', { name: /Weight over 1 year\. 4 points/ })).toBeVisible();
+    await expect(page.getByRole('img', { name: /Weight over 3 months/ })).toHaveCount(0);
+  });
+
+  test('a kind with entries only outside the default window renders the empty-window copy and keeps the switch reachable', async ({
+    page,
+  }) => {
+    await bootHarness(page);
+
+    await page.evaluate(
+      ({ globalKey, entries }) => (window as unknown as HarnessWindow)[globalKey].seedBodyMetrics(entries),
+      {
+        globalKey: DURABILITY_HARNESS_GLOBAL,
+        entries: [
+          { kind: 'waist', value: '90.000', localDate: daysAgo(200), recordedAt: `${daysAgo(200)}T07:00:00.000Z` },
+        ] satisfies SeedBodyMetricEntry[],
+      },
+    );
+
+    await page.evaluate(
+      ({ globalKey, kind }) => (window as unknown as HarnessWindow)[globalKey].mountBodyMetricTrend(kind),
+      { globalKey: DURABILITY_HARNESS_GLOBAL, kind: 'waist' },
+    );
+
+    await expect(page.getByText('Nothing logged in the last 3 months', { exact: true })).toBeVisible();
+    await expect(page.getByText('Try a longer range.', { exact: true })).toBeVisible();
+    // D-09/D-13: never a chart, never a flat line, never a zero point — but the switch stays, since
+    // widening the window is the only way out.
+    await expect(page.getByRole('img')).toHaveCount(0);
+    await expect(page.getByRole('radio')).toHaveCount(4);
+
+    await page.getByRole('radio', { name: '1 Year' }).click();
+
+    await expect(page.getByRole('img', { name: /Weight over 1 year/ })).toHaveCount(0);
+    // A whole-number centimetre value trims its trailing decimal (fromCanonicalCm's own display
+    // rule) — the chart's accessible name and the headline both read "90 cm", never "90.0 cm".
+    await expect(page.getByRole('img', { name: /Waist over 1 year\. One point: 90 cm/ })).toBeVisible();
   });
 });
