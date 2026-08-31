@@ -121,4 +121,36 @@ test.describe('dashboard widget picker — add, remove, reorder, in a real brows
     const rows = await readDashboardWidgets(page);
     expect(rows).toHaveLength(0);
   });
+
+  test('adding Recent Records inserts exactly one row past every existing widget, and a second tap is a no-op', async ({
+    page,
+  }) => {
+    await bootAndMount(page);
+
+    await page.getByRole('button', { name: 'Edit Dashboard', exact: true }).click();
+    // Materialization of the default widget set is async relative to the header rendering the
+    // "Edit Dashboard" control — waiting for a "Remove ... from dashboard" row (this file's own
+    // precedent, see the tests above) proves the defaults have landed before "before" is read,
+    // so the row-count assertion below isn't racing a concurrent default-set insert.
+    await expect(page.getByRole('button', { name: 'Remove Next Up from dashboard' })).toBeVisible();
+
+    const before = await readDashboardWidgets(page);
+    const maxPositionBefore = Math.max(...before.map((row) => row.position));
+
+    await page.getByRole('button', { name: 'Add Recent Records to dashboard' }).click();
+
+    await expect.poll(async () => (await readDashboardWidgets(page)).length).toBe(before.length + 1);
+    const afterAdd = await readDashboardWidgets(page);
+    const added = afterAdd.find((row) => row.widget_kind === 'recent_records');
+    expect(added).toBeDefined();
+    expect(added!.position).toBeGreaterThan(maxPositionBefore);
+    await expect(page.getByRole('button', { name: 'Remove Recent Records from dashboard' })).toBeVisible();
+
+    // "Add Recent Records..." only exists in the DOM while recent_records is unenabled — once
+    // added it moves to "Your Widgets" and the add row for that kind is gone, so a genuine
+    // idempotent-second-tap check re-derives availability rather than clicking a now-absent control.
+    await expect(page.getByRole('button', { name: 'Add Recent Records to dashboard' })).toHaveCount(0);
+    const afterSecondCheck = await readDashboardWidgets(page);
+    expect(afterSecondCheck.filter((row) => row.widget_kind === 'recent_records')).toHaveLength(1);
+  });
 });

@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import { WIDGET_KINDS, WIDGET_KIND_SET, type WidgetKind } from '@fitness/api-contracts';
 import { generateClientId } from './id';
 import { appendOrderIndex, sortByOrderThenId } from './programs/order-index';
 import { type WriteDb, type WriteTx } from './powersync';
@@ -108,4 +109,42 @@ export async function removeWidget({ userId, widgetKind }: RemoveWidgetInput, db
   await db
     .delete(dashboardWidget)
     .where(and(eq(dashboardWidget.userId, userId), eq(dashboardWidget.widgetKind, widgetKind)));
+}
+
+export interface AddWidgetInput {
+  userId: string;
+  widgetKind: string;
+}
+
+// Read-then-insert guard, mirroring exclusions.ts's addExclusion precedent — an existing row for
+// this (user, kind) is a no-op, both the idempotency half of the probe's DASH-02 edge and what keeps
+// the server's own uniqueness expectations from rejecting a second local row for the same kind
+// (T-12-30 backstop). A kind outside WIDGET_KINDS is rejected by writing nothing. Position is
+// appendOrderIndex over the user's existing positions, imported from order-index.ts and never
+// reimplemented (D-25).
+export async function addWidget({ userId, widgetKind }: AddWidgetInput, db: WriteDb): Promise<void> {
+  if (!WIDGET_KIND_SET.has(widgetKind)) return;
+
+  const existing = await db
+    .select({ id: dashboardWidget.id })
+    .from(dashboardWidget)
+    .where(and(eq(dashboardWidget.userId, userId), eq(dashboardWidget.widgetKind, widgetKind)));
+  if (existing.length > 0) return;
+
+  const positionRows = await db
+    .select({ position: dashboardWidget.position })
+    .from(dashboardWidget)
+    .where(eq(dashboardWidget.userId, userId));
+
+  const position = appendOrderIndex(positionRows.map((row) => row.position));
+  await db.insert(dashboardWidget).values({ id: generateClientId(), userId, widgetKind, position, enabled: true });
+}
+
+// Pure, no database import (order-index.ts's own leaf-module shape) — the members of WIDGET_KINDS
+// not present in enabledKinds, in catalog order. Used by DashboardWidgetPickerView to render the
+// "Add a Widget" section, and rendering nothing at all when the result is empty mirrors
+// FilterChipRow's own shipped "nothing to show" absence rule.
+export function resolveAvailableWidgetKinds(enabledKinds: string[]): WidgetKind[] {
+  const enabled = new Set(enabledKinds);
+  return WIDGET_KINDS.filter((kind) => !enabled.has(kind));
 }

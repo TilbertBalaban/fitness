@@ -4,7 +4,13 @@ import { Modal, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from
 import { WIDGET_KIND_LABELS, WIDGET_KIND_SET, type WidgetKind } from '@fitness/api-contracts';
 import { DragHandle } from './DragHandle';
 import type { KnownWidget } from './DashboardWidgetHost';
-import { loadDashboardWidgets, removeWidget, type DashboardWidgetRow } from '@/lib/db/dashboard-widgets';
+import {
+  addWidget,
+  loadDashboardWidgets,
+  removeWidget,
+  resolveAvailableWidgetKinds,
+  type DashboardWidgetRow,
+} from '@/lib/db/dashboard-widgets';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { SLOT_ROW_HEIGHT } from '@/lib/programs/reorder-drag';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
@@ -27,6 +33,7 @@ export interface DashboardWidgetPickerViewProps {
   rowHeight: number;
   onMeasureRow: (height: number) => void;
   onRemove: (widgetKind: WidgetKind) => void;
+  onAdd: (widgetKind: WidgetKind) => void;
   onReorder: (widgetId: string, beforeId: string | null, afterId: string | null) => void;
   onDone: () => void;
 }
@@ -40,10 +47,12 @@ export function DashboardWidgetPickerView({
   rowHeight,
   onMeasureRow,
   onRemove,
+  onAdd,
   onReorder,
   onDone,
 }: DashboardWidgetPickerViewProps) {
   const orderedIds = widgets.map((widget) => widget.id);
+  const availableKinds = resolveAvailableWidgetKinds(widgets.map((widget) => widget.widgetKind));
 
   return (
     <View className="flex-1 items-center justify-center bg-background/80 px-lg">
@@ -93,6 +102,28 @@ export function DashboardWidgetPickerView({
             })
           )}
         </View>
+
+        {availableKinds.length > 0 ? (
+          <View className="mt-lg gap-xs">
+            <Text className="text-body font-semibold text-foreground">Add a Widget</Text>
+            {availableKinds.map((widgetKind) => {
+              const name = WIDGET_KIND_LABELS[widgetKind];
+              return (
+                <Pressable
+                  key={widgetKind}
+                  onPress={() => onAdd(widgetKind)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add ${name} to dashboard`}
+                  style={{ minHeight: 48 }}
+                  className="flex-row items-center gap-sm rounded-md px-md py-sm"
+                >
+                  <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
+                  <Text className="flex-1 text-body font-normal text-foreground">{name}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
 
         <View className="mt-lg flex-row justify-end">
           <Pressable
@@ -160,6 +191,14 @@ export function DashboardWidgetPicker({ userId, db, widgets, onDone }: Dashboard
       .catch((error) => console.error('dashboard widget remove failed', error));
   };
 
+  const handleAdd = (widgetKind: WidgetKind) => {
+    if (!userId) return;
+    editedRef.current = true;
+    addWidget({ userId, widgetKind }, resolvedDb)
+      .then(reload)
+      .catch((error) => console.error('dashboard widget add failed', error));
+  };
+
   return (
     <Modal transparent animationType="fade" onRequestClose={onDone}>
       <DashboardWidgetPickerView
@@ -168,6 +207,7 @@ export function DashboardWidgetPicker({ userId, db, widgets, onDone }: Dashboard
         rowHeight={rowHeight}
         onMeasureRow={setRowHeight}
         onRemove={handleRemove}
+        onAdd={handleAdd}
         onReorder={() => {}}
         onDone={onDone}
       />
