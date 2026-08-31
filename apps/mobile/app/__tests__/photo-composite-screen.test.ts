@@ -174,6 +174,19 @@ describe('compositeStepLabel', () => {
   });
 });
 
+describe('PhotoCompositeScreenView — error (WR-03)', () => {
+  it('renders the error copy with no grid, no preview and no Start Over link', () => {
+    const view = renderView({ state: 'error', cells: [], selectable: [] });
+
+    const text = findText(view).join(' ');
+    expect(text).toContain("Before & After couldn't load");
+    expect(text).toContain('Restart the app to try again. Your programs and history are safe.');
+    expect(findByType(view, FlashList)).toHaveLength(0);
+    expect(findByType(view, ProgressPhotoTile)).toHaveLength(0);
+    expect(text).not.toContain('Start Over');
+  });
+});
+
 describe('PhotoCompositeScreenView — not-enough-photos', () => {
   it('renders the exact UI-SPEC copy with no grid and no share control', () => {
     const view = renderView({ state: 'not-enough-photos', cells: [], selectable: [] });

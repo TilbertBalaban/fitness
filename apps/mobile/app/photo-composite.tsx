@@ -20,6 +20,17 @@ function revokeObjectUri(uri: string): void {
   if (typeof revoke === 'function') revoke(uri);
 }
 
+// Mirrors progress-photos.tsx's own renderStateBlock exactly — this screen's error state degrades
+// the same way every other local-SQLite-backed screen in this app does.
+function renderStateBlock(heading: string, body: string) {
+  return (
+    <View className="gap-xs px-lg pt-lg">
+      <Text className="text-heading font-semibold text-foreground">{heading}</Text>
+      <Text className="text-body font-normal text-foreground-muted">{body}</Text>
+    </View>
+  );
+}
+
 export type CompositeStep = 'choose-before' | 'choose-after' | 'preview';
 
 export interface CompositeSelection {
@@ -45,7 +56,7 @@ export function resolveSelectableCells(cells: GalleryCell[], chosenBeforeId: str
   return cells.map((cell) => cell.present && cell.row.id !== chosenBeforeId);
 }
 
-export type CompositeScreenState = 'not-enough-photos' | 'ready';
+export type CompositeScreenState = 'error' | 'not-enough-photos' | 'ready';
 
 // Below MAX_COMPOSITE_PHOTOS device-resident photos, this screen is only reachable through a stale
 // deep link (S8's own Create Before & After control already gates normal entry) — it still needs
@@ -110,6 +121,10 @@ export function PhotoCompositeScreenView({
         <Text className="ml-sm text-heading font-semibold text-foreground">Before &amp; After</Text>
       </View>
 
+      {state === 'error'
+        ? renderStateBlock("Before & After couldn't load", 'Restart the app to try again. Your programs and history are safe.')
+        : null}
+
       {state === 'not-enough-photos' ? (
         <View className="gap-xs px-lg pt-lg">
           <Text className="text-heading font-semibold text-foreground">Not enough photos on this device</Text>
@@ -117,7 +132,9 @@ export function PhotoCompositeScreenView({
             You need at least two progress photos on this device to build a before &amp; after.
           </Text>
         </View>
-      ) : (
+      ) : null}
+
+      {state === 'ready' ? (
         <>
           <View className="px-lg pt-sm">
             <Text className="text-label font-normal text-foreground-muted">{compositeStepLabel(step)}</Text>
@@ -196,7 +213,7 @@ export function PhotoCompositeScreenView({
             <Text className="text-body font-normal text-accent">Start Over</Text>
           </Pressable>
         </>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -215,6 +232,7 @@ export default function PhotoCompositeScreen({ userId: userIdOverride, db }: Pho
   const [rows, setRows] = useState<ProgressPhotoRow[] | null>(null);
   const [presenceByKey, setPresenceByKey] = useState<Map<string, boolean>>(new Map());
   const [photoUris, setPhotoUris] = useState<Map<string, string>>(new Map());
+  const [failed, setFailed] = useState(false);
   const [selection, setSelection] = useState<CompositeSelection>({ before: null, after: null });
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState(false);
@@ -223,33 +241,39 @@ export default function PhotoCompositeScreen({ userId: userIdOverride, db }: Pho
 
   const reload = useCallback(async () => {
     if (!userId) return;
-    const database = db ?? getPowerSync();
-    const loadedRows = await loadProgressPhotos(userId, database);
-    const distinctKeys = [...new Set(loadedRows.map((row) => row.storageKey))];
+    try {
+      const database = db ?? getPowerSync();
+      const loadedRows = await loadProgressPhotos(userId, database);
+      const distinctKeys = [...new Set(loadedRows.map((row) => row.storageKey))];
 
-    const presence = new Map<string, boolean>();
-    const uris = new Map<string, string>();
-    const created: string[] = [];
-    await Promise.all(
-      distinctKeys.map(async (key) => {
-        const present = await hasPhotoBytes(key);
-        presence.set(key, present);
-        if (present) {
-          const uri = await getPhotoUri(key);
-          if (uri) {
-            uris.set(key, uri);
-            created.push(uri);
+      const presence = new Map<string, boolean>();
+      const uris = new Map<string, string>();
+      const created: string[] = [];
+      await Promise.all(
+        distinctKeys.map(async (key) => {
+          const present = await hasPhotoBytes(key);
+          presence.set(key, present);
+          if (present) {
+            const uri = await getPhotoUri(key);
+            if (uri) {
+              uris.set(key, uri);
+              created.push(uri);
+            }
           }
-        }
-      }),
-    );
+        }),
+      );
 
-    for (const uri of objectUrisRef.current) revokeObjectUri(uri);
-    objectUrisRef.current = created;
+      for (const uri of objectUrisRef.current) revokeObjectUri(uri);
+      objectUrisRef.current = created;
 
-    setRows(loadedRows);
-    setPresenceByKey(presence);
-    setPhotoUris(uris);
+      setRows(loadedRows);
+      setPresenceByKey(presence);
+      setPhotoUris(uris);
+      setFailed(false);
+    } catch (error) {
+      console.error('photo composite load failed', error);
+      setFailed(true);
+    }
   }, [userId, db]);
 
   useFocusEffect(
@@ -307,9 +331,9 @@ export default function PhotoCompositeScreen({ userId: userIdOverride, db }: Pho
       .finally(() => setSharing(false));
   };
 
-  if (rows === null) return null;
+  if (rows === null && !failed) return null;
 
-  const screenState = deriveCompositeScreenState(baseCells);
+  const screenState: CompositeScreenState = failed ? 'error' : deriveCompositeScreenState(baseCells);
 
   return (
     <>
