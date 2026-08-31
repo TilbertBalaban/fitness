@@ -594,7 +594,7 @@ Plans:
   3. User sees a dashboard with weekly progress, recent records, and insight tiles, and can add, remove, and reorder those widgets
   4. User can reach quick weigh-in, measurement, progress photo, history, new program, and one-off workout from a single quick-action menu
 
-**Plans**: 7/8 plans executed
+**Plans**: 8/8 plans executed
 
 Plans:
 
@@ -622,7 +622,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 12-08-PLAN.md — The quick-action sheet reaching all six destinations, the inline quick weigh-in, the two Profile entry points, and the `PUSH_DEFERRED_TABLES`-empty assertion (wave 6)
+- [x] 12-08-PLAN.md — The quick-action sheet reaching all six destinations, the inline quick weigh-in, the two Profile entry points, and the `PUSH_DEFERRED_TABLES`-empty assertion (wave 6)
 
 ## Backlog
 
@@ -707,4 +707,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
 | 11. Program Generation | 6/6 | Complete    | 2026-08-30 |
-| 12. Body Metrics & Dashboard | 7/8 | In Progress|  |
+| 12. Body Metrics & Dashboard | 8/8 | In Progress|  |

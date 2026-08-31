@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 141
+open_count: 142
 waived_count: 4
 fixed_count: 30
-total_count: 175
-last_updated: 2026-08-31T08:52:59.239Z
+total_count: 176
+last_updated: 2026-08-31T11:40:34.083Z
 ---
 
 # Broken Windows Ledger
@@ -190,6 +190,7 @@ last_updated: 2026-08-31T08:52:59.239Z
 | 176 | 12 | unrun-verify | apps/mobile/lib/photos/photo-store.ts |  | 12-03: native expo-file-system photo store (photo-store.ts, File/Paths.document) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling (IndexedDB) fully exercised in e2e/progress-photo.spec.ts against a real browser. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-31T07:12:12.059Z |  |
 | 177 | 12 | deviation | ops/powersync/sync-rules.yaml |  | PowerSync Service restart and cross-device arrival of dashboard_widget rows unverified locally; no live second device or restarted sync service available in this environment | open |  | 2026-08-31T08:32:32.898Z |  |
 | 178 | 12 | unrun-verify | apps/mobile/lib/photos/composite.ts |  | react-native-view-shot's captureRef + expo-sharing native composite path is unbuildable/unverifiable on this machine (no Xcode, no Android SDK) — typecheck-only. RESEARCH Assumption A1: New-Architecture support for SDK 57 / RN 0.86.2 is asserted, not confirmed on-device. Route to ROADMAP Phase 999.1. | open |  | 2026-08-31T08:52:59.239Z |  |
+| 179 | 12 | unrun-verify | apps/mobile/app/(tabs)/workout.tsx |  | openOneOffPicker route param -> mounted WorkoutScreen's picker-open chain is proven only at the resolveQuickAction/dispatchQuickAction unit level (correct route string requested); no test mounts WorkoutScreen with the param and asserts the picker actually opens | open |  | 2026-08-31T11:40:34.083Z |  |
 
 ````json
 [
@@ -2291,6 +2292,18 @@ last_updated: 2026-08-31T08:52:59.239Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-31T08:52:59.239Z",
+    "resolved_at": null
+  },
+  {
+    "id": 179,
+    "kind": "unrun-verify",
+    "phase": "12",
+    "file": "apps/mobile/app/(tabs)/workout.tsx",
+    "line": null,
+    "description": "openOneOffPicker route param -> mounted WorkoutScreen's picker-open chain is proven only at the resolveQuickAction/dispatchQuickAction unit level (correct route string requested); no test mounts WorkoutScreen with the param and asserts the picker actually opens",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-31T11:40:34.083Z",
     "resolved_at": null
   }
 ]

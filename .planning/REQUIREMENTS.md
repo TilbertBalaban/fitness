@@ -144,7 +144,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 - [x] **DASH-01**: User sees a dashboard with weekly progress, recent records, and insight tiles
 - [x] **DASH-02**: User can add, remove, and reorder dashboard widgets
-- [ ] **DASH-03**: User can reach high-frequency actions (quick weigh-in, measurement, progress photo, history, new program, one-off workout) from a single quick-action menu
+- [x] **DASH-03**: User can reach high-frequency actions (quick weigh-in, measurement, progress photo, history, new program, one-off workout) from a single quick-action menu
 
 ## v2 Requirements
 
@@ -293,7 +293,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | BODY-05 | Phase 12 — Body Metrics & Dashboard | Complete |
 | DASH-01 | Phase 12 — Body Metrics & Dashboard | Complete |
 | DASH-02 | Phase 12 — Body Metrics & Dashboard | Complete |
-| DASH-03 | Phase 12 — Body Metrics & Dashboard | Pending |
+| DASH-03 | Phase 12 — Body Metrics & Dashboard | Complete |
 
 ## Amendments
 

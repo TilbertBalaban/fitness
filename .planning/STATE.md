@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Body Metrics & Dashboard
-status: executing
-stopped_at: Completed 12-07-PLAN.md
-last_updated: "2026-08-31T10:32:48.775Z"
+status: verifying
+stopped_at: Completed 12-08-PLAN.md
+last_updated: "2026-08-31T11:41:09.205Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
 progress:
   total_phases: 12
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 124
-  completed_plans: 123
+  completed_plans: 124
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 
 Phase: 12 (Body Metrics & Dashboard) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-30 — Phase 12 execution started
 
-Progress: [██████████] 99%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [██████████] 99%
 | Phase 12 P05 | 35min | 4 tasks | 24 files |
 | Phase 12 P06 | 30min | 2 tasks | 11 files |
 | Phase 12 P07 | 49min | 3 tasks | 9 files |
+| Phase 12 P08 | 53min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -133,6 +134,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 12-06: deriveCompositeStep computes the step from the selection object every render rather than storing it separately, so Start Over resetting both ids is, by construction, also resetting the step
 - [Phase ?]: 12-07: moveWidget scopes both the sibling read and every write by userId (T-12-29) — a widget id the user does not own resolves to no sibling and writes nothing, matching moveDay's own per-row scoping
 - [Phase ?]: 12-07: dashboard_widget's position column is aliased to computeReorder's orderIndex shape via a plain post-read .map(), never a select-level column alias
+- [Phase ?]: 12-08: dispatchQuickAction calls handlers.dismiss() unconditionally before branching on navigate vs. in-place — R30's dismiss-before-navigate ordering is a property of one function, not six call-site disciplines
+- [Phase ?]: 12-08: Profile's Body Metrics/Progress Photos rows placed after Gym Profiles only — 12-UI-SPEC's 'before Appearance' anchor is unsatisfiable without reordering existing content, which the same instruction forbids
+- [Phase ?]: 12-08: History quick action's e2e proof spies on the app's real router.push (__durability.web.tsx readPushedRoutes) instead of asserting a URL change — the destination is Stack.Protected and this harness's unauthenticated session cannot cross it
 
 ### Pending Todos
 
@@ -165,6 +169,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-31T10:32:48.748Z
-Stopped at: Completed 12-07-PLAN.md
+Last session: 2026-08-31T11:41:09.150Z
+Stopped at: Completed 12-08-PLAN.md
 Resume file: None
