@@ -1,6 +1,14 @@
 import { Column, is, Param, SQL } from 'drizzle-orm';
 import { BODY_METRIC_KIND_ORDER } from '@fitness/api-contracts';
-import { loadLatestMetric, loadTrackedKindSummaries, loadTrackedKinds, logMetric } from '../body-metrics';
+import {
+  deleteMetric,
+  loadLatestMetric,
+  loadMetricEntries,
+  loadTrackedKindSummaries,
+  loadTrackedKinds,
+  logMetric,
+  updateMetric,
+} from '../body-metrics';
 import { captureCalendarDay } from '../../calendar-day';
 import { getPowerSync } from '../powersync';
 import { bodyMetric } from '../schema';
@@ -36,24 +44,47 @@ function fakeDb(seed: Row[] = []) {
         where: (condition: unknown) => {
           const pairs = collectEqPairs(condition);
           const matched = rows.filter((row) => pairs.every(([col, val]) => row[col] === val));
-          // Both directly awaitable (loadTrackedKindSummaries's single batched read) and
-          // .orderBy().limit()-chainable (loadLatestMetric) — the same two shapes the real
-          // drizzle query builder supports on the same returned object.
+          // orderBy()'s own result is BOTH directly awaitable (loadMetricEntries's single batched,
+          // fully-sorted read) AND .limit()-chainable (loadLatestMetric) — the same two shapes the
+          // real drizzle query builder supports on the same returned object.
+          const sorted = matched.slice().sort((a, b) => String(b.recordedAt).localeCompare(String(a.recordedAt)));
           return {
-            orderBy: () => ({
-              limit: (n: number) =>
-                Promise.resolve(
-                  matched
-                    .slice()
-                    .sort((a, b) => String(b.recordedAt).localeCompare(String(a.recordedAt)))
-                    .slice(0, n),
-                ),
-            }),
+            orderBy: () =>
+              Object.assign(Promise.resolve(sorted), {
+                limit: (n: number) => Promise.resolve(sorted.slice(0, n)),
+              }),
             then: (resolve: (rows: Row[]) => void, reject: (error: unknown) => void) =>
               Promise.resolve(matched).then(resolve, reject),
           };
         },
       }),
+    }),
+    // updateMetric/deleteMetric's own shapes — real eq()-condition matching against the same
+    // in-memory rows array, so "leaves the timestamp trio untouched" and "scoped by both id and
+    // userId" (T-12-17) are proven against real mutation, not assumed from call shape alone.
+    update: (table: unknown) => ({
+      set: (patch: Row) => ({
+        where: (condition: unknown) => {
+          const pairs = collectEqPairs(condition);
+          if (table === bodyMetric) {
+            for (const row of rows) {
+              if (pairs.every(([col, val]) => row[col] === val)) Object.assign(row, patch);
+            }
+          }
+          return Promise.resolve();
+        },
+      }),
+    }),
+    delete: (table: unknown) => ({
+      where: (condition: unknown) => {
+        const pairs = collectEqPairs(condition);
+        if (table === bodyMetric) {
+          for (let index = rows.length - 1; index >= 0; index--) {
+            if (pairs.every(([col, val]) => rows[index][col] === val)) rows.splice(index, 1);
+          }
+        }
+        return Promise.resolve();
+      },
     }),
   } as unknown as ReturnType<typeof getPowerSync>;
 
@@ -63,6 +94,7 @@ function fakeDb(seed: Row[] = []) {
 // Column name (as drizzle stores it) -> row property, mirroring exclusions.test.ts's small
 // hardcoded map convention — this fake only ever needs to understand body_metric's shape.
 const COLUMN_TO_FIELD: Record<string, string> = {
+  id: 'id',
   user_id: 'userId',
   kind: 'kind',
 };
@@ -197,5 +229,103 @@ describe('loadTrackedKinds', () => {
     const { db } = fakeDb([]);
 
     await expect(loadTrackedKinds('user-1', db)).resolves.toEqual(new Set());
+  });
+});
+
+describe('loadMetricEntries (S6 entries list — D-09)', () => {
+  it('returns every entry for the kind, most recent first — including a same-day second entry', async () => {
+    const { db } = fakeDb([
+      { id: 'a', userId: 'user-1', kind: 'bodyweight', value: '80.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+      { id: 'b', userId: 'user-1', kind: 'bodyweight', value: '80.200', recordedAt: '2026-08-10T19:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+      { id: 'c', userId: 'user-1', kind: 'bodyweight', value: '81.000', recordedAt: '2026-08-05T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-05' },
+    ]);
+
+    const entries = await loadMetricEntries('user-1', 'bodyweight', db);
+
+    // The chart's own dedup (loadBodyMetricTrend) would collapse the same-day pair to one point —
+    // this reader keeps both, because every logged entry is listed here (D-09).
+    expect(entries.map((entry) => entry.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('excludes another kind’s and another user’s rows', async () => {
+    const { db } = fakeDb([
+      { id: 'a', userId: 'user-1', kind: 'bodyweight', value: '80.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+      { id: 'b', userId: 'user-1', kind: 'waist', value: '90.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+      { id: 'c', userId: 'user-2', kind: 'bodyweight', value: '99.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+    ]);
+
+    const entries = await loadMetricEntries('user-1', 'bodyweight', db);
+
+    expect(entries.map((entry) => entry.id)).toEqual(['a']);
+  });
+});
+
+describe('updateMetric (D-10, T-12-17)', () => {
+  it('changes only the value, leaving recordedAt, timezone and localDate untouched — an edit corrects the number, not when it happened', async () => {
+    const { db, rows } = fakeDb([
+      { id: 'a', userId: 'user-1', kind: 'bodyweight', value: '80.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+    ]);
+
+    await updateMetric({ userId: 'user-1', id: 'a', value: '81.500' }, db);
+
+    expect(rows[0]).toMatchObject({
+      value: '81.500',
+      recordedAt: '2026-08-10T07:00:00.000Z',
+      timezone: 'UTC',
+      localDate: '2026-08-10',
+    });
+  });
+
+  it('also updates kind when the caller supplies one', async () => {
+    const { db, rows } = fakeDb([
+      { id: 'a', userId: 'user-1', kind: 'bodyweight', value: '80.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+    ]);
+
+    await updateMetric({ userId: 'user-1', id: 'a', value: '80.000', kind: 'waist' }, db);
+
+    expect(rows[0].kind).toBe('waist');
+  });
+
+  it('never updates a row owned by another user, even with the correct id', async () => {
+    const { db, rows } = fakeDb([
+      { id: 'a', userId: 'user-2', kind: 'bodyweight', value: '80.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+    ]);
+
+    await updateMetric({ userId: 'user-1', id: 'a', value: '99.000' }, db);
+
+    expect(rows[0].value).toBe('80.000');
+  });
+});
+
+describe('deleteMetric (D-10, T-12-17)', () => {
+  it('removes the row', async () => {
+    const { db, rows } = fakeDb([
+      { id: 'a', userId: 'user-1', kind: 'bodyweight', value: '80.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+    ]);
+
+    await deleteMetric({ userId: 'user-1', id: 'a' }, db);
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it('never deletes a row owned by another user, even with the correct id', async () => {
+    const { db, rows } = fakeDb([
+      { id: 'a', userId: 'user-2', kind: 'bodyweight', value: '80.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+    ]);
+
+    await deleteMetric({ userId: 'user-1', id: 'a' }, db);
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it('a recomputed trend series no longer contains the deleted entry’s point', async () => {
+    const { db, rows } = fakeDb([
+      { id: 'a', userId: 'user-1', kind: 'bodyweight', value: '80.000', recordedAt: '2026-08-10T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-10' },
+      { id: 'b', userId: 'user-1', kind: 'bodyweight', value: '81.000', recordedAt: '2026-08-11T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-11' },
+    ]);
+
+    await deleteMetric({ userId: 'user-1', id: 'a' }, db);
+
+    expect(rows.map((row) => row.localDate)).toEqual(['2026-08-11']);
   });
 });
