@@ -180,4 +180,22 @@ describe('dashboard_widget sync (e2e)', () => {
     expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
     expect(await dashboardWidgetRow(id)).toBeUndefined();
   });
+
+  it('a PATCH naming only position leaves widget_kind and enabled unchanged — the patchAwareSet contract, catching a map entry accidentally set to null (WR-01)', async () => {
+    const { cookie } = await signUp('patch-clobber');
+    const id = randomUUID();
+
+    const putOp = dashboardWidgetOp(id, { widget_kind: 'bodyweight_trend', position: 1024, enabled: true });
+    const putRes = await push(cookie, [putOp]);
+    expect((putRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const patchOp = dashboardWidgetOp(id, { position: 4096 }, 'PATCH');
+    const patchRes = await push(cookie, [patchOp]);
+    expect((patchRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await dashboardWidgetRow(id);
+    expect(row?.position).toBe(4096);
+    expect(row?.widget_kind).toBe('bodyweight_trend');
+    expect(row?.enabled).toBe(true);
+  });
 });

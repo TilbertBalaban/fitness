@@ -188,4 +188,30 @@ describe('body_metric sync (e2e)', () => {
     expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
     expect(await bodyMetricRow(id)).toBeUndefined();
   });
+
+  it('a PATCH naming only value leaves kind, timezone and local_date unchanged — the patchAwareSet contract, catching a map entry accidentally set to null (WR-01)', async () => {
+    const { cookie } = await signUp('patch-clobber');
+    const id = randomUUID();
+
+    const putOp = bodyMetricOp(id, {
+      kind: 'bodyweight',
+      value: '82.500',
+      recorded_at: '2026-08-30T11:45:00.000Z',
+      timezone: 'America/New_York',
+      local_date: '2026-08-30',
+    });
+    const putRes = await push(cookie, [putOp]);
+    expect((putRes.body as SyncPushResponse).rejected).toEqual([]);
+    const before = await bodyMetricRow(id);
+
+    const patchOp = bodyMetricOp(id, { value: '83.100' }, 'PATCH');
+    const patchRes = await push(cookie, [patchOp]);
+    expect((patchRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await bodyMetricRow(id);
+    expect(Number(row?.value)).toBeCloseTo(83.1);
+    expect(row?.kind).toBe('bodyweight');
+    expect(row?.timezone).toBe('America/New_York');
+    expect(row?.local_date).toEqual(before?.local_date);
+  });
 });

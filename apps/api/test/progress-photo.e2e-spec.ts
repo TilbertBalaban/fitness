@@ -177,4 +177,28 @@ describe('progress_photo sync (e2e)', () => {
     expect((res.body as SyncPushResponse).rejected).toEqual([{ op_id: op.op_id, reason: 'invalid_field' }]);
     expect(await progressPhotoRow(id)).toBeUndefined();
   });
+
+  it('a PATCH naming only note leaves storage_key, taken_at and timezone unchanged — the patchAwareSet contract, catching a map entry accidentally set to null (WR-01)', async () => {
+    const { cookie } = await signUp('patch-clobber');
+    const id = randomUUID();
+
+    const putOp = progressPhotoOp(id, {
+      taken_at: '2026-08-30T11:45:00.000Z',
+      timezone: 'America/New_York',
+      local_date: '2026-08-30',
+      storage_key: 'progress-photo/patch-clobber.jpg',
+      note: 'before',
+    });
+    const putRes = await push(cookie, [putOp]);
+    expect((putRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const patchOp = progressPhotoOp(id, { note: 'after' }, 'PATCH');
+    const patchRes = await push(cookie, [patchOp]);
+    expect((patchRes.body as SyncPushResponse).rejected).toEqual([]);
+
+    const row = await progressPhotoRow(id);
+    expect(row?.note).toBe('after');
+    expect(row?.storage_key).toBe('progress-photo/patch-clobber.jpg');
+    expect(row?.timezone).toBe('America/New_York');
+  });
 });
