@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Navigating to http://localhost:8081/exercises in the web (React Native Web / Expo Router) client renders the catalog's load-failure error state instead of the exercise list."
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-31
 ---
 
 ## Current Focus
@@ -138,3 +138,13 @@ fix: [not applied — diagnose-only mode]
 verification: [n/a]
 
 files_changed: []
+
+## Resolution (2026-08-31)
+
+Fixed in `apps/mobile/lib/catalog/load-snapshot.ts`. `applyCatalogSnapshot` no longer
+issues `.onConflictDoUpdate()` against PowerSync-managed tables (which SQLite exposes as
+views and refuses to UPSERT); it is now built from plain single-row INSERT plus
+condition-scoped UPDATE, with a comment pinning the prohibition.
+
+Closed during the v1.0 milestone-close artifact audit: the fix was verified present in
+the working tree, but the session file had never been flipped out of `diagnosed`.

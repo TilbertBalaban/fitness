@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "alternatives-thumbnail-missing — The \"Suggested Alternatives\" section on the exercise detail screen renders candidate rows without a thumbnail image."
 created: 2026-08-19T00:00:00Z
-updated: 2026-08-19T00:00:00Z
+updated: 2026-08-31
 ---
 
 ## Current Focus
@@ -136,3 +136,15 @@ root_cause: "The Suggested Alternatives thumbnail is not a SwapSuggestionList de
 fix: ""
 verification: ""
 files_changed: []
+
+## Resolution (2026-08-31)
+
+Fixed in `components/ExerciseImageTile.tsx` (G-03-3). The tile no longer sizes itself
+from a ratio on a percentage-width box: `resolveTileBox()` derives a finite pixel
+{width, height} clamped to `MIN_TILE_WIDTH`, and `resolveTileImageStyle()` sets an
+explicit width/height so it wins over react-native-web's intrinsic asset dimensions.
+`EXERCISE_THUMBNAIL_WIDTH` is now shared by `ExerciseListRow` and `SwapSuggestionList`
+so the two call sites cannot drift apart again.
+
+Closed during the v1.0 milestone-close artifact audit: the fix was verified present in
+the working tree, but the session file had never been flipped out of `diagnosed`.

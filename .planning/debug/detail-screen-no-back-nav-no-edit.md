@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "I don't see edit form. I don't know how to go back from http://localhost:8081/exercises/seed_90_90_Hamstring . add back-arrow button + support swipes"
 created: 2026-08-19T00:00:00Z
-updated: 2026-08-19T00:00:00Z
+updated: 2026-08-31
 ---
 
 ## Current Focus
@@ -180,3 +180,14 @@ root_cause: >
 fix: ""
 verification: ""
 files_changed: []
+
+## Resolution (2026-08-31)
+
+Fixed by `apps/mobile/app/exercises/_layout.tsx`, which the exercises segment previously
+lacked entirely. It sets `headerShown: true` and supplies
+`headerLeft: () => <NavBackButton fallbackHref="/exercises" />`, so a direct URL load of
+/exercises/<id> — where react-navigation's own `canGoBack` is false — still has a working
+back affordance.
+
+Closed during the v1.0 milestone-close artifact audit: the fix was verified present in
+the working tree, but the session file had never been flipped out of `diagnosed`.

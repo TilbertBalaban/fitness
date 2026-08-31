@@ -10,15 +10,15 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 ### Platform & Sync
 
-- [ ] **PLAT-01**: User can use the app on iOS, Android, and in a desktop browser, signed into the same account with the same data
+- [x] **PLAT-01**: User can use the app on iOS, Android, and in a desktop browser, signed into the same account with the same data
 - [x] **PLAT-02**: User can log a complete workout start to finish with zero network connectivity
 - [x] **PLAT-03**: User's offline changes sync automatically once connectivity returns, without any manual sync action
 - [x] **PLAT-04**: User's phone and browser converge correctly after both made changes offline, with no logged set silently lost
-- [ ] **PLAT-05**: User can create an account and sign in with email and password
-- [ ] **PLAT-06**: User stays signed in across app restarts, and can keep using the app offline even when the session cannot be refreshed
+- [x] **PLAT-05**: User can create an account and sign in with email and password
+- [x] **PLAT-06**: User stays signed in across app restarts, and can keep using the app offline even when the session cannot be refreshed
 - [x] **PLAT-07**: User's in-progress workout survives app force-quit, crash, or phone restart with every logged set intact
 - [x] **PLAT-08**: User can choose kg or lb and see every weight in that unit, with no drift in stored values over repeated conversions
-- [ ] **PLAT-09**: User can switch between light and dark appearance
+- [x] **PLAT-09**: User can switch between light and dark appearance
 - [x] **PLAT-10**: User can export their training data
 
 ### Exercise Library
@@ -50,13 +50,13 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 ### Session Logging
 
-- [ ] **LOG-01**: User can start today's workout from the active program
-- [ ] **LOG-02**: User can start a one-off workout not tied to any program
-- [ ] **LOG-03**: User sees the previous session's weight and reps inline in each set row, in the same visual unit as the input
-- [ ] **LOG-04**: User can tap the previous value to autofill the current set
-- [ ] **LOG-05**: User can enter weight and reps on an in-app numeric keypad that never obscures the value being edited
-- [ ] **LOG-06**: User can log RIR per set on a 0–6+ scale, and change it mid-workout
-- [ ] **LOG-07**: User can mark a set complete with one tap, and tap again to undo without entering an edit mode
+- [x] **LOG-01**: User can start today's workout from the active program
+- [x] **LOG-02**: User can start a one-off workout not tied to any program
+- [x] **LOG-03**: User sees the previous session's weight and reps inline in each set row, in the same visual unit as the input
+- [x] **LOG-04**: User can tap the previous value to autofill the current set
+- [x] **LOG-05**: User can enter weight and reps on an in-app numeric keypad that never obscures the value being edited
+- [x] **LOG-06**: User can log RIR per set on a 0–6+ scale, and change it mid-workout
+- [x] **LOG-07**: User can mark a set complete with one tap, and tap again to undo without entering an edit mode
 - [x] **LOG-08**: User's rest timer starts automatically when a set is completed
 - [x] **LOG-09**: User's rest timer keeps correct time and alerts them when the app is backgrounded or the screen is locked
 - [x] **LOG-10**: User can extend or skip the rest timer, and view it full-screen
@@ -69,21 +69,21 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [x] **LOG-17**: User can add auto-calculated warm-up sets scaled off the working weight, and toggle the behavior off
 - [x] **LOG-18**: User sees a workout summary on finishing: muscles trained, PRs achieved, and a per-exercise breakdown with estimated 1RM
 - [x] **LOG-19**: User can correct entries directly from the summary screen before dismissing it
-- [ ] **LOG-20**: User can view, edit, rename, duplicate, and delete past workouts
-- [ ] **LOG-21**: User can backfill training history by editing a past workout's date and time
+- [x] **LOG-20**: User can view, edit, rename, duplicate, and delete past workouts
+- [x] **LOG-21**: User can backfill training history by editing a past workout's date and time
 - [x] **LOG-22**: User's workout is attributed to the calendar day it was logged in, regardless of timezone or a late-night finish
 
 ### Advanced Set Types
 
-- [ ] **SETS-01**: User can change a set's type by tapping the set number, without leaving the set row
-- [ ] **SETS-02**: User can log a drop set as multiple weight/rep sub-entries grouped under one logical set
-- [ ] **SETS-03**: User can log a myorep set as an activation set plus grouped rest-pause mini-sets
-- [ ] **SETS-04**: User can log a failure set, recorded at 0 RIR and labelled distinctly
-- [ ] **SETS-05**: User can log partial reps distinctly from full reps
-- [ ] **SETS-06**: User's warm-up sets are distinguished from working sets and excluded from working volume
-- [ ] **SETS-07**: User can superset two adjacent exercises so rest starts only after both are done
-- [ ] **SETS-08**: User can detach an exercise from a superset
-- [ ] **SETS-09**: User can log different weights and reps for the left and right side of a unilateral exercise
+- [x] **SETS-01**: User can change a set's type by tapping the set number, without leaving the set row
+- [x] **SETS-02**: User can log a drop set as multiple weight/rep sub-entries grouped under one logical set
+- [x] **SETS-03**: User can log a myorep set as an activation set plus grouped rest-pause mini-sets
+- [x] **SETS-04**: User can log a failure set, recorded at 0 RIR and labelled distinctly
+- [x] **SETS-05**: User can log partial reps distinctly from full reps
+- [x] **SETS-06**: User's warm-up sets are distinguished from working sets and excluded from working volume
+- [x] **SETS-07**: User can superset two adjacent exercises so rest starts only after both are done
+- [x] **SETS-08**: User can detach an exercise from a superset
+- [x] **SETS-09**: User can log different weights and reps for the left and right side of a unilateral exercise
 
 ### Gym Profiles & Plate Math
 
@@ -97,17 +97,17 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 ### Progression Engine
 
-- [ ] **PRGR-01**: User is told what weight and reps to use for each exercise, computed from their logged history
-- [ ] **PRGR-02**: User's progression triggers when performance exceeds expected performance, defined as rep-range midpoint plus RIR target
-- [ ] **PRGR-03**: User's sets taken to failure progress on beating the prior rep count at the same load
-- [ ] **PRGR-04**: User can choose whether the engine expands the rep range first or prefers matching the previous weight
-- [ ] **PRGR-05**: User's recommendations snap to the increments their active gym profile can actually produce
-- [ ] **PRGR-06**: User sees an explicit "progression unavailable within target rep range" state rather than an unachievable recommendation
-- [ ] **PRGR-07**: User picks their own starting weight for an exercise with no logged history, and the engine takes over afterward
-- [ ] **PRGR-08**: User is never given a reduced recommendation as a consequence of missing sessions
-- [ ] **PRGR-09**: User who falls short of target holds the same prescription, and is only offered a reduction after falling short 2–3 sessions running
-- [ ] **PRGR-10**: User's imprecise or off-target RIR still produces sensible recommendations, via tolerance bands rather than exact matching
-- [ ] **PRGR-11**: User gets recommendations with zero network connectivity, at the moment they start the exercise
+- [x] **PRGR-01**: User is told what weight and reps to use for each exercise, computed from their logged history
+- [x] **PRGR-02**: User's progression triggers when performance exceeds expected performance, defined as rep-range midpoint plus RIR target
+- [x] **PRGR-03**: User's sets taken to failure progress on beating the prior rep count at the same load
+- [x] **PRGR-04**: User can choose whether the engine expands the rep range first or prefers matching the previous weight
+- [x] **PRGR-05**: User's recommendations snap to the increments their active gym profile can actually produce
+- [x] **PRGR-06**: User sees an explicit "progression unavailable within target rep range" state rather than an unachievable recommendation
+- [x] **PRGR-07**: User picks their own starting weight for an exercise with no logged history, and the engine takes over afterward
+- [x] **PRGR-08**: User is never given a reduced recommendation as a consequence of missing sessions
+- [x] **PRGR-09**: User who falls short of target holds the same prescription, and is only offered a reduction after falling short 2–3 sessions running
+- [x] **PRGR-10**: User's imprecise or off-target RIR still produces sensible recommendations, via tolerance bands rather than exact matching
+- [x] **PRGR-11**: User gets recommendations with zero network connectivity, at the moment they start the exercise
 
 ### Analytics & Records
 
@@ -189,10 +189,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PLAT-01 | Phase 1 — Cross-Platform Foundation | Gaps Found |
-| PLAT-05 | Phase 1 — Cross-Platform Foundation | Gaps Found |
-| PLAT-06 | Phase 1 — Cross-Platform Foundation | Gaps Found |
-| PLAT-09 | Phase 1 — Cross-Platform Foundation | Gaps Found |
+| PLAT-01 | Phase 1 — Cross-Platform Foundation | Complete |
+| PLAT-05 | Phase 1 — Cross-Platform Foundation | Complete |
+| PLAT-06 | Phase 1 — Cross-Platform Foundation | Complete |
+| PLAT-09 | Phase 1 — Cross-Platform Foundation | Complete |
 | PLAT-02 | Phase 2 — Data Model & Sync Engine | Complete |
 | PLAT-03 | Phase 2 — Data Model & Sync Engine | Complete |
 | PLAT-04 | Phase 2 — Data Model & Sync Engine | Complete |
@@ -221,13 +221,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PROG-09 | Phase 4 — Program Builder | Complete |
 | PROG-10 | Phase 4 — Program Builder | Complete |
 | PROG-11 | Phase 4 — Program Builder | Complete |
-| LOG-01 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-02 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-03 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-04 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-05 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-06 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-07 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-01 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-02 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-03 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-04 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-05 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-06 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-07 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-08 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-09 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-10 | Phase 5 — In-Gym Session Logging | Complete |
@@ -240,8 +240,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | LOG-17 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-18 | Phase 5 — In-Gym Session Logging | Complete |
 | LOG-19 | Phase 5 — In-Gym Session Logging | Complete |
-| LOG-20 | Phase 5 — In-Gym Session Logging | Pending |
-| LOG-21 | Phase 5 — In-Gym Session Logging | Pending |
+| LOG-20 | Phase 5 — In-Gym Session Logging | Complete |
+| LOG-21 | Phase 5 — In-Gym Session Logging | Complete |
 | GYM-01 | Phase 6 — Gym Profiles & Plate Math | Complete |
 | GYM-02 | Phase 6 — Gym Profiles & Plate Math | Complete |
 | GYM-03 | Phase 6 — Gym Profiles & Plate Math | Complete |
@@ -249,26 +249,26 @@ Which phases cover which requirements. Populated during roadmap creation.
 | GYM-05 | Phase 6 — Gym Profiles & Plate Math | Complete |
 | GYM-06 | Phase 6 — Gym Profiles & Plate Math | Complete |
 | GYM-07 | Phase 6 — Gym Profiles & Plate Math | Complete |
-| SETS-01 | Phase 7 — Advanced Set Types | Pending |
-| SETS-02 | Phase 7 — Advanced Set Types | Pending |
-| SETS-03 | Phase 7 — Advanced Set Types | Pending |
-| SETS-04 | Phase 7 — Advanced Set Types | Pending |
-| SETS-05 | Phase 7 — Advanced Set Types | Pending |
-| SETS-06 | Phase 7 — Advanced Set Types | Pending |
-| SETS-07 | Phase 7 — Advanced Set Types | Pending |
-| SETS-08 | Phase 7 — Advanced Set Types | Pending |
-| SETS-09 | Phase 7 — Advanced Set Types | Pending |
-| PRGR-01 | Phase 8 — Progression Engine | Pending |
-| PRGR-02 | Phase 8 — Progression Engine | Pending |
-| PRGR-03 | Phase 8 — Progression Engine | Pending |
-| PRGR-04 | Phase 8 — Progression Engine | Pending |
-| PRGR-05 | Phase 8 — Progression Engine | Pending |
-| PRGR-06 | Phase 8 — Progression Engine | Pending |
-| PRGR-07 | Phase 8 — Progression Engine | Pending |
-| PRGR-08 | Phase 8 — Progression Engine | Pending |
-| PRGR-09 | Phase 8 — Progression Engine | Pending |
-| PRGR-10 | Phase 8 — Progression Engine | Pending |
-| PRGR-11 | Phase 8 — Progression Engine | Pending |
+| SETS-01 | Phase 7 — Advanced Set Types | Complete |
+| SETS-02 | Phase 7 — Advanced Set Types | Complete |
+| SETS-03 | Phase 7 — Advanced Set Types | Complete |
+| SETS-04 | Phase 7 — Advanced Set Types | Complete |
+| SETS-05 | Phase 7 — Advanced Set Types | Complete |
+| SETS-06 | Phase 7 — Advanced Set Types | Complete |
+| SETS-07 | Phase 7 — Advanced Set Types | Complete |
+| SETS-08 | Phase 7 — Advanced Set Types | Complete |
+| SETS-09 | Phase 7 — Advanced Set Types | Complete |
+| PRGR-01 | Phase 8 — Progression Engine | Complete |
+| PRGR-02 | Phase 8 — Progression Engine | Complete |
+| PRGR-03 | Phase 8 — Progression Engine | Complete |
+| PRGR-04 | Phase 8 — Progression Engine | Complete |
+| PRGR-05 | Phase 8 — Progression Engine | Complete |
+| PRGR-06 | Phase 8 — Progression Engine | Complete |
+| PRGR-07 | Phase 8 — Progression Engine | Complete |
+| PRGR-08 | Phase 8 — Progression Engine | Complete |
+| PRGR-09 | Phase 8 — Progression Engine | Complete |
+| PRGR-10 | Phase 8 — Progression Engine | Complete |
+| PRGR-11 | Phase 8 — Progression Engine | Complete |
 | ANLY-01 | Phase 9 — Records & Client Analytics | Complete |
 | ANLY-02 | Phase 9 — Records & Client Analytics | Complete |
 | ANLY-03 | Phase 9 — Records & Client Analytics | Complete |
