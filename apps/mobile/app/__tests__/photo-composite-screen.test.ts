@@ -21,7 +21,7 @@ import { ProgressPhotoPlaceholderView } from '@/components/ProgressPhotoPlacehol
 import type { GalleryCell } from '@/lib/db/progress-photos';
 import type { ProgressPhotoRow } from '@/lib/db/progress-photos';
 
-const COLORS = { accent: 'rgb(37, 99, 235)', foregroundMuted: 'rgb(113, 113, 122)' };
+const COLORS = { accent: 'rgb(37, 99, 235)', foregroundMuted: 'rgb(113, 113, 122)', surface: 'rgb(244, 244, 245)' };
 
 function findText(node: unknown, out: string[] = []): string[] {
   if (node === null || node === undefined || typeof node === 'boolean') return out;

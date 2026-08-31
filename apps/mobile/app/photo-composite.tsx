@@ -3,7 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { NavBackButton } from '@/components/NavBackButton';
-import { ProgressPhotoPlaceholder } from '@/components/ProgressPhotoPlaceholder';
+import { ProgressPhotoPlaceholderView } from '@/components/ProgressPhotoPlaceholder';
 import { PHOTO_GRID_COLUMNS, PHOTO_TILE_GAP, ProgressPhotoTile, resolvePhotoTileSize } from '@/components/ProgressPhotoTile';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { formatChartDateLabel } from '@/lib/analytics/chart-labels';
@@ -13,6 +13,7 @@ import { loadProgressPhotos, resolveGalleryCells, type GalleryCell, type Progres
 import { MAX_COMPOSITE_PHOTOS } from '@/lib/photos/composite-layout';
 import { CompositeCaptureView, shareComposite } from '@/lib/photos/composite';
 import { getPhotoUri, hasPhotoBytes } from '@/lib/photos/photo-store';
+import { useThemeColors, type ThemeColors } from '@/lib/theme-colors';
 
 function revokeObjectUri(uri: string): void {
   const revoke = (URL as unknown as { revokeObjectURL?: (u: string) => void }).revokeObjectURL;
@@ -30,11 +31,34 @@ export interface CompositeSelection {
 // resetting both ids IS resetting the step, with no second place that can drift out of sync.
 // "Preview" is reached at exactly MAX_COMPOSITE_PHOTOS chosen — never a literal 2 — matching this
 // screen's own MAX_COMPOSITE_PHOTOS-gated grid picker.
-function deriveCompositeStep(selection: CompositeSelection): CompositeStep {
+export function deriveCompositeStep(selection: CompositeSelection): CompositeStep {
   const chosenCount = [selection.before, selection.after].filter((id): id is string => id !== null).length;
   if (chosenCount === MAX_COMPOSITE_PHOTOS) return 'preview';
   if (chosenCount > 0) return 'choose-after';
   return 'choose-before';
+}
+
+// A boolean per cell, same order/index as `cells` — a non-selectable cell keeps its position, it
+// is never dropped or regrouped. Device-absent cells are never selectable (R28/D-19); the already-
+// chosen Before is excluded once chosenBeforeId is set (a photo cannot be both halves).
+export function resolveSelectableCells(cells: GalleryCell[], chosenBeforeId: string | null): boolean[] {
+  return cells.map((cell) => cell.present && cell.row.id !== chosenBeforeId);
+}
+
+export type CompositeScreenState = 'not-enough-photos' | 'ready';
+
+// Below MAX_COMPOSITE_PHOTOS device-resident photos, this screen is only reachable through a stale
+// deep link (S8's own Create Before & After control already gates normal entry) — it still needs
+// an explicable landing rather than a broken grid.
+export function deriveCompositeScreenState(cells: GalleryCell[]): CompositeScreenState {
+  const presentCount = cells.filter((cell) => cell.present).length;
+  return presentCount < MAX_COMPOSITE_PHOTOS ? 'not-enough-photos' : 'ready';
+}
+
+export function compositeStepLabel(step: CompositeStep): string {
+  if (step === 'choose-before') return 'Step 1 of 2: Choose Before';
+  if (step === 'choose-after') return 'Step 2 of 2: Choose After';
+  return 'Preview';
 }
 
 export interface CompositePhotoCell {
@@ -44,19 +68,38 @@ export interface CompositePhotoCell {
 }
 
 export interface PhotoCompositeScreenViewProps {
+  state: CompositeScreenState;
   step: CompositeStep;
   cells: CompositePhotoCell[];
+  selectable: boolean[];
   beforeId: string | null;
   afterId: string | null;
   tileSize: number;
+  colors: ThemeColors;
   sharing: boolean;
+  shareError: boolean;
   onSelect: (row: ProgressPhotoRow) => void;
   onShare: () => void;
+  onStartOver: () => void;
 }
 
 // Hook-free so a test and the durability harness can render it directly, matching
 // ProgressPhotosScreenView's own split.
-export function PhotoCompositeScreenView({ step, cells, beforeId, afterId, tileSize, sharing, onSelect, onShare }: PhotoCompositeScreenViewProps) {
+export function PhotoCompositeScreenView({
+  state,
+  step,
+  cells,
+  selectable,
+  beforeId,
+  afterId,
+  tileSize,
+  colors,
+  sharing,
+  shareError,
+  onSelect,
+  onShare,
+  onStartOver,
+}: PhotoCompositeScreenViewProps) {
   const beforeCell = cells.find((cell) => cell.row.id === beforeId) ?? null;
   const afterCell = cells.find((cell) => cell.row.id === afterId) ?? null;
 
@@ -67,57 +110,91 @@ export function PhotoCompositeScreenView({ step, cells, beforeId, afterId, tileS
         <Text className="ml-sm text-heading font-semibold text-foreground">Before &amp; After</Text>
       </View>
 
-      <View className="px-lg pt-sm">
-        <Text className="text-label font-normal text-foreground-muted">
-          {step === 'choose-before' ? 'Step 1 of 2: Choose Before' : step === 'choose-after' ? 'Step 2 of 2: Choose After' : 'Preview'}
-        </Text>
-      </View>
-
-      {step !== 'preview' ? (
-        <FlashList
-          data={cells}
-          numColumns={PHOTO_GRID_COLUMNS}
-          keyExtractor={(cell) => cell.row.id}
-          contentContainerStyle={{ padding: 24 }}
-          renderItem={({ item }) => (
-            <View style={{ margin: PHOTO_TILE_GAP / 2 }}>
-              {item.present && item.photoUri ? (
-                <ProgressPhotoTile
-                  photoUri={item.photoUri}
-                  dateLabel={formatChartDateLabel(item.row.localDate)}
-                  size={tileSize}
-                  onPress={() => onSelect(item.row)}
-                />
-              ) : (
-                <ProgressPhotoPlaceholder dateLabel={formatChartDateLabel(item.row.localDate)} size={tileSize} />
-              )}
-            </View>
-          )}
-        />
+      {state === 'not-enough-photos' ? (
+        <View className="gap-xs px-lg pt-lg">
+          <Text className="text-heading font-semibold text-foreground">Not enough photos on this device</Text>
+          <Text className="text-body font-normal text-foreground-muted">
+            You need at least two progress photos on this device to build a before &amp; after.
+          </Text>
+        </View>
       ) : (
         <>
-          <View className="flex-row gap-sm px-lg pt-lg">
-            {beforeCell?.photoUri ? (
-              <View className="flex-1">
-                <Image source={{ uri: beforeCell.photoUri }} style={{ width: '100%', aspectRatio: 1, borderRadius: 8 }} resizeMode="cover" />
-                <Text className="mt-xs text-center text-label font-normal text-foreground-muted">
-                  {formatChartDateLabel(beforeCell.row.localDate)}
-                </Text>
-              </View>
-            ) : null}
-            {afterCell?.photoUri ? (
-              <View className="flex-1">
-                <Image source={{ uri: afterCell.photoUri }} style={{ width: '100%', aspectRatio: 1, borderRadius: 8 }} resizeMode="cover" />
-                <Text className="mt-xs text-center text-label font-normal text-foreground-muted">
-                  {formatChartDateLabel(afterCell.row.localDate)}
-                </Text>
-              </View>
-            ) : null}
+          <View className="px-lg pt-sm">
+            <Text className="text-label font-normal text-foreground-muted">{compositeStepLabel(step)}</Text>
           </View>
 
-          <View className="px-lg pt-lg">
-            <PrimaryButton label={Platform.OS === 'web' ? 'Download' : 'Share'} onPress={onShare} submitting={sharing} />
-          </View>
+          {step !== 'preview' ? (
+            <FlashList
+              data={cells}
+              numColumns={PHOTO_GRID_COLUMNS}
+              keyExtractor={(cell) => cell.row.id}
+              contentContainerStyle={{ padding: 24 }}
+              renderItem={({ item, index }) => {
+                const canSelect = selectable[index] ?? false;
+                const isChosenBefore = step === 'choose-after' && item.row.id === beforeId;
+
+                return (
+                  <View
+                    style={{
+                      margin: PHOTO_TILE_GAP / 2,
+                      borderWidth: isChosenBefore ? 2 : 0,
+                      borderColor: isChosenBefore ? colors.accent : 'transparent',
+                      borderRadius: 8,
+                    }}
+                  >
+                    {item.present && item.photoUri ? (
+                      <ProgressPhotoTile
+                        photoUri={item.photoUri}
+                        dateLabel={formatChartDateLabel(item.row.localDate)}
+                        size={tileSize}
+                        onPress={canSelect ? () => onSelect(item.row) : () => {}}
+                      />
+                    ) : (
+                      <ProgressPhotoPlaceholderView dateLabel={formatChartDateLabel(item.row.localDate)} size={tileSize} colors={colors} />
+                    )}
+                  </View>
+                );
+              }}
+            />
+          ) : (
+            <>
+              <View className="flex-row gap-sm px-lg pt-lg">
+                {beforeCell?.photoUri ? (
+                  <View className="flex-1">
+                    <Image source={{ uri: beforeCell.photoUri }} style={{ width: '100%', aspectRatio: 1, borderRadius: 8 }} resizeMode="cover" />
+                    <Text className="mt-xs text-center text-label font-normal text-foreground-muted">
+                      {formatChartDateLabel(beforeCell.row.localDate)}
+                    </Text>
+                  </View>
+                ) : null}
+                {afterCell?.photoUri ? (
+                  <View className="flex-1">
+                    <Image source={{ uri: afterCell.photoUri }} style={{ width: '100%', aspectRatio: 1, borderRadius: 8 }} resizeMode="cover" />
+                    <Text className="mt-xs text-center text-label font-normal text-foreground-muted">
+                      {formatChartDateLabel(afterCell.row.localDate)}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View className="px-lg pt-lg">
+                <PrimaryButton label={Platform.OS === 'web' ? 'Download' : 'Share'} onPress={onShare} submitting={sharing} />
+                {shareError ? (
+                  <Text className="mt-xs text-label font-normal text-foreground-muted">Couldn't share. Try again.</Text>
+                ) : null}
+              </View>
+            </>
+          )}
+
+          <Pressable
+            onPress={onStartOver}
+            accessibilityRole="button"
+            accessibilityLabel="Start Over"
+            style={{ minHeight: 48, justifyContent: 'center' }}
+            className="px-lg"
+          >
+            <Text className="text-body font-normal text-accent">Start Over</Text>
+          </Pressable>
         </>
       )}
     </View>
@@ -133,12 +210,14 @@ export default function PhotoCompositeScreen({ userId: userIdOverride, db }: Pho
   const session = authClient.useSession();
   const userId = userIdOverride ?? session.data?.user?.id ?? null;
   const { width: windowWidth } = useWindowDimensions();
+  const colors = useThemeColors();
 
   const [rows, setRows] = useState<ProgressPhotoRow[] | null>(null);
   const [presenceByKey, setPresenceByKey] = useState<Map<string, boolean>>(new Map());
   const [photoUris, setPhotoUris] = useState<Map<string, string>>(new Map());
   const [selection, setSelection] = useState<CompositeSelection>({ before: null, after: null });
   const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState(false);
   const objectUrisRef = useRef<string[]>([]);
   const captureViewRef = useRef<View>(null);
 
@@ -192,6 +271,7 @@ export default function PhotoCompositeScreen({ userId: userIdOverride, db }: Pho
     photoUri: photoUris.get(cell.row.storageKey) ?? null,
   }));
   const step = deriveCompositeStep(selection);
+  const selectable = resolveSelectableCells(baseCells, selection.before);
   const beforeCell = cells.find((cell) => cell.row.id === selection.before) ?? null;
   const afterCell = cells.find((cell) => cell.row.id === selection.after) ?? null;
 
@@ -205,6 +285,11 @@ export default function PhotoCompositeScreen({ userId: userIdOverride, db }: Pho
     }
   };
 
+  const handleStartOver = () => {
+    setSelection({ before: null, after: null });
+    setShareError(false);
+  };
+
   const handleShare = () => {
     if (!beforeCell?.photoUri || !afterCell?.photoUri) return;
 
@@ -213,22 +298,35 @@ export default function PhotoCompositeScreen({ userId: userIdOverride, db }: Pho
       before: { uri: beforeCell.photoUri, dateLabel: formatChartDateLabel(beforeCell.row.localDate) },
       after: { uri: afterCell.photoUri, dateLabel: formatChartDateLabel(afterCell.row.localDate) },
       viewRef: captureViewRef,
-    }).finally(() => setSharing(false));
+    })
+      .then(() => setShareError(false))
+      .catch((error: unknown) => {
+        console.error('composite share failed', error);
+        setShareError(true);
+      })
+      .finally(() => setSharing(false));
   };
 
   if (rows === null) return null;
 
+  const screenState = deriveCompositeScreenState(baseCells);
+
   return (
     <>
       <PhotoCompositeScreenView
+        state={screenState}
         step={step}
         cells={cells}
+        selectable={selectable}
         beforeId={selection.before}
         afterId={selection.after}
         tileSize={resolvePhotoTileSize(windowWidth)}
+        colors={colors}
         sharing={sharing}
+        shareError={shareError}
         onSelect={handleSelect}
         onShare={handleShare}
+        onStartOver={handleStartOver}
       />
       {step === 'preview' && beforeCell?.photoUri && afterCell?.photoUri ? (
         <CompositeCaptureView

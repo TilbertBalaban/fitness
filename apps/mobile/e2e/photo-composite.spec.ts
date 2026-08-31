@@ -37,6 +37,14 @@ async function seedDeviceResidentPhoto(page: import('@playwright/test').Page, st
   );
 }
 
+async function seedDeviceAbsentPhoto(page: import('@playwright/test').Page, storageKey: string, localDate: string) {
+  await page.evaluate(
+    ({ globalKey, storageKey, localDate }) =>
+      (window as unknown as HarnessWindow)[globalKey].seedProgressPhoto({ storageKey, localDate }),
+    { globalKey: DURABILITY_HARNESS_GLOBAL, storageKey, localDate },
+  );
+}
+
 async function openComposite(page: import('@playwright/test').Page) {
   await page.evaluate(
     (globalKey) => (window as unknown as HarnessWindow)[globalKey].openPhotoCompositeScreen(),
@@ -88,5 +96,35 @@ test.describe('before & after composite — web canvas path (BODY-05)', () => {
     const download = await downloadPromise;
 
     expect(download.suggestedFilename()).toMatch(/\.jpg$/);
+  });
+
+  test('a device-absent photo is present in the grid but not selectable (R28/D-19)', async ({ page }) => {
+    await boot(page);
+    // Two device-resident photos (deriveCompositeScreenState's own MAX_COMPOSITE_PHOTOS gate) plus
+    // one device-absent one, so the grid actually renders rather than the not-enough-photos state.
+    await seedDeviceResidentPhoto(page, 'progress-photo/resident.jpg', '2026-07-10');
+    await seedDeviceResidentPhoto(page, 'progress-photo/resident-2.jpg', '2026-07-20');
+    await seedDeviceAbsentPhoto(page, 'progress-photo/absent.jpg', '2026-08-10');
+    await openComposite(page);
+
+    const residentTile = page.getByRole('button', { name: 'Progress photo, 10 Jul' });
+    const absentTile = page.getByRole('button', { name: 'Progress photo, 10 Aug, not on this device' });
+    await expect(residentTile).toBeVisible();
+    await expect(absentTile).toBeVisible();
+    await expect(absentTile).toBeDisabled();
+
+    await absentTile.click({ force: true });
+    // A disabled placeholder attaches no press handler — the step never advances.
+    await expect(page.getByText('Step 1 of 2: Choose Before')).toBeVisible();
+  });
+
+  test('choosing a not-enough-photos deep link renders the exact empty copy with no grid and no share control', async ({ page }) => {
+    await boot(page);
+    await seedDeviceResidentPhoto(page, 'progress-photo/only-one.jpg', '2026-07-15');
+    await openComposite(page);
+
+    await expect(page.getByText('Not enough photos on this device')).toBeVisible();
+    await expect(page.getByText('You need at least two progress photos on this device to build a before & after.')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Progress photo,/ })).toHaveCount(0);
   });
 });
