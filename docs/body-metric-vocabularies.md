@@ -92,3 +92,66 @@ A logged metric entry is an ordinary row with an ordinary tombstoned delete, exa
 set (D-10). `body_metric` is absent from `HARD_DELETE_FORBIDDEN`
 (`apps/api/src/sync/sync.service.ts`) — deleting a mislogged entry is the legitimate correction
 path, not a loss of history some other table references by id.
+
+## `dashboard_widget`
+
+A second synced vocabulary lives in this same module (D-22), sharing its closed-set machinery with
+`BODY_METRIC_KINDS` above even though the filename reads narrower than its contents.
+
+### What one row means
+
+One `dashboard_widget` row means: this user's Home tab shows this widget kind, at this position,
+enabled or not. There is no per-user cap on row count and no uniqueness constraint on `widget_kind`
+— the vocabulary only bounds which kinds may appear, not how many rows exist. A fresh user's rows
+are materialized once, on first read, to reproduce the pre-dashboard Home screen exactly (D-26);
+after that first materialization, an empty result (every row disabled) is a deliberate user choice,
+not a state this layer re-populates.
+
+### Column table
+
+| Column | Type | Nullable | Absent-value meaning |
+|---|---|---|---|
+| `id` | text (client-generated UUID) | No | Not applicable — required. |
+| `user_id` | text, FK → `user.id`, `ON DELETE CASCADE` | No | Not applicable — required, and always derived from the authenticated session, never from the payload. |
+| `widget_kind` | text | No | Not applicable — required. Drawn from the closed `WIDGET_KINDS` vocabulary below; client-patchable. |
+| `position` | integer | No | Not applicable — required. Sparse-integer ordering (`ORDER_INDEX_GAP`), the same reorder arithmetic `apps/mobile/lib/db/programs/order-index.ts` already uses; ties broken by `id` (`sortByOrderThenId`). |
+| `enabled` | boolean | No | Not applicable — required. A disabled row is kept, not deleted, so re-enabling a widget does not lose its position. |
+| `server_seq` | bigint | No, defaults to `nextval('sync_seq')` | Not applicable — server-assigned on every insert and every conflict-resolving update. |
+
+### `WIDGET_KINDS`
+
+`WIDGET_KINDS` is deliberately closed to exactly these six values, in catalog order
+(`packages/api-contracts/src/body-metrics.ts`):
+
+| Kind | Display label (`WIDGET_KIND_LABELS`) | Component |
+|---|---|---|
+| `next_up` | Next Up | `NextUpWidget` |
+| `weekly_progress` | Weekly Progress | `WeeklyProgressCard` (reused verbatim, D-23) |
+| `recent_records` | Recent Records | `RecentRecordsWidget` |
+| `muscle_heatmap` | Muscle Map | `MuscleHeatmapWidget` |
+| `bodyweight_trend` | Bodyweight | `BodyweightTrendWidget` |
+| `history_trend` | History Trend | `HistoryTrendCard` (reused verbatim, D-23) |
+
+Every widget in v1 wraps a surface Phases 9 and 10 already shipped (D-23) — this table introduces no
+new analytics, only a stored arrangement of existing ones.
+
+### Enforcement layers
+
+| Layer | Owns |
+|---|---|
+| `@fitness/api-contracts`'s `WIDGET_KINDS`/`WIDGET_KIND_SET` | The single definition of the closed vocabulary — every other layer imports this, never a retyped literal array. |
+| `apps/api/src/sync/sync.service.ts`'s `hasInvalidField` `dashboard_widget` branch | Write-time validation: `widget_kind` must be a member of `WIDGET_KIND_SET`, `position` must be an integer, `enabled` must be a boolean. |
+| `apps/api/src/sync/sync.service.ts`'s `toDashboardWidgetValues` | Ownership: `user_id` always comes from the authenticated session argument, never from client-supplied `data`. |
+| `ops/powersync/sync-rules.yaml`'s `dashboard_widget` query, scoped `WHERE user_id = auth.user_id()` | Per-user delivery, identical in shape to `body_metric`'s own query. |
+| `apps/mobile/components/DashboardWidgetHost.tsx`'s filter-before-map dispatch | Read-time forward compatibility: an unrecognised `widget_kind` is filtered out of the render list, never thrown on and never dispatched to a `default:` case. |
+
+### Skip-unknown-never-error (D-22)
+
+`DashboardWidgetHost` filters rows to known kinds before mapping them to components; it does not
+switch exhaustively over `widget_kind` with a `default: throw`. This matters specifically because a
+kind can be added to `WIDGET_KINDS` and shipped to some devices before every installed client has
+updated — a months-old client that has not yet rebuilt against the newer vocabulary must still be
+able to render every widget it does recognise when a sync delivers a row for a kind it does not.
+Under an exhaustive switch, that unrecognised row would throw during render and take the whole
+dashboard down with it; under filter-before-map, it is silently absent from that one client's list
+until the client updates, and every other widget on the page renders normally.

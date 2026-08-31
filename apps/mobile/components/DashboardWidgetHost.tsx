@@ -1,13 +1,19 @@
-import { weeklyProgress, type WeeklyProgressResult } from '@fitness/analytics-engine';
-import { WIDGET_KIND_SET, type WidgetKind } from '@fitness/api-contracts';
+import { weeklyProgress, type TrendSessionInput, type WeeklyProgressResult } from '@fitness/analytics-engine';
+import { WIDGET_KIND_SET, type WeightUnit, type WidgetKind } from '@fitness/api-contracts';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { captureCalendarDay } from '@/lib/calendar-day';
 import type { DashboardWidgetRow } from '@/lib/db/dashboard-widgets';
+import { loadHistoryTrend } from '@/lib/db/history-trend-query';
+import { loadWeightUnit } from '@/lib/db/preferences';
 import { getPowerSync, type WriteDb } from '@/lib/db/powersync';
 import { sortByOrderThenId } from '@/lib/db/programs/order-index';
 import { loadWeeklyProgress, type LoadWeeklyProgressInput, type WeeklyProgressData } from '@/lib/db/weekly-progress-query';
+import { BodyweightTrendWidget } from './BodyweightTrendWidget';
+import { HistoryTrendCard } from './HistoryTrendCard';
+import { MuscleHeatmapWidget } from './MuscleHeatmapWidget';
 import { NextUpWidget } from './NextUpWidget';
+import { RecentRecordsWidget } from './RecentRecordsWidget';
 import { WeeklyProgressCard } from './WeeklyProgressCard';
 
 export interface KnownWidget {
@@ -70,6 +76,54 @@ function WeeklyProgressWidget({ userId, db }: { userId: string | null; db?: Writ
   return <WeeklyProgressCard progress={weekly} />;
 }
 
+interface HistoryTrendReadState {
+  sessions: TrendSessionInput[] | null;
+  todayLocalDate: string;
+  weightUnit: WeightUnit;
+}
+
+const HISTORY_TREND_INITIAL_STATE: HistoryTrendReadState = {
+  sessions: null,
+  todayLocalDate: '',
+  weightUnit: 'kg',
+};
+
+// history_trend's own read — HistoryTrendCard.tsx is reused verbatim (D-23); it already renders
+// null for a null/empty result (R29), so this wrapper's only job is the fetch.
+function HistoryTrendWidget({ userId, db }: { userId: string | null; db?: WriteDb }) {
+  const [state, setState] = useState<HistoryTrendReadState>(HISTORY_TREND_INITIAL_STATE);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      void (async () => {
+        const todayLocalDate = captureCalendarDay(new Date()).localDate;
+        try {
+          const resolvedDb = db ?? getPowerSync();
+          const [sessions, weightUnit] = await Promise.all([
+            loadHistoryTrend({ userId, todayLocalDate }, resolvedDb),
+            userId ? loadWeightUnit(userId, resolvedDb) : Promise.resolve<WeightUnit>('kg'),
+          ]);
+          if (!active) return;
+          setState({ sessions, todayLocalDate, weightUnit });
+        } catch (error) {
+          console.error('history trend load failed', error);
+          if (active) setState({ sessions: [], todayLocalDate, weightUnit: 'kg' });
+        }
+      })();
+
+      return () => {
+        active = false;
+      };
+    }, [userId, db]),
+  );
+
+  return (
+    <HistoryTrendCard sessions={state.sessions} todayLocalDate={state.todayLocalDate} weightUnit={state.weightUnit} />
+  );
+}
+
 export interface DashboardWidgetHostProps {
   widgets: KnownWidget[];
   userId: string | null;
@@ -85,6 +139,10 @@ export function DashboardWidgetHost({ widgets, userId, db }: DashboardWidgetHost
       {widgets.map((widget) => {
         if (widget.kind === 'next_up') return <NextUpWidget key={widget.id} userId={userId} db={db} />;
         if (widget.kind === 'weekly_progress') return <WeeklyProgressWidget key={widget.id} userId={userId} db={db} />;
+        if (widget.kind === 'recent_records') return <RecentRecordsWidget key={widget.id} userId={userId} db={db} />;
+        if (widget.kind === 'muscle_heatmap') return <MuscleHeatmapWidget key={widget.id} userId={userId} db={db} />;
+        if (widget.kind === 'bodyweight_trend') return <BodyweightTrendWidget key={widget.id} userId={userId} db={db} />;
+        if (widget.kind === 'history_trend') return <HistoryTrendWidget key={widget.id} userId={userId} db={db} />;
         return null;
       })}
     </>
