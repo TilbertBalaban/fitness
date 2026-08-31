@@ -594,7 +594,7 @@ Plans:
   3. User sees a dashboard with weekly progress, recent records, and insight tiles, and can add, remove, and reorder those widgets
   4. User can reach quick weigh-in, measurement, progress photo, history, new program, and one-off workout from a single quick-action menu
 
-**Plans**: 3/8 plans executed
+**Plans**: 4/8 plans executed
 
 Plans:
 
@@ -609,7 +609,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 12-04-PLAN.md — Body metric trends: the on-device latest-per-day series, the trend detail screen reusing `TrendChart`, and entry edit/delete (wave 3)
+- [x] 12-04-PLAN.md — Body metric trends: the on-device latest-per-day series, the trend detail screen reusing `TrendChart`, and entry edit/delete (wave 3)
 - [ ] 12-05-PLAN.md — The `dashboard_widget` table end-to-end, the forward-compatible widget host and six-widget catalog, and the restructured Home dashboard (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
@@ -654,6 +654,7 @@ Plans:
 - [ ] Phase 09 test 3 (WINDOWS #160): Last 7 Days card and History trend card on a real device, including the TrendChart inside the trend card and the progressbar tracks' native accessibility values (the web path needed aria-* rather than accessibilityValue — confirm the native path announces correctly too)
 - [ ] Phase 10 test 1 (WINDOWS #165): the Muscle Map on a real iOS and Android build — both `react-native-svg` figures, the window switch and the drill-down sheet. The native build of this library has never been compiled or rendered on this machine (no Xcode, no Android SDK), so the whole body-map approach is proven on web only, exactly as Phase 9's own chart item records
 - [ ] Phase 12-02 test 1: the Body Metrics overview, MetricEntrySheet's docked `MetricValueKeypad` and TrackKindSheet on a real iOS/Android build — log a weight and a circumference measurement, confirm the two independent press targets on BodyMetricRow work correctly with real touch input, and that the keypad never covers the live value display at any OS font scale
+- [ ] Phase 12-04 test 1 (BODY-03): the trend detail screen on a real iOS/Android build — open a kind's trend from the overview, switch windows via `SegmentedChipRow`, and confirm `TrendChart`'s native `react-native-svg` render, the entries list's row press, `MetricEntryActionSheet`'s edit/delete and `DeleteMetricEntryDialog`'s confirm all work with real touch input
 - [ ] (append native items from phases 02-12 as each phase defers them)
 
 ### Phase 999.2: Human verification sweep — web target (BACKLOG)
@@ -683,6 +684,7 @@ Plans:
 - [ ] Phase 10 test 2 (WINDOWS #166): subjective visual review of the intensity scale and of the untrained-versus-lowest-real-intensity distinction at maximum OS font scale. The categorical hue split is grep-enforced and unit-asserted; whether it is legible, including for a colourblind reader, is human judgment
 - [ ] Phase 10 test 3 (WINDOWS #167): subjective visual review of the Training Volume disambiguation caption and the stale-rollup caption at maximum OS font scale — wrap-and-grow is grep-enforced, but whether the two captions read as informational rather than alarming is human judgment (R25)
 - [ ] Phase 12-02 test 2 (must_haves backstop, UI-SPEC E4/E9): `MetricValueKeypad` and the `PhotoCaptureConfirmSheet` preview card (the latter ships in a later 12-* plan) neither clip nor overlap at maximum OS font scale — the docked-keypad/preview backstop every prior phase has carried
+- [ ] Phase 12-04 test 2 (must_haves backstop): visual review at maximum OS font scale of the trend detail screen — the window chip row, the headline figure beside `TrendChart`, the entries list rows and `MetricEntryActionSheet`/`DeleteMetricEntryDialog` neither clip nor overlap
 - [ ] (append human-judgment web items from phases 01-12 as each phase defers them)
 
 ## Progress
@@ -703,4 +705,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
 | 11. Program Generation | 6/6 | Complete    | 2026-08-30 |
-| 12. Body Metrics & Dashboard | 3/8 | In Progress|  |
+| 12. Body Metrics & Dashboard | 4/8 | In Progress|  |

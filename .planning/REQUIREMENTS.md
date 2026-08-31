@@ -136,7 +136,7 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 
 - [x] **BODY-01**: User can log their bodyweight over time
 - [x] **BODY-02**: User can log named body measurements over time
-- [ ] **BODY-03**: User can view measurement and bodyweight trends
+- [x] **BODY-03**: User can view measurement and bodyweight trends
 - [x] **BODY-04**: User can capture and store progress photos
 - [ ] **BODY-05**: User can generate a before-and-after photo composite
 
@@ -288,7 +288,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | GEN-07 | Phase 11 — Program Generation | Complete |
 | BODY-01 | Phase 12 — Body Metrics & Dashboard | Complete |
 | BODY-02 | Phase 12 — Body Metrics & Dashboard | Complete |
-| BODY-03 | Phase 12 — Body Metrics & Dashboard | Pending |
+| BODY-03 | Phase 12 — Body Metrics & Dashboard | Complete |
 | BODY-04 | Phase 12 — Body Metrics & Dashboard | Complete |
 | BODY-05 | Phase 12 — Body Metrics & Dashboard | Pending |
 | DASH-01 | Phase 12 — Body Metrics & Dashboard | Pending |

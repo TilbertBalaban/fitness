@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Body Metrics & Dashboard
 status: executing
-stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-08-31T07:14:16.186Z"
+stopped_at: Completed 12-04-PLAN.md
+last_updated: "2026-08-31T07:59:27.710Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 124
-  completed_plans: 119
+  completed_plans: 120
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 12 (Body Metrics & Dashboard) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
 Last activity: 2026-08-30 — Phase 12 execution started
 
-Progress: [██████████] 96%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Progress: [██████████] 96%
 | Phase 12 P01 | 45min | 3 tasks | 11 files |
 | Phase 12 P02 | 30min | 3 tasks | 16 files |
 | Phase 12 P03 | 55min | 3 tasks | 31 files |
+| Phase 12 P04 | 62min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,9 @@ Recent decisions affecting current work:
 - [Phase ?]: progress-photos.tsx refactored into hook-free ProgressPhotosScreenView + stateful wrapper to match RecordsScreenView/BodyMetricsScreenView's shipped split
 - [Phase ?]: ProgressPhotoActionSheet/DeletePhotoDialog self-contain their own <Modal>, matching PhotoCaptureConfirmSheet/MuscleDrilldownSheet rather than HistoryActionSheet's externally-wrapped precedent
 - [Phase ?]: PUSH_DEFERRED_TABLES is now empty for the first time in the project's life — progress_photo moved to PUSH_APPLIED_TABLES
+- [Phase ?]: emptyState() called as a plain function rather than rendered as a JSX element (tree-walker test convention)
+- [Phase ?]: MetricEntryActionSheet/DeleteMetricEntryDialog each own a self-contained Modal, matching Phase 12's own sheet convention
+- [Phase ?]: MetricEntrySheet edit mode pre-fills from a passed editEntry prop, saving via updateMetric instead of logMetric
 
 ### Pending Todos
 
@@ -149,6 +153,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-31T07:14:16.160Z
-Stopped at: Completed 12-03-PLAN.md
+Last session: 2026-08-31T07:59:27.691Z
+Stopped at: Completed 12-04-PLAN.md
 Resume file: None
