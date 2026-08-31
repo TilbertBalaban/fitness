@@ -118,6 +118,9 @@ import { seedBodyMetrics, readBodyMetricsRaw, type SeedBodyMetricInput } from '.
 // seedProgressPhoto/putPhotoBytes/readProgressPhotos are already imported above (12-03) and are
 // reused as-is — no duplicate seed helper is added here.
 import PhotoCompositeScreen from './photo-composite';
+// 12-07's dashboard-widgets seam — a separate import statement, not folded into the blocks above,
+// so this append touches no existing line (this file's own append-only convention).
+import { seedDashboardWidgets, readDashboardWidgetsRaw, type SeedDashboardWidgetInput } from '../lib/db/test-support';
 
 // Any non-empty string works: workout_session.user_id is stamped server-side on sync push only
 // (see session-query.ts's loadLiveSession comment), so nothing this harness reads or writes ever
@@ -206,6 +209,14 @@ export default function DurabilityHarnessScreen() {
   const [photoCompositeHarness, setPhotoCompositeHarness] = useState<{ db: TestWriteDb; userId: string } | null>(
     null,
   );
+  // 12-07's dashboard-widgets picker mount — mutually exclusive with the others, same
+  // single-active-mount convention. Carries only the db and a userId, matching
+  // openProgressPhotosScreen's own {userId, db} override shape; the Home tab itself is the real
+  // screen under test (the picker mounts on Home's own pickerOpen flag), so this reuses HomeScreen
+  // rather than adding a thirteenth harness screen component.
+  const [dashboardWidgetsHarness, setDashboardWidgetsHarness] = useState<{ db: TestWriteDb; userId: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -257,6 +268,7 @@ export default function DurabilityHarnessScreen() {
         setProgressPhotosHarness(null);
         setBodyMetricTrendHarness(null);
         setPhotoCompositeHarness(null);
+        setDashboardWidgetsHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -860,6 +872,41 @@ export default function DurabilityHarnessScreen() {
         setProgressPhotosHarness(null);
         setBodyMetricTrendHarness(null);
       },
+      // 12-07's dashboard-widgets.spec.ts proof: real test-support.ts writes against the currently
+      // open() database — no reimplementation, matching seedBodyMetrics/readBodyMetrics above.
+      async seedDashboardWidgets(entries: Array<Omit<SeedDashboardWidgetInput, 'userId'>>) {
+        const db = requireOpenDb();
+        return seedDashboardWidgets(
+          db,
+          entries.map((entry) => ({ ...entry, userId: WORKOUT_HARNESS_USER_ID })),
+        );
+      },
+      async readDashboardWidgets() {
+        return readDashboardWidgetsRaw(WORKOUT_HARNESS_USER_ID);
+      },
+      // Mounts the real Home tab against the currently open() database via its own {userId, db}
+      // override — the dashboard widget picker under test mounts on Home's own pickerOpen flag, so
+      // this reuses HomeScreen rather than a bespoke harness route, matching
+      // seedTrainedWeekAndOpenHome's seed-then-mount convention above but with no seeding step of
+      // its own (callers seed via seedDashboardWidgets first, or rely on
+      // loadOrMaterializeDashboardWidgets's own first-run materialization).
+      async mountDashboard() {
+        const db = requireOpenDb();
+        setDashboardWidgetsHarness({ db, userId: WORKOUT_HARNESS_USER_ID });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setProgramsHarness(null);
+        setPerformanceHarness(null);
+        setRecordsHarness(null);
+        setHomeHarness(null);
+        setHistoryTrendHarness(null);
+        setMuscleMapHarness(null);
+        setProgressPhotosHarness(null);
+        setBodyMetricTrendHarness(null);
+        setPhotoCompositeHarness(null);
+      },
     };
 
     setReady(true);
@@ -910,6 +957,9 @@ export default function DurabilityHarnessScreen() {
       ) : null}
       {photoCompositeHarness ? (
         <PhotoCompositeScreen db={photoCompositeHarness.db} userId={photoCompositeHarness.userId} />
+      ) : null}
+      {dashboardWidgetsHarness ? (
+        <HomeScreen db={dashboardWidgetsHarness.db} userId={dashboardWidgetsHarness.userId} />
       ) : null}
       <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>

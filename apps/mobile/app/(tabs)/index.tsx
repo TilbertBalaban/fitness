@@ -1,8 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { DashboardWidgetHost, resolveDashboardWidgets, type KnownWidget } from '@/components/DashboardWidgetHost';
+import { DashboardWidgetPicker } from '@/components/DashboardWidgetPicker';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { WorkoutInProgressBanner } from '@/components/WorkoutInProgressBanner';
 import { authClient } from '@/lib/auth-client';
@@ -164,6 +165,10 @@ export function HomeDashboardView({
           <PrimaryButton label="Browse exercises" onPress={onBrowseExercises} />
         </View>
       </View>
+
+      {pickerOpen ? (
+        <DashboardWidgetPicker userId={userId} db={db} widgets={widgets} onDone={onClosePicker} />
+      ) : null}
     </ScrollView>
   );
 }
@@ -207,30 +212,38 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
     }, [userId, db]),
   );
 
+  // Guards every setWidgets*/setWidgetsFailed call below against a late-arriving response after
+  // this screen has unmounted — the same race the original per-effect `active` flag closed, kept
+  // as a ref rather than a per-call local so onClosePicker's own reload (outside useFocusEffect)
+  // gets the identical protection.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const loadWidgets = useCallback(async () => {
+    if (!userId) {
+      if (mountedRef.current) setWidgets([]);
+      return;
+    }
+    try {
+      const rows = await loadOrMaterializeDashboardWidgets(userId, db ?? getPowerSync());
+      if (!mountedRef.current) return;
+      setWidgets(resolveDashboardWidgets(rows));
+      setWidgetsFailed(false);
+    } catch (error) {
+      console.error('dashboard widgets load failed', error);
+      if (mountedRef.current) setWidgetsFailed(true);
+    }
+  }, [userId, db]);
+
   useFocusEffect(
     useCallback(() => {
-      if (!userId) {
-        setWidgets([]);
-        return;
-      }
-      let active = true;
-
-      void (async () => {
-        try {
-          const rows = await loadOrMaterializeDashboardWidgets(userId, db ?? getPowerSync());
-          if (!active) return;
-          setWidgets(resolveDashboardWidgets(rows));
-          setWidgetsFailed(false);
-        } catch (error) {
-          console.error('dashboard widgets load failed', error);
-          if (active) setWidgetsFailed(true);
-        }
-      })();
-
-      return () => {
-        active = false;
-      };
-    }, [userId, db]),
+      void loadWidgets();
+    }, [loadWidgets]),
   );
 
   return (
@@ -243,7 +256,10 @@ export default function HomeScreen({ userId: userIdOverride, db }: HomeScreenPro
       widgets={widgets}
       pickerOpen={pickerOpen}
       onOpenPicker={() => setPickerOpen(true)}
-      onClosePicker={() => setPickerOpen(false)}
+      onClosePicker={() => {
+        setPickerOpen(false);
+        void loadWidgets();
+      }}
       onOpenQuickActions={() => setQuickActionsOpen(true)}
       onResumeSession={() => router.push('/(tabs)/workout')}
       onDiscardSession={async () => {

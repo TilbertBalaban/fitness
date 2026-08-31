@@ -15,15 +15,18 @@ interface FakeRow {
   enabled: boolean;
 }
 
-// A real in-memory implementation of the exact select/insert shapes dashboard-widgets.ts uses —
-// this table's query has no condition worth matching generically (it always reads every row of the
-// one user under test), so this is deliberately simpler than exclusions.test.ts's FakeExclusionDb.
+// A real in-memory implementation of the exact select/insert/delete/update shapes
+// dashboard-widgets.ts uses — this table's query has no condition worth matching generically (it
+// always reads every row of the one user under test), so this is deliberately simpler than
+// exclusions.test.ts's FakeExclusionDb. transaction's handle IS the fake itself (cycles.test.ts's
+// own precedent, WR-10) — the shipped helpers call tx.insert/tx.update, and handing them a separate
+// object would hide those calls from this same in-memory `rows` array.
 class FakeDashboardWidgetDb {
   rows: FakeRow[] = [];
 
   asWriteDb(): WriteDb {
     const self = this;
-    return {
+    const handle = {
       select: () => ({
         from: (table: unknown) => {
           if (table !== dashboardWidget) throw new Error('unexpected table in select');
@@ -37,7 +40,23 @@ class FakeDashboardWidgetDb {
           return Promise.resolve();
         },
       }),
-    } as unknown as WriteDb;
+      delete: (table: unknown) => ({
+        where: () => {
+          if (table !== dashboardWidget) throw new Error('unexpected table in delete');
+          return Promise.resolve();
+        },
+      }),
+      update: (table: unknown) => ({
+        set: () => ({
+          where: () => {
+            if (table !== dashboardWidget) throw new Error('unexpected table in update');
+            return Promise.resolve();
+          },
+        }),
+      }),
+      transaction: async (run: (tx: unknown) => Promise<unknown>) => run(handle),
+    };
+    return handle as unknown as WriteDb;
   }
 }
 

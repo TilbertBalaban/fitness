@@ -55,6 +55,7 @@ export default defineConfig({
         'progress-photo.spec.ts',
         'body-metric.spec.ts',
         'photo-composite.spec.ts',
+        'dashboard-widgets.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },

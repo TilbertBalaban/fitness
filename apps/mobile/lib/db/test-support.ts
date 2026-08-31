@@ -29,6 +29,7 @@ import { addDay, addExercisesToDay } from './programs/days';
 import {
   analyticsWatermark,
   bodyMetric,
+  dashboardWidget,
   drizzleSchema,
   equipmentProfile,
   exercise,
@@ -1880,4 +1881,38 @@ export async function readBodyMetricsRaw(userId: string): Promise<Record<string,
     throw new Error('readBodyMetricsRaw() called before openTestPowerSync()');
   }
   return rawDb.getAll<Record<string, unknown>>('SELECT * FROM body_metric WHERE user_id = ?', [userId]);
+}
+
+export interface SeedDashboardWidgetInput {
+  userId: string;
+  widgetKind: string;
+  position: number;
+  enabled?: boolean;
+}
+
+// A direct, minimal write of dashboard_widget rows — mirrors seedBodyMetrics's shape (one row per
+// call, ids returned in the order supplied). Deliberately bypasses loadOrMaterializeDashboardWidgets/
+// addWidget so a spec can seed a deliberately-shaped layout (a specific position, a disabled row) that
+// the real write paths would never themselves produce on their own.
+export async function seedDashboardWidgets(db: TestWriteDb, entries: SeedDashboardWidgetInput[]): Promise<string[]> {
+  const ids: string[] = [];
+  for (const entry of entries) {
+    const id = generateClientId();
+    await db.insert(dashboardWidget).values({
+      id,
+      userId: entry.userId,
+      widgetKind: entry.widgetKind,
+      position: entry.position,
+      enabled: entry.enabled ?? true,
+    });
+    ids.push(id);
+  }
+  return ids;
+}
+
+export async function readDashboardWidgetsRaw(userId: string): Promise<Record<string, unknown>[]> {
+  if (!rawDb) {
+    throw new Error('readDashboardWidgetsRaw() called before openTestPowerSync()');
+  }
+  return rawDb.getAll<Record<string, unknown>>('SELECT * FROM dashboard_widget WHERE user_id = ?', [userId]);
 }
