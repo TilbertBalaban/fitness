@@ -171,6 +171,22 @@ describe('loadLatestMetric', () => {
 
     await expect(loadLatestMetric('user-1', 'bodyweight', db)).resolves.toBeUndefined();
   });
+
+  // D-29's own dependency: the quick weigh-in sheet's pre-fill is exactly this read. Several
+  // entries across several days, seeded out of chronological order, proves the ordering is by
+  // recordedAt and not by insertion order or array position.
+  it('returns the most recent of several entries logged across several days for the quick weigh-in pre-fill (D-29)', async () => {
+    const { db } = fakeDb([
+      { id: 'a', userId: 'user-1', kind: 'bodyweight', value: '83.000', recordedAt: '2026-07-01T07:00:00.000Z', timezone: 'UTC', localDate: '2026-07-01' },
+      { id: 'c', userId: 'user-1', kind: 'bodyweight', value: '81.500', recordedAt: '2026-08-20T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-20' },
+      { id: 'b', userId: 'user-1', kind: 'bodyweight', value: '82.200', recordedAt: '2026-08-01T07:00:00.000Z', timezone: 'UTC', localDate: '2026-08-01' },
+    ]);
+
+    const latest = await loadLatestMetric('user-1', 'bodyweight', db);
+
+    expect(latest?.id).toBe('c');
+    expect(latest?.value).toBe('81.500');
+  });
 });
 
 describe('loadTrackedKindSummaries', () => {

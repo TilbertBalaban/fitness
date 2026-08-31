@@ -95,6 +95,36 @@ describe('PUSH_APPLIED_TABLES / PUSH_DEFERRED_TABLES partition', () => {
   });
 });
 
+// 12-08's own milestone: PUSH_DEFERRED_TABLES is empty for the first time in the project's life
+// (12-CONTEXT.md § Specific Ideas). These four assertions are the falsifiable claim — a future
+// phase that adds a synced table without an apply path must turn this suite red. Every containment
+// check iterates the tuples directly rather than hard-coding a second copy of either list, so
+// adding a table can never silently pass without also being classified here.
+describe('PUSH_DEFERRED_TABLES is empty — every synced table has a push apply path (12-08)', () => {
+  it('has length zero', () => {
+    expect(PUSH_DEFERRED_TABLES).toHaveLength(0);
+  });
+
+  it('every member of SYNCED_TABLES is a member of PUSH_APPLIED_TABLES', () => {
+    const applied = new Set<string>(PUSH_APPLIED_TABLES);
+    for (const table of SYNCED_TABLES) {
+      expect(applied.has(table)).toBe(true);
+    }
+  });
+
+  it('PUSH_APPLIED_TABLES names no table that SYNCED_TABLES does not — the applied tuple cannot drift into naming a table nothing syncs', () => {
+    const synced = new Set<string>(SYNCED_TABLES);
+    for (const table of PUSH_APPLIED_TABLES) {
+      expect(synced.has(table)).toBe(true);
+    }
+  });
+
+  it("PUSH_APPLIED_TABLES's and SYNCED_TABLES's last member are both 'dashboard_widget' — the additive-only ordering rule both files' headers state", () => {
+    expect(PUSH_APPLIED_TABLES[PUSH_APPLIED_TABLES.length - 1]).toBe('dashboard_widget');
+    expect(SYNCED_TABLES[SYNCED_TABLES.length - 1]).toBe('dashboard_widget');
+  });
+});
+
 describe('isTerminalRejection', () => {
   // The "is true for a deferred table's unknown_table rejection" case this test used to cover
   // (against progress_photo, the last member) has no real table left to exercise it against —
