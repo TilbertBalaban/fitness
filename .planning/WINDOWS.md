@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 139
+open_count: 140
 waived_count: 4
 fixed_count: 30
-total_count: 173
-last_updated: 2026-08-31T07:12:12.059Z
+total_count: 174
+last_updated: 2026-08-31T08:32:32.898Z
 ---
 
 # Broken Windows Ledger
@@ -188,6 +188,7 @@ last_updated: 2026-08-31T07:12:12.059Z
 | 174 | 12 | unrun-verify | apps/mobile/lib/photos/capture.ts |  | 12-03: native expo-image-picker capture path (capture.ts) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling fully exercised in e2e/progress-photo.spec.ts. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-31T07:12:11.545Z |  |
 | 175 | 12 | unrun-verify | apps/mobile/lib/photos/downscale.ts |  | 12-03: native expo-image-manipulator downscale path (downscale.ts) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling (canvas re-encode) fully exercised via lib/photos/__tests__/downscale.test.ts's shared resolveDownscaledDimensions and e2e/progress-photo.spec.ts. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-31T07:12:11.809Z |  |
 | 176 | 12 | unrun-verify | apps/mobile/lib/photos/photo-store.ts |  | 12-03: native expo-file-system photo store (photo-store.ts, File/Paths.document) is typecheck-only in this environment (no Xcode, no Android SDK). Web sibling (IndexedDB) fully exercised in e2e/progress-photo.spec.ts against a real browser. Deferred to ROADMAP Phase 999.1. | open |  | 2026-08-31T07:12:12.059Z |  |
+| 177 | 12 | deviation | ops/powersync/sync-rules.yaml |  | PowerSync Service restart and cross-device arrival of dashboard_widget rows unverified locally; no live second device or restarted sync service available in this environment | open |  | 2026-08-31T08:32:32.898Z |  |
 
 ````json
 [
@@ -2265,6 +2266,18 @@ last_updated: 2026-08-31T07:12:12.059Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-31T07:12:12.059Z",
+    "resolved_at": null
+  },
+  {
+    "id": 177,
+    "kind": "deviation",
+    "phase": "12",
+    "file": "ops/powersync/sync-rules.yaml",
+    "line": null,
+    "description": "PowerSync Service restart and cross-device arrival of dashboard_widget rows unverified locally; no live second device or restarted sync service available in this environment",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-31T08:32:32.898Z",
     "resolved_at": null
   }
 ]
