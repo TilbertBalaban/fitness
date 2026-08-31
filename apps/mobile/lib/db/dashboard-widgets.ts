@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { WIDGET_KINDS, WIDGET_KIND_SET, type WidgetKind } from '@fitness/api-contracts';
 import { generateClientId } from './id';
+import { computeReorder } from './programs/days';
 import { appendOrderIndex, sortByOrderThenId } from './programs/order-index';
 import { type WriteDb, type WriteTx } from './powersync';
 import { dashboardWidget } from './schema';
@@ -147,4 +148,41 @@ export async function addWidget({ userId, widgetKind }: AddWidgetInput, db: Writ
 export function resolveAvailableWidgetKinds(enabledKinds: string[]): WidgetKind[] {
   const enabled = new Set(enabledKinds);
   return WIDGET_KINDS.filter((kind) => !enabled.has(kind));
+}
+
+export interface MoveWidgetInput {
+  userId: string;
+  widgetId: string;
+  beforeId: string | null;
+  afterId: string | null;
+}
+
+// Shares computeReorder with moveDay/moveExercise (D-25) — never a fourth copy of the gap/renumber
+// algorithm. Siblings are read scoped by userId, so a widgetId the user does not own resolves to no
+// sibling and computeReorder is never even called; each write additionally re-checks userId in its
+// own where clause (belt-and-suspenders against T-12-29, matching moveDay's own per-row scoping).
+export async function moveWidget({ userId, widgetId, beforeId, afterId }: MoveWidgetInput, db: WriteDb): Promise<void> {
+  const siblingRows = await db
+    .select({ id: dashboardWidget.id, position: dashboardWidget.position })
+    .from(dashboardWidget)
+    .where(eq(dashboardWidget.userId, userId));
+
+  if (!siblingRows.some((row) => row.id === widgetId)) return;
+
+  // dashboard_widget's column is position, not order_index — computeReorder/SiblingRow expects
+  // orderIndex, so the rename happens here as a plain map (sortRows above does the identical
+  // rename), never as a select-level column alias.
+  const siblings = siblingRows.map((row) => ({ id: row.id, orderIndex: row.position }));
+  const updates = computeReorder(siblings, widgetId, beforeId, afterId);
+  // One transaction for the whole update set, matching moveDay's own precedent — the renumber
+  // branch can emit one update per sibling, and an interrupted renumber leaves duplicate positions
+  // that sortByOrderThenId still renders stably (T-12-31, accepted).
+  await db.transaction(async (tx: WriteTx) => {
+    for (const update of updates) {
+      await tx
+        .update(dashboardWidget)
+        .set({ position: update.orderIndex })
+        .where(and(eq(dashboardWidget.id, update.id), eq(dashboardWidget.userId, userId)));
+    }
+  });
 }

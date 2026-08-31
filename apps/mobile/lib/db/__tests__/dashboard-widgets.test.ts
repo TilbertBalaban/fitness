@@ -11,6 +11,13 @@ import {
 import { dashboardWidget } from '../schema';
 import type { WriteDb } from '../powersync';
 
+// moveWidget imports computeReorder from programs/days.ts, which imports getPowerSync from
+// ../powersync for its own default-arg call sites — a real, eager runtime import that reaches
+// @powersync/react-native's ESM dist, which Jest cannot parse (WINDOWS #22/#33). Mocked before
+// dashboard-widgets.ts is required so that chain never loads, matching programs.test.ts's own
+// precedent for the identical transitive import.
+jest.mock('../powersync', () => ({ getPowerSync: jest.fn() }));
+
 jest.mock('../id', () => {
   let counter = 0;
   return { generateClientId: jest.fn(() => `gen-${++counter}`) };

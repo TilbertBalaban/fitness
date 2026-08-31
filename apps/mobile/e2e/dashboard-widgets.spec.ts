@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { DURABILITY_HARNESS_GLOBAL } from '../lib/db/durability-harness-key';
 
 interface SeedDashboardWidgetEntry {
@@ -47,6 +47,25 @@ async function readDashboardWidgets(page: Page): Promise<DashboardWidgetRawRow[]
     (globalKey) => (window as unknown as HarnessWindow)[globalKey].readDashboardWidgets(),
     DURABILITY_HARNESS_GLOBAL,
   );
+}
+
+// DragHandle.web.tsx captures the pointer on down and requires an actual held-button move
+// sequence to accumulate translationY — mirrors reorder-exercises.spec.ts's own dragHandleTo,
+// duplicated locally per this directory's own per-spec-file convention for DOM-interaction
+// helpers (page.evaluate callbacks carry no outer closures, and non-evaluate helpers follow the
+// same one-file-owns-its-own-helpers shape for consistency).
+async function dragHandleTo(page: Page, fromHandle: Locator, targetY: number): Promise<void> {
+  await fromHandle.hover();
+  const box = await fromHandle.boundingBox();
+  if (!box) throw new Error('drag handle has no bounding box — is it visible?');
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, startY + (targetY - startY) / 2, { steps: 4 });
+  await page.mouse.move(startX, targetY, { steps: 4 });
+  await page.mouse.up();
 }
 
 // Real @powersync/web database, real browser, the real Home tab rendered by __durability.web.tsx —
@@ -152,5 +171,55 @@ test.describe('dashboard widget picker — add, remove, reorder, in a real brows
     await expect(page.getByRole('button', { name: 'Add Recent Records to dashboard' })).toHaveCount(0);
     const afterSecondCheck = await readDashboardWidgets(page);
     expect(afterSecondCheck.filter((row) => row.widget_kind === 'recent_records')).toHaveLength(1);
+  });
+
+  test('dragging Weekly Progress above Next Up commits the new order, and Home re-renders in the dragged-to order', async ({
+    page,
+  }) => {
+    await bootAndMount(page);
+
+    await page.getByRole('button', { name: 'Edit Dashboard', exact: true }).click();
+    // Default materialization order is next_up then weekly_progress (DEFAULT_WIDGET_KINDS), so
+    // Next Up's row renders first — waiting for it proves the defaults have landed before the
+    // drag geometry below is measured against settled row positions.
+    await expect(page.getByRole('button', { name: 'Remove Next Up from dashboard' })).toBeVisible();
+
+    const nextUpHandle = page.getByRole('button', { name: 'Reorder Next Up' });
+    const weeklyProgressHandle = page.getByRole('button', { name: 'Reorder Weekly Progress' });
+
+    await nextUpHandle.hover();
+    const nextUpBoxBeforeDrag = await nextUpHandle.boundingBox();
+    if (!nextUpBoxBeforeDrag) throw new Error('Next Up drag handle has no bounding box');
+
+    await dragHandleTo(page, weeklyProgressHandle, nextUpBoxBeforeDrag.y + nextUpBoxBeforeDrag.height / 2);
+
+    await expect
+      .poll(async () => {
+        const rows = await readDashboardWidgets(page);
+        const weeklyProgress = rows.find((row) => row.widget_kind === 'weekly_progress');
+        const nextUp = rows.find((row) => row.widget_kind === 'next_up');
+        return weeklyProgress && nextUp ? weeklyProgress.position < nextUp.position : false;
+      })
+      .toBe(true);
+
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
+
+    // onClosePicker's own reload (loadOrMaterializeDashboardWidgets -> setWidgets) is a separate
+    // async operation from the modal's own synchronous dismissal — reading the two cards'
+    // positions immediately after the click races that reload (reorder-exercises.spec.ts's own
+    // documented closeReorderSheet pattern). Polling the comparison itself, rather than a single
+    // read, waits out that gap instead of asserting against a still-stale render.
+    //
+    // Home renders next_up via NextUpWidget ("No active program" for a fresh, program-less user)
+    // and weekly_progress via WeeklyProgressCard ("Last 7 Days") — comparing their rendered Y
+    // positions proves the real Home dashboard, not just the stored rows, reflects the drag.
+    await expect
+      .poll(async () => {
+        const weeklyProgressCardBox = await page.getByText('Last 7 Days', { exact: true }).boundingBox();
+        const nextUpCardBox = await page.getByText('No active program').boundingBox();
+        if (!weeklyProgressCardBox || !nextUpCardBox) return null;
+        return weeklyProgressCardBox.y < nextUpCardBox.y;
+      })
+      .toBe(true);
   });
 });

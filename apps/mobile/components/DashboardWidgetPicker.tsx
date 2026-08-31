@@ -7,6 +7,7 @@ import type { KnownWidget } from './DashboardWidgetHost';
 import {
   addWidget,
   loadDashboardWidgets,
+  moveWidget,
   removeWidget,
   resolveAvailableWidgetKinds,
   type DashboardWidgetRow,
@@ -199,6 +200,14 @@ export function DashboardWidgetPicker({ userId, db, widgets, onDone }: Dashboard
       .catch((error) => console.error('dashboard widget add failed', error));
   };
 
+  const handleReorder = (widgetId: string, beforeId: string | null, afterId: string | null) => {
+    if (!userId) return;
+    editedRef.current = true;
+    moveWidget({ userId, widgetId, beforeId, afterId }, resolvedDb)
+      .then(reload)
+      .catch((error) => console.error('dashboard widget reorder failed', error));
+  };
+
   return (
     <Modal transparent animationType="fade" onRequestClose={onDone}>
       <DashboardWidgetPickerView
@@ -208,7 +217,7 @@ export function DashboardWidgetPicker({ userId, db, widgets, onDone }: Dashboard
         onMeasureRow={setRowHeight}
         onRemove={handleRemove}
         onAdd={handleAdd}
-        onReorder={() => {}}
+        onReorder={handleReorder}
         onDone={onDone}
       />
     </Modal>
