@@ -594,7 +594,7 @@ Plans:
   3. User sees a dashboard with weekly progress, recent records, and insight tiles, and can add, remove, and reorder those widgets
   4. User can reach quick weigh-in, measurement, progress photo, history, new program, and one-off workout from a single quick-action menu
 
-**Plans**: 4/8 plans executed
+**Plans**: 5/8 plans executed
 
 Plans:
 
@@ -610,7 +610,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 12-04-PLAN.md — Body metric trends: the on-device latest-per-day series, the trend detail screen reusing `TrendChart`, and entry edit/delete (wave 3)
-- [ ] 12-05-PLAN.md — The `dashboard_widget` table end-to-end, the forward-compatible widget host and six-widget catalog, and the restructured Home dashboard (wave 3)
+- [x] 12-05-PLAN.md — The `dashboard_widget` table end-to-end, the forward-compatible widget host and six-widget catalog, and the restructured Home dashboard (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -705,4 +705,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
 | 11. Program Generation | 6/6 | Complete    | 2026-08-30 |
-| 12. Body Metrics & Dashboard | 4/8 | In Progress|  |
+| 12. Body Metrics & Dashboard | 5/8 | In Progress|  |

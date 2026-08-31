@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Body Metrics & Dashboard
 status: executing
-stopped_at: Completed 12-04-PLAN.md
-last_updated: "2026-08-31T07:59:27.710Z"
+stopped_at: Completed 12-05-PLAN.md
+last_updated: "2026-08-31T08:34:47.020Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 124
-  completed_plans: 120
+  completed_plans: 121
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 ## Current Position
 
 Phase: 12 (Body Metrics & Dashboard) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-08-30 — Phase 12 execution started
 
-Progress: [██████████] 97%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [██████████] 97%
 | Phase 12 P02 | 30min | 3 tasks | 16 files |
 | Phase 12 P03 | 55min | 3 tasks | 31 files |
 | Phase 12 P04 | 62min | 3 tasks | 16 files |
+| Phase 12 P05 | 35min | 4 tasks | 24 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,10 @@ Recent decisions affecting current work:
 - [Phase ?]: emptyState() called as a plain function rather than rendered as a JSX element (tree-walker test convention)
 - [Phase ?]: MetricEntryActionSheet/DeleteMetricEntryDialog each own a self-contained Modal, matching Phase 12's own sheet convention
 - [Phase ?]: MetricEntrySheet edit mode pre-fills from a passed editEntry prop, saving via updateMetric instead of logMetric
+- [Phase ?]: D-21 checkpoint: chose row-per-widget dashboard_widget table over a JSON array on user_preference, matching excluded_exercise/personal_record precedent for concurrent-edit safety under LWW
+- [Phase ?]: MuscleHeatmapWidget reuses loadMuscleMapWindow('1w') with a runtime drift guard against analytics-engine's MUSCLE_MAP_WINDOW_DAYS rather than re-deriving a day count
+- [Phase ?]: BodyweightTrendWidget bypasses resolveDisplayUnit/fromCanonicalValue and calls formatWeight directly since bodyweight's canonical unit is always kg
+- [Phase ?]: RecentRecordsWidget merges across all four PR_TYPES via Promise.all rather than reusing the single-metric loadRecordsPage
 
 ### Pending Todos
 
@@ -153,6 +158,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-31T07:59:27.691Z
-Stopped at: Completed 12-04-PLAN.md
+Last session: 2026-08-31T08:34:47.001Z
+Stopped at: Completed 12-05-PLAN.md
 Resume file: None
