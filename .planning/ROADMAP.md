@@ -594,7 +594,7 @@ Plans:
   3. User sees a dashboard with weekly progress, recent records, and insight tiles, and can add, remove, and reorder those widgets
   4. User can reach quick weigh-in, measurement, progress photo, history, new program, and one-off workout from a single quick-action menu
 
-**Plans**: 5/8 plans executed
+**Plans**: 6/8 plans executed
 
 Plans:
 
@@ -614,7 +614,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 12-06-PLAN.md — Before & after composite: the platform-split render/share module, the three-step picker, and the device-resident-only selection rule (wave 4)
+- [x] 12-06-PLAN.md — Before & after composite: the platform-split render/share module, the three-step picker, and the device-resident-only selection rule (wave 4)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -705,4 +705,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Records & Client Analytics | 6/6 | Complete    | 2026-08-29 |
 | 10. Server Analytics & Reconciliation | 7/7 | Complete    | 2026-08-29 |
 | 11. Program Generation | 6/6 | Complete    | 2026-08-30 |
-| 12. Body Metrics & Dashboard | 5/8 | In Progress|  |
+| 12. Body Metrics & Dashboard | 6/8 | In Progress|  |
