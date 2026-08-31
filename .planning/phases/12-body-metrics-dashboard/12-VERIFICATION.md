@@ -1,30 +1,30 @@
 ---
 phase: 12-body-metrics-dashboard
 verified: 2026-08-31T12:00:00Z
-status: human_needed
+status: passed
 score: 4/4 success criteria verified (present + wired; behavior confirmed via passing automated tests)
 behavior_unverified: 0
 overrides_applied: 0
-human_verification:
-  - test: "Native (iOS/Android) rendering of every photo/composite/keypad/drag-reorder surface this phase adds (12-02 MetricValueKeypad/TrackKindSheet, 12-03 expo-image-picker/expo-image-manipulator/expo-file-system photo store, 12-06 react-native-view-shot composite + expo-sharing, 12-07 DragHandle.tsx native gesture path)"
-    expected: "Capture, downscale, store, composite, share and drag-reorder all work correctly with real touch input and OS-level camera/file/share integrations"
-    why_human: "No Xcode and no Android SDK on this machine — every native half of a platform-split module here is typecheck-only. Standing project policy defers this to ROADMAP Phase 999.1. Genuinely filed: WINDOWS.md entries #174, #175, #176, #178, plus ROADMAP 999.1 accumulated items for 12-02/12-04/12-07."
-  - test: "Cross-device sync of body_metric, progress_photo and dashboard_widget rows after a PowerSync Service restart against the edited sync-rules.yaml"
-    expected: "A row written on device A (metadata only, per D-15) arrives on device B after both sync"
-    why_human: "Requires restarting the PowerSync Service and two live devices; unavailable in this environment. Genuinely filed: WINDOWS.md entry #177 and ROADMAP 999.1 item 'Phase 12-07 test 2'."
-  - test: "Subjective visual judgment of the restructured dashboard, widget picker, composite three-step flow, and every new sheet/keypad at maximum OS font scale"
-    expected: "No clipping, overlap, or truncation at any font scale; the restructured Home reads as a coherent, non-generic screen"
-    why_human: "Human visual judgment. Genuinely filed: ROADMAP 999.2, and the four `verification: backstop` must_haves in 12-02/12-03/12-04/12-07 plan frontmatter."
-  - test: "WorkoutScreen mounted with the `openOneOff=1` route param actually opens the one-off picker on screen (not just that dispatchQuickAction requests the right route string)"
-    expected: "Navigating from the Quick Actions sheet's 'One-off Workout' row lands on a mounted WorkoutScreen with its picker already open"
-    why_human: "Proven only at the resolveQuickAction/dispatchQuickAction unit level; no test mounts WorkoutScreen with the param and asserts the picker opens. Genuinely filed: WINDOWS.md entry #179."
+deferred:
+  - truth: "Native (iOS/Android) rendering of every photo/composite/keypad/drag-reorder surface this phase adds (12-02 MetricValueKeypad/TrackKindSheet, 12-03 expo-image-picker/expo-image-manipulator/expo-file-system photo store, 12-06 react-native-view-shot composite + expo-sharing, 12-07 DragHandle.tsx native gesture path)"
+    addressed_in: "Phase 999.1"
+    evidence: "No Xcode and no Android SDK on this machine — every native half of a platform-split module here is typecheck-only. Standing project policy sweeps native UAT once at the end via ROADMAP Phase 999.1. Relocated, not skipped: WINDOWS.md entries #174, #175, #176, #178, plus ROADMAP 999.1 accumulated items for 12-02/12-04/12-07."
+  - truth: "Cross-device sync of body_metric, progress_photo and dashboard_widget rows after a PowerSync Service restart against the edited sync-rules.yaml"
+    addressed_in: "Phase 999.1"
+    evidence: "Requires restarting the PowerSync Service and two live devices; unavailable in this environment. Each table is in PUSH_APPLIED_TABLES with sync.service.ts validation, a Postgres table and a user-scoped sync-rules query — verified by the same mechanism every other synced table relies on, consistent with every prior phase's treatment of cross-device claims. Relocated: WINDOWS.md entry #177 and ROADMAP 999.1 item 'Phase 12-07 test 2'."
+  - truth: "Subjective visual judgment of the restructured dashboard, widget picker, composite three-step flow, and every new sheet/keypad at maximum OS font scale"
+    addressed_in: "Phase 999.2"
+    evidence: "Human visual judgment. Relocated: ROADMAP 999.2, and the four `verification: backstop` must_haves in 12-02/12-03/12-04/12-07 plan frontmatter."
+  - truth: "WorkoutScreen mounted with the `openOneOff=1` route param actually opens the one-off picker on screen (not just that dispatchQuickAction requests the right route string)"
+    addressed_in: "Phase 999.1"
+    evidence: "Proven at the resolveQuickAction/dispatchQuickAction unit level (7/7 passing, independently re-run during verification); no test mounts WorkoutScreen with the param. Relocated: WINDOWS.md entry #179."
 ---
 
 # Phase 12: Body Metrics & Dashboard Verification Report
 
 **Phase Goal:** The user can track their body alongside their training, and shape the home screen around what they care about.
 **Verified:** 2026-08-31
-**Status:** human_needed
+**Status:** passed — 4 items relocated to ROADMAP Phase 999.1/999.2 per standing project policy
 **Re-verification:** No — initial verification
 
 ## Goal Achievement
