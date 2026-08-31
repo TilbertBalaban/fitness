@@ -48,6 +48,9 @@ import {
   userPreference,
   workoutSession,
 } from './schema';
+// 12-04's body-metric-trend seam — a separate import statement, not folded into the block above,
+// so this append touches no existing line (this file's own append-only convention, 12-03's precedent).
+import type { BodyMetricKind } from '@fitness/api-contracts';
 
 export const TestAppSchema = new DrizzleAppSchema(drizzleSchema);
 
@@ -1838,4 +1841,43 @@ export async function readProgressPhotosRaw(userId: string): Promise<Record<stri
     throw new Error('readProgressPhotosRaw() called before openTestPowerSync()');
   }
   return rawDb.getAll<Record<string, unknown>>('SELECT * FROM progress_photo WHERE user_id = ?', [userId]);
+}
+
+export interface SeedBodyMetricInput {
+  userId: string;
+  kind: BodyMetricKind;
+  value: string;
+  recordedAt?: string;
+  timezone?: string;
+  localDate?: string;
+}
+
+// A direct, minimal write of body_metric rows — the entry sheet's real logMetric is a blind insert
+// with no caller-supplied recordedAt (D-04, D-09), which is exactly what a dedup/window-boundary
+// e2e fixture needs to control. Mirrors seedProgressPhoto's shape: one row per call, ids returned in
+// the order supplied.
+export async function seedBodyMetrics(db: TestWriteDb, entries: SeedBodyMetricInput[]): Promise<string[]> {
+  const ids: string[] = [];
+  for (const entry of entries) {
+    const id = generateClientId();
+    const recordedAt = entry.recordedAt ?? new Date().toISOString();
+    await db.insert(bodyMetric).values({
+      id,
+      userId: entry.userId,
+      kind: entry.kind,
+      value: entry.value,
+      recordedAt,
+      timezone: entry.timezone ?? 'UTC',
+      localDate: entry.localDate ?? recordedAt.slice(0, 10),
+    });
+    ids.push(id);
+  }
+  return ids;
+}
+
+export async function readBodyMetricsRaw(userId: string): Promise<Record<string, unknown>[]> {
+  if (!rawDb) {
+    throw new Error('readBodyMetricsRaw() called before openTestPowerSync()');
+  }
+  return rawDb.getAll<Record<string, unknown>>('SELECT * FROM body_metric WHERE user_id = ?', [userId]);
 }

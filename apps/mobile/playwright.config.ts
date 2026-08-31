@@ -53,6 +53,7 @@ export default defineConfig({
         'muscle-map.spec.ts',
         'generated-program.spec.ts',
         'progress-photo.spec.ts',
+        'body-metric.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },

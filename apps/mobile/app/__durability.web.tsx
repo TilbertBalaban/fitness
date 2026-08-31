@@ -108,6 +108,11 @@ import { useThemeColors } from '../lib/theme-colors';
 // The imperative router, not the hook: navigateAwayAndBack runs inside the harness's own effect
 // closure, outside any component render.
 import { router } from 'expo-router';
+// 12-04's body-metric-trend seam — a separate import statement, not folded into the blocks above,
+// so this append touches no existing line (this file's own append-only convention, 12-03's precedent).
+import BodyMetricTrendScreen from './body-metric-trend';
+import { logMetric } from '../lib/db/body-metrics';
+import { seedBodyMetrics, readBodyMetricsRaw, type SeedBodyMetricInput } from '../lib/db/test-support';
 
 // Any non-empty string works: workout_session.user_id is stamped server-side on sync push only
 // (see session-query.ts's loadLiveSession comment), so nothing this harness reads or writes ever
@@ -185,6 +190,11 @@ export default function DurabilityHarnessScreen() {
   const [progressPhotosHarness, setProgressPhotosHarness] = useState<{ db: TestWriteDb; userId: string } | null>(
     null,
   );
+  // 12-04's body-metric-trend mount — mutually exclusive with the others, same single-active-mount
+  // convention. Carries the kind so a spec can land directly on a given kind's trend detail.
+  const [bodyMetricTrendHarness, setBodyMetricTrendHarness] = useState<{ db: TestWriteDb; userId: string; kind: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -234,6 +244,7 @@ export default function DurabilityHarnessScreen() {
         setHomeHarness(null);
         setHistoryTrendHarness(null);
         setProgressPhotosHarness(null);
+        setBodyMetricTrendHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -781,6 +792,42 @@ export default function DurabilityHarnessScreen() {
         setHistoryTrendHarness(null);
         setMuscleMapHarness(null);
       },
+      // 12-04's body-metric.spec.ts proof: real test-support.ts writes against the currently open()
+      // database — no reimplementation, matching seedProgressPhoto/readProgressPhotos above.
+      async seedBodyMetrics(entries: Array<Omit<SeedBodyMetricInput, 'userId'>>) {
+        const db = requireOpenDb();
+        return seedBodyMetrics(
+          db,
+          entries.map((entry) => ({ ...entry, userId: WORKOUT_HARNESS_USER_ID })),
+        );
+      },
+      async readBodyMetrics() {
+        return readBodyMetricsRaw(WORKOUT_HARNESS_USER_ID);
+      },
+      // Real body-metrics.ts logMetric against the currently open() database — the same blind
+      // insert MetricEntrySheet's own handleLog calls, no reimplemented write.
+      async logMetricThroughSheet(input: Omit<Parameters<typeof logMetric>[0], 'userId'>) {
+        return logMetric({ ...input, userId: WORKOUT_HARNESS_USER_ID }, requireOpenDb());
+      },
+      // Mounts the real /body-metric-trend route against the currently open() database via its own
+      // {kind, userId, db} override — matching openProgressPhotosScreen's mount convention above,
+      // but with no seeding step of its own (callers seed via seedBodyMetrics/logMetricThroughSheet
+      // first, matching openWorkoutScreen's own openXScreen shape).
+      async mountBodyMetricTrend(kind: string) {
+        const db = requireOpenDb();
+        setBodyMetricTrendHarness({ db, userId: WORKOUT_HARNESS_USER_ID, kind });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setProgramsHarness(null);
+        setPerformanceHarness(null);
+        setRecordsHarness(null);
+        setHomeHarness(null);
+        setHistoryTrendHarness(null);
+        setMuscleMapHarness(null);
+        setProgressPhotosHarness(null);
+      },
     };
 
     setReady(true);
@@ -821,6 +868,13 @@ export default function DurabilityHarnessScreen() {
       {muscleMapHarness ? <MuscleMapScreen db={muscleMapHarness.db} userId={muscleMapHarness.userId} /> : null}
       {progressPhotosHarness ? (
         <ProgressPhotosScreen db={progressPhotosHarness.db} userId={progressPhotosHarness.userId} />
+      ) : null}
+      {bodyMetricTrendHarness ? (
+        <BodyMetricTrendScreen
+          db={bodyMetricTrendHarness.db}
+          userId={bodyMetricTrendHarness.userId}
+          kind={bodyMetricTrendHarness.kind}
+        />
       ) : null}
       <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>
