@@ -54,6 +54,7 @@ export default defineConfig({
         'generated-program.spec.ts',
         'progress-photo.spec.ts',
         'body-metric.spec.ts',
+        'photo-composite.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'] },
     },

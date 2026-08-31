@@ -113,6 +113,11 @@ import { router } from 'expo-router';
 import BodyMetricTrendScreen from './body-metric-trend';
 import { logMetric } from '../lib/db/body-metrics';
 import { seedBodyMetrics, readBodyMetricsRaw, type SeedBodyMetricInput } from '../lib/db/test-support';
+// 12-06's before/after composite seam — a separate import statement, not folded into the blocks
+// above, so this append touches no existing line (this file's own append-only convention).
+// seedProgressPhoto/putPhotoBytes/readProgressPhotos are already imported above (12-03) and are
+// reused as-is — no duplicate seed helper is added here.
+import PhotoCompositeScreen from './photo-composite';
 
 // Any non-empty string works: workout_session.user_id is stamped server-side on sync push only
 // (see session-query.ts's loadLiveSession comment), so nothing this harness reads or writes ever
@@ -195,6 +200,12 @@ export default function DurabilityHarnessScreen() {
   const [bodyMetricTrendHarness, setBodyMetricTrendHarness] = useState<{ db: TestWriteDb; userId: string; kind: string } | null>(
     null,
   );
+  // 12-06's before/after composite mount — mutually exclusive with the others, same
+  // single-active-mount convention. Carries only the db and a userId, matching
+  // openProgressPhotosScreen's own {userId, db} override shape.
+  const [photoCompositeHarness, setPhotoCompositeHarness] = useState<{ db: TestWriteDb; userId: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     // Direct comparison against the inlined literal, not the DURABILITY_HARNESS_ENABLED constant
@@ -245,6 +256,7 @@ export default function DurabilityHarnessScreen() {
         setHistoryTrendHarness(null);
         setProgressPhotosHarness(null);
         setBodyMetricTrendHarness(null);
+        setPhotoCompositeHarness(null);
       },
       // Routes every subsequent startSession/addSessionExercise/logSet/readSets call at the SAME
       // singleton connectPowerSync/disconnectPowerSync (and therefore _layout.tsx) operate on —
@@ -828,6 +840,26 @@ export default function DurabilityHarnessScreen() {
         setMuscleMapHarness(null);
         setProgressPhotosHarness(null);
       },
+      // Mounts the real /photo-composite route against the currently open() database via its own
+      // {userId, db} override — matching openProgressPhotosScreen's/mountBodyMetricTrend's mount
+      // convention above, but with no seeding step of its own (callers seed via
+      // seedProgressPhoto/putPhotoBytes first, matching openProgressPhotosScreen's own shape).
+      async openPhotoCompositeScreen() {
+        const db = requireOpenDb();
+        setPhotoCompositeHarness({ db, userId: WORKOUT_HARNESS_USER_ID });
+        setWorkoutHarness(null);
+        setEditingHarness(null);
+        setGymProfilesHarness(null);
+        setGymEditorHarness(null);
+        setProgramsHarness(null);
+        setPerformanceHarness(null);
+        setRecordsHarness(null);
+        setHomeHarness(null);
+        setHistoryTrendHarness(null);
+        setMuscleMapHarness(null);
+        setProgressPhotosHarness(null);
+        setBodyMetricTrendHarness(null);
+      },
     };
 
     setReady(true);
@@ -875,6 +907,9 @@ export default function DurabilityHarnessScreen() {
           userId={bodyMetricTrendHarness.userId}
           kind={bodyMetricTrendHarness.kind}
         />
+      ) : null}
+      {photoCompositeHarness ? (
+        <PhotoCompositeScreen db={photoCompositeHarness.db} userId={photoCompositeHarness.userId} />
       ) : null}
       <Text testID="gym-editor-last-saved-id">{lastSavedGymId ?? ''}</Text>
     </View>
