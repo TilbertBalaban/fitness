@@ -75,11 +75,18 @@ export default defineConfig({
   webServer: {
     command: 'npx expo start --web',
     url: 'http://localhost:8081/__durability',
+    // reuseExistingServer: !process.env.CI means an already-running dev server is reused with
+    // whatever environment it was originally started with, so a newly exported variable silently
+    // does not apply until that server is restarted.
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     env: {
       EXPO_PUBLIC_DURABILITY_HARNESS: '1',
       CI: '1',
+      ...(process.env.EXPO_PUBLIC_API_URL ? { EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL } : {}),
+      ...(process.env.EXPO_PUBLIC_WEB_APP_ORIGIN
+        ? { EXPO_PUBLIC_WEB_APP_ORIGIN: process.env.EXPO_PUBLIC_WEB_APP_ORIGIN }
+        : {}),
     },
   },
 });
