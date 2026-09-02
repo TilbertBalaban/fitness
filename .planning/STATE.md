@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 Phase: 1 — Cross-Platform Foundation
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-02 — Completed quick task 260902-i0n: cross-site session cookie attributes
+Last activity: 2026-09-02 — Completed quick task 260902-iyq: per-client rate limiting behind Render
 
 Progress: [██████████] 100%
 
@@ -163,6 +163,7 @@ None yet.
 | 260902-fo3 | Surface sync status on the Profile screen and forward EXPO_PUBLIC_API_URL into the Playwright web server | 2026-09-02 | ad76504 | [260902-fo3-surface-sync-status-on-the-profile-scree](./quick/260902-fo3-surface-sync-status-on-the-profile-scree/) |
 | 260902-hrj | Add deploy:web script to apps/mobile with pinned wrangler devDependency | 2026-09-02 | cb5c903 | [260902-hrj-add-deploy-web-script-to-apps-mobile-wit](./quick/260902-hrj-add-deploy-web-script-to-apps-mobile-wit/) |
 | 260902-i0n | Set Better Auth cookies to SameSite=None Secure Partitioned for the cross-site Pages to Render split | 2026-09-02 | 66db8fa | [260902-i0n-set-better-auth-cookies-to-samesite-none](./quick/260902-i0n-set-better-auth-cookies-to-samesite-none/) |
+| 260902-iyq | Resolve the client IP behind Render's proxy so Better Auth rate limiting is per client | 2026-09-02 | fd1b97b | [260902-iyq-resolve-the-client-ip-behind-render-s-pr](./quick/260902-iyq-resolve-the-client-ip-behind-render-s-pr/) |
 | 5 | Expand README intro with what-it-is section | 2026-09-02 | b9260b0 | — |
 
 ## Deferred Items
