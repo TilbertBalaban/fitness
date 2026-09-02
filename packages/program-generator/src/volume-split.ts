@@ -5,8 +5,11 @@
 // may not cross once an exercise exists — it is not a floor this module raises small targets to;
 // splitSessionSets(1) still returns [1], matching the pre-existing Math.max(1, ...) guard on the
 // caller's session-set rounding.
+//
+// D-04 amendment (2026-09-02): raised from 2 to 3 — two working sets is below the effective range
+// for any goal this generator serves.
 export const MAX_SETS_PER_EXERCISE = 5;
-export const MIN_SETS_PER_EXERCISE = 2;
+export const MIN_SETS_PER_EXERCISE = 3;
 
 export function exerciseCountForSessionSets(sessionSets: number): number {
   return Math.max(1, Math.ceil(sessionSets / MAX_SETS_PER_EXERCISE));

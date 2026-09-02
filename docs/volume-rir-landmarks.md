@@ -78,7 +78,7 @@ Phase 8's progression rules operate on top of whatever starting prescription is 
 | Constant | Value |
 |---|---|
 | `MAX_SETS_PER_EXERCISE` | 5 |
-| `MIN_SETS_PER_EXERCISE` | 2 |
+| `MIN_SETS_PER_EXERCISE` | 3 (raised from 2 — D-04 amendment, 2026-09-02) |
 
 Placed here, adjacent to `EXPERIENCE_VOLUME_BAND`, because this pair governs how a muscle group's
 weekly target is *spread* across exercises in a day, not how large that target is. A muscle
@@ -90,7 +90,10 @@ muscle group is stable across every cycle in a block — only the per-exercise s
 cycle to cycle, never the exercise count. `MIN_SETS_PER_EXERCISE` is the floor the session-length
 fit (`fitDayToSessionLength`, below) may reduce a surviving exercise's sets down to, but it is not
 a floor the split itself raises a small target up to — a target under `MIN_SETS_PER_EXERCISE`
-still gets exactly that many sets on its one exercise.
+still gets exactly that many sets on its one exercise. Raised from 2 to 3 after the first
+implementation produced nine exercises at two sets each for the reported 2-day/60-minute scenario:
+two working sets sits below the effective range for any goal this generator serves, so the fit
+(below) was amended to remove overflow exercises before ever reducing sets that low.
 
 **Literature anchor:** not literature-derived — a project-authored cap chosen so no single
 exercise absorbs an entire muscle group's weekly target (which produced a single 10-set, later
@@ -196,10 +199,17 @@ load plus transition between sets, and of warm-up/changeover/gym-floor overhead.
 **If wrong:** `fitDayToSessionLength` fits more or fewer exercises than a lifter's actual session
 pace would need — a session-length-estimate accuracy issue, never a correctness failure.
 `fitDayToSessionLength` (`packages/program-generator/src/session-fit.ts`) evaluates the estimate
-against the HARDEST training cycle in the block, not the first, and concedes in a fixed order: it
-first reduces sets on every exercise uniformly, one set per pass, down to
-`MIN_SETS_PER_EXERCISE`, and only once nothing more can be reduced does it start removing whole
-exercises, by documented priority. Phase 11's D-14 ("the trimmer never reduces a surviving slot's
-own prescribed sets") is **superseded** by Phase 13's D-04: reducing sets is now the cheapest,
-first-applied concession, precisely because it keeps every muscle group trained rather than
-dropping one outright. A later reader should treat D-14 as historical, not binding.
+against the HARDEST training cycle in the block, not the first, and concedes in a fixed order
+(amended 2026-09-02 — see `MAX_SETS_PER_EXERCISE`/`MIN_SETS_PER_EXERCISE` above): (1) it first
+removes overflow exercises — a muscle group's second-or-later exercise (D-02), later slots before
+earlier ones, until the estimate fits or none remain, leaving each group's first exercise at its
+originally planned sets; (2) only once no overflow exercise remains does it reduce sets, one set
+per pass off the currently tallest slot, down to `MIN_SETS_PER_EXERCISE`; (3) only once nothing
+more can be reduced does it start removing whole first exercises, by documented volume-class
+priority. The original implementation reduced sets before removing overflow exercises, which
+fragmented a day into many exercises at the floor instead of fewer exercises at a healthy set
+count — this order was corrected before it shipped. Phase 11's D-14 ("the trimmer never reduces a
+surviving slot's own prescribed sets") is **superseded** by Phase 13's D-04: reducing sets is a
+cheaper concession than dropping a group's only remaining exercise, precisely because it keeps
+every muscle group trained rather than dropping one outright — but it is no longer the *first*
+concession tried. A later reader should treat D-14 as historical, not binding.
