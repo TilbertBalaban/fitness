@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 Phase: 1 — Cross-Platform Foundation
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-02 — Completed quick task 260902-hrj: deploy:web script with pinned wrangler
+Last activity: 2026-09-02 — Completed quick task 260902-i0n: cross-site session cookie attributes
 
 Progress: [██████████] 100%
 
@@ -162,6 +162,7 @@ None yet.
 | 260902-fei | Fix silent sync-push drop of SQLite integer booleans (logged_set.completed and every other boolean column) rejected as invalid_field | 2026-09-02 | 8ec85b3 | [260902-fei-fix-silent-sync-push-drop-of-sqlite-inte](./quick/260902-fei-fix-silent-sync-push-drop-of-sqlite-inte/) |
 | 260902-fo3 | Surface sync status on the Profile screen and forward EXPO_PUBLIC_API_URL into the Playwright web server | 2026-09-02 | ad76504 | [260902-fo3-surface-sync-status-on-the-profile-scree](./quick/260902-fo3-surface-sync-status-on-the-profile-scree/) |
 | 260902-hrj | Add deploy:web script to apps/mobile with pinned wrangler devDependency | 2026-09-02 | cb5c903 | [260902-hrj-add-deploy-web-script-to-apps-mobile-wit](./quick/260902-hrj-add-deploy-web-script-to-apps-mobile-wit/) |
+| 260902-i0n | Set Better Auth cookies to SameSite=None Secure Partitioned for the cross-site Pages to Render split | 2026-09-02 | 66db8fa | [260902-i0n-set-better-auth-cookies-to-samesite-none](./quick/260902-i0n-set-better-auth-cookies-to-samesite-none/) |
 | 5 | Expand README intro with what-it-is section | 2026-09-02 | b9260b0 | — |
 
 ## Deferred Items
