@@ -131,11 +131,11 @@ the project owner. The table-stakes feature set therefore *is* v1 — sequencing
 - [x] **GEN-05**: User's generated program arrives pre-periodized with per-cycle set, rep, and RIR targets
 - [x] **GEN-06**: User can choose whether deloads are included and where they fall
 - [x] **GEN-07**: User can edit a generated program exactly as they would a hand-built one, and it progresses identically
-- [ ] **GEN-VOL-01**: A generated exercise carries at most 5 sets per session; when a muscle group's per-session volume exceeds that cap, a second exercise for the group absorbs the remainder
-- [ ] **GEN-VOL-02**: A generated day fits the chosen session length in its hardest training cycle, reducing sets before removing exercises and never dropping the day's last large-muscle exercise
-- [ ] **GEN-SEL-01**: The same exercise is not chosen for the same muscle group on two days of the week while an unused alternative exists
-- [ ] **GEN-SEL-02**: Exercise selection prefers primary-mapped, compound, loadable and movement-pattern-covering exercises over a seeded tie-break
-- [ ] **GEN-RIR-01**: The RIR ladder depends on days per week: a 2-day program ends at RIR 0, a 6-day program never goes below RIR 1
+- [x] **GEN-VOL-01**: A generated exercise carries at most 5 sets per session; when a muscle group's per-session volume exceeds that cap, a second exercise for the group absorbs the remainder
+- [x] **GEN-VOL-02**: A generated day fits the chosen session length in its hardest training cycle, reducing sets before removing exercises and never dropping the day's last large-muscle exercise
+- [x] **GEN-SEL-01**: The same exercise is not chosen for the same muscle group on two days of the week while an unused alternative exists
+- [x] **GEN-SEL-02**: Exercise selection prefers primary-mapped, compound, loadable and movement-pattern-covering exercises over a seeded tie-break
+- [x] **GEN-RIR-01**: The RIR ladder depends on days per week: a 2-day program ends at RIR 0, a 6-day program never goes below RIR 1
 
 ### Body Metrics & Photos
 
@@ -291,11 +291,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 | GEN-05 | Phase 11 — Program Generation | Complete |
 | GEN-06 | Phase 11 — Program Generation | Complete |
 | GEN-07 | Phase 11 — Program Generation | Complete |
-| GEN-VOL-01 | Phase 13 — Program Generator Volume & Selection Rework | Pending |
-| GEN-VOL-02 | Phase 13 — Program Generator Volume & Selection Rework | Pending |
-| GEN-SEL-01 | Phase 13 — Program Generator Volume & Selection Rework | Pending |
-| GEN-SEL-02 | Phase 13 — Program Generator Volume & Selection Rework | Pending |
-| GEN-RIR-01 | Phase 13 — Program Generator Volume & Selection Rework | Pending |
+| GEN-VOL-01 | Phase 13 — Program Generator Volume & Selection Rework | Complete |
+| GEN-VOL-02 | Phase 13 — Program Generator Volume & Selection Rework | Complete |
+| GEN-SEL-01 | Phase 13 — Program Generator Volume & Selection Rework | Complete |
+| GEN-SEL-02 | Phase 13 — Program Generator Volume & Selection Rework | Complete |
+| GEN-RIR-01 | Phase 13 — Program Generator Volume & Selection Rework | Complete |
 | BODY-01 | Phase 12 — Body Metrics & Dashboard | Complete |
 | BODY-02 | Phase 12 — Body Metrics & Dashboard | Complete |
 | BODY-03 | Phase 12 — Body Metrics & Dashboard | Complete |

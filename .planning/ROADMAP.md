@@ -718,7 +718,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 **Requirements**: GEN-VOL-01 (per-exercise set cap 3–5, second exercise absorbs the remainder), GEN-VOL-02 (session budget honoured against the hardest training cycle, trimming sets and exercises together rather than whole slots from the end on cycle-1 numbers), GEN-SEL-01 (week-level duplicate avoidance: the same exercise is not picked for the same muscle group on two days when an alternative exists), GEN-SEL-02 (selection prefers compound / loadable / movement-pattern-covering exercises; every catalog primary mapping is weight 1.00 so today's scoring is a seeded-hash coin flip), GEN-RIR-01 (RIR ladder depends on daysPerWeek: 2 days ends at RIR 0–1, 6 days stays at 1–2; documented in docs/volume-rir-landmarks.md)
 **Reproduction:** with the seeded catalog, 2 days / 60 min / intermediate / auto split yields two identical days of two exercises each (Barbell Guillotine Bench Press, Bent-Arm Barbell Pullover) at 5→9 sets, because weeklySetTarget/frequency lands 10 sets on a single quads exercise, trimToSessionLength drops whole slots from the end, and duplicate avoidance is per day only.
 **Depends on:** Phase 11
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 
@@ -733,7 +733,7 @@ Plans:
 
 **Wave 3** *(blocked on 13-03)*
 
-- [ ] 13-04-PLAN.md — D-11's regression: a deterministically derived real-catalog fixture, the 2-day/60-minute assertions, and the phase validation record
+- [x] 13-04-PLAN.md — D-11's regression: a deterministically derived real-catalog fixture, the 2-day/60-minute assertions, and the phase validation record
 
 ### Phase 14: MCP Server
 

@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 1
 current_phase_name: Cross-Platform Foundation
 status: executing
-stopped_at: Completed 12-08-PLAN.md
-last_updated: "2026-09-02T11:47:47.511Z"
+stopped_at: Completed 13-04-PLAN.md
+last_updated: "2026-09-02T15:39:49.495Z"
 last_activity: 2026-09-02
 last_activity_desc: "Completed quick task 260902-fei: SQLite integer boolean sync-push fix"
 progress:
   total_phases: 15
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 128
-  completed_plans: 124
+  completed_plans: 128
 ---
 
 # Project State
@@ -81,6 +81,7 @@ Progress: [██████████] 100%
 | Phase 12 P06 | 30min | 2 tasks | 11 files |
 | Phase 12 P07 | 49min | 3 tasks | 9 files |
 | Phase 12 P08 | 53min | 3 tasks | 11 files |
+| Phase 13 P04 | ~10min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -144,6 +145,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 12-08: dispatchQuickAction calls handlers.dismiss() unconditionally before branching on navigate vs. in-place — R30's dismiss-before-navigate ordering is a property of one function, not six call-site disciplines
 - [Phase ?]: 12-08: Profile's Body Metrics/Progress Photos rows placed after Gym Profiles only — 12-UI-SPEC's 'before Appearance' anchor is unsatisfiable without reordering existing content, which the same instruction forbids
 - [Phase ?]: 12-08: History quick action's e2e proof spies on the app's real router.push (__durability.web.tsx readPushedRoutes) instead of asserting a URL change — the destination is Stack.Protected and this harness's unauthenticated session cannot cross it
+- [Phase ?]: 13-04: RED evidence for the D-11 regression suite came from running it in a throwaway worktree at the pre-phase commit 667e94a (4 of 5 clauses fail there) since a regression test for shipped behaviour cannot go red on the current tree
+- [Phase ?]: 13-04: the real-catalog fixture is a committed .ts module emitted by scripts/derive-generator-regression-fixture.cjs through JSON.stringify, regenerated rather than hand-edited, and deliberately not re-exported from index.ts
+- [Phase ?]: 13-04: 13-VALIDATION.md keeps status: draft (reserved for /gsd-validate-phase) while nyquist_compliant and wave_0_complete are set true from real runs
 
 ### Pending Todos
 
@@ -183,6 +187,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-31T11:41:09.150Z
-Stopped at: Completed 12-08-PLAN.md
+Last session: 2026-09-02T15:39:49.467Z
+Stopped at: Completed 13-04-PLAN.md
 Resume file: None
