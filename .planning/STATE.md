@@ -6,7 +6,7 @@ current_phase: 1
 current_phase_name: Cross-Platform Foundation
 status: planning
 stopped_at: Completed 12-08-PLAN.md
-last_updated: "2026-08-31T12:23:42.433Z"
+last_updated: "2026-09-02T08:16:26.412Z"
 last_activity: 2026-08-31
 last_activity_desc: Phase 12 complete, transitioned to Phase 1
 progress:
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 Phase: 1 — Cross-Platform Foundation
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-31 — Phase 12 complete, transitioned to Phase 1
+Last activity: 2026-09-02 — Completed quick task 260902-fei: SQLite integer boolean sync-push fix
 
 Progress: [██████████] 100%
 
@@ -159,6 +159,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260819-wpp | Fix WR-01 ExerciseImageTile failure state leaks across FlashList recycling | 2026-08-19 | b4ae1c3 | [260819-wpp-fix-wr-01-exerciseimagetile-failure-stat](./quick/260819-wpp-fix-wr-01-exerciseimagetile-failure-stat/) |
+| 260902-fei | Fix silent sync-push drop of SQLite integer booleans (logged_set.completed and every other boolean column) rejected as invalid_field | 2026-09-02 | 8ec85b3 | [260902-fei-fix-silent-sync-push-drop-of-sqlite-inte](./quick/260902-fei-fix-silent-sync-push-drop-of-sqlite-inte/) |
 
 ## Deferred Items
 
