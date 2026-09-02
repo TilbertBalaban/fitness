@@ -111,26 +111,38 @@ describe('pickSlotExercise', () => {
     expect(result!.exercise.id).toBe('high');
   });
 
-  it('lets compoundness decide only when preferCompound is true', () => {
-    const seed = 42;
-    const rankA = seededRank(seed, 'exA');
-    const rankB = seededRank(seed, 'exB');
-    const [tieBreakWinnerId, tieBreakLoserId] = rankA <= rankB ? ['exA', 'exB'] : ['exB', 'exA'];
+  it('ranks compound above isolation for a first pick and isolation above compound for a second pick', () => {
+    for (let seed = 0; seed < 50; seed += 1) {
+      const pool = poolOf([
+        candidate('press', 'chest', '1.0', { movementPattern: 'horizontal_push' }),
+        candidate('fly', 'chest', '1.0', { movementPattern: 'isolation' }),
+      ]);
 
-    // Give the tie-break LOSER more secondary muscle groups, so a preferCompound win can only be
-    // explained by the compoundness tier itself, never by the seededRank tie-break that would
-    // otherwise favor the other candidate.
-    const compoundCandidate = candidate(tieBreakLoserId, 'chest', '1.0', {
-      secondaryMappings: [{ muscleGroupId: 'triceps' }, { muscleGroupId: 'front_delts' }],
-    });
-    const plainCandidate = candidate(tieBreakWinnerId, 'chest', '1.0');
-    const pool = poolOf([compoundCandidate, plainCandidate]);
+      expect(pickSlotExercise(pool, slotDef, context({ variantSeed: seed, preferCompound: true }))!.exercise.id).toBe('press');
+      expect(pickSlotExercise(pool, slotDef, context({ variantSeed: seed, preferCompound: false }))!.exercise.id).toBe('fly');
+    }
+  });
 
-    const preferred = pickSlotExercise(pool, slotDef, context({ variantSeed: seed, preferCompound: true }));
-    expect(preferred!.exercise.id).toBe(tieBreakLoserId);
+  it('never picks an unclassified (null-pattern) candidate while a classified one exists', () => {
+    for (let seed = 0; seed < 50; seed += 1) {
+      const pool = poolOf([
+        candidate('chest-stretch', 'chest', '1.0', {
+          equipmentRequired: 'barbell',
+          movementPattern: null,
+          secondaryMappings: [{ muscleGroupId: 'front_delts' }, { muscleGroupId: 'triceps' }, { muscleGroupId: 'abs' }],
+        }),
+        candidate('fly', 'chest', '1.0', { equipmentRequired: 'bodyweight', movementPattern: 'isolation' }),
+      ]);
 
-    const notPreferred = pickSlotExercise(pool, slotDef, context({ variantSeed: seed, preferCompound: false }));
-    expect(notPreferred!.exercise.id).toBe(tieBreakWinnerId);
+      expect(pickSlotExercise(pool, slotDef, context({ variantSeed: seed, preferCompound: true }))!.exercise.id).toBe('fly');
+      expect(pickSlotExercise(pool, slotDef, context({ variantSeed: seed, preferCompound: false }))!.exercise.id).toBe('fly');
+    }
+  });
+
+  it('returns an unclassified candidate rather than null when nothing classified maps to the group', () => {
+    const pool = poolOf([candidate('chest-stretch', 'chest', '1.0', { movementPattern: null })]);
+
+    expect(pickSlotExercise(pool, slotDef, context())!.exercise.id).toBe('chest-stretch');
   });
 
   it('ranks loadable equipment above non-loadable and above null, with no inventory in the picture', () => {

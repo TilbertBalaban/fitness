@@ -42,18 +42,22 @@ export function seededRank(variantSeed: number, exerciseId: string): number {
   return Math.abs(hash);
 }
 
-// D-07 tier 2: how many DISTINCT other muscle groups this candidate also trains as a secondary
-// mapping — the slot's own target group is excluded so a malformed row (the same group listed as
-// both primary and secondary) can never inflate the count. More distinct groups means more
-// compound; an isolation movement maps none.
-export function compoundnessOf(candidate: PoolCandidate, slotMuscleGroupId: string): number {
-  const secondaryGroups = new Set<string>();
-  for (const mapping of candidate.mappings) {
-    if (mapping.role !== 'secondary') continue;
-    if (mapping.muscleGroupId === slotMuscleGroupId) continue;
-    secondaryGroups.add(mapping.muscleGroupId);
-  }
-  return secondaryGroups.size;
+export type MovementClass = 'compound' | 'isolation' | 'unclassified';
+
+// D-07 tier 2 reads movementPattern, not the count of secondary mappings: in the seeded catalog a
+// null pattern is what marks stretches, plyometrics, cardio and strongman entries, and counting
+// secondaries ranked exactly those (a bent press, a kipping muscle-up) above a bench press.
+export function movementClassOf(exercise: GenerationCatalogExercise): MovementClass {
+  if (exercise.movementPattern === null) return 'unclassified';
+  return exercise.movementPattern === 'isolation' ? 'isolation' : 'compound';
+}
+
+const FIRST_PICK_CLASS_RANK: Record<MovementClass, number> = { compound: 2, isolation: 1, unclassified: 0 };
+const SECOND_PICK_CLASS_RANK: Record<MovementClass, number> = { isolation: 2, compound: 1, unclassified: 0 };
+
+function movementClassRank(candidate: PoolCandidate, preferCompound: boolean): number {
+  const rank = preferCompound ? FIRST_PICK_CLASS_RANK : SECOND_PICK_CLASS_RANK;
+  return rank[movementClassOf(candidate.exercise)];
 }
 
 // D-07 tier 3: reads MODEL_EQUIPMENT_TYPES from its single source (@fitness/plate-math,
@@ -70,10 +74,8 @@ export interface SlotPickContext {
   alreadyPickedIds: ReadonlySet<string>;
   weekPickedIdsForGroup: ReadonlySet<string>;
   coveredMovementPatterns: ReadonlySet<MovementPattern>;
-  // D-07: the first exercise chosen for a muscle group in a day must be the most compound
-  // available; a second exercise for the same group (D-02) is free to be an isolation movement.
-  // Skipping the compoundness comparison rather than inverting it when this is false is what makes
-  // that permissive, not prescriptive.
+  // D-07: a group's first exercise in a day ranks compound > isolation > unclassified; a second
+  // exercise for the same group (D-02) ranks isolation > compound > unclassified.
   preferCompound: boolean;
 }
 
@@ -95,11 +97,12 @@ function weekNoveltyOf(candidate: PoolCandidate, weekPickedIdsForGroup: Readonly
 //
 // Filters, in order: drop candidates already picked for the day; drop candidates whose primary
 // score is not greater than zero; D-08 — if any survivor has a primary mapping to
-// `slotDef.muscleGroupId`, drop every candidate that has none; D-06 — if any survivor is outside
-// `context.weekPickedIdsForGroup`, drop every candidate inside it. Both gates are conditional on a
-// non-empty survivor set, which is exactly what lets a secondary-only or week-exhausted candidate
-// still be returned rather than the slot going unfilled. `null` comes back only when the chain
-// empties entirely.
+// `slotDef.muscleGroupId`, drop every candidate that has none; D-07 — if any survivor has a
+// movement class, drop every unclassified candidate; D-06 — if any survivor is outside
+// `context.weekPickedIdsForGroup`, drop every candidate inside it. Every gate is conditional on a
+// non-empty survivor set, which is exactly what lets a secondary-only, unclassified or
+// week-exhausted candidate still be returned rather than the slot going unfilled. `null` comes
+// back only when the chain empties entirely.
 //
 // D-06's gate is strictly stronger than D-07's tier 5 (week-level novelty, below): once the gate
 // has run, every survivor shares the same weekNoveltyOf value, so tier 5 only ever decides among
@@ -117,6 +120,11 @@ export function pickSlotExercise(pool: CandidatePool, slotDef: SplitSlot, contex
     eligible = eligible.filter(({ candidate }) => hasPrimaryMapping(candidate, slotDef.muscleGroupId));
   }
 
+  const hasClassified = eligible.some(({ candidate }) => movementClassOf(candidate.exercise) !== 'unclassified');
+  if (hasClassified) {
+    eligible = eligible.filter(({ candidate }) => movementClassOf(candidate.exercise) !== 'unclassified');
+  }
+
   const hasUnusedThisWeek = eligible.some(({ candidate }) => !context.weekPickedIdsForGroup.has(candidate.exercise.id));
   if (hasUnusedThisWeek) {
     eligible = eligible.filter(({ candidate }) => !context.weekPickedIdsForGroup.has(candidate.exercise.id));
@@ -125,11 +133,9 @@ export function pickSlotExercise(pool: CandidatePool, slotDef: SplitSlot, contex
   const sorted = [...eligible].sort((a, b) => {
     if (a.score !== b.score) return b.score - a.score;
 
-    if (context.preferCompound) {
-      const compoundA = compoundnessOf(a.candidate, slotDef.muscleGroupId);
-      const compoundB = compoundnessOf(b.candidate, slotDef.muscleGroupId);
-      if (compoundA !== compoundB) return compoundB - compoundA;
-    }
+    const classA = movementClassRank(a.candidate, context.preferCompound);
+    const classB = movementClassRank(b.candidate, context.preferCompound);
+    if (classA !== classB) return classB - classA;
 
     const loadableA = isLoadable(a.candidate.exercise) ? 1 : 0;
     const loadableB = isLoadable(b.candidate.exercise) ? 1 : 0;
