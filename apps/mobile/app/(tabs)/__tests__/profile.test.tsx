@@ -18,7 +18,9 @@ jest.mock('@/lib/theme-colors', () => ({
   }),
 }));
 
-import { GymRow, NotificationRow, ProgressionPreferenceRow, ToggleRow } from '../profile';
+import type { SyncStatus } from '@/lib/sync-status';
+
+import { formatLastSync, GymRow, NotificationRow, ProgressionPreferenceRow, SyncStatusSection, ToggleRow } from '../profile';
 
 function findText(node: unknown, out: string[] = []): string[] {
   if (node === null || node === undefined || typeof node === 'boolean') return out;
@@ -171,5 +173,63 @@ describe('GymRow', () => {
     };
     resultWithName.props.onPress();
     expect(onPressWithName).toHaveBeenCalledTimes(1);
+  });
+});
+
+function syncStatus(overrides: Partial<SyncStatus> = {}): SyncStatus {
+  return {
+    pendingWrites: 0,
+    lastPushOutcome: null,
+    lastSuccessfulPushAt: null,
+    rejectedOps: [],
+    ...overrides,
+  };
+}
+
+describe('SyncStatusSection', () => {
+  it('reads as settled with zero pending, and renders no rejection line', () => {
+    const text = findText(SyncStatusSection({ status: syncStatus() }));
+    expect(text.join(' ')).toContain('All changes synced');
+    expect(text.join(' ')).not.toContain('rejected');
+  });
+
+  it('names the count when changes are waiting to sync', () => {
+    const text = findText(SyncStatusSection({ status: syncStatus({ pendingWrites: 3 }) }));
+    expect(text.join(' ')).toContain('3 changes waiting to sync');
+  });
+
+  it('shows Never when the account has never completed a push', () => {
+    const text = findText(SyncStatusSection({ status: syncStatus({ lastSuccessfulPushAt: null }) }));
+    expect(text.join(' ')).toContain('Last synced Never');
+  });
+
+  it('dedupes rejected ops sharing a table and reason into one pair, with the full count', () => {
+    const text = findText(
+      SyncStatusSection({
+        status: syncStatus({
+          rejectedOps: [
+            { opId: 'a', table: 'logged_set', reason: 'invalid_field', recordedAt: '2026-09-01T00:00:00.000Z' },
+            { opId: 'b', table: 'logged_set', reason: 'invalid_field', recordedAt: '2026-09-01T00:01:00.000Z' },
+          ],
+        }),
+      }),
+    );
+    const joined = text.join(' ');
+    expect(joined).toContain('2 changes rejected');
+    expect(joined.match(/logged_set: invalid_field/g)).toHaveLength(1);
+  });
+});
+
+describe('formatLastSync', () => {
+  const now = new Date('2026-09-02T12:00:00.000Z').getTime();
+
+  it.each([
+    [null, 'Never'],
+    [new Date(now - 30_000).toISOString(), 'Just now'],
+    [new Date(now - 5 * 60_000).toISOString(), '5m ago'],
+    [new Date(now - 3 * 60 * 60_000).toISOString(), '3h ago'],
+    [new Date(now - 2 * 24 * 60 * 60_000).toISOString(), '2d ago'],
+  ])('formats %s as %s', (isoTimestamp, expected) => {
+    expect(formatLastSync(isoTimestamp, now)).toBe(expected);
   });
 });

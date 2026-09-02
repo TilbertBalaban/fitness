@@ -22,6 +22,7 @@ import {
 } from '@/lib/db/preferences';
 import { getAlertPermission, openAlertSettings, type AlertPermission } from '@/lib/rest-alert';
 import { signOut } from '@/lib/sign-out';
+import { getSyncStatus, type SyncStatus } from '@/lib/sync-status';
 import { useThemeColors } from '@/lib/theme-colors';
 
 interface PendingConfirmation {
@@ -30,6 +31,59 @@ interface PendingConfirmation {
 }
 
 const DEFAULT_PREFERENCES: WorkoutPreferences = { autoAdvanceEnabled: true, warmupSetsEnabled: true };
+const EMPTY_SYNC_STATUS: SyncStatus = {
+  pendingWrites: 0,
+  lastPushOutcome: null,
+  lastSuccessfulPushAt: null,
+  rejectedOps: [],
+};
+
+export function formatLastSync(isoTimestamp: string | null, now: number = Date.now()): string {
+  if (isoTimestamp === null) return 'Never';
+  const elapsedMs = now - new Date(isoTimestamp).getTime();
+  const elapsedSeconds = Math.floor(elapsedMs / 1000);
+  if (elapsedSeconds < 60) return 'Just now';
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `${elapsedHours}h ago`;
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  return `${elapsedDays}d ago`;
+}
+
+function pluralizeChanges(count: number): string {
+  return count === 1 ? 'change' : 'changes';
+}
+
+export function SyncStatusSection({ status }: { status: SyncStatus }) {
+  const pendingLine =
+    status.pendingWrites === 0
+      ? 'All changes synced'
+      : `${status.pendingWrites} ${pluralizeChanges(status.pendingWrites)} waiting to sync`;
+
+  const lastSyncedLine = `Last synced ${formatLastSync(status.lastSuccessfulPushAt)}`;
+
+  const distinctRejectionPairs = Array.from(
+    new Set(status.rejectedOps.map((op) => `${op.table}: ${op.reason}`)),
+  );
+  const rejectedLine =
+    distinctRejectionPairs.length > 0
+      ? `${status.rejectedOps.length} ${pluralizeChanges(status.rejectedOps.length)} rejected — ${distinctRejectionPairs.join(', ')}`
+      : null;
+
+  return (
+    <View className="gap-sm">
+      <Text className="text-label font-normal text-foreground-muted">Sync</Text>
+      <View className="gap-xs rounded-md border border-foreground-muted bg-surface px-md py-sm">
+        <Text className="text-body font-normal text-foreground">{pendingLine}</Text>
+        <Text className="text-label font-normal text-foreground-muted">{lastSyncedLine}</Text>
+        {rejectedLine !== null ? (
+          <Text className="text-label font-normal text-destructive">{rejectedLine}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
 
 // Matches AppearanceControl's row chrome (a bordered, 48px-minimum surface row) rather than
 // introducing a second toggle visual language for this phase's one new settings section.
@@ -180,10 +234,11 @@ export default function ProfileScreen() {
   );
   const [notificationPermission, setNotificationPermission] = useState<AlertPermission>('undetermined');
   const [activeGymName, setActiveGymName] = useState<string | undefined>(undefined);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(EMPTY_SYNC_STATUS);
 
   // An all-settled read, not Promise.all: a failure resolving the active gym's name must never
   // prevent the workout preferences or notification permission from loading, and vice versa — the
-  // screen still issues one read pass per focus, but each of its five reads fails independently.
+  // screen still issues one read pass per focus, but each of its six reads fails independently.
   // getAlertPermission is a read, never a prompt (it never calls requestPermissionsAsync) — safe on
   // every focus, including after the user changes the OS-level answer in Settings and returns.
   useFocusEffect(
@@ -191,19 +246,27 @@ export default function ProfileScreen() {
       let active = true;
       void (async () => {
         if (!userId) return;
-        const [preferencesResult, progressionPreferenceResult, permissionResult, gymProfilesResult, activeGymIdResult] =
-          await Promise.allSettled([
-            loadWorkoutPreferences(userId),
-            loadProgressionPreference(userId),
-            getAlertPermission(),
-            loadEquipmentProfiles(userId),
-            loadActiveEquipmentProfileId(userId),
-          ]);
+        const [
+          preferencesResult,
+          progressionPreferenceResult,
+          permissionResult,
+          gymProfilesResult,
+          activeGymIdResult,
+          syncStatusResult,
+        ] = await Promise.allSettled([
+          loadWorkoutPreferences(userId),
+          loadProgressionPreference(userId),
+          getAlertPermission(),
+          loadEquipmentProfiles(userId),
+          loadActiveEquipmentProfileId(userId),
+          getSyncStatus(),
+        ]);
         if (!active) return;
 
         if (preferencesResult.status === 'fulfilled') setPreferences(preferencesResult.value);
         if (progressionPreferenceResult.status === 'fulfilled') setProgressionPreferenceState(progressionPreferenceResult.value);
         if (permissionResult.status === 'fulfilled') setNotificationPermission(permissionResult.value);
+        if (syncStatusResult.status === 'fulfilled') setSyncStatus(syncStatusResult.value);
 
         if (gymProfilesResult.status === 'fulfilled' && activeGymIdResult.status === 'fulfilled') {
           const liveId = resolveLiveEquipmentProfileId(gymProfilesResult.value, activeGymIdResult.value);
@@ -301,6 +364,8 @@ export default function ProfileScreen() {
           <DataRow icon="body-outline" label="Body Metrics" onPress={() => router.push('/body-metrics')} />
           <DataRow icon="images-outline" label="Progress Photos" onPress={() => router.push('/progress-photos')} />
         </View>
+
+        <SyncStatusSection status={syncStatus} />
 
         <Pressable
           onPress={onSignOutPress}
