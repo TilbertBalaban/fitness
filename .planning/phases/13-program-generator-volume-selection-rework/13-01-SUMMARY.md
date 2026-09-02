@@ -169,3 +169,40 @@ None - no external service configuration required.
 All 8 key files (`volume-split.ts`, `session-fit.ts`, both new test files, `generate.ts`,
 `session-length.ts`, `volume-landmarks.ts`, `__fixtures__/parity.ts`) confirmed present on disk,
 and all 3 task commit hashes (`9414938`, `10426be`, `7409c55`) confirmed present in `git log`.
+
+## Amendment (2026-09-02)
+
+Running the real seeded catalog through this plan's implementation (2 days / 60 min /
+intermediate / hypertrophy) produced nine exercises at two sets each per day — the wrong shape.
+Per D-04's amendment (`.planning/phases/13-program-generator-volume-selection-rework/13-CONTEXT.md`,
+commit `35f0e41`), `fitDayToSessionLength`'s concession order was reordered and its floor raised:
+
+1. `MIN_SETS_PER_EXERCISE` raised from 2 to 3 (`volume-split.ts`) — two working sets is below the
+   effective range for any goal this generator serves.
+2. `fitDayToSessionLength`'s concession order became: (a) remove overflow exercises first (a
+   group's second-or-later slot, later slots before earlier, keeping the group's first exercise at
+   its planned sets), (b) then reduce sets on the remaining exercises down to the floor of 3, (c)
+   then remove first exercises by the existing small→medium→large volume-class priority. The
+   original order (reduce-then-remove) fragmented a day into many exercises at the floor instead of
+   fewer exercises at a healthy set count.
+3. Fixed a latent index-alignment bug while reordering: the reduction phase's per-slot floor array
+   must be computed from `working` *after* overflow removal, not from the original `plans` array —
+   removing slots in phase 1 shifts array positions, so a floor table built against the original
+   array would apply the wrong slot's floor once phase 2 runs on the shrunk array.
+4. `session-fit.test.ts` rewritten with concrete slot/set-count assertions for the new order,
+   including two new cases proving overflow removal is tried before any set reduction (even when
+   reduction alone would have been sufficient). `generate.test.ts` and `volume-split.test.ts`
+   needed no changes — their existing assertions were range-based (`<=5`, `>2` slots) and held
+   under the amended algorithm without modification.
+5. `docs/volume-rir-landmarks.md` updated (the `MAX_SETS_PER_EXERCISE`/`MIN_SETS_PER_EXERCISE`
+   section and the `WORK_SECONDS_PER_SET`/`SESSION_OVERHEAD_MINUTES` section's `fitDayToSessionLength`
+   paragraph) to match the corrected order and floor.
+
+**Verified against the real seeded catalog** (2 days / 60 min / intermediate / hypertrophy, `auto`
+split): both days now land at 6 exercises, each at 3 sets in both cycle 0 and the hardest training
+cycle (the fit's post-fit ceiling of 3 binds at every cycle for these single-survivor-per-group
+slots). `pnpm --filter @fitness/program-generator typecheck && test` and
+`pnpm --filter @fitness/program-generator build && pnpm -w typecheck && pnpm -w test` both green.
+
+**Commits:**
+- `484ddbd`: fix(program-generator): remove overflow exercises before reducing sets
