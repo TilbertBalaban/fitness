@@ -73,6 +73,33 @@ lifter can both tolerate and requires more weekly volume for continued adaptatio
 experience level would typically respond well to — again a perceived-quality effect, since
 Phase 8's progression rules operate on top of whatever starting prescription is set here.
 
+## `MAX_SETS_PER_EXERCISE` and `MIN_SETS_PER_EXERCISE`
+
+| Constant | Value |
+|---|---|
+| `MAX_SETS_PER_EXERCISE` | 5 |
+| `MIN_SETS_PER_EXERCISE` | 2 |
+
+Placed here, adjacent to `EXPERIENCE_VOLUME_BAND`, because this pair governs how a muscle group's
+weekly target is *spread* across exercises in a day, not how large that target is. A muscle
+group's per-session target is still `round(weeklySetTarget / frequency)`; when that target exceeds
+`MAX_SETS_PER_EXERCISE`, the group gets `ceil(sessionSets / MAX_SETS_PER_EXERCISE)` exercises for
+that day and the sets divide across them as evenly as possible (10 → 5 + 5, 8 → 4 + 4, 7 → 4 + 3).
+This split is decided against the HARDEST training cycle's target, so the exercise count for a
+muscle group is stable across every cycle in a block — only the per-exercise set count changes
+cycle to cycle, never the exercise count. `MIN_SETS_PER_EXERCISE` is the floor the session-length
+fit (`fitDayToSessionLength`, below) may reduce a surviving exercise's sets down to, but it is not
+a floor the split itself raises a small target up to — a target under `MIN_SETS_PER_EXERCISE`
+still gets exactly that many sets on its one exercise.
+
+**Literature anchor:** not literature-derived — a project-authored cap chosen so no single
+exercise absorbs an entire muscle group's weekly target (which produced a single 10-set, later
+18-set, quads exercise in the reported failure case), stated as this project's own design
+decision, matching the D-15 provenance stance this document opens with.
+**If wrong:** a generated day gets one more or one fewer exercise per muscle group than a
+hand-authored program would — a perceived-variety effect, never a correctness failure, since the
+weekly set target itself is unaffected by how it is spread.
+
 ## `REP_RANGE_BY_GOAL`
 
 | Goal | Rep range |
@@ -102,23 +129,31 @@ longer rest with lower rep/heavier-load work and shorter rest with higher-rep wo
 **If wrong:** `estimateSlotMinutes`'s session-length trimming becomes slightly more or less
 aggressive than intended — a session-fit effect, not a correctness failure.
 
-## `RIR_PROGRESSION`
+## `RIR_LADDER_BY_DAYS_PER_WEEK`
 
-`[3, 2, 1, 1]`, indexed by training-cycle position within a block and floored at its final member
-for any cycle index past the end (Assumptions Log A4).
+`rirForCycle(cycleIndex, daysPerWeek)` indexes a ladder chosen by `daysPerWeek`, floored at its
+final member for any cycle index past the end of that ladder — the same floor behavior the single
+`RIR_PROGRESSION` ladder had before Phase 13 (Assumptions Log A4). Phase 13's D-09 replaces that
+single ladder with one keyed per `daysPerWeek`, so the ladder itself, not just the floor, now
+depends on training frequency.
 
-| Cycle index | RIR |
-|---|---|
-| 0 | 3 |
-| 1 | 2 |
-| 2 | 1 |
-| 3+ | 1 |
+| `daysPerWeek` | Cycle 0 | Cycle 1 | Cycle 2 | Cycle 3+ |
+|---|---|---|---|---|
+| 2 | 2 | 1 | 0 | 0 |
+| 3 | 2 | 1 | 1 | 0 |
+| 4 | 3 | 2 | 1 | 1 |
+| 5 | 3 | 2 | 2 | 1 |
+| 6 | 3 | 2 | 2 | 1 |
 
 **Literature anchor:** descending-RIR-within-a-block autoregulation — starting a block further
-from failure and progressively autoregulating closer to it. This project's ladder floors at 1
-rather than extending to a true 0 RIR that some sources describe, a deliberate simplification.
+from failure and progressively autoregulating closer to it. Phase 13's D-09 adds the reasoning for
+keying the ladder by frequency: fewer sessions per week mean more recovery between them, so a
+low-frequency block can end nearer failure (a 2-day week reaches RIR 0 by its last cycle), while a
+6-day week never reaches RIR 0 because there is less recovery to autoregulate into. This table is
+this project's own design decision, informed by but not copied from a specific source, matching
+the D-15 provenance stance this document opens with.
 **If wrong:** later training cycles in a generated block feel easier or harder than a hand-authored
-equivalent would have specified — a perceived-difficulty effect.
+equivalent would have specified — a perceived-difficulty effect, never a correctness failure.
 
 ## `EMPHASIS_MULTIPLIERS`
 
@@ -158,6 +193,13 @@ same exercises on the same days, per D-20).
 
 **Literature anchor:** not literature-derived — this project's own estimate of time actually under
 load plus transition between sets, and of warm-up/changeover/gym-floor overhead.
-**If wrong:** `trimToSessionLength` trims more or fewer exercises than a lifter's actual session
-pace would need — a session-length-estimate accuracy issue, never a correctness failure, since the
-trimmer never reduces a surviving slot's own prescribed sets (D-14).
+**If wrong:** `fitDayToSessionLength` fits more or fewer exercises than a lifter's actual session
+pace would need — a session-length-estimate accuracy issue, never a correctness failure.
+`fitDayToSessionLength` (`packages/program-generator/src/session-fit.ts`) evaluates the estimate
+against the HARDEST training cycle in the block, not the first, and concedes in a fixed order: it
+first reduces sets on every exercise uniformly, one set per pass, down to
+`MIN_SETS_PER_EXERCISE`, and only once nothing more can be reduced does it start removing whole
+exercises, by documented priority. Phase 11's D-14 ("the trimmer never reduces a surviving slot's
+own prescribed sets") is **superseded** by Phase 13's D-04: reducing sets is now the cheapest,
+first-applied concession, precisely because it keeps every muscle group trained rather than
+dropping one outright. A later reader should treat D-14 as historical, not binding.
