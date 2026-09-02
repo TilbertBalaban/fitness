@@ -5,7 +5,8 @@ import { deloadOverrideFor, placeCycles } from './deload';
 import { applyEmphasis } from './emphasis';
 import { pickSlotExercise } from './slot-fill';
 import { resolveSplitTemplate, type SplitTemplate } from './split-templates';
-import { trimToSessionLength } from './session-length';
+import { fitDayToSessionLength, type DaySlotPlan } from './session-fit';
+import { distributeSets, splitSessionSets } from './volume-split';
 import {
   EXPERIENCE_VOLUME_BAND,
   MUSCLE_GROUP_VOLUME_CLASS,
@@ -53,10 +54,18 @@ function buildOverride(base: ResolvedTarget, cycleSets: number, cycleRir: number
   return override;
 }
 
-// The single exported entry point, composing candidate pool -> split resolution -> slot filling ->
-// emphasis-adjusted periodized targets -> session-length trim -> cycle placement into a
-// GeneratedProgramTree (D-04). Pure: no I/O, no Date.now(), no Math.random() — every varying
-// decision is driven by `input` alone, including `variantSeed`.
+interface FilledSlot {
+  key: string;
+  exerciseId: string;
+  orderIndex: number;
+  muscleGroupId: MuscleGroupId;
+  hardestCycleSets: number;
+}
+
+// The single exported entry point, composing candidate pool -> split resolution -> per-day
+// PLAN/FIT/PICK/PER-CYCLE stages -> cycle placement into a GeneratedProgramTree. Pure: no I/O, no
+// Date.now(), no Math.random() — every varying decision is driven by `input` alone, including
+// `variantSeed`.
 export function generateProgram(input: GenerationInput): GeneratedProgramTree {
   // T-11-05: rejects the whole input before any candidate-pool or slot-filling work runs, rather
   // than partially processing a malformed value that reached this boundary from outside
@@ -105,95 +114,157 @@ export function generateProgram(input: GenerationInput): GeneratedProgramTree {
     }
   }
 
+  // The hardest training cycle is always the last one: weeklySetTarget ramps monotonically from
+  // mev at cycle 0 to mav at trainingCycleCount - 1, and applyEmphasis's multiplier is constant
+  // across cycles for a given slot, so no search over cycles is needed.
+  const hardestTrainingIndex = Math.max(0, input.trainingCycleCount - 1);
+
   const days: GeneratedDay[] = [];
   let dayOrderIndex = 0;
 
   template.dayPatterns.forEach((dayPattern, dayIndex) => {
     dayOrderIndex += ORDER_INDEX_GAP;
     const dayKey = `day-${dayIndex}`;
-    const alreadyPicked = new Set<string>();
-    const muscleGroupBySlotKey = new Map<string, MuscleGroupId>();
-    const builtSlots: GeneratedSlot[] = [];
-    let slotOrderIndex = 0;
+
+    // Stage 1 (PLAN): expand each frozen slotDef into 1+ DaySlotPlan entries against the hardest
+    // training cycle's numbers — a fresh local array, never written back into the frozen
+    // SplitTemplate (Pitfall 6).
+    const plans: DaySlotPlan[] = [];
+    const groupExerciseCounter = new Map<MuscleGroupId, number>();
 
     for (const slotDef of dayPattern.slots) {
-      const picked = pickSlotExercise(pool, slotDef, input.variantSeed, alreadyPicked);
+      const frequency = frequencyByMuscleGroup.get(slotDef.muscleGroupId) ?? 1;
+      const emphasisLevel = input.emphasis[slotDef.muscleGroupId] ?? 'normal';
+      const volumeClass = MUSCLE_GROUP_VOLUME_CLASS[slotDef.muscleGroupId];
+      const band = EXPERIENCE_VOLUME_BAND[input.experienceLevel][volumeClass];
+      const hardestWeeklySets = applyEmphasis(
+        weeklySetTarget(input.experienceLevel, slotDef.muscleGroupId, hardestTrainingIndex, input.trainingCycleCount),
+        emphasisLevel,
+        band,
+      );
+      const hardestSessionSets = Math.max(1, Math.round(hardestWeeklySets / frequency));
+
+      for (const exerciseSets of splitSessionSets(hardestSessionSets)) {
+        const groupExerciseIndex = groupExerciseCounter.get(slotDef.muscleGroupId) ?? 0;
+        groupExerciseCounter.set(slotDef.muscleGroupId, groupExerciseIndex + 1);
+        plans.push({
+          muscleGroupId: slotDef.muscleGroupId,
+          volumeClass,
+          groupExerciseIndex,
+          hardestCycleSets: exerciseSets,
+          restSeconds,
+        });
+      }
+    }
+
+    // Stage 2 (FIT): fit the day's plan descriptors against the hardest-cycle estimate (D-03) —
+    // never against picked slots, so a removed plan never consumes a candidate exercise.
+    const fitResult = fitDayToSessionLength(plans, input.sessionLengthMinutes);
+    if (fitResult.removedCount > 0 || fitResult.setsRemovedCount > 0) {
+      rawDegradations.push({
+        kind: 'day_trimmed',
+        dayKey,
+        muscleGroupId: null,
+        detail:
+          `Fitting "${dayPattern.name}" to a ${input.sessionLengthMinutes}-minute session removed ` +
+          `${fitResult.removedCount} exercise(s) and reduced sets on ${fitResult.setsRemovedCount} occasion(s), ` +
+          `landing at ~${Math.round(fitResult.estimatedMinutes)} minutes`,
+      });
+    }
+
+    // Stage 3 (PICK): iterate the surviving plans in day order, advancing slotOrderIndex per
+    // filled slot so keys stay unique and gap-ordered (D-02). A null pick is the resolution of
+    // Open Question 1: report slot_unfillable for that day/muscle group and skip the slot, leaving
+    // any already-picked sibling exercise at its already-capped planned sets.
+    const alreadyPicked = new Set<string>();
+    const filledSlots: FilledSlot[] = [];
+    let slotOrderIndex = 0;
+
+    for (const plan of fitResult.plans) {
+      const picked = pickSlotExercise(pool, { muscleGroupId: plan.muscleGroupId }, input.variantSeed, alreadyPicked);
       if (picked === null) {
         rawDegradations.push({
           kind: 'slot_unfillable',
           dayKey,
-          muscleGroupId: slotDef.muscleGroupId,
-          detail: `No available candidate for ${slotDef.muscleGroupId} in "${dayPattern.name}"`,
+          muscleGroupId: plan.muscleGroupId,
+          detail: `No available candidate for ${plan.muscleGroupId} in "${dayPattern.name}"`,
         });
         continue;
       }
       alreadyPicked.add(picked.exercise.id);
       slotOrderIndex += ORDER_INDEX_GAP;
 
-      const frequency = frequencyByMuscleGroup.get(slotDef.muscleGroupId) ?? 1;
-      const emphasisLevel = input.emphasis[slotDef.muscleGroupId] ?? 'normal';
-      const volumeClass = MUSCLE_GROUP_VOLUME_CLASS[slotDef.muscleGroupId];
-      const band = EXPERIENCE_VOLUME_BAND[input.experienceLevel][volumeClass];
-      const baseWeeklySets = applyEmphasis(
-        weeklySetTarget(input.experienceLevel, slotDef.muscleGroupId, 0, input.trainingCycleCount),
-        emphasisLevel,
-        band,
-      );
-
-      const base: ResolvedTarget = {
-        targetSets: Math.max(1, Math.round(baseWeeklySets / frequency)),
-        targetRepMin: repRange.min,
-        targetRepMax: repRange.max,
-        targetRir: rirForCycle(0),
-        targetRestSeconds: restSeconds,
-      };
-
-      const slotKey = `${dayKey}-slot-${slotOrderIndex}`;
-      muscleGroupBySlotKey.set(slotKey, slotDef.muscleGroupId);
-      builtSlots.push({ key: slotKey, exerciseId: picked.exercise.id, orderIndex: slotOrderIndex, base, overridesByCycleKey: {} });
-    }
-
-    // D-14: session length constrains exercise COUNT, never a slot's own set count — trimming runs
-    // on the day's whole slot list before any per-cycle override is computed.
-    const trimResult = trimToSessionLength(builtSlots, input.sessionLengthMinutes);
-    if (trimResult.removedCount > 0) {
-      rawDegradations.push({
-        kind: 'day_trimmed',
-        dayKey,
-        muscleGroupId: null,
-        detail: `Removed ${trimResult.removedCount} exercise(s) from "${dayPattern.name}" to fit a ${input.sessionLengthMinutes}-minute session`,
+      filledSlots.push({
+        key: `${dayKey}-slot-${slotOrderIndex}`,
+        exerciseId: picked.exercise.id,
+        orderIndex: slotOrderIndex,
+        muscleGroupId: plan.muscleGroupId,
+        hardestCycleSets: plan.hardestCycleSets,
       });
     }
 
-    const finalSlots: GeneratedSlot[] = trimResult.slots.map((slot) => {
-      const muscleGroupId = muscleGroupBySlotKey.get(slot.key)!;
-      const frequency = frequencyByMuscleGroup.get(muscleGroupId) ?? 1;
-      const emphasisLevel = input.emphasis[muscleGroupId] ?? 'normal';
-      const volumeClass = MUSCLE_GROUP_VOLUME_CLASS[muscleGroupId];
-      const band = EXPERIENCE_VOLUME_BAND[input.experienceLevel][volumeClass];
+    // Stage 4 (PER-CYCLE): group the filled slots by muscle group in day order, and for each
+    // training cycle recompute weeklySetTarget at that cycle's own index (never scale the
+    // hardest-cycle number linearly down, which would distort emphasized/deprioritized groups),
+    // distribute it across the group's surviving slot count, and clamp to the fit's ceiling.
+    const filledSlotsByMuscleGroup = new Map<MuscleGroupId, FilledSlot[]>();
+    for (const filledSlot of filledSlots) {
+      const group = filledSlotsByMuscleGroup.get(filledSlot.muscleGroupId) ?? [];
+      group.push(filledSlot);
+      filledSlotsByMuscleGroup.set(filledSlot.muscleGroupId, group);
+    }
+
+    const setsByTrainingIndexAndSlotKey = new Map<number, Map<string, number>>();
+    for (let trainingIndex = 0; trainingIndex < input.trainingCycleCount; trainingIndex += 1) {
+      const setsBySlotKey = new Map<string, number>();
+      for (const [muscleGroupId, groupSlots] of filledSlotsByMuscleGroup) {
+        const frequency = frequencyByMuscleGroup.get(muscleGroupId) ?? 1;
+        const emphasisLevel = input.emphasis[muscleGroupId] ?? 'normal';
+        const volumeClass = MUSCLE_GROUP_VOLUME_CLASS[muscleGroupId];
+        const band = EXPERIENCE_VOLUME_BAND[input.experienceLevel][volumeClass];
+        const weeklySets = applyEmphasis(
+          weeklySetTarget(input.experienceLevel, muscleGroupId, trainingIndex, input.trainingCycleCount),
+          emphasisLevel,
+          band,
+        );
+        const sessionSets = Math.max(1, Math.round(weeklySets / frequency));
+        const distributed = distributeSets(sessionSets, groupSlots.length);
+
+        groupSlots.forEach((groupSlot, index) => {
+          const clamped = Math.max(1, Math.min(distributed[index]!, groupSlot.hardestCycleSets));
+          setsBySlotKey.set(groupSlot.key, clamped);
+        });
+      }
+      setsByTrainingIndexAndSlotKey.set(trainingIndex, setsBySlotKey);
+    }
+
+    const finalSlots: GeneratedSlot[] = filledSlots.map((filledSlot) => {
+      const cycle0Sets = setsByTrainingIndexAndSlotKey.get(0)?.get(filledSlot.key) ?? filledSlot.hardestCycleSets;
+      const base: ResolvedTarget = {
+        targetSets: cycle0Sets,
+        targetRepMin: repRange.min,
+        targetRepMax: repRange.max,
+        targetRir: rirForCycle(0, input.daysPerWeek),
+        targetRestSeconds: restSeconds,
+      };
 
       const overridesByCycleKey: Record<string, TargetOverride> = {};
       for (const cycle of cycles) {
         let override: TargetOverride;
         if (cycle.kind === 'deload') {
-          override = deloadOverrideFor(slot.base);
+          override = deloadOverrideFor(base);
         } else {
           const trainingIndex = trainingIndexByCycleKey.get(cycle.key) ?? 0;
-          const emphasizedWeeklySets = applyEmphasis(
-            weeklySetTarget(input.experienceLevel, muscleGroupId, trainingIndex, input.trainingCycleCount),
-            emphasisLevel,
-            band,
-          );
-          const cycleSets = Math.max(1, Math.round(emphasizedWeeklySets / frequency));
-          const cycleRir = rirForCycle(trainingIndex);
-          override = buildOverride(slot.base, cycleSets, cycleRir);
+          const cycleSets = setsByTrainingIndexAndSlotKey.get(trainingIndex)?.get(filledSlot.key) ?? base.targetSets ?? 1;
+          const cycleRir = rirForCycle(trainingIndex, input.daysPerWeek);
+          override = buildOverride(base, cycleSets, cycleRir);
         }
         if (!isEmptyOverride(override)) {
           overridesByCycleKey[cycle.key] = override;
         }
       }
 
-      return { ...slot, overridesByCycleKey };
+      return { key: filledSlot.key, exerciseId: filledSlot.exerciseId, orderIndex: filledSlot.orderIndex, base, overridesByCycleKey };
     });
 
     days.push({ key: dayKey, name: dayPattern.name, orderIndex: dayOrderIndex, isRestDay: false, slots: finalSlots });

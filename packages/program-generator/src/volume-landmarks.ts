@@ -1,4 +1,5 @@
 import type { ExperienceLevel, MuscleGroupId } from '@fitness/api-contracts';
+import { GENERATION_INPUT_LIMITS } from './result';
 
 // D-15: MacroFactor's own landmark math is not public. Every constant in this module is this
 // project's own design decision, informed by published volume-landmark and autoregulation
@@ -57,9 +58,21 @@ export const REST_SECONDS_BY_GOAL: Record<'strength' | 'hypertrophy' | 'enduranc
 };
 
 // Descending across training cycles within a block (easier -> harder), per D-17. The goal picks
-// the rep band, the cycle index picks the RIR, and the landmark table picks the sets — three
-// independent axes, never one number doing two of those jobs.
-export const RIR_PROGRESSION = [3, 2, 1, 1] as const;
+// the rep band, the cycle index and daysPerWeek pick the RIR, and the landmark table picks the
+// sets — three independent axes, never one number doing two of those jobs.
+//
+// D-09: fewer weekly sessions mean more recovery between them, so a lower-frequency week's ladder
+// ends nearer failure than a higher-frequency week's — a 2-day week reaches RIR 0 by its last
+// training cycle, a 6-day week never goes below RIR 1. This project's own design decision, not
+// sourced from MacroFactor (which publishes none of this math either); provenance recorded in
+// docs/volume-rir-landmarks.md.
+export const RIR_LADDER_BY_DAYS_PER_WEEK: Record<number, readonly number[]> = {
+  2: [2, 1, 0, 0],
+  3: [2, 1, 1, 0],
+  4: [3, 2, 1, 1],
+  5: [3, 2, 2, 1],
+  6: [3, 2, 2, 1],
+};
 
 function volumeBandFor(experienceLevel: ExperienceLevel, muscleGroupId: MuscleGroupId): VolumeBand {
   const volumeClass = MUSCLE_GROUP_VOLUME_CLASS[muscleGroupId];
@@ -82,9 +95,17 @@ export function weeklySetTarget(
   return Math.round(band.mev + (band.mav - band.mev) * fraction);
 }
 
-// The ladder floors at RIR_PROGRESSION's final member rather than going negative or undefined for
-// a cycle index past the end of the tuple.
-export function rirForCycle(cycleIndex: number): number {
-  const index = Math.min(cycleIndex, RIR_PROGRESSION.length - 1);
-  return RIR_PROGRESSION[index]!;
+// T-13-01: daysPerWeek is clamped into GENERATION_INPUT_LIMITS' declared range before the lookup
+// and falls back to the 4-day ladder if the clamped key is still absent, so no input that passes
+// isGenerationInput — or any future widening of that range — can index this table with undefined.
+// Within the resolved ladder, the same floor-at-the-last-member behaviour as before applies for a
+// cycle index past the end.
+export function rirForCycle(cycleIndex: number, daysPerWeek: number): number {
+  const clampedDaysPerWeek = Math.min(
+    Math.max(daysPerWeek, GENERATION_INPUT_LIMITS.minDaysPerWeek),
+    GENERATION_INPUT_LIMITS.maxDaysPerWeek,
+  );
+  const ladder = RIR_LADDER_BY_DAYS_PER_WEEK[clampedDaysPerWeek] ?? RIR_LADDER_BY_DAYS_PER_WEEK[4]!;
+  const index = Math.min(cycleIndex, ladder.length - 1);
+  return ladder[index]!;
 }

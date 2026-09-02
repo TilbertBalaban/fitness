@@ -1,5 +1,6 @@
 import type { GenerationCatalog, GenerationInput } from '../result';
 import { generateProgram } from '../generate';
+import { estimateSlotMinutes, SESSION_OVERHEAD_MINUTES } from '../session-length';
 
 const MUSCLE_GROUPS_FOR_FULL_BODY_3 = [
   'chest',
@@ -165,6 +166,60 @@ describe('generateProgram', () => {
         expect(override!.targetRepMax).toBeUndefined();
         expect(override!.targetRestSeconds).toBeUndefined();
       }
+    }
+  });
+});
+
+describe('the reported 2-day scenario (D-01..D-05, D-09)', () => {
+  function wideCatalog(): GenerationCatalog {
+    const exercises: GenerationCatalog['exercises'] = [];
+    const mappings: GenerationCatalog['mappings'] = [];
+    for (const muscleGroupId of MUSCLE_GROUPS_FOR_FULL_BODY_3) {
+      for (let i = 0; i < 4; i += 1) {
+        const id = `wide-${muscleGroupId}-${i}`;
+        exercises.push({ id, name: `${muscleGroupId} exercise ${i}`, equipmentRequired: null, movementPattern: null });
+        mappings.push({ exerciseId: id, muscleGroupId, role: 'primary' as const, weightFactor: '1.0' });
+      }
+    }
+    return { exercises, mappings };
+  }
+
+  function scenarioInput(overrides: Partial<GenerationInput> = {}): GenerationInput {
+    return tracerInput({
+      daysPerWeek: 2,
+      sessionLengthMinutes: 60,
+      experienceLevel: 'intermediate',
+      trainingGoal: 'hypertrophy',
+      splitPreference: 'full_body',
+      trainingCycleCount: 4,
+      catalog: wideCatalog(),
+      ...overrides,
+    });
+  }
+
+  it('caps every slot at 5 sets in every cycle, gives each day more than 2 slots, and fits the hardest-cycle estimate inside the session budget', () => {
+    const tree = generateProgram(scenarioInput());
+
+    expect(tree.days).toHaveLength(2);
+    const lastCycleKey = tree.cycles[tree.cycles.length - 1]!.key;
+
+    for (const day of tree.days) {
+      expect(day.slots.length).toBeGreaterThan(2);
+
+      let estimatedMinutes = SESSION_OVERHEAD_MINUTES;
+      for (const slot of day.slots) {
+        for (const cycle of tree.cycles) {
+          const override = slot.overridesByCycleKey[cycle.key];
+          const sets = override?.targetSets ?? slot.base.targetSets ?? 0;
+          expect(sets).toBeLessThanOrEqual(5);
+        }
+        const lastCycleOverride = slot.overridesByCycleKey[lastCycleKey];
+        const lastCycleSets = lastCycleOverride?.targetSets ?? slot.base.targetSets ?? 0;
+        const restSeconds = slot.base.targetRestSeconds ?? 0;
+        estimatedMinutes += estimateSlotMinutes(lastCycleSets, restSeconds);
+      }
+
+      expect(estimatedMinutes).toBeLessThanOrEqual(60);
     }
   });
 });

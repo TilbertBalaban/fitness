@@ -1,4 +1,4 @@
-import { EXPERIENCE_VOLUME_BAND, RIR_PROGRESSION, rirForCycle, weeklySetTarget } from '../volume-landmarks';
+import { EXPERIENCE_VOLUME_BAND, RIR_LADDER_BY_DAYS_PER_WEEK, rirForCycle, weeklySetTarget } from '../volume-landmarks';
 
 describe('weeklySetTarget', () => {
   it('returns the band lower bound at cycle 0', () => {
@@ -21,16 +21,25 @@ describe('weeklySetTarget', () => {
 });
 
 describe('rirForCycle', () => {
-  it('is 3 at cycle 0', () => {
-    expect(rirForCycle(0)).toBe(3);
+  it('is 3 at cycle 0 for a 4-day week', () => {
+    expect(rirForCycle(0, 4)).toBe(3);
   });
 
-  it('is 1 at cycle 3', () => {
-    expect(rirForCycle(3)).toBe(1);
+  it('is 1 at cycle 3 for a 4-day week', () => {
+    expect(rirForCycle(3, 4)).toBe(1);
   });
 
-  it('floors at the last member of the progression rather than going negative or undefined', () => {
-    expect(rirForCycle(9)).toBe(RIR_PROGRESSION[RIR_PROGRESSION.length - 1]);
-    expect(rirForCycle(9)).toBe(1);
+  it('is 0 at cycle 3 for a 2-day week — fewer sessions ramp nearer failure', () => {
+    expect(rirForCycle(3, 2)).toBe(0);
+  });
+
+  it('is 1 at cycle 3 for a 6-day week — never below 1', () => {
+    expect(rirForCycle(3, 6)).toBe(1);
+  });
+
+  it('floors at the last member of the ladder rather than going negative or undefined', () => {
+    const ladder = RIR_LADDER_BY_DAYS_PER_WEEK[2]!;
+    expect(rirForCycle(9, 2)).toBe(ladder[ladder.length - 1]);
+    expect(rirForCycle(9, 2)).toBe(0);
   });
 });
