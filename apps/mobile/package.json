@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "expo start",
     "build": "expo export --platform web",
+    "deploy:web": "expo export --platform web --clear && wrangler pages deploy dist --project-name fitness-web --branch main",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "jest",
@@ -68,6 +69,7 @@
     "jest": "^29.7.0",
     "jest-expo": "^57.0.3",
     "tailwindcss": "^3.4.19",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "wrangler": "4.128.0"
   }
 }
