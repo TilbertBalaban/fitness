@@ -6,11 +6,11 @@ current_phase: 1
 current_phase_name: Cross-Platform Foundation
 status: planning
 stopped_at: Completed 12-08-PLAN.md
-last_updated: "2026-09-02T10:01:58.201Z"
+last_updated: "2026-09-02T11:03:29.720Z"
 last_activity: 2026-09-02
 last_activity_desc: "Completed quick task 260902-fei: SQLite integer boolean sync-push fix"
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 12
   total_plans: 124
   completed_plans: 124
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 Phase: 1 — Cross-Platform Foundation
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-02 — Completed quick task 260902-iyq: per-client rate limiting behind Render
+Last activity: 2026-09-02 — Completed quick task 260902-ji2: build workspace packages on EAS
 
 Progress: [██████████] 100%
 
@@ -83,6 +83,10 @@ Progress: [██████████] 100%
 | Phase 12 P08 | 53min | 3 tasks | 11 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 13 added (2026-09-02): Program Generator Volume & Selection Rework — five generator design gaps found in production use
 
 ### Decisions
 
@@ -165,6 +169,7 @@ None yet.
 | 260902-i0n | Set Better Auth cookies to SameSite=None Secure Partitioned for the cross-site Pages to Render split | 2026-09-02 | 66db8fa | [260902-i0n-set-better-auth-cookies-to-samesite-none](./quick/260902-i0n-set-better-auth-cookies-to-samesite-none/) |
 | 260902-iyq | Resolve the client IP behind Render's proxy so Better Auth rate limiting is per client | 2026-09-02 | fd1b97b | [260902-iyq-resolve-the-client-ip-behind-render-s-pr](./quick/260902-iyq-resolve-the-client-ip-behind-render-s-pr/) |
 | 5 | Expand README intro with what-it-is section | 2026-09-02 | b9260b0 | — |
+| 260902-ji2 | Build @fitness/* workspace packages on EAS before Metro bundles | 2026-09-02 | 8ae4286 | [260902-ji2-build-fitness-workspace-packages-on-eas-](./quick/260902-ji2-build-fitness-workspace-packages-on-eas-/) |
 
 ## Deferred Items
 
