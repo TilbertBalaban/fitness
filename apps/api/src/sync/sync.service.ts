@@ -1259,18 +1259,23 @@ export class SyncService {
     const rejected: { op_id: string; reason: SyncRejectionReason }[] = [];
     let highestServerSeq = 0n;
 
+    const rejectOp = (op: SyncCrudOp, reason: SyncRejectionReason) => {
+      this.logger.warn(`applyBatch: rejected op ${op.op_id} (${op.type}) — ${reason}`);
+      rejected.push({ op_id: op.op_id, reason });
+    };
+
     const workable: SyncCrudOp[] = [];
     for (const op of batch) {
       if (op.op === 'DELETE' && HARD_DELETE_FORBIDDEN.has(op.type)) {
-        rejected.push({ op_id: op.op_id, reason: 'invalid_field' });
+        rejectOp(op, 'invalid_field');
         continue;
       }
       if (!(SYNCED_TABLES as readonly string[]).includes(op.type) || !isMappedTable(op.type)) {
-        rejected.push({ op_id: op.op_id, reason: 'unknown_table' });
+        rejectOp(op, 'unknown_table');
         continue;
       }
       if (hasInvalidField(op)) {
-        rejected.push({ op_id: op.op_id, reason: 'invalid_field' });
+        rejectOp(op, 'invalid_field');
         continue;
       }
       workable.push(op);
