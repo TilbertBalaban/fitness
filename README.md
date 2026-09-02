@@ -6,6 +6,26 @@ browser, backed by a NestJS API and Postgres.
 **Core value:** walk into a gym with no signal, log every set without friction, and the app tells you
 what to lift next time.
 
+## What it is
+
+A clone of [MacroFactor Workouts](https://macrofactor.com/workouts/), built for the author's own
+training and as a serious exercise in the React Native + NestJS stack. It covers:
+
+- Program design — routines, exercises, sets, rest timers, per-gym equipment profiles
+- In-gym set logging with a plate calculator scoped to what the gym actually has
+- Rule-based progressive overload that tells you what to lift next session
+- Training analytics — volume, personal records, history
+
+The app is local-first: every write lands in on-device SQLite through PowerSync and syncs to Postgres
+when a connection is available, so the same account converges across phone and browser.
+
+The project is built phase by phase with the GSD (Get Shit Done) workflow. Every phase's research,
+plans, verification, and decisions live in `.planning/` — start with `PROJECT.md` and `ROADMAP.md`
+there to see what has shipped and what is next.
+
+**No public deployment yet.** To try it, run it locally by following the steps below; the web target
+opens in a desktop browser with no native toolchain required.
+
 ## Layout
 
 ```
