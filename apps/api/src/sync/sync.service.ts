@@ -295,6 +295,10 @@ interface SessionExerciseOpData {
   removed_at?: string | null;
 }
 
+// PowerSync's crud queue ships the raw SQLite value for an integer('x', { mode: 'boolean' })
+// column, so a boolean field here can legitimately arrive as 0 or 1, not just true/false.
+type SqliteBoolean = boolean | 0 | 1;
+
 interface LoggedSetOpData {
   session_exercise_id?: string;
   set_index?: number;
@@ -303,7 +307,7 @@ interface LoggedSetOpData {
   reps?: number;
   rir?: number | null;
   side?: string | null;
-  completed?: boolean;
+  completed?: SqliteBoolean;
   parent_set_id?: string | null;
   rest_taken_seconds?: number | null;
   logged_at?: string;
@@ -316,11 +320,11 @@ interface ExerciseOpData {
   movement_pattern?: string | null;
   equipment_required?: string | null;
   load_type?: string;
-  unilateral?: boolean;
+  unilateral?: SqliteBoolean;
   instructions_text?: string | null;
   cue_text?: string | null;
   image_urls?: string[] | null;
-  is_custom?: boolean;
+  is_custom?: SqliteBoolean;
   variation_of_id?: string | null;
   bodyweight_contribution_pct?: string | number | null;
   archived_at?: unknown;
@@ -329,7 +333,7 @@ interface ExerciseOpData {
 interface UserExercisePreferenceOpData {
   exercise_id?: string;
   archived_at?: string | null;
-  never_suggest?: boolean;
+  never_suggest?: SqliteBoolean;
   updated_at?: string;
 }
 
@@ -344,7 +348,7 @@ interface RoutineOpData {
   status?: string;
   // Independent of status and of user_preference.active_routine_id (D-16) — a program that is
   // both active and frozen must be representable, which a single status enum could not express.
-  progression_frozen?: boolean;
+  progression_frozen?: SqliteBoolean;
   source?: string;
   created_from_template_id?: string | null;
   archived_at?: string | null;
@@ -355,8 +359,8 @@ interface UserPreferenceOpData {
   progression_preference?: string;
   default_equipment_profile_id?: string | null;
   active_routine_id?: string | null;
-  auto_advance_enabled?: boolean;
-  warmup_sets_enabled?: boolean;
+  auto_advance_enabled?: SqliteBoolean;
+  warmup_sets_enabled?: SqliteBoolean;
   // Never read — accepted only so a present user_id key does not crash the presence check in
   // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
   user_id?: unknown;
@@ -396,7 +400,7 @@ interface ProgressPhotoOpData {
 interface DashboardWidgetOpData {
   widget_kind?: string;
   position?: number;
-  enabled?: boolean;
+  enabled?: SqliteBoolean;
   // Never read — accepted only so a present user_id key does not crash the presence check in
   // hasInvalidField/patchAwareSet. userId always comes from the session, never from data.
   user_id?: unknown;
@@ -404,7 +408,7 @@ interface DashboardWidgetOpData {
 
 interface EquipmentProfileOpData {
   name?: string;
-  is_default?: boolean;
+  is_default?: SqliteBoolean;
   barbell_weight_kg?: string | number | null;
   available_plates?: unknown;
   dumbbell_increments_kg?: unknown;
@@ -420,7 +424,7 @@ interface RoutineDayOpData {
   routine_id?: string;
   order_index?: number;
   name?: string;
-  is_rest_day?: boolean;
+  is_rest_day?: SqliteBoolean;
   archived_at?: string | null;
 }
 
@@ -531,7 +535,7 @@ function toLoggedSetValues(id: string, sessionExerciseId: string, data: Record<s
     reps: d.reps ?? 0,
     rir: d.rir ?? null,
     side: d.side ?? null,
-    completed: d.completed ?? false,
+    completed: toBoolean(d.completed, false),
     parentSetId: d.parent_set_id ?? null,
     restTakenSeconds: d.rest_taken_seconds ?? null,
     loggedAt: d.logged_at ? new Date(d.logged_at) : new Date(),
@@ -561,7 +565,7 @@ function toExerciseValues(id: string, userId: string, data: Record<string, unkno
     movementPattern: d.movement_pattern ?? null,
     equipmentRequired: d.equipment_required ?? null,
     loadType: d.load_type ?? 'external_weight',
-    unilateral: d.unilateral ?? false,
+    unilateral: toBoolean(d.unilateral, false),
     instructionsText: d.instructions_text ?? null,
     cueText: d.cue_text ?? null,
     imageUrls: d.image_urls ?? null,
@@ -595,7 +599,7 @@ function toUserExercisePreferenceValues(
     userId,
     exerciseId: storedExerciseId ?? d.exercise_id ?? '',
     archivedAt: d.archived_at ? new Date(d.archived_at) : null,
-    neverSuggest: d.never_suggest ?? false,
+    neverSuggest: toBoolean(d.never_suggest, false),
     updatedAt: d.updated_at ? new Date(d.updated_at) : new Date(),
   };
 }
@@ -677,7 +681,7 @@ function toDashboardWidgetValues(
     userId,
     widgetKind: d.widget_kind ?? '',
     position: d.position ?? 0,
-    enabled: d.enabled ?? true,
+    enabled: toBoolean(d.enabled, true),
   };
 }
 
@@ -695,7 +699,7 @@ function toRoutineValues(id: string, userId: string, data: Record<string, unknow
     name: d.name ?? '',
     goal: d.goal ?? null,
     status: d.status ?? 'draft',
-    progressionFrozen: d.progression_frozen ?? false,
+    progressionFrozen: toBoolean(d.progression_frozen, false),
     source: 'user',
     createdFromTemplateId: d.created_from_template_id ?? null,
     archivedAt: d.archived_at ? new Date(d.archived_at) : null,
@@ -721,8 +725,8 @@ function toUserPreferenceValues(
     progressionPreference: d.progression_preference ?? DEFAULT_PROGRESSION_PREFERENCE,
     defaultEquipmentProfileId: d.default_equipment_profile_id ?? null,
     activeRoutineId: d.active_routine_id ?? null,
-    autoAdvanceEnabled: d.auto_advance_enabled ?? true,
-    warmupSetsEnabled: d.warmup_sets_enabled ?? true,
+    autoAdvanceEnabled: toBoolean(d.auto_advance_enabled, true),
+    warmupSetsEnabled: toBoolean(d.warmup_sets_enabled, true),
   };
 }
 
@@ -781,7 +785,7 @@ function toEquipmentProfileValues(
     id,
     userId,
     name: d.name ?? '',
-    isDefault: d.is_default ?? false,
+    isDefault: toBoolean(d.is_default, false),
     barbellWeightKg: normalizeWeightKg(d.barbell_weight_kg),
     availablePlates: d.available_plates ?? [],
     dumbbellIncrementsKg: d.dumbbell_increments_kg ?? [],
@@ -803,7 +807,7 @@ function toRoutineDayValues(id: string, routineId: string, data: Record<string, 
     routineId,
     orderIndex: d.order_index ?? 0,
     name: d.name ?? '',
-    isRestDay: d.is_rest_day ?? false,
+    isRestDay: toBoolean(d.is_rest_day, false),
     archivedAt: d.archived_at ? new Date(d.archived_at) : null,
   };
 }
@@ -877,6 +881,18 @@ function isNonNegativeInteger(value: unknown): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
+// PowerSync ships integer('x', { mode: 'boolean' }) columns as the raw SQLite value, so 0/1 are
+// legitimate on the wire — but the accept set is enumerated rather than truthy, so 'yes', 2, -1
+// and null stay rejected instead of silently becoming true.
+function isSqliteBoolean(value: unknown): boolean {
+  return value === true || value === false || value === 0 || value === 1;
+}
+
+function toBoolean(value: SqliteBoolean | null | undefined, fallback: boolean): boolean {
+  if (value === undefined || value === null) return fallback;
+  return value === true || value === 1;
+}
+
 function isNonNegativeDecimal(value: unknown): boolean {
   if (typeof value !== 'string' && typeof value !== 'number') return false;
   const n = Number(value);
@@ -902,7 +918,7 @@ function isValidOptionalStringOrNull(value: unknown): boolean {
 // logged_set.completed — checked only when present; a PATCH naming only weight/reps must not be
 // rejected for omitting it (WR-03).
 function isValidOptionalBoolean(value: unknown): boolean {
-  return value === undefined || typeof value === 'boolean';
+  return value === undefined || isSqliteBoolean(value);
 }
 
 // paused_at/rest_target_at/removed_at/achieved_at — checked only when present; an explicit null
@@ -1067,17 +1083,18 @@ export function hasInvalidField(op: SyncCrudOp): boolean {
       return true;
     }
     if (d.name !== undefined && !(typeof d.name === 'string' && d.name.trim().length > 0)) return true;
-    // A client may only create custom rows — is_custom:false would claim seeded-catalog
-    // provenance for a client-authored write, which toExerciseValues never actually stores
-    // (isCustom is forced true), but rejecting the attempt up front keeps the contract honest.
-    if (d.is_custom === false) return true;
+    // A client may only create custom rows — is_custom:false (or its SQLite-integer spelling, 0)
+    // would claim seeded-catalog provenance for a client-authored write, which toExerciseValues
+    // never actually stores (isCustom is forced true), but rejecting the attempt up front keeps
+    // the contract honest.
+    if (d.is_custom === false || d.is_custom === 0) return true;
     return false;
   }
 
   if (op.type === 'user_exercise_preference') {
     const d = data as UserExercisePreferenceOpData;
     if (typeof d.exercise_id !== 'string' || d.exercise_id.length === 0) return true;
-    if (d.never_suggest !== undefined && typeof d.never_suggest !== 'boolean') return true;
+    if (d.never_suggest !== undefined && !isSqliteBoolean(d.never_suggest)) return true;
     return false;
   }
 
@@ -1142,7 +1159,7 @@ export function hasInvalidField(op: SyncCrudOp): boolean {
     // source is not validated here — toRoutineValues forces it, exactly as it forces isCustom
     // for exercise.
     if (d.name !== undefined && !(typeof d.name === 'string' && d.name.trim().length > 0)) return true;
-    if (d.progression_frozen !== undefined && typeof d.progression_frozen !== 'boolean') return true;
+    if (d.progression_frozen !== undefined && !isSqliteBoolean(d.progression_frozen)) return true;
     return false;
   }
 
@@ -1177,8 +1194,8 @@ export function hasInvalidField(op: SyncCrudOp): boolean {
     ) {
       return true;
     }
-    if (d.auto_advance_enabled !== undefined && typeof d.auto_advance_enabled !== 'boolean') return true;
-    if (d.warmup_sets_enabled !== undefined && typeof d.warmup_sets_enabled !== 'boolean') return true;
+    if (d.auto_advance_enabled !== undefined && !isSqliteBoolean(d.auto_advance_enabled)) return true;
+    if (d.warmup_sets_enabled !== undefined && !isSqliteBoolean(d.warmup_sets_enabled)) return true;
     return false;
   }
 
@@ -1196,7 +1213,7 @@ export function hasInvalidField(op: SyncCrudOp): boolean {
   if (op.type === 'equipment_profile') {
     const d = data as EquipmentProfileOpData;
     if (d.name !== undefined && !(typeof d.name === 'string' && d.name.trim().length > 0)) return true;
-    if (d.is_default !== undefined && typeof d.is_default !== 'boolean') return true;
+    if (d.is_default !== undefined && !isSqliteBoolean(d.is_default)) return true;
     if (d.barbell_weight_kg !== undefined && !isNonNegativeDecimalOrNull(d.barbell_weight_kg)) return true;
     if (d.available_plates !== undefined && !isEquipmentProfilePlates(d.available_plates)) return true;
     if (d.dumbbell_increments_kg !== undefined && !isEquipmentDumbbellIncrements(d.dumbbell_increments_kg)) return true;
@@ -2107,7 +2124,7 @@ export class SyncService {
               reps: incoming.reps ?? stored.reps,
               rir: incoming.rir !== undefined ? incoming.rir : stored.rir,
               set_index: incoming.set_index ?? stored.setIndex,
-              completed: incoming.completed !== undefined ? incoming.completed : stored.completed,
+              completed: toBoolean(incoming.completed, stored.completed),
             };
             const seqResult = await tx.execute<{ seq: string }>(sql`select nextval('sync_seq') as seq`);
             const winningServerSeq = BigInt(seqResult.rows[0].seq);
