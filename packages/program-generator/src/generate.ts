@@ -1,9 +1,15 @@
-import { isEmptyOverride, type MuscleGroupId, type ResolvedTarget, type TargetOverride } from '@fitness/api-contracts';
+import {
+  isEmptyOverride,
+  type MovementPattern,
+  type MuscleGroupId,
+  type ResolvedTarget,
+  type TargetOverride,
+} from '@fitness/api-contracts';
 import { buildCandidatePool } from './candidate-pool';
 import { collectDegradations } from './degradation';
 import { deloadOverrideFor, placeCycles } from './deload';
 import { applyEmphasis } from './emphasis';
-import { pickSlotExercise } from './slot-fill';
+import { pickSlotExercise, type SlotPickContext } from './slot-fill';
 import { resolveSplitTemplate, type SplitTemplate } from './split-templates';
 import { fitDayToSessionLength, type DaySlotPlan } from './session-fit';
 import { distributeSets, splitSessionSets } from './volume-split';
@@ -30,6 +36,11 @@ import {
 // deload.ts's placeCycles owns cycle-level order indexes independently — this constant governs
 // only day and slot order indexes here.
 const ORDER_INDEX_GAP = 1024;
+
+// Reused across every pickSlotExercise call as the default `weekPickedIdsForGroup` for a muscle
+// group that has not yet had a slot filled this week, instead of allocating a fresh empty Set per
+// call.
+const EMPTY_ID_SET: ReadonlySet<string> = new Set();
 
 const TRAINING_GOAL_LABEL: Record<string, string> = {
   strength: 'Strength',
@@ -122,6 +133,10 @@ export function generateProgram(input: GenerationInput): GeneratedProgramTree {
   const days: GeneratedDay[] = [];
   let dayOrderIndex = 0;
 
+  // D-06: week-scoped, declared OUTSIDE the day loop so it survives across days — the existing
+  // `alreadyPicked` set below is deliberately left day-scoped (D-06 keeps the per-day rule too).
+  const pickedByMuscleGroup = new Map<MuscleGroupId, Set<string>>();
+
   template.dayPatterns.forEach((dayPattern, dayIndex) => {
     dayOrderIndex += ORDER_INDEX_GAP;
     const dayKey = `day-${dayIndex}`;
@@ -177,11 +192,21 @@ export function generateProgram(input: GenerationInput): GeneratedProgramTree {
     // Open Question 1: report slot_unfillable for that day/muscle group and skip the slot, leaving
     // any already-picked sibling exercise at its already-capped planned sets.
     const alreadyPicked = new Set<string>();
+    const coveredMovementPatterns = new Set<MovementPattern>();
     const filledSlots: FilledSlot[] = [];
     let slotOrderIndex = 0;
 
     for (const plan of fitResult.plans) {
-      const picked = pickSlotExercise(pool, { muscleGroupId: plan.muscleGroupId }, input.variantSeed, alreadyPicked);
+      const pickContext: SlotPickContext = {
+        variantSeed: input.variantSeed,
+        alreadyPickedIds: alreadyPicked,
+        weekPickedIdsForGroup: pickedByMuscleGroup.get(plan.muscleGroupId) ?? EMPTY_ID_SET,
+        coveredMovementPatterns,
+        // D-07: the first exercise for a group in a day must be the most compound available; the
+        // second, added by D-02's split, is free to be isolation work.
+        preferCompound: plan.groupExerciseIndex === 0,
+      };
+      const picked = pickSlotExercise(pool, { muscleGroupId: plan.muscleGroupId }, pickContext);
       if (picked === null) {
         rawDegradations.push({
           kind: 'slot_unfillable',
@@ -192,6 +217,12 @@ export function generateProgram(input: GenerationInput): GeneratedProgramTree {
         continue;
       }
       alreadyPicked.add(picked.exercise.id);
+      const weekIdsForGroup = pickedByMuscleGroup.get(plan.muscleGroupId) ?? new Set<string>();
+      weekIdsForGroup.add(picked.exercise.id);
+      pickedByMuscleGroup.set(plan.muscleGroupId, weekIdsForGroup);
+      if (picked.exercise.movementPattern !== null) {
+        coveredMovementPatterns.add(picked.exercise.movementPattern);
+      }
       slotOrderIndex += ORDER_INDEX_GAP;
 
       filledSlots.push({
