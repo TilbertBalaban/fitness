@@ -49,7 +49,7 @@ and `GeneratedProgramTree` shape do not change.
 ### Volume distribution (GEN-VOL-01)
 
 - **D-01:** A single exercise carries at most `MAX_SETS_PER_EXERCISE = 5` sets in any session
-  and never fewer than `MIN_SETS_PER_EXERCISE = 2` once it exists. Per-session sets for a muscle
+  and never fewer than `MIN_SETS_PER_EXERCISE = 3` once it exists. Per-session sets for a muscle
   group are still `round(weeklySets / frequency)`; when that exceeds the cap, the group gets
   `ceil(sessionSets / cap)` exercises in that day and the sets are divided across them as evenly
   as possible (e.g. 10 → 5 + 5, 8 → 4 + 4, 7 → 4 + 3). The split is computed against the
@@ -66,17 +66,23 @@ and `GeneratedProgramTree` shape do not change.
   HARDEST training cycle (the largest per-slot set count any training cycle will assign), never
   cycle 1 alone. `estimateSlotMinutes`, `WORK_SECONDS_PER_SET` and `SESSION_OVERHEAD_MINUTES`
   keep their current values and remain the single time model.
-- **D-04:** Fit order, applied until the hardest-cycle estimate fits or nothing more can go:
-  1. Reduce sets on every exercise uniformly, one set per pass across the day, down to
-     `MIN_SETS_PER_EXERCISE` — the cheapest concession and the one that keeps every muscle group
-     trained.
-  2. Then remove whole exercises by priority: second exercises of a group before first
-     exercises; `small` volume-class groups before `medium` before `large`; later slots before
-     earlier slots within the same tier. A day never loses its last `large`-class exercise while
-     any other exercise remains.
+- **D-04:** Fit order, applied until the hardest-cycle estimate fits or nothing more can go
+  (amended 2026-09-02 after the first implementation produced nine exercises at two sets each —
+  reducing sets before removing overflow exercises fragments the day):
+  1. Remove the overflow exercises first — a group's second-or-later exercise (D-02) exists only
+     to absorb volume the session cannot hold, so it is the first concession; the group's first
+     exercise stays at `MAX_SETS_PER_EXERCISE`. Later slots go before earlier ones.
+  2. Then reduce sets on every remaining exercise, one set off the currently tallest slot per
+     pass, down to `MIN_SETS_PER_EXERCISE = 3` (raised from 2: two working sets is below the
+     effective range for any goal this generator serves).
+  3. Then remove whole first exercises by priority: `small` volume-class groups before `medium`
+     before `large`; later slots before earlier slots within the same tier. A day never loses
+     its last `large`-class exercise while any other exercise remains.
   The first slot always survives (existing "never empty for non-empty input" rule). Set
   reductions apply proportionally to every cycle's override so the ramp (mev → mav shape) is
   preserved at the reduced ceiling; per-cycle targets are recomputed after the fit, not before.
+  Expected shape for the reported scenario (2 days / 60 min / intermediate / hypertrophy):
+  about six exercises at three sets in the hardest cycle, not nine at two.
 - **D-05 (degradation contract):** `day_trimmed` keeps its `kind` but its `detail` now reports
   what actually happened: exercises removed and/or sets reduced, and the resulting estimate
   versus the budget. The wizard sentence in `apps/mobile/lib/programs/generation-wizard.ts`
