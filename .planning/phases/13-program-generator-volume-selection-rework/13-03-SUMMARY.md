@@ -143,3 +143,17 @@ None - no external service configuration required.
 
 All 4 modified source files (`slot-fill.ts`, `generate.ts`, both test files) confirmed present on
 disk, and both task commit hashes (`bff0072`, `5f0acfd`) confirmed present in `git log`.
+
+## Amendment (2026-09-02, commit 808260d)
+
+The first D-07 tier 2 counted distinct secondary muscle groups as "compoundness". Against the
+seeded catalog that ranked strongman, Olympic-lift and stretch entries (Bent Press, Kipping
+Muscle Up, Split Snatch, Standing Biceps Stretch) above a bench press, because those rows carry
+the most secondary mappings. CONTEXT D-07 was amended and `slot-fill.ts` now classifies each
+candidate from `movementPattern`: `compound` (any non-null pattern other than `isolation`),
+`isolation`, or `unclassified` (null — stretches, plyometrics, cardio, strongman). A first pick
+ranks compound > isolation > unclassified, a second pick isolation > compound > unclassified, and
+a new gate after D-08 drops unclassified candidates while any classified one survives.
+`compoundnessOf` was removed; `movementClassOf` is exported in its place. The
+`slot-fill.test.ts` compoundness case was replaced by three movement-class cases. Package suite
+152/152, workspace typecheck and tests green.
