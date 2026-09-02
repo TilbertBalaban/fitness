@@ -106,9 +106,15 @@ and `GeneratedProgramTree` shape do not change.
 - **D-07:** Slot scoring becomes a tiered sort key rather than a single weighted sum, so a
   catalog whose primary weights are all `1.00` still produces a defensible order:
   1. primary-muscle score (existing `scoreCandidateForSlot`, unchanged semantics);
-  2. compoundness: count of distinct secondary muscle groups the exercise maps (more = more
-     compound); the FIRST exercise chosen for a muscle group in a day must be the most compound
-     available, the second (D-02) may be an isolation movement;
+  2. movement class, read from `movementPattern` (amended 2026-09-02: counting secondary
+     mappings rewarded strongman and Olympic lifts and let stretches through — a biceps stretch
+     and a bent press were being picked). Three classes: `compound` = a non-null pattern other
+     than `isolation` (hinge, squat, horizontal_push, vertical_push, horizontal_pull,
+     vertical_pull); `isolation`; `unclassified` = null, which in the seeded catalog marks
+     stretches, plyometrics, cardio and strongman entries. For a group's FIRST exercise in a
+     day the order is compound > isolation > unclassified; for a second (D-02) exercise it is
+     isolation > compound > unclassified. Unclassified is never chosen while any classified
+     candidate with a positive primary score exists.
   3. loadability: `equipmentRequired` in `MODEL_EQUIPMENT_TYPES` (barbell, dumbbell, machine,
      cable — the inventory-modelled types from `@fitness/plate-math`) ranks above bodyweight or
      null, because those are the exercises the progression engine can actually load;
