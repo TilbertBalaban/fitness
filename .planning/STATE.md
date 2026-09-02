@@ -6,9 +6,9 @@ current_phase: 1
 current_phase_name: Cross-Platform Foundation
 status: planning
 stopped_at: Completed 12-08-PLAN.md
-last_updated: "2026-09-02T08:16:26.412Z"
-last_activity: 2026-08-31
-last_activity_desc: Phase 12 complete, transitioned to Phase 1
+last_updated: "2026-09-02T08:25:04.615Z"
+last_activity: 2026-09-02
+last_activity_desc: "Completed quick task 260902-fei: SQLite integer boolean sync-push fix"
 progress:
   total_phases: 12
   completed_phases: 12
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 Phase: 1 — Cross-Platform Foundation
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-02 — Completed quick task 260902-fei: SQLite integer boolean sync-push fix
+Last activity: 2026-09-02 — Completed quick task 260902-fo3: sync status on Profile
 
 Progress: [██████████] 100%
 
@@ -160,6 +160,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260819-wpp | Fix WR-01 ExerciseImageTile failure state leaks across FlashList recycling | 2026-08-19 | b4ae1c3 | [260819-wpp-fix-wr-01-exerciseimagetile-failure-stat](./quick/260819-wpp-fix-wr-01-exerciseimagetile-failure-stat/) |
 | 260902-fei | Fix silent sync-push drop of SQLite integer booleans (logged_set.completed and every other boolean column) rejected as invalid_field | 2026-09-02 | 8ec85b3 | [260902-fei-fix-silent-sync-push-drop-of-sqlite-inte](./quick/260902-fei-fix-silent-sync-push-drop-of-sqlite-inte/) |
+| 260902-fo3 | Surface sync status on the Profile screen and forward EXPO_PUBLIC_API_URL into the Playwright web server | 2026-09-02 | ad76504 | [260902-fo3-surface-sync-status-on-the-profile-scree](./quick/260902-fo3-surface-sync-status-on-the-profile-scree/) |
 
 ## Deferred Items
 
