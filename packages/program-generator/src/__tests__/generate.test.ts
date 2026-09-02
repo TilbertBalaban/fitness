@@ -1,3 +1,4 @@
+import type { EquipmentType, MovementPattern } from '@fitness/api-contracts';
 import type { GenerationCatalog, GenerationInput } from '../result';
 import { generateProgram } from '../generate';
 import { estimateSlotMinutes, SESSION_OVERHEAD_MINUTES } from '../session-length';
@@ -15,20 +16,35 @@ const MUSCLE_GROUPS_FOR_FULL_BODY_3 = [
   'abs',
 ] as const;
 
-function fullCatalog(): GenerationCatalog {
-  const exercises = MUSCLE_GROUPS_FOR_FULL_BODY_3.map((muscleGroupId) => ({
-    id: `ex-${muscleGroupId}`,
-    name: `${muscleGroupId} exercise`,
-    equipmentRequired: null,
-    movementPattern: null,
-  }));
+// Pitfall 1: a single exercise per muscle group starves D-02's second-exercise-absorption path.
+// Three distinct exercises per group, cycled through a deterministic equipment/movement-pattern
+// spread (including a null of each), give the split — and, once plan 13-03 lands, tiered scoring —
+// real candidates to choose among.
+const EQUIPMENT_CYCLE: readonly (EquipmentType | null)[] = ['barbell', null, 'dumbbell'];
+const MOVEMENT_CYCLE: readonly (MovementPattern | null)[] = ['horizontal_push', null, 'isolation'];
+const EXERCISES_PER_GROUP = 3;
 
-  const mappings = MUSCLE_GROUPS_FOR_FULL_BODY_3.map((muscleGroupId) => ({
-    exerciseId: `ex-${muscleGroupId}`,
-    muscleGroupId,
-    role: 'primary' as const,
-    weightFactor: '1.0',
-  }));
+function fullCatalog(): GenerationCatalog {
+  const exercises: GenerationCatalog['exercises'] = [];
+  const mappings: GenerationCatalog['mappings'] = [];
+
+  for (const muscleGroupId of MUSCLE_GROUPS_FOR_FULL_BODY_3) {
+    for (let index = 0; index < EXERCISES_PER_GROUP; index += 1) {
+      const id = `ex-${muscleGroupId}-${index}`;
+      exercises.push({
+        id,
+        name: `${muscleGroupId} exercise ${index}`,
+        equipmentRequired: EQUIPMENT_CYCLE[index % EQUIPMENT_CYCLE.length] ?? null,
+        movementPattern: MOVEMENT_CYCLE[index % MOVEMENT_CYCLE.length] ?? null,
+      });
+      mappings.push({
+        exerciseId: id,
+        muscleGroupId,
+        role: 'primary' as const,
+        weightFactor: '1.0',
+      });
+    }
+  }
 
   return { exercises, mappings };
 }
@@ -117,7 +133,9 @@ describe('generateProgram', () => {
     // inside applyEmphasis must hold it at 18.
     const tree = generateProgram(tracerInput({ emphasis: { chest: 'emphasize' } }));
 
-    const chestSlots = tree.days.flatMap((day) => day.slots.filter((slot) => slot.exerciseId === 'ex-chest'));
+    // The group now owns more than one slot per day (D-02), so every chest-mapped exercise id —
+    // not one fixed literal — must be summed to reconstruct the group's true weekly total.
+    const chestSlots = tree.days.flatMap((day) => day.slots.filter((slot) => slot.exerciseId.startsWith('ex-chest-')));
     expect(chestSlots.length).toBeGreaterThan(0);
 
     // Reconstruct the last training cycle's per-session total across every day chest appears in.
@@ -141,8 +159,8 @@ describe('generateProgram', () => {
 
   it('produces a slot_unfillable degradation entry naming the muscle group when a slot cannot be filled', () => {
     const catalogMissingChest: GenerationCatalog = {
-      exercises: fullCatalog().exercises.filter((exercise) => exercise.id !== 'ex-chest'),
-      mappings: fullCatalog().mappings.filter((mapping) => mapping.exerciseId !== 'ex-chest'),
+      exercises: fullCatalog().exercises.filter((exercise) => !exercise.id.startsWith('ex-chest-')),
+      mappings: fullCatalog().mappings.filter((mapping) => !mapping.exerciseId.startsWith('ex-chest-')),
     };
 
     const tree = generateProgram(tracerInput({ catalog: catalogMissingChest }));

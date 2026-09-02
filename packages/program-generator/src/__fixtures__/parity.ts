@@ -1,4 +1,10 @@
-import { resolveTarget, type MuscleGroupId, type TrainingGoal } from '@fitness/api-contracts';
+import {
+  resolveTarget,
+  type EquipmentType,
+  type MovementPattern,
+  type MuscleGroupId,
+  type TrainingGoal,
+} from '@fitness/api-contracts';
 import { resolveInventory, type EquipmentProfileLike } from '@fitness/plate-math';
 import type { ExerciseSessionSets, LoggedSetInput, RecommendInput } from '@fitness/progression-engine';
 import { generateProgram } from '../generate';
@@ -61,24 +67,39 @@ function sessionsWith(sets: LoggedSetInput[], sessionId = 'sess-1'): ExerciseSes
   return [{ sessionId, sets }];
 }
 
-// One catalog entry per muscle group the full-body templates name, each with no equipment
-// requirement, so every slot fills and the generated half of every case is a real generator
-// output rather than a degraded one.
+// Pitfall 1: a single exercise per muscle group starves D-02's second-exercise-absorption path.
+// At least three distinct exercises per muscle group the full-body templates name, cycled through
+// a deterministic equipment/movement-pattern spread (keeping at least one null of each so those
+// paths stay covered too), so every slot fills and the generated half of every case is a real
+// generator output — with real candidates for the split to choose among — rather than a degraded
+// or starved one.
+const CATALOG_EQUIPMENT_CYCLE: readonly (EquipmentType | null)[] = ['barbell', null, 'dumbbell'];
+const CATALOG_MOVEMENT_CYCLE: readonly (MovementPattern | null)[] = ['horizontal_push', null, 'isolation'];
+const CATALOG_EXERCISES_PER_GROUP = 3;
+
 function catalogCovering(muscleGroupIds: readonly MuscleGroupId[]): GenerationCatalog {
-  return {
-    exercises: muscleGroupIds.map((groupId) => ({
-      id: `ex-${groupId}`,
-      name: `Exercise for ${groupId}`,
-      equipmentRequired: null,
-      movementPattern: null,
-    })),
-    mappings: muscleGroupIds.map((groupId) => ({
-      exerciseId: `ex-${groupId}`,
-      muscleGroupId: groupId,
-      role: 'primary' as const,
-      weightFactor: '1.000',
-    })),
-  };
+  const exercises: GenerationCatalog['exercises'] = [];
+  const mappings: GenerationCatalog['mappings'] = [];
+
+  for (const groupId of muscleGroupIds) {
+    for (let index = 0; index < CATALOG_EXERCISES_PER_GROUP; index += 1) {
+      const id = `ex-${groupId}-${index}`;
+      exercises.push({
+        id,
+        name: `Exercise for ${groupId} ${index}`,
+        equipmentRequired: CATALOG_EQUIPMENT_CYCLE[index % CATALOG_EQUIPMENT_CYCLE.length] ?? null,
+        movementPattern: CATALOG_MOVEMENT_CYCLE[index % CATALOG_MOVEMENT_CYCLE.length] ?? null,
+      });
+      mappings.push({
+        exerciseId: id,
+        muscleGroupId: groupId,
+        role: 'primary' as const,
+        weightFactor: '1.000',
+      });
+    }
+  }
+
+  return { exercises, mappings };
 }
 
 function fullBodyMuscleGroups(): MuscleGroupId[] {
@@ -168,7 +189,7 @@ export const GENERATION_PARITY_FIXTURES: GenerationParityCase[] = [
     equipmentType: 'barbell',
     inventory: inventoryFrom(),
     preference: 'widen_rep_range_first',
-    handBuiltPrescription: handBuilt(8, 12, 3),
+    handBuiltPrescription: handBuilt(8, 12, 2),
     generatedPrescription: generatedPrescriptionFor('hypertrophy', 0),
   },
   {
@@ -179,7 +200,7 @@ export const GENERATION_PARITY_FIXTURES: GenerationParityCase[] = [
     equipmentType: 'barbell',
     inventory: inventoryFrom(),
     preference: 'match_previous_weight',
-    handBuiltPrescription: handBuilt(4, 6, 3),
+    handBuiltPrescription: handBuilt(4, 6, 2),
     generatedPrescription: generatedPrescriptionFor('strength', 0),
   },
   {
@@ -190,7 +211,7 @@ export const GENERATION_PARITY_FIXTURES: GenerationParityCase[] = [
     equipmentType: 'barbell',
     inventory: inventoryFrom(),
     preference: 'widen_rep_range_first',
-    handBuiltPrescription: handBuilt(15, 20, 3),
+    handBuiltPrescription: handBuilt(15, 20, 2),
     generatedPrescription: generatedPrescriptionFor('endurance', 0),
   },
   {
@@ -201,7 +222,7 @@ export const GENERATION_PARITY_FIXTURES: GenerationParityCase[] = [
     equipmentType: 'barbell',
     inventory: inventoryFrom(),
     preference: 'widen_rep_range_first',
-    handBuiltPrescription: handBuilt(8, 12, 5),
+    handBuiltPrescription: handBuilt(8, 12, 4),
     generatedPrescription: generatedPrescriptionFor('hypertrophy', deloadCycleIndex(), DELOAD_OVERRIDES),
   },
   {
@@ -212,7 +233,7 @@ export const GENERATION_PARITY_FIXTURES: GenerationParityCase[] = [
     equipmentType: 'barbell',
     inventory: inventoryFrom(),
     preference: 'match_previous_weight',
-    handBuiltPrescription: handBuilt(8, 12, 3),
+    handBuiltPrescription: handBuilt(8, 12, 2),
     generatedPrescription: generatedBasePrescription('hypertrophy'),
   },
   {
@@ -223,7 +244,7 @@ export const GENERATION_PARITY_FIXTURES: GenerationParityCase[] = [
     equipmentType: 'barbell',
     inventory: inventoryFrom(),
     preference: 'widen_rep_range_first',
-    handBuiltPrescription: handBuilt(8, 12, 3),
+    handBuiltPrescription: handBuilt(8, 12, 2),
     generatedPrescription: generatedPrescriptionFor('hypertrophy', 0),
   },
 ];

@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { EquipmentType, MovementPattern } from '@fitness/api-contracts';
 import type { GenerationCatalog, GenerationInput } from '../result';
 import { generateProgram } from '../generate';
 
@@ -16,20 +17,35 @@ const MUSCLE_GROUPS_FOR_FULL_BODY_3 = [
   'abs',
 ] as const;
 
-function fullCatalog(): GenerationCatalog {
-  const exercises = MUSCLE_GROUPS_FOR_FULL_BODY_3.map((muscleGroupId) => ({
-    id: `ex-${muscleGroupId}`,
-    name: `${muscleGroupId} exercise`,
-    equipmentRequired: null,
-    movementPattern: null,
-  }));
+// Pitfall 1: a single exercise per muscle group starves D-02's second-exercise-absorption path —
+// three distinct exercises per group, cycled through a deterministic equipment/movement-pattern
+// spread (including a null of each), exercise the split rather than the degraded single-candidate
+// path while keeping generation itself byte-deterministic.
+const EQUIPMENT_CYCLE: readonly (EquipmentType | null)[] = ['barbell', null, 'dumbbell'];
+const MOVEMENT_CYCLE: readonly (MovementPattern | null)[] = ['horizontal_push', null, 'isolation'];
+const EXERCISES_PER_GROUP = 3;
 
-  const mappings = MUSCLE_GROUPS_FOR_FULL_BODY_3.map((muscleGroupId) => ({
-    exerciseId: `ex-${muscleGroupId}`,
-    muscleGroupId,
-    role: 'primary' as const,
-    weightFactor: '1.0',
-  }));
+function fullCatalog(): GenerationCatalog {
+  const exercises: GenerationCatalog['exercises'] = [];
+  const mappings: GenerationCatalog['mappings'] = [];
+
+  for (const muscleGroupId of MUSCLE_GROUPS_FOR_FULL_BODY_3) {
+    for (let index = 0; index < EXERCISES_PER_GROUP; index += 1) {
+      const id = `ex-${muscleGroupId}-${index}`;
+      exercises.push({
+        id,
+        name: `${muscleGroupId} exercise ${index}`,
+        equipmentRequired: EQUIPMENT_CYCLE[index % EQUIPMENT_CYCLE.length] ?? null,
+        movementPattern: MOVEMENT_CYCLE[index % MOVEMENT_CYCLE.length] ?? null,
+      });
+      mappings.push({
+        exerciseId: id,
+        muscleGroupId,
+        role: 'primary' as const,
+        weightFactor: '1.0',
+      });
+    }
+  }
 
   return { exercises, mappings };
 }
