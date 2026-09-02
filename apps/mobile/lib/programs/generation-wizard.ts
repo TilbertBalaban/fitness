@@ -290,7 +290,7 @@ export function describeDegradation(entry: DegradationEntry): string {
     case 'slot_unfillable':
       return `No exercise for ${nameOf(entry.muscleGroupId)} fits your gym and your exclusions, so ${whereOf(entry.dayKey)} has one fewer exercise.`;
     case 'day_trimmed':
-      return `The session length you chose left room for fewer exercises, so some were dropped from ${whereOf(entry.dayKey)}.`;
+      return `The session length you chose meant ${whereOf(entry.dayKey)} does fewer sets, fewer exercises, or both.`;
     case 'split_unsupported':
       return 'That split and that number of training days do not go together, so no program was built. Pick another split, or change the number of days.';
     case 'group_below_minimum':

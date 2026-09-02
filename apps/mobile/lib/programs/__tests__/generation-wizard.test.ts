@@ -207,6 +207,12 @@ describe('describeDegradation', () => {
     expect(describeDegradation({ ...entry('slot_unfillable'), muscleGroupId: null })).toContain('a muscle group');
   });
 
+  it('states the day_trimmed sentence mentions both sets and exercises, true for either concession', () => {
+    const sentence = describeDegradation(entry('day_trimmed')).toLowerCase();
+    expect(sentence).toMatch(/set/);
+    expect(sentence).toMatch(/exercise/);
+  });
+
   it('never frames a reduction as a shortcoming in the user', () => {
     for (const kind of DEGRADATION_KINDS) {
       expect(describeDegradation(entry(kind)).toLowerCase()).not.toMatch(/you (don't|do not|can't|cannot)|too weak|not enough time to train/);
