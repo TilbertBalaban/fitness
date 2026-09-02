@@ -8,8 +8,8 @@ what to lift next time.
 
 ## What it is
 
-A clone of [MacroFactor Workouts](https://macrofactor.com/workouts/), built for the author's own
-training and as a serious exercise in the React Native + NestJS stack. It covers:
+An app for tracking workouts, built for the author's own training and as a serious exercise in the
+React Native + NestJS stack. It covers:
 
 - Program design — routines, exercises, sets, rest timers, per-gym equipment profiles
 - In-gym set logging with a plate calculator scoped to what the gym actually has
