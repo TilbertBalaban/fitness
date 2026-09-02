@@ -5,6 +5,7 @@ import { db } from '../db/drizzle.module';
 import { schema } from '../db/schema';
 import { mailerPort } from '../mailer/mailer.module';
 import { resolveWebOrigins } from '../common/web-origins';
+import { resolveDefaultCookieAttributes } from './cookie-attributes';
 
 const APP_SCHEME = 'fitness://';
 
@@ -54,6 +55,7 @@ export const auth = betterAuth({
   },
   plugins: [expo()],
   trustedOrigins: [APP_SCHEME, ...WEB_ORIGINS, ...(WEB_APP_ORIGIN ? [WEB_APP_ORIGIN] : [])],
+  advanced: { defaultCookieAttributes: resolveDefaultCookieAttributes() },
   session: {
     // Generous server-side floor so the server never independently expires a session the client is
     // still honouring under D-01. These are NOT the mechanism that implements D-01 — that branch is
