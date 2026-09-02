@@ -6,11 +6,11 @@ current_phase: 1
 current_phase_name: Cross-Platform Foundation
 status: executing
 stopped_at: Completed 12-08-PLAN.md
-last_updated: "2026-09-02T11:37:25.707Z"
+last_updated: "2026-09-02T11:47:47.511Z"
 last_activity: 2026-09-02
 last_activity_desc: "Completed quick task 260902-fei: SQLite integer boolean sync-push fix"
 progress:
-  total_phases: 13
+  total_phases: 15
   completed_phases: 12
   total_plans: 128
   completed_plans: 124
@@ -87,6 +87,8 @@ Progress: [██████████] 100%
 ### Roadmap Evolution
 
 - Phase 13 added (2026-09-02): Program Generator Volume & Selection Rework — five generator design gaps found in production use
+- Phase 14 added: MCP Server — remote MCP endpoint in NestJS with OAuth via @better-auth/mcp; Claude Code and claude.ai read training data and write programs through SyncService.applyBatch
+- Phase 15 added: In-App AI Assistant — Ask AI screen backed by the Claude API on the server, reusing the Phase 14 tool registry
 
 ### Decisions
 

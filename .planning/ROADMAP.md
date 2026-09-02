@@ -40,6 +40,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 11: Program Generation** - Generate a pre-periodized program from goal, equipment, and schedule (completed 2026-08-30)
 - [x] **Phase 12: Body Metrics & Dashboard** - Measurements, progress photos, body-map heatmap, customizable dashboard (completed 2026-08-31)
 - [ ] **Phase 13: Program Generator Volume & Selection Rework** - Fix per-exercise volume, session-budget trimming, week-level exercise variety, selection quality and frequency-aware RIR
+- [ ] **Phase 14: MCP Server** - Remote MCP endpoint with OAuth via Better Auth so Claude Code and claude.ai can read training data and write programs through the sync path
+- [ ] **Phase 15: In-App AI Assistant** - Ask AI screen backed by the Claude API on the server, reusing the MCP tool registry
 
 ## Phase Details
 
@@ -732,3 +734,25 @@ Plans:
 **Wave 3** *(blocked on 13-03)*
 
 - [ ] 13-04-PLAN.md — D-11's regression: a deterministically derived real-catalog fixture, the 2-day/60-minute assertions, and the phase validation record
+
+### Phase 14: MCP Server
+
+**Goal:** A signed-in user can connect Claude Code or claude.ai to their own training data through a remote MCP server mounted in the NestJS API, and from there read routines, sessions, records, muscle volume and body metrics, ask for a progress analysis, and have Claude author or generate a program that appears on every device through the normal sync path.
+**Requirements**: MCP-01 (Streamable HTTP MCP endpoint at `/v1/mcp`, stateless, official MCP TypeScript SDK, mounted inside the existing NestJS app under the same versioning and min-client guards), MCP-02 (OAuth 2.1 via `@better-auth/mcp` + `jwt` plugins on the existing Better Auth instance; discovery metadata, dynamic client registration and PKCE work for both Claude Code and a claude.ai custom connector; login and consent pages served by the web build), MCP-03 (every tool resolves the user from the bearer token only, never from a parameter; a token for user A can never read or write user B's rows), MCP-04 (read tools prefixed `fitness_`: list/get routines, list/get sessions, exercise search, muscle volume by window, personal records, body metrics, progression recommendation for an exercise; paginated and filterable, with `readOnlyHint`), MCP-05 (write tools: create routine from a structured spec, generate program from goal/equipment/schedule via `@fitness/program-generator`, update routine, archive routine; every write goes through `SyncService.applyBatch` so PowerSync fans it out and the conflict policy applies unchanged), MCP-06 (a `fitness_progress_report` tool returning a compact JSON summary sized for a model context, plus `analyze-progress` and `write-program` MCP prompts), MCP-07 (supertest e2e coverage of auth challenge, tool listing, a read tool, a write tool landing in Postgres, and cross-user isolation; an mcp-builder evaluation set of 10 read-only questions)
+**Depends on:** Phase 13
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 14 to break down)
+
+### Phase 15: In-App AI Assistant
+
+**Goal:** From inside the app, a user can open an Ask AI screen and have a conversation that analyzes their progress or drafts a program, backed by the Claude API called from NestJS and reusing the Phase 14 tool implementations, so the in-app assistant and the MCP connector never disagree about what the data says.
+**Requirements**: AI-01 (server-side Claude API integration in NestJS with the Anthropic key held only on the server; the client never sees it), AI-02 (the assistant's tools are the same functions the MCP server exposes, invoked in-process through one shared tool registry, not duplicated), AI-03 (Ask AI screen on mobile and web with streamed responses, conversation history persisted per user, and a clear offline state since this feature is online-only by nature), AI-04 (per-user rate limits and a per-request token budget so one user cannot run up the bill; usage recorded per user), AI-05 (write actions proposed by the assistant, such as saving a generated program, require an explicit in-app confirmation before the write tool runs), AI-06 (an evaluation set covering progress analysis and program drafting, run against recorded fixtures rather than live data)
+**Depends on:** Phase 14
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 15 to break down)
